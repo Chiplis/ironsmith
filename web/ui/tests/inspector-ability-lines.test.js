@@ -168,3 +168,10 @@ test('compiled Improve identity is never a second activation or an unavailable r
  assert.deepEqual(activatedAbilityLineIndices(text.split('\n'),definitions),[1]);
  assert.deepEqual([...interactiveRulesView(text,text,[action],definitions).actions],[[1,[action]]]);
 });
+
+test('a bare Station declaration is an actionable row, not only a tooltip', () => {
+  const text = 'Station\n20+ | {T}: Add X mana of any one color, where X is the number of charge counters on The Eternity Elevator.';
+  assert.deepEqual(activatedAbilityLineIndices(text.split('\n')), [0, 1]);
+  const station = { kind: 'activate_ability', label: 'Activate The Eternity Elevator: Station' };
+  assert.deepEqual(interactiveRulesView(text, text, [station]).actions.get(0), [station]);
+});

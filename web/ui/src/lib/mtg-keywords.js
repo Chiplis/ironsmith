@@ -154,3 +154,10 @@ export function getMtgKeywordHelp(alias, rule, locale = "en", context = "") {
     reminder: reminder || null,
   };
 }
+
+// The printed catalog reminder for a keyword, independent of card context.
+// Contextual keywords (Station, Equip) resolve no help reminder from a bare
+// declaration, yet their catalog wording still shows the ability's shape.
+export function getMtgKeywordCatalogReminder(alias) {
+  return MTG_KEYWORD_REMINDERS[normalizeAlias(alias)]?.text || null;
+}

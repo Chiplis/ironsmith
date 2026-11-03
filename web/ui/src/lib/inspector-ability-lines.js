@@ -1,4 +1,4 @@
-import { splitTextWithMtgKeywordRules, getMtgKeywordHelp } from "./mtg-keywords.js";
+import { splitTextWithMtgKeywordRules, getMtgKeywordHelp, getMtgKeywordCatalogReminder } from "./mtg-keywords.js";
 
 export function stripInspectorAbilityPrefixes(text = "") {
   const prefixPatterns = [
@@ -71,7 +71,10 @@ function actionAbilityText(action) {
 function keywordActivationText(line, definitions = []) {
   const first=splitTextWithMtgKeywordRules(String(line).trim(),'en',definitions)[0];
   if(first?.type!=='keyword')return null;
-  const text=getMtgKeywordHelp(first.text,first.rule,'en',first.context).description;
+  const help=getMtgKeywordHelp(first.text,first.rule,'en',first.context);
+  // Without a bound reminder, help falls back to the CR glossary summary, which
+  // never has a cost clause. Classify by the keyword's catalog reminder instead.
+  const text=help.reminder||first.rule?.custom ? help.description : getMtgKeywordCatalogReminder(first.text)||help.description;
   if (/\{Cost\}/i.test(text || '')) return null; // An unbound identity has no activation cost.
   // A mechanic can combine casting, entry and activation clauses. Only its
   // activation clause participates in action matching (Advance, for example).
