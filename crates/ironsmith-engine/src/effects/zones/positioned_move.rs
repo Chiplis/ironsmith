@@ -69,6 +69,15 @@ pub(super) fn complete_positioned_moves(
                                 *position,
                                 "card positioned in library",
                             );
+                            // A card that came from a public zone lands where everyone
+                            // saw it go; one from its owner's hand only its owner knows.
+                            let public = !from_zone.is_hidden() && !pre_snapshot.face_down;
+                            let viewers: Vec<_> = game.players.iter().map(|player| player.id)
+                                .filter(|viewer| public || (*viewer == owner && from_zone == Zone::Hand))
+                                .collect();
+                            for viewer in viewers {
+                                game.remember_library_group(viewer, owner, &[id], false);
+                            }
                         }
                     }
                     if from_zone == Zone::Battlefield {

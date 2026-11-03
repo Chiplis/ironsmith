@@ -1,10 +1,12 @@
+import BuildCatalogList from './BuildCatalogList';
+import { buildCardName, setCatalogRows } from '@/lib/build-catalog';
 import { resolveBundledSet } from '@/lib/bundled-custom-sets';
 import SubtypesPanel from './SubtypesPanel';
 import { MechanicForm } from './MechanicsPanel';
 import { setMechanics, setSubtypes, updateSetMechanic } from '@/lib/set-workspace';
 import { loadCommunityLibrary, saveCommunityItem } from '@/lib/community-library';
 import { COMMUNITY_FILE_MAX_BYTES, encodeCommunityShare, decodeCommunityShare, communityFilename } from '@/lib/community-sharing';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import BuildCardSearch from './BuildCardSearch';
 import { fetchCardBuildDraft } from '@/lib/scryfall';
 import { emptyCommunityFormat, normalizeCommunityFormat } from '@/lib/community-format';
@@ -13,7 +15,7 @@ import useUiText from '@/i18n/useUiText';
 
 const field = 'fantasy-field w-full px-3 py-2';
 const button = 'stone-pill px-3 py-2 text-sm disabled:opacity-50';
-const cardName = card => card.draft.faces.map(face => face.name).join(' // ');
+const cardName = buildCardName;
 
 export function CommunityFormatSummary({ format, onRemove }) {
   const ui = useUiText();
@@ -42,8 +44,11 @@ export function CommunityFormatSummary({ format, onRemove }) {
 export default function CommunityFormatEditor({ value, onChange, kind = 'format', active = true, onEditCard, initialView = 'cards', initialMechanic = null, onBackToCard }) {
   const ui = useUiText();
   const isSet = kind === 'set';
+  const contents = useMemo(() => setCatalogRows(value), [value]);
+  const mechanics = contents.mechanics.map(row => row.definition);
+  const subtypes = contents.subtypes.map(row => row.definition);
   const [setView, setSetView] = useState(initialView);
-  const [editingMechanic, setEditingMechanic] = useState(() => isSet && initialMechanic ? setMechanics(value).find(def => def.keyword === initialMechanic) || null : null);
+  const [editingMechanic, setEditingMechanic] = useState(() => isSet && initialMechanic ? mechanics.find(def => def.keyword === initialMechanic) || null : null);
   const [library, setLibrary] = useState({ formats: [], sets: [] });
   const [libraryReady, setLibraryReady] = useState(false);
   const [source, setSource] = useState('includedSets');
@@ -64,7 +69,7 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
     try { await action(); } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   };
-  const entry = () => isSet ? { ...(value.source ? {source:structuredClone(value.source)} : {}), ...(value.code ? {code:value.code} : {}), name: value.name.trim(), cards: structuredClone(value.customCards), customMechanics: value.customMechanics || [], customSubtypes: setSubtypes(value) } : normalizeCommunityFormat(value);
+  const entry = () => isSet ? { ...(value.source ? {source:structuredClone(value.source)} : {}), ...(value.code ? {code:value.code} : {}), name: value.name.trim(), cards: structuredClone(value.customCards), customMechanics: value.customMechanics || [], customSubtypes: subtypes } : normalizeCommunityFormat(value);
   const load = async item => { item = await resolveBundledSet(item); setEditingMechanic(null); setSetView('cards'); onChange(isSet ? { ...emptyCommunityFormat(), ...(item.source ? {source:structuredClone(item.source)} : {}), ...(item.code ? {code:item.code} : {}), name: item.name, customCards: structuredClone(item.cards), customMechanics: structuredClone(item.customMechanics || []), customSubtypes: structuredClone(item.customSubtypes || []) } : structuredClone(item)); };
   const savedItems = isSet ? library.sets : library.formats;
   const save = () => run(async () => {
@@ -98,7 +103,7 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
   return <div className="community-format-editor mx-auto grid w-full max-w-7xl content-start gap-5 p-4 md:p-6">
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div className="max-w-2xl"><h2 className="text-xl font-semibold">{ui(isSet ? 'Custom sets' : 'Custom formats')}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{ui(isSet ? 'Create cards, tune mechanics, and define subtypes right here. Every design belongs to this set, ready to use in a custom format.' : 'Define the card pool for your next game. Combine official cards and custom sets, then save a format to use in Play.')}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{ui(isSet ? 'Browse this set’s cards, mechanics, and subtypes below. Use Library to compare contents across sets.' : 'Define the card pool for your next game. Combine official cards and custom sets, then save a format to use in Play.')}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {onBackToCard && <button type="button" className={`${button} ui-primary-action`} disabled={busy} onClick={onBackToCard}>{ui('Back to card')}</button>}
@@ -110,33 +115,33 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
         }} />
       </div>
     </header>
+        <section className="fantasy-sheet-section grid gap-4 p-4 sm:grid-cols-2">
+          <label className="grid gap-2 text-sm">{ui(isSet ? 'Custom set name' : 'Community format name')}<input className={field} maxLength={80} placeholder={ui(isSet ? 'Name your set' : 'Name your format')} value={value.name} disabled={busy} onChange={event => onChange({ ...value, name: event.target.value })} /></label>
+          <label className="grid gap-2 text-sm">{ui(isSet ? 'Saved sets' : 'Saved formats')}<select aria-label={ui(isSet ? 'Saved sets' : 'Saved formats')} className={field} value="" disabled={busy || !libraryReady || Boolean(onBackToCard)} onChange={event => { const item = savedItems[Number(event.target.value)]; void run(() => load(item)); }}>
+            <option value="">{ui('Load a saved item…')}</option>{savedItems.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}
+          </select></label>
+        </section>
     {isSet && <div className="flex flex-wrap items-center gap-3 border-b border-white/15 pb-3">
       <button disabled={busy} className={`${button} ${setView === 'cards' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'cards'} onClick={() => onBackToCard ? onBackToCard() : setSetView('cards')}>{ui('Set cards')} · {value.customCards.length}</button>
-      <button disabled={busy} className={`${button} ${setView === 'mechanics' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'mechanics'} onClick={() => setSetView('mechanics')}>{ui('Set mechanics')} · {setMechanics(value).length}</button>
-      <button disabled={busy} className={`${button} ${setView === 'subtypes' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'subtypes'} onClick={() => setSetView('subtypes')}>{ui('Set subtypes')} · {setSubtypes(value).length}</button>
+      <button disabled={busy} className={`${button} ${setView === 'mechanics' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'mechanics'} onClick={() => setSetView('mechanics')}>{ui('Set mechanics')} · {mechanics.length}</button>
+      <button disabled={busy} className={`${button} ${setView === 'subtypes' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'subtypes'} onClick={() => setSetView('subtypes')}>{ui('Set subtypes')} · {subtypes.length}</button>
       <span className="text-xs text-muted-foreground">{ui('One workspace for your cards, mechanics, and subtypes.')}</span>
     </div>}
     {isSet && setView === 'subtypes' ? <section className="fantasy-sheet-section p-4">
-      <SubtypesPanel setName={value.name} definitions={setSubtypes(value)} onChange={definitions => {
-        const removed = setSubtypes(value).filter(def => !definitions.some(next => next.singular === def.singular));
+      <SubtypesPanel rows={contents.subtypes} setName={value.name} definitions={subtypes} onChange={definitions => {
+        const removed = subtypes.filter(def => !definitions.some(next => next.singular === def.singular));
         if (removed.some(def => value.customCards.some(card => card.draft.customSubtypes?.some(item => item.singular === def.singular)))) throw new Error('This subtype is used by a set card. Remove it from those cards first.');
         onChange({ ...value, customSubtypes: definitions });
       }} />
-      <button className={`${button} ui-primary-action`} disabled={busy || !libraryReady || !value.name.trim()} onClick={save}>{ui('Save set')}</button>
-      {notice && <p role="status">{ui(notice)}</p>}
-      {error && <p role="alert">{error}</p>}
     </section> : isSet && setView === 'mechanics' ? <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
       <section className="fantasy-sheet-section space-y-3 p-4">
         <h3 className="font-semibold">{value.name || ui('Untitled set')}</h3>
         <p className="text-sm text-muted-foreground">{ui('Updating a mechanic recompiles the cards using that definition. Other variants, sets and your personal library keep their own definitions.')}</p>
         <button className={button} disabled={busy} onClick={() => setEditingMechanic(null)}>{ui('New custom mechanic')}</button>
-        {setMechanics(value).map((def, index) => <button key={`${def.keyword}:${index}`} disabled={busy} className={`${button} block w-full text-left capitalize`} onClick={() => setEditingMechanic(def)}>{def.keyword}{setMechanics(value).filter(item=>item.keyword===def.keyword).length > 1 ? ` · ${def.sourceCard}` : ""}</button>)}
-        <button className={`${button} ui-primary-action w-full`} disabled={busy || !libraryReady || !value.name.trim()} onClick={save}>{ui('Save set')}</button>
-        {notice && <p role="status" className="text-sm">{ui(notice)}</p>}
-        {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
+        <BuildCatalogList rows={contents.mechanics} label="Search set mechanics" actions={row => <button className={button} disabled={busy} aria-label={`${ui('Edit')} ${row.name}`} onClick={() => setEditingMechanic(row.definition)}>{ui('Edit')}</button>} />
       </section>
       <section className="fantasy-sheet-section p-5">
-        <MechanicForm key={editingMechanic?.keyword || 'new'} initial={editingMechanic} saved={setMechanics(value)} onSave={async (definition, compile) => {
+        <MechanicForm key={editingMechanic ? JSON.stringify(editingMechanic) : 'new'} initial={editingMechanic} saved={mechanics} onSave={async (definition, compile) => {
           if (!compile) throw new Error('The card compiler must be ready to update set mechanics.');
           setBusy(true);
           try {
@@ -149,12 +154,6 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
       </section>
     </div> : <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(280px,2fr)]">
       <div className="grid min-w-0 gap-4">
-        <section className="fantasy-sheet-section grid gap-4 p-4 sm:grid-cols-2">
-          <label className="grid gap-2 text-sm">{ui(isSet ? 'Custom set name' : 'Community format name')}<input className={field} maxLength={80} placeholder={ui(isSet ? 'Name your set' : 'Name your format')} value={value.name} disabled={busy} onChange={event => onChange({ ...value, name: event.target.value })} /></label>
-          <label className="grid gap-2 text-sm">{ui(isSet ? 'Saved sets' : 'Saved formats')}<select aria-label={ui(isSet ? 'Saved sets' : 'Saved formats')} className={field} value="" disabled={busy || !libraryReady || Boolean(onBackToCard)} onChange={event => { const item = savedItems[Number(event.target.value)]; void run(() => load(item)); }}>
-            <option value="">{ui('Load a saved item…')}</option>{savedItems.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}
-          </select></label>
-        </section>
         {!isSet && <section className="fantasy-sheet-section grid gap-3 p-4">
           <h3 className="font-semibold">{ui('Official card pool')}</h3>
           <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
@@ -196,13 +195,18 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
         {isSet ? <section className="fantasy-sheet-section grid gap-3 p-4"><h3 className="font-semibold">{value.name || ui('Untitled set')}</h3>
           <p className="text-sm text-muted-foreground">{ui('Selected cards are saved with their custom mechanic definitions.')}</p>
           {!value.customCards.length && <p className="text-sm">{ui('Your first card starts here. Create a card or add an existing design.')}</p>}
-          <ul className="grid max-h-96 gap-2 overflow-auto">{value.customCards.map((card, index) => <li key={index} className="flex items-center justify-between gap-2 text-sm"><span className="flex items-center gap-2">{card.draft.faces[0].imageUrl && <img src={card.draft.faces[0].imageUrl} alt={cardName(card)} loading="lazy" className="h-20 w-14 rounded object-contain" />}<span>{cardName(card)}{card.draft.attribution && <small className="block text-muted-foreground">{card.draft.attribution.setCode} #{card.draft.attribution.collectorNumber} · {card.draft.attribution.artist || ui("Artist not specified")}</small>}</span></span>{onEditCard && <button className={button} disabled={busy || !value.name.trim()} aria-label={`${ui('Edit')} ${cardName(card)}`} onClick={() => onEditCard(index)}>{ui('Edit')}</button>}<button type="button" className={button} disabled={busy} aria-label={`${ui('Remove')} ${cardName(card)}`} onClick={() => onChange({ ...value, customCards: value.customCards.filter((_, i) => i !== index) })}>{ui('Remove')}</button></li>)}</ul>
+          <BuildCatalogList rows={contents.cards} actions={row => <div className="flex gap-2">
+            {onEditCard && <button className={button} disabled={busy || !value.name.trim()} aria-label={`${ui('Edit')} ${row.name}`} onClick={() => onEditCard(row.index)}>{ui('Edit')}</button>}
+            <button className={button} disabled={busy} aria-label={`${ui('Remove')} ${row.name}`} onClick={() => onChange({ ...value, customCards: value.customCards.filter((_, index) => index !== row.index) })}>{ui('Remove')}</button>
+          </div>} />
         </section> : <CommunityFormatSummary format={value} onRemove={busy ? undefined : (key, index) => onChange({ ...value, [key]: value[key].filter((_, i) => i !== index) })} />}
+      </aside>
+    </div>}
+    <footer className="grid gap-2 border-t border-white/15 pt-4">
         <button type="button" className={`${button} ui-primary-action`} disabled={busy || !libraryReady || !value.name.trim()} onClick={save}>{ui(isSet ? 'Save set' : 'Save format')}</button>
         <p className="text-xs text-muted-foreground">{ui('Saved in this browser. Export a file to share or keep a backup. Saving an existing name replaces that item.')}</p>
         {notice && <p role="status" className="text-sm">{ui(notice)}</p>}
         {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
-      </aside>
-    </div>}
+    </footer>
   </div>;
 }

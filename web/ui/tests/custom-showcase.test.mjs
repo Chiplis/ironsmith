@@ -43,24 +43,35 @@ test('editing one mechanic variant preserves another',async()=>{
  assert.equal(next.customCards[0].draft.customMechanics[0].reminder,'Draw three cards.');assert.equal(next.customCards[1].draft.customMechanics[0].reminder,b.reminder);
 });
 function mockGame(fail=false) {
- const calls=[];return {calls,previewCustomCard:async()=>({canCreate:true}),createRuntimeSavepoint:async()=>7,
-  resetEmpty:async(...v)=>calls.push(['reset',...v]),addCardToZone:async(...v)=>calls.push(['official',...v]),
-  createCustomCard:async v=>{if(fail)throw Error('insertion failed');calls.push(['custom',v]);},finishPuzzleSetup:async()=>calls.push(['finish']),
+ const calls=[];return {calls,createRuntimeSavepoint:async()=>7,
+  resetEmpty:async(...v)=>calls.push(['reset',...v]),
+  registerCompiledCardSourceArtifacts:async source=>{if(fail)throw Error('invalid artifact');calls.push(['register',source]);},
+  stagePuzzleCardsToZones:async batch=>calls.push(['stage',batch]),
+  createCustomCard:()=>{throw Error('Runtime compilation is forbidden');},
+  finishPuzzleSetup:async()=>calls.push(['finish']),
   restoreRuntimeSavepoint:async id=>calls.push(['restore',id]),releaseRuntimeSavepoint:async id=>calls.push(['release',id])};
 }
+const entry=input=>({input,source:{group:{name:input.faces[0].name}},artifacts:[{test:true}]});
 const sets=['msem','rev','msem','rev'].map((scope,i)=>({id:String(i),source:{scope},cards:Array.from({length:8},(_,n)=>({id:`${i}-${n}`,draft:{faces:[{name:`Card ${i}-${n}`}],customMechanics:[]}}))}));
-const options={librarySize:1,catalogLoader:async()=>({sets}),setLoader:async s=>s,prepare:async draft=>({input:draft}),random:()=>0.5};
-test('custom URL deals imported cards and both setup permanents to every seat',async()=>{
+const options={librarySize:1,poolLoader:async()=>({fixer:entry({faces:[{name:'IronSmith Mana Fixer'}]}),cards:sets.flatMap(set=>set.cards.map(card=>({card:{...card,draft:{...card.draft,attribution:{sourceFormat:set.source.scope}}},...entry(card.draft)})))}),random:()=>0.5};
+test('custom URL stages imported cards and both setup permanents without compilation',async()=>{
  assert.ok(isCustomShowcase('?showcase=custom'));assert.ok(!isCustomShowcase('?showcase=other'));
  const game=mockGame();await loadCustomShowcase(game,options);
- assert.equal(game.calls.filter(c=>c[0]==='official'&&c[2]==='Omniscience').length,2);
- const created=game.calls.filter(c=>c[0]==='custom').map(c=>c[1]);
- assert.equal(created.filter(c=>c.zoneName==='hand').length,14);assert.equal(created.filter(c=>c.zoneName==='library').length,2);
- assert.equal(created.filter(c=>c.draft.faces[0].name==='IronSmith Mana Fixer').length,2);
+ const batch=game.calls.find(c=>c[0]==='stage')[1];
+ assert.equal(batch.filter(c=>c.cardName==='Omniscience').length,2);
+ assert.equal(batch.filter(c=>c.zoneName==='hand').length,14);
+ assert.equal(batch.filter(c=>c.zoneName==='library').length,2);
+ assert.equal(batch.filter(c=>c.cardName==='IronSmith Mana Fixer').length,2);
 });
-test('insertion failure rolls the table back and releases its savepoint',async()=>{
- const game=mockGame(true);await assert.rejects(loadCustomShowcase(game,options),/insertion failed/);
+test('incompatible artifacts roll back instead of compiling at runtime',async()=>{
+ const game=mockGame(true);await assert.rejects(loadCustomShowcase(game,options),/artifact is incompatible/);
  assert.deepEqual(game.calls.slice(-2),[['restore',7],['release',7]]);
+ assert.ok(!game.calls.some(c=>c[0]==='stage'));
+});
+test('missing artifacts fail before any card placement',async()=>{
+ const pool=await options.poolLoader();delete pool.cards[0].artifacts;
+ const game=mockGame();await assert.rejects(loadCustomShowcase(game,{...options,poolLoader:async()=>pool,librarySize:9}),/missing its compiled artifact/);
+ assert.ok(!game.calls.some(c=>c[0]==='stage'));
 });
 test('imported mechanic variants compile independently of the personal registry',async()=>{
  const {prepareCustomDraftForCreation}=await import('../src/lib/custom-card-library.js');
@@ -70,4 +81,39 @@ test('imported mechanic variants compile independently of the personal registry'
   assert.equal(prepared.draft.customMechanics[0].reminder,reminder);
   assert.equal(prepared.draft.customMechanicsScope,'card');
  }
+});
+test('bundled startup makes one worker deal without runtime previews or set downloads',async()=>{
+ const pool={version:1,fixer:{input:{faces:[{name:'IronSmith Mana Fixer'}]}},cards:sets.flatMap(set=>set.cards.map(card=>({card:{...card,draft:{...card.draft,attribution:{sourceFormat:set.source.scope}}},input:card.draft})))};
+ let plan;
+ const game={populateCustomShowcase:async value=>{plan=value;},previewCustomCard:()=>{throw Error('Startup must not preview drafts');}};
+ await loadCustomShowcase(game,{librarySize:1,poolLoader:async()=>pool,random:()=>0.5,setLoader:()=>{throw Error('Startup must not download sets');}});
+ assert.equal(plan.prepared.length,16);assert.equal(plan.players.length,2);
+ assert.equal(new Set(plan.prepared.map(value=>value.input.faces[0].name)).size,16);
+});
+test('shipped showcase pool retains source cards and enough unique choices from both formats',()=>{
+ const pool=JSON.parse(fs.readFileSync(new URL('custom-sets/showcase.json',root)));
+ assert.equal(pool.version,1);assert.ok(pool.cards.length>=100);
+ assert.ok(pool.fixer.artifacts?.length);assert.ok(pool.support.some(value=>value.source.group.name==='Omniscience'));
+ assert.ok(pool.cards.every(value=>value.source&&value.artifacts?.length),'Every showcase card must be precompiled');
+ const names=new Set(),counts={msem:0,rev:0},sets=new Map();
+ for(const value of pool.cards){
+  const card=value.card,meta=card.draft.attribution;counts[meta.sourceFormat]++;
+  assert.ok(!names.has(card.draft.faces[0].name));names.add(card.draft.faces[0].name);
+  const key=`${meta.sourceFormat}-${encodeURIComponent(meta.setCode)}`;
+  if(!sets.has(key))sets.set(key,JSON.parse(fs.readFileSync(new URL(`custom-sets/${key}.json`,root))));
+  assert.deepEqual(card,sets.get(key).cards.find(source=>source.id===card.id));
+  assert.equal(value.input.faces[0].name,card.draft.faces[0].name);
+ }
+ assert.ok(counts.msem>=37 && counts.rev>=37);
+});
+test('compiled showcase cards use one native bulk placement and no draft compilation',async()=>{
+ const {populateCustomShowcase}=await import('../src/lib/custom-showcase-setup.js');
+ const game=mockGame();let registrations=0,batch;
+ game.registerCompiledCardSourceArtifacts=async()=>{registrations++;};
+ game.addCardsToZones=async value=>{batch=value;};
+ game.stagePuzzleCardsToZones=async value=>{batch=value;};
+ const entry=name=>({input:{faces:[{name}]},source:{group:{name}},artifacts:[{test:true}]});
+ const result=await populateCustomShowcase(game,{players:['A'],librarySize:1,prepared:Array.from({length:8},(_,i)=>entry(`Card ${i}`)),fixer:entry('IronSmith Mana Fixer')});
+ assert.equal(registrations,9);assert.equal(batch.length,10);assert.equal(result.native,0);
+ assert.deepEqual(result.rejected,[]);assert.ok(!game.calls.some(call=>call[0]==='custom'));
 });

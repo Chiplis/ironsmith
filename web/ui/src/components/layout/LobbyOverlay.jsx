@@ -185,14 +185,13 @@ export default function LobbyOverlay({
   defaultStartingLife = 20,
   initialMode = "create",
   initialCreateFormat = "",
-  initialCreateName = "",
+  initialName = "",
   initialCreateDeckText = "",
   initialCreateDeckOptions = [],
   initialCreateCommanderText = "",
   initialCreateSecurityMode = MULTIPLAYER_SECURITY_TRUSTED,
   initialDesiredPlayers = 2,
   initialJoinCode = "",
-  initialJoinName = "",
   initialJoinDeckText = "",
   initialJoinCommanderText = "",
 }) {
@@ -218,7 +217,6 @@ export default function LobbyOverlay({
     shouldDefaultCreateDeck && String(lobbyDeckDefault.commanderText || "").trim()
       ? MATCH_FORMAT_COMMANDER
       : initialCreateFormat ? normalizeMatchFormat(initialCreateFormat) : "";
-  const storedPlayerName = useMemo(() => readStoredPlayerName(), []);
   const [communityFormat, setCommunityFormat] = useState(null);
   const [customFormats, setCustomFormats] = useState([]);
   const [customFormatsReady, setCustomFormatsReady] = useState(false);
@@ -244,10 +242,13 @@ export default function LobbyOverlay({
   const [createFormat, setCreateFormat] = useState(
     resolvedInitialCreateFormat
   );
-  const [createName, setCreateName] = useState(
-    String(initialCreateName || storedPlayerName || defaultName)
+  const [playerName, setPlayerName] = useState(
+    () => String(initialName || readStoredPlayerName() || defaultName)
   );
-  const [joinName, setJoinName] = useState(String(initialJoinName || storedPlayerName || defaultName));
+  const editPlayerName = (name) => {
+    setPlayerName(name);
+    writeStoredPlayerName(name);
+  };
   const [allowUnreleased, setAllowUnreleased] = useState(false);
   const [joinCode, setJoinCode] = useState(String(initialJoinCode || ""));
   const [desiredPlayers, setDesiredPlayers] = useState(() => Math.max(2, Math.min(4, Number(initialDesiredPlayers) || 2)));
@@ -362,7 +363,7 @@ export default function LobbyOverlay({
     : [];
   const localNameLocked = Boolean(multiplayer.tournament?.tournamentId) || multiplayer.matchStarted || startPending;
   const handleRename = (nextName) => {
-    writeStoredPlayerName(nextName);
+    editPlayerName(nextName);
     void updateLobbyDeck({ name: nextName });
   };
 
@@ -406,14 +407,14 @@ export default function LobbyOverlay({
       try { normalizeCommunityFormat(communityFormat); }
       catch (error) { setStatus(error.message, true); return; }
     }
-    if (transport !== 'tournament') writeStoredPlayerName(createName);
+    if (transport !== 'tournament') writeStoredPlayerName(playerName);
     createLobby({
       communityFormat: isCustomFormat ? communityFormat : null,
       transport: isCustomFormat ? 'peerjs' : relayTransport ? 'websocket' : transport,
       advertise,
       allowUnreleased: isLegalityFormat(createFormat) && allowUnreleased,
       ...(transport === 'tournament' ? { tournamentId: createTournamentId } : {}),
-      name: createName,
+      name: playerName,
       desiredPlayers,
       startingLife,
       format: isCustomFormat ? MATCH_FORMAT_NORMAL : createFormat,
@@ -428,9 +429,9 @@ export default function LobbyOverlay({
   };
 
   const handleJoin = () => {
-    writeStoredPlayerName(joinName);
+    writeStoredPlayerName(playerName);
     joinLobby({
-      name: joinName,
+      name: playerName,
       lobbyId: joinCode,
       deckText: joinDeckText,
       commanderText: joinCommanderText,
@@ -574,9 +575,9 @@ export default function LobbyOverlay({
                           disabled={transport === 'tournament'}
                           title={transport === 'tournament' ? ui("Tournament seats use the name on your invite") : undefined}
                           value={transport === 'tournament'
-                            ? (tournamentCertificates.find(entry => entry.tournamentId === createTournamentId)?.playerName || createName)
-                            : createName}
-                          onChange={(event) => setCreateName(event.target.value)}
+                            ? (tournamentCertificates.find(entry => entry.tournamentId === createTournamentId)?.playerName || playerName)
+                            : playerName}
+                          onChange={(event) => editPlayerName(event.target.value)}
                           placeholder={ui("Host name")}
                         />
                       </label>
@@ -761,7 +762,7 @@ export default function LobbyOverlay({
                       <span>{ui("The host can start the match once every seat is filled and ready.")}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <SaveLobbyDeck deckText={createDeckText} commanderText={usesCommanders(createFormat) || createFormat === MATCH_FORMAT_PLANECHASE ? createCommanderText : ""} format={createFormat} playerName={createName} />
+                      <SaveLobbyDeck deckText={createDeckText} commanderText={usesCommanders(createFormat) || createFormat === MATCH_FORMAT_PLANECHASE ? createCommanderText : ""} format={createFormat} playerName={playerName} />
                       <Button
                         variant="secondary"
                         className={`${pill} ui-primary-action`}
@@ -779,8 +780,8 @@ export default function LobbyOverlay({
                     <div className="grid gap-4 md:grid-cols-2">
                       <label className={labelClass}>{ui("Your Name")}<input
                           className={inputClass}
-                          value={joinName}
-                          onChange={(event) => setJoinName(event.target.value)}
+                          value={playerName}
+                          onChange={(event) => editPlayerName(event.target.value)}
                           placeholder={ui("Guest name")}
                         />
                       </label>

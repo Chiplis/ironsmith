@@ -1,5 +1,5 @@
 import { searchBundledCustomCards } from "@/lib/bundled-custom-sets";
-import { CUSTOM_CARD_LIBRARY_CHANGED, loadBundledCustomCards, listSavedCustomCards, customCardOptions, prepareCustomDraftForCreation } from "@/lib/custom-card-library";
+import { CUSTOM_CARD_LIBRARY_CHANGED, listSavedCustomCards, customCardOptions, prepareCustomDraftForCreation } from "@/lib/custom-card-library";
 import { registerCustomCardFlavor } from "@/lib/custom-card-flavor";
 import { setCompiledCardNames, setCustomCardArtUrls } from "@/lib/scryfall";
 import { setCardPresentation, snapshotStableIds } from "@/lib/card-glint/printing-choices.mjs";
@@ -87,7 +87,7 @@ export default function AddCardSheet({
     const load = async () => {
       const request = ++revision;
       setLibraryLoading(true);
-      const results = await Promise.allSettled([loadBundledCustomCards(), listSavedCustomCards()]);
+      const results = await Promise.allSettled([listSavedCustomCards()]);
       if (!active || revision !== request) return;
       setCustomCards(results.flatMap(result => result.status === "fulfilled" ? result.value : []));
       setLibraryError(results.filter(result => result.status === "rejected").map(result => String(result.reason?.message || result.reason)).join(". "));

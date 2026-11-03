@@ -88,7 +88,7 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
       {rulesContent?<>{rulesContent}{face.flavor_text&&<p className="simple-card-frame__flavor">{face.flavor_text}</p>}</>:shown.map((part,index)=><section key={index}>
         {index>0&&<><header className="simple-card-frame__heading"><strong>{part.name}</strong><ManaCostIcons cost={part.display_mana_cost??part.mana_cost} size="1em"/></header>
           <div className="simple-card-frame__type">{part.type_line_display??part.type_line}</div></>}
-        {cardFrameRules(part).split('\n').filter(Boolean).map((line,i)=><p key={i}><SymbolText text={line}/></p>)}
+        {cardFrameRules(part).split('\n').filter(Boolean).map((line,i)=><p key={i}><SymbolText rulesText text={line}/></p>)}
         {part.flavor_text&&<p className="simple-card-frame__flavor">{part.flavor_text}</p>}
       </section>)}
     </div>

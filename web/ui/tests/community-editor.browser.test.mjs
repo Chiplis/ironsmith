@@ -9,7 +9,19 @@ test('Community editor combines sources, saves formats and reuses custom sets', 
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  await page.route('**/custommagic/pool.json', route => route.fulfill({ json: { cards: [{ id: 'mage', draft: { faces: [{ name: 'Community Mage' }] } }] } }));
+  await page.addInitScript(() => {
+    const request = indexedDB.open('ironsmith-custom-cards-v1', 3);
+    request.onupgradeneeded = () => {
+      for (const [name, keyPath] of [['cards', 'id'], ['mechanics', 'keyword'], ['tokens', 'key']]) {
+        if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name, { keyPath });
+      }
+    };
+    request.onsuccess = () => {
+      const tx = request.result.transaction('cards', 'readwrite');
+      tx.objectStore('cards').put({ id: 'saved:community mage', draft: { faces: [{ name: 'Community Mage' }] }, savedAt: 0 });
+      tx.oncomplete = () => request.result.close();
+    };
+  });
   await page.route('https://api.scryfall.com/**', route => {
     const url = new URL(route.request().url());
     return route.fulfill({ json: url.pathname.startsWith('/sets/') ? { code: 'dom', name: 'Dominaria' }
@@ -84,7 +96,6 @@ test('exports include mechanics and import into a fresh browser without overwrit
   const source = await browser.newContext();
   // Exercise migration from the previously shipped localStorage schema.
   await source.addInitScript(legacy => localStorage.setItem('ironsmith-community-library-v1', JSON.stringify(legacy)), { formats: [format], sets: [set] });
-  await source.route('**/custommagic/pool.json', route => route.fulfill({ json: { cards: [] } }));
   const page = await source.newPage(); await page.goto(base);
   await page.getByLabel('Saved formats').selectOption('0');
   const download = async button => {
@@ -98,7 +109,6 @@ test('exports include mechanics and import into a fresh browser without overwrit
   assert.deepEqual(JSON.parse(exportedFormat.buffer).data.customSets[0].cards[0].draft.customMechanics, mechanics);
   assert.deepEqual(JSON.parse(exportedSet.buffer).data.cards[0].draft.customMechanics, mechanics);
   const destination = await browser.newContext();
-  await destination.route('**/custommagic/pool.json', route => route.fulfill({ json: { cards: [] } }));
   const imported = await destination.newPage(); await imported.goto(base);
   await imported.getByRole('button', { name: 'Import set or format' }).waitFor();
   await imported.waitForFunction(() => !document.querySelector('input[type=file]').disabled);

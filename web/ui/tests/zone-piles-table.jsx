@@ -46,6 +46,23 @@ function Fixture(){
    persistent_look_cards: [{id:7101,name:"Island",type_line:"Basic Land — Island",zone:"library",position:0},
      {id:7102,name:"Forest",type_line:"Basic Land — Forest",zone:"library",position:1}].slice(0, libraryVisible),
  });
+ // A remembered deck: a known Island on top, three more whose slots are
+ // unknown, and a random-bottom trio (one more Island) that knows its span.
+ if (new URLSearchParams(location.search).has("memory")) state.players = players.map((player) => player.id !== 0 ? {
+   // An opponent's deck: backs, except a Bears we put 3rd from the top.
+   ...player, library_size: 6, library_memory: [
+     {name:"Grizzly Bears",count:1,position:2,range_start:2,range_end:2,id:7301},
+   ],
+ } : {
+   ...player, library_size: 8, library_memory: [
+     {name:"Island",count:3,position:null,range_start:null,range_end:null,id:null},
+     {name:"Brainstorm",count:1,position:null,range_start:5,range_end:7,id:null},
+     {name:"Endurance",count:1,position:null,range_start:5,range_end:7,id:null},
+     {name:"Island",count:1,position:null,range_start:5,range_end:7,id:null},
+     {name:"Island",count:1,position:0,range_start:0,range_end:0,id:7201},
+     {name:"Forest",count:1,position:null,range_start:null,range_end:null,id:null},
+   ],
+ });
  if (new URLSearchParams(location.search).has("playerCount")) state.players = players.slice(0,Number(new URLSearchParams(location.search).get("playerCount")));
  if (new URLSearchParams(location.search).has("singleOpponent")) state.players = players.slice(0,2);
  if (new URLSearchParams(location.search).has("decisionDock")) {

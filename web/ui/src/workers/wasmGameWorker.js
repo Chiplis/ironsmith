@@ -1,3 +1,4 @@
+import { populateCustomShowcase } from "../lib/custom-showcase-setup.js";
 import { communityCustomCards } from "../lib/community-format.js";
 import { installCommunityCards } from "../lib/community-runtime.js";
 import { cardSearchKey } from "../lib/card-search.js";
@@ -462,6 +463,8 @@ function stickerSheetRouteName(name) {
 function collectNamesForMethod(method, args) {
   const names = [];
   switch (method) {
+    case "populateCustomShowcase":
+      break; // All setup cards and dungeon definitions travel as validated artifacts.
     case "startSandbox":
       names.push(...sandboxCatalogNames(args[0]));
       break;
@@ -1216,6 +1219,14 @@ function handleCall(msg) {
     const fn = method === "replayTrustedMatch" ? (config, actions, perspective) => replayTrustedMatch(game, config, actions, perspective, replayOptions)
       : method === "replayTrustedActions" ? (actions, sequence) => replayTrustedActions(game, actions, sequence, replayOptions)
       : method === "previewCryptoRequirementsWithMaterial" ? (command, material) => previewCryptoRequirementsWithMaterial(game, command, material)
+      : method === "populateCustomShowcase" ? async plan => {
+        const result=await populateCustomShowcase(game,plan);
+        for(const value of [...(plan.support||[]),...plan.prepared,plan.fixer]) {
+          const name=value.source?.canonicalName||value.source?.group?.name;
+          if(name)registeredCardRoutes.add(cardRouteKey(name));
+        }
+        return result;
+      }
       : method === "startSandbox" ? plan => startSandbox(game, plan)
       : method === "replaceHandWithCustomCards" ? (player, drafts) => replaceHandWithCustomCards(game, player, drafts)
       // An engine without the lean variant still answers with a full snapshot.

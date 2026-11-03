@@ -135,3 +135,36 @@ test('intrinsic starting counters are hidden without hiding real counter abiliti
   assert.equal(view.actions.get(0)[0],action);
   assert.equal(JSON.parse(cardFrameSnapshot({oracle_text:lines.join('\n')})).oracle_text,[ability,real].join('\n'));
 });
+
+test('custom activation declarations bind their expanded action to the printed row',()=>{
+ const definitions=[{keyword:'improve',template:'{Cost}',reminder:'{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.'}];
+ const text='Improve {B}\nWhenever you put one or more +1/+1 counters on this creature, reveal the top card of your library and put it into your hand. You lose life equal to its mana value.';
+ const action={kind:'activate_ability',ability_text:'{B}: Put a +1/+1 counter on this permanent. Activate only as a sorcery.'};
+ const view=interactiveRulesView(text,text,[action],definitions);
+ assert.deepEqual(activatedAbilityLineIndices(view.lines,definitions),[0]);
+ assert.deepEqual([...view.actions],[[0,[action]]]);
+});
+test('Equip X maps expanded activation text to its keyword row',()=>{
+ const text='Equipped creature gets +1/+1.\nEquip {X}';
+ const action={kind:'activate_ability',ability_text:'{X}: Attach this Equipment to target creature you control. Activate only as a sorcery.'};
+ assert.deepEqual([...interactiveRulesView(text,text,[action]).actions],[[1,[action]]]);
+});
+
+test('Advance finds its activation after casting and entry clauses in the imported reminder',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const set=JSON.parse(readFileSync(new URL('../public/custom-sets/msem-KXP.json',import.meta.url)));
+ const draft=set.cards.find(c=>c.draft.faces[0].name==='Shearing Vampire').draft;
+ const text=draft.faces[0].oracleText;
+ const action={kind:'activate_ability',ability_text:'{4}{B}: Have this permanent perform the advance action. Activate only as a sorcery.'};
+ assert.deepEqual(activatedAbilityLineIndices(text.split('\n'),draft.customMechanics),[0]);
+ assert.deepEqual([...interactiveRulesView(text,text,[action],draft.customMechanics).actions],[[0,[action]]]);
+});
+test('compiled Improve identity is never a second activation or an unavailable row',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const set=JSON.parse(readFileSync(new URL('../public/custom-sets/msem-MSY.json',import.meta.url)));
+ const definitions=set.cards.find(c=>c.draft.faces[0].name==='Herald of Tedium').draft.customMechanics;
+ const action={kind:'activate_ability',ability_text:'{B}: Put a +1/+1 counter on this creature. Activate only as a sorcery.'};
+ const text=`Improve.\n${action.ability_text}\nThis ability costs {1} more to activate for each +1/+1 counter on this permanent.\nWhenever you put one or more +1/+1 counters on this creature, reveal the top card of your library and put it into your hand.`;
+ assert.deepEqual(activatedAbilityLineIndices(text.split('\n'),definitions),[1]);
+ assert.deepEqual([...interactiveRulesView(text,text,[action],definitions).actions],[[1,[action]]]);
+});

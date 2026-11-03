@@ -38,6 +38,7 @@ use crate::turn_history::{TurnEventRecord, TurnEventRecords, TurnHistory};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
+mod library_knowledge;
 mod alternating_teams;
 mod exile_relationships;
 mod attack_direction;
@@ -467,6 +468,7 @@ pub enum HiddenInfoOperation {
 
 #[derive(Debug, Clone, Default)]
 struct MetadataStateStore {
+    library_knowledge: im::HashMap<(PlayerId, PlayerId), im::Vector<library_knowledge::LibraryGroup>>,
     ui_battlefield_transitions: im::Vector<UiBattlefieldTransition>,
     ui_zone_transitions: im::Vector<UiZoneTransition>,
     next_ui_zone_transition_id: u64,
@@ -5968,6 +5970,7 @@ impl GameState {
             subgame_just_resumed: false,
             choice_store: Arc::new(ChoiceStore::default()),
             metadata: MetadataStateStore {
+                library_knowledge: Default::default(),
                 ui_battlefield_transitions: im::Vector::new(),
                 ui_zone_transitions: im::Vector::new(),
                 next_ui_zone_transition_id: 0,
@@ -8361,6 +8364,7 @@ impl GameState {
     }
 
     fn shuffle_player_library_random_part(&mut self, player_id: PlayerId) {
+        self.metadata.library_knowledge.retain(|(_, owner), _| *owner != player_id);
         let (random_count_before, random_count_after) = self.record_irreversible_random();
         let seed = self.next_random_u64();
         let Some(index) = self

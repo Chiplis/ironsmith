@@ -1,4 +1,4 @@
-import { isCustomShowcase, loadCustomShowcase } from '@/lib/custom-showcase';
+import { isCustomShowcase, loadCustomShowcase, preloadCustomShowcase } from '@/lib/custom-showcase';
 import { recordPlayedDeck } from "@/lib/recent-decks";
 import useUiText from "@/i18n/useUiText";
 import { useEffect, useCallback, useRef, useState } from "react";
@@ -299,7 +299,8 @@ export default function Shell() {
   // The startup board needs no engine, so build it while the WASM downloads.
   const startupBoardRef = useRef(null);
   useEffect(() => {
-    if (isCustomShowcase() || initialPuzzleQueryRef.current || (!commanderStartup && fixedStartingBoard)) return;
+    if (isCustomShowcase()) { void preloadCustomShowcase().catch(() => {}); return; }
+    if (initialPuzzleQueryRef.current || (!commanderStartup && fixedStartingBoard)) return;
     const lobbyQuery = initialLobbyQueryRef.current;
     if (lobbyQuery.lobbyId || lobbyQuery.deckText || lobbyQuery.commanderText) return;
     startupBoardRef.current = prefetchRandomStartingBoard(
@@ -692,10 +693,8 @@ export default function Shell() {
     [multiplayer.matchStarted, changeGoldfishPlayer]
   );
 
-  const [smithComplete, setSmithComplete] = useState(false);
-
-  if (loading || (!smithComplete && !wasmError && !initializationError)) {
-    // This screen also covers game setup and the smith outro. Reserve 100%
+  if (loading || (!state && !wasmError && !initializationError)) {
+    // Decoration never delays a playable game. Reserve 100%
     // for completed startup, when the table replaces the loading screen.
     const widthPct = Math.max(0, Math.min(99, wasmProgress * 100));
     const pct = Math.floor(widthPct);
@@ -706,7 +705,7 @@ export default function Shell() {
       "Initializing";
     return (
       <div className="game-loading-screen flex h-screen flex-col items-center justify-center gap-4 text-muted-foreground">
-        <LoadingSmith progress={wasmProgress} ready={!loading && !!state} onComplete={() => setSmithComplete(true)} />
+        <LoadingSmith progress={wasmProgress} />
         {wasmPhase === "init" ? (
           <span className="game-loading-status text-[16px] font-semibold">
             {ui(phaseLabel)}
@@ -916,14 +915,13 @@ export default function Shell() {
           defaultStartingLife={startingLife}
           initialMode={lobbyOverlayInitial.mode}
           initialCreateFormat={lobbyOverlayInitial.createFormat}
-          initialCreateName={lobbyOverlayInitial.createName}
+          initialName={lobbyOverlayInitial.name}
           initialCreateDeckText={lobbyOverlayInitial.createDeckText}
           initialCreateDeckOptions={lobbyOverlayInitial.createDeckOptions}
           initialCreateCommanderText={lobbyOverlayInitial.createCommanderText}
           initialCreateSecurityMode={lobbyOverlayInitial.createSecurityMode}
           initialDesiredPlayers={lobbyOverlayInitial.desiredPlayers}
           initialJoinCode={lobbyOverlayInitial.joinCode}
-          initialJoinName={lobbyOverlayInitial.joinName}
           initialJoinDeckText={lobbyOverlayInitial.joinDeckText}
           initialJoinCommanderText={lobbyOverlayInitial.joinCommanderText}
         />
@@ -1096,7 +1094,7 @@ function buildLobbyOverlayInitialState(query, mode = null) {
   return {
     mode: nextMode === "join" ? "join" : "create",
     createFormat: inferCreateFormatFromLobbyQuery(query),
-    createName: String(query?.name || "").trim(),
+    name: String(query?.name || "").trim(),
     createDeckText: String(query?.deckText || ""),
     createDeckOptions: [],
     createCommanderText: String(query?.commanderText || ""),
@@ -1106,7 +1104,6 @@ function buildLobbyOverlayInitialState(query, mode = null) {
     ),
     desiredPlayers: Math.max(2, Math.min(4, Number(query?.desiredPlayers) || 2)),
     joinCode: String(query?.lobbyId || "").trim(),
-    joinName: String(query?.name || "").trim(),
     joinDeckText: String(query?.deckText || ""),
     joinCommanderText: String(query?.commanderText || ""),
   };

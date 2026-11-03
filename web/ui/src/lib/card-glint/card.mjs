@@ -1,3 +1,4 @@
+import {printedRulesRuns} from '../printed-rules-runs.js';
 import {printedManaCost,printedTypeLine} from '../card-print-order.mjs';
 import {cardFlavorSource} from '../card-flavor-source.js';
 import {cardDisplayTypeLine} from '../card-display-type-line.js';
@@ -86,13 +87,15 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
     manaSymbols: [...(builderCreated ? printedManaCost(displayedCost) : displayedCost).matchAll(/\{([^{}]+)\}/g)].map(m => m[1]),
     rulesText: text,
     rulesParagraphs: [
-      ...text.split('\n').filter(Boolean).map(text => ({role:'rules',runs:[{text}]})),
+      ...text.split('\n').filter(Boolean).map(text => ({role:'rules',runs:printedRulesRuns(text)})),
       ...(printableFlavor ? [{role:'flavor',runs:[{text:printableFlavor,italic:true}]}] : []),
     ],
     illustration: cardArtCropUrl(face.image_uris?.art_crop ?? imageUrl) || null,
     power: face.power ?? (power || undefined), toughness: face.toughness ?? toughness,
     loyalty: face.loyalty, defense: face.defense,
-    setCode: print.set, rarity: print.rarity ?? card.rarity,
+    setCode: print.set,
+    ...(print.printingSymbol ? {printingSymbol:print.printingSymbol} : {}),
+    rarity: print.rarity ?? card.rarity,
     artist: print.artist, collectorNumber: print.collector_number,
     borderColor: ['black','white','silver'].includes(print.border_color) ? print.border_color : CARD_GLINT_DEFAULT_FRAME.borderColor,
     securityStamp: print.security_stamp ?? 'none',

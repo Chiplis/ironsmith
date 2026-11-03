@@ -655,6 +655,17 @@ function renderBattlefieldTokenBadgeContent(display, slot, ids) {
   );
 }
 
+// Same zone hues as the stack's cast comets (ZONE_ACCENTS in
+// lib/motion/stack-fx.js) and the zone icon borders (styles/zone-icons.css),
+// so a card reads as coming from the same place before and after it is cast.
+const PSEUDO_HAND_ZONES = {
+  graveyard: { rgb: "140, 255, 170" },
+  exile: { rgb: "205, 165, 255" },
+  library: { rgb: "120, 205, 255" },
+  command: { rgb: "255, 214, 120" },
+  ante: { rgb: "255, 214, 120" },
+};
+
 export default function GameCard({
   card,
   compact = false,
@@ -664,6 +675,7 @@ export default function GameCard({
   isInspected = false,
   glowKind: requestedGlowKind = null,
   pseudoHandOwnerId = null,
+  pseudoHandZone = null,
   isHovered = false,
   isDragging = false,
   isNew = false,
@@ -704,6 +716,20 @@ export default function GameCard({
   const pseudoHandOwnerAccent = variant === "hand" && pseudoHandOwnerId != null
     ? getPlayerAccent(state?.players || [], pseudoHandOwnerId, state?.perspective, playerAccentOverrides)
     : null;
+  // The zone a pseudo-hand card is played from colors its frame, matching
+  // that zone's icon. A card someone else owns keeps their color, which is the more
+  // important thing to know about it.
+  const pseudoHandZoneKey = variant === "hand" && pseudoHandZone
+    ? String(pseudoHandZone).toLowerCase()
+    : null;
+  const pseudoHandZoneStyle = pseudoHandZoneKey
+    ? PSEUDO_HAND_ZONES[pseudoHandZoneKey] || PSEUDO_HAND_ZONES.exile
+    : null;
+  const pseudoHandOwnedByViewer = pseudoHandOwnerId == null
+    || samePlayerId(pseudoHandOwnerId, state?.perspective);
+  const pseudoHandRingRgb = pseudoHandZoneStyle && pseudoHandOwnedByViewer
+    ? pseudoHandZoneStyle.rgb
+    : pseudoHandOwnerAccent?.rgb;
   const castIntent = useCastTargeting();
   const targetDecision = state?.decision?.kind === "targets" ? state.decision : castIntent?.targetDecision;
   const targetingMode = Boolean(castIntent) || state?.decision?.kind === "targets";
@@ -1368,6 +1394,7 @@ export default function GameCard({
         useArenaBattlefield && "battlefield-arena-card battlefield-artwork-card",
         smallLand && "battlefield-small-land",
         variant === "hand" && "hand-card",
+        pseudoHandZoneStyle && "pseudo-hand-zone-card",
         compact && "w-[96px] min-w-[96px] min-h-[134px] p-1 text-[14px]",
         !compact && variant === "hand" && "flex-1 basis-0 min-w-0 max-w-[124px] min-h-[100px]",
         !compact && variant !== "hand" && "w-[124px] min-w-[124px] min-h-[172px]",
@@ -1501,7 +1528,8 @@ export default function GameCard({
       style={{
         ...style,
         "--inspected-object-rgb": sourceAccent?.rgb || "255, 224, 131",
-        ...(pseudoHandOwnerAccent ? { "--pseudo-hand-owner-rgb": pseudoHandOwnerAccent.rgb } : undefined),
+        ...(pseudoHandRingRgb ? { "--pseudo-hand-owner-rgb": pseudoHandRingRgb } : undefined),
+        ...(pseudoHandZoneStyle ? { "--pseudo-hand-zone-rgb": pseudoHandZoneStyle.rgb } : undefined),
         "--aura-delay-1": auraDelay1,
         "--aura-delay-2": auraDelay2,
         "--aura-rot-1-pos": auraRot1Pos,
@@ -1551,7 +1579,7 @@ export default function GameCard({
         </>
       )}
       {variant !== "stack" && <span className="card-inspector-source-glow" aria-hidden="true" />}
-      {pseudoHandOwnerAccent && <span className="card-pseudo-hand-owner-glow" aria-hidden="true" />}
+      {pseudoHandRingRgb && <span className="card-pseudo-hand-owner-glow" aria-hidden="true" />}
       <div className="game-card-surface">
         {faceDownPermanent && (
           <span className="face-down-permanent-back" data-known-face={knownFaceDownName ? "true" : undefined} aria-hidden="true">

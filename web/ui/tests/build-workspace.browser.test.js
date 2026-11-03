@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 test('Build searches into the editor and adds catalog cards or edited drafts', {timeout:60000}, async () => {
- const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();const browser=await chromium.launch();
+ const vite=await createServer({server:{host:'127.0.0.1',port:0,hmr:false},logLevel:'silent'});await vite.listen();const browser=await chromium.launch();
  try {
   const page=await browser.newPage({viewport:{width:1440,height:900}});
   // Renderer coverage lives in card-glint-build; keep editor tests independent of GPU startup.
@@ -54,13 +54,14 @@ test('Build searches into the editor and adds catalog cards or edited drafts', {
   await page.getByRole('button',{name:'Build',exact:true}).click();
   await dialog.getByRole('textbox',{name:'Card name',exact:true}).fill('Edited Bolt');
   await dialog.getByRole('button',{name:'Add',exact:true}).click();
+  await page.waitForFunction(() => window.lastAdded?.custom);
   assert.equal((await page.evaluate(()=>window.lastAdded)).custom.draft.faces[0].name,'Edited Bolt');
   assert.equal((await page.evaluate(()=>window.lastAdded)).custom.zoneName,'hand');
  } finally {await browser.close();await vite.close();}
 });
 
 test('Build edits and adds baked cards while art is stalled, and ignores stale selections', {timeout: 60000}, async () => {
- const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+ const vite=await createServer({server:{host:'127.0.0.1',port:0,hmr:false},logLevel:'silent'});
  await vite.listen();
  const browser=await chromium.launch();
  try {
@@ -112,12 +113,24 @@ test('Build edits and adds baked cards while art is stalled, and ignores stale s
 });
 
 test('Build shares its card search with Sets and keeps separate set and format drafts', { timeout: 60000 }, async t => {
- const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
+ const vite = await createServer({ server: { host: '127.0.0.1', port: 0, hmr: false }, logLevel: 'silent' });
  await vite.listen(); t.after(() => vite.close());
  const browser = await chromium.launch(); t.after(() => browser.close());
  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
  await page.route('https://**', r => r.abort());
- await page.route('**/custommagic/pool.json', r => r.fulfill({ json: { cards: [{ id: 'mage', draft: { faces: [{ name: 'Community Mage' }] } }] } }));
+ await page.addInitScript(() => {
+   const request = indexedDB.open('ironsmith-custom-cards-v1', 3);
+   request.onupgradeneeded = () => {
+     for (const [name, keyPath] of [['cards', 'id'], ['mechanics', 'keyword'], ['tokens', 'key']]) {
+       if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name, { keyPath });
+     }
+   };
+   request.onsuccess = () => {
+     const tx = request.result.transaction('cards', 'readwrite');
+     tx.objectStore('cards').put({ id: 'saved:community mage', draft: { faces: [{ name: 'Community Mage' }] }, savedAt: 0 });
+     tx.oncomplete = () => request.result.close();
+   };
+ });
  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/build-workspace.html`, { waitUntil: 'domcontentloaded' });
  await page.getByRole('button', { name: 'Build', exact: true }).click();
  await page.getByRole('tab', { name: 'Sets', exact: true }).click();

@@ -23,7 +23,6 @@ import {
 import { Activity, ExternalLink, UserPlus, X, Gamepad2, Github, Keyboard, LayoutGrid, Menu, Puzzle, RefreshCw, ScrollText, Settings2, Share2, ShieldCheck, Shuffle, Users, Wrench } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AddCardSheet from "./AddCardSheet";
-import CustomCardsButton from "./CustomCardsButton";
 import SurrenderButton from "./SurrenderButton";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
 import VerifyMatchSheet from "./VerifyMatchSheet";
@@ -615,7 +614,6 @@ export default function TopbarMenuSheet({
                         </Button>
                       )}
                     />
-                    <CustomCardsButton className="stone-pill justify-start px-3 py-2 text-sm disabled:opacity-45" />
                     <CreateCardForgeSheet
                       disabled={addLocked}
                       players={players}

@@ -1,0 +1,89 @@
+{
+  "baked": 281,
+  "excluded": [
+    {
+      "name": "Glimmering Prosecutor",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: unsupported rules fallback: As you cast this spell"
+    },
+    {
+      "name": "Kamito Eternalist",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: unsupported rules fallback: you may activate abilities designated inscribe of cards in your graveyard as though they were in your hand"
+    },
+    {
+      "name": "Compulsion's Voice",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Ophidian Oracle",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Seeker of Horizons",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Strayseeker Ranger",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Confusion",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Blastburn Angel",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: payload: \"AsEntersEffectProgram { program: ResolutionProgram { segments: [ResolutionSegment { ability_designations: [], default_effects: [Effect(ConditionalEffect { condition: This..."
+    },
+    {
+      "name": "Shearing Vampire",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: payload: \"AsEntersEffectProgram { program: ResolutionProgram { segments: [ResolutionSegment { ability_designations: [], default_effects: [Effect(ConditionalEffect { condition: This..."
+    },
+    {
+      "name": "Soulblade Warrior",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: payload: \"AsEntersEffectProgram { program: ResolutionProgram { segments: [ResolutionSegment { ability_designations: [], default_effects: [Effect(ConditionalEffect { condition: This..."
+    },
+    {
+      "name": "Endless Hydra",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: payload: \"EntersWithCountersIfCondition { counter: PlusOnePlusOne, count: Fixed(4), condition: ThisSpellPaidLabel(OptionalCostRef { kind: CustomUnsupported(\\\"Colossal\\\"), discrimin..."
+    },
+    {
+      "name": "Potato Chip Swan",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: payload: \"EntersWithCountersIfCondition { counter: Time, count: Fixed(3), condition: ThisSpellPaidLabel(OptionalCostRef { kind: CustomUnsupported(\\\"Crumble\\\"), discriminator: Some(..."
+    },
+    {
+      "name": "Drift Off",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Tugae Corpsemaker",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Stalwart Grovekeepers",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Scion of the Wildcourt",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Lichbane Forerunner",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Sylph of the Tugae",
+      "error": "compiled card registration failed: Card compiled but contains unsupported mechanics: runtime marker: kind: CustomUnsupported("
+    },
+    {
+      "name": "Edgeland Pledge",
+      "error": "Standalone artifact transport does not support attached token definitions yet"
+    },
+    {
+      "name": "Vanguard Recruit",
+      "error": "Standalone artifact transport does not support attached token definitions yet"
+    },
+    {
+      "name": "Barded Brachion",
+      "error": "Standalone artifact transport does not support attached token definitions yet"
+    }
+  ]
+}

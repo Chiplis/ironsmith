@@ -1,3 +1,5 @@
+import { splitTextWithMtgKeywordRules, getMtgKeywordHelp } from "./mtg-keywords.js";
+
 export function stripInspectorAbilityPrefixes(text = "") {
   const prefixPatterns = [
     /^\s*(?:Triggered|Activated|Mana|Static)\s+ability(?:\s+\d+)?\s*:\s*/i,
@@ -41,7 +43,9 @@ export function lineAbilityMatchScore(lineText, needleText) {
   if (words.length === 0) return 0;
   let matched = 0;
   for (const word of words) {
-    if (line.includes(word)) matched += 1;
+    // Engine action labels summarize effects ("Put counters") while the
+    // displayed rules give quantities and counter kinds ("a +1/+1 counter").
+    if (line.includes(word) || (word.endsWith("s") && line.includes(word.slice(0,-1)))) matched += 1;
   }
   const ratio = matched / words.length;
   if (ratio >= 0.66) return 2;
@@ -62,16 +66,32 @@ function actionAbilityText(action) {
     .trim();
 }
 
-export function matchInteractiveActionsToRulesLines(lines = [], actions = []) {
+// Use the same bound reminder as the tooltip. Keyword declarations such as
+// Improve {B}, Equip {X}, and Crew 2 can expose an activation without a colon.
+function keywordActivationText(line, definitions = []) {
+  const first=splitTextWithMtgKeywordRules(String(line).trim(),'en',definitions)[0];
+  if(first?.type!=='keyword')return null;
+  const text=getMtgKeywordHelp(first.text,first.rule,'en',first.context).description;
+  if (/\{Cost\}/i.test(text || '')) return null; // An unbound identity has no activation cost.
+  // A mechanic can combine casting, entry and activation clauses. Only its
+  // activation clause participates in action matching (Advance, for example).
+  return String(text || '').split(/\n|(?<=[.!?])\s+/)
+    .filter(clause=>/^(?!When\b|Whenever\b|At\b|As\b|If\b)[^.:;\n]+:/i.test(clause.trim()))
+    .join('\n') || null;
+}
+
+export function matchInteractiveActionsToRulesLines(lines = [], actions = [], definitions = []) {
   const matches = new Map();
-  const activatedLineIndices = activatedAbilityLineIndices(lines);
+  const activatedLineIndices = activatedAbilityLineIndices(lines, definitions);
 
   actions.forEach((action, actionIndex) => {
     const needle = actionAbilityText(action);
     let bestIndex = -1;
     let bestScore = 0;
     lines.forEach((line, lineIndex) => {
-      const score = lineAbilityMatchScore(line, needle);
+      if (!activatedLineIndices.includes(lineIndex)) return;
+      const expanded=keywordActivationText(line,definitions);
+      const score = Math.max(lineAbilityMatchScore(line, needle), expanded ? lineAbilityMatchScore(expanded,needle) : 0);
       if (score > bestScore) {
         bestScore = score;
         bestIndex = lineIndex;
@@ -96,14 +116,22 @@ export function matchInteractiveActionsToRulesLines(lines = [], actions = []) {
 }
 
 // Equip is an activated ability even though its keyword form has no colon.
-function isActivatedAbilityLine(line) {
+function isActivatedAbilityLine(line, definitions) {
   const text = String(line).replace(/\([^)]*\)|（[^）]*）/gu, "");
-  return /[:：]/u.test(text) || /^\s*(?:equip|equipar)\b/i.test(text);
+  return /[:：]/u.test(text) || /^\s*(?:equip|equipar)\b/i.test(text) || Boolean(keywordActivationText(text,definitions));
 }
 
-export function activatedAbilityLineIndices(lines = []) {
+export function activatedAbilityLineIndices(lines = [], definitions = []) {
   return lines
-    .map((line, index) => (isActivatedAbilityLine(line) ? index : null))
+    .map((line, index) => {
+      if (!isActivatedAbilityLine(line, definitions)) return null;
+      const expanded=keywordActivationText(line,definitions);
+      // Compiled output may include a standalone keyword identity followed by
+      // the actual cost/effect line. The identity is a tooltip, not a second action.
+      if (/^[\p{L}\s'-]+\.?$/u.test(line) && expanded && lines.some((other,i)=>i!==index && /[:：]/u.test(other)
+        && lineAbilityMatchScore(other,expanded)>=2)) return null;
+      return index;
+    })
     .filter((index) => index != null);
 }
 
@@ -115,15 +143,15 @@ const symbolSignature = line => (line.match(/\{[^}]+\}/g) || []).join("").toUppe
 
 // Resolve engine actions only against canonical text. Translations retain
 // ability order even when reminder text introduces or removes paragraphs.
-export function interactiveRulesView(canonicalText, displayedText, actions = []) {
+export function interactiveRulesView(canonicalText, displayedText, actions = [], definitions = []) {
   const canonical = rulesLines(canonicalText);
   const displayed = rulesLines(displayedText);
-  const matches = matchInteractiveActionsToRulesLines(canonical, actions);
+  const matches = matchInteractiveActionsToRulesLines(canonical, actions, definitions);
   const original = { lines: canonical, actions: matches, sourceLines: canonical.map(line => [line]) };
   if (canonicalText === displayedText) return original;
 
-  const sourceAbilities = activatedAbilityLineIndices(canonical);
-  const targetAbilities = activatedAbilityLineIndices(displayed);
+  const sourceAbilities = activatedAbilityLineIndices(canonical, definitions);
+  const targetAbilities = activatedAbilityLineIndices(displayed, definitions);
   const projection = new Map();
   const sourceLines = displayed.map(() => []);
   for (const index of new Set([...sourceAbilities, ...matches.keys()])) {

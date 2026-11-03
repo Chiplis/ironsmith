@@ -27,6 +27,7 @@ const WORKER_METHODS = [
   "createCustomCard",
   "replaceHandWithCustomCards",
   "startSandbox",
+  "populateCustomShowcase",
   "createRuntimeSavepoint",
   "captureExactBuildSnapshot",
   "restoreExactBuildSnapshot",

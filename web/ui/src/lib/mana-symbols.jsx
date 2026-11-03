@@ -1,3 +1,4 @@
+import {printedRulesRuns} from './printed-rules-runs.js';
 import { useI18n } from "@/i18n/I18nContext";
 import useUiText from "@/i18n/useUiText";
 import { translateUiText as ui } from "@/i18n/catalog";
@@ -284,6 +285,7 @@ export function ManaCostIcons({ cost, size = 12 }) {
 
 export function SymbolText({
   text: rawText,
+  rulesText = false,
   className,
   style,
   symbolSize = 14,
@@ -317,14 +319,13 @@ export function SymbolText({
     if (last < segment.length) appendText(segment.slice(last), sourceOffset + last);
     sourceOffset += segment.length;
   };
-  // Reminder text is printed in italics, which also keeps translated reminder
-  // paragraphs close to the room the printing gave them.
-  for (const segment of text.split(/(\([^()]*\))/)) {
+  // Apply printed emphasis without changing offsets used by keyword helpers.
+  for (const {text:segment, italic} of printedRulesRuns(text, {labels:rulesText})) {
     if (!segment) continue;
-    if (segment.startsWith("(") && segment.endsWith(")")) {
+    if (italic) {
       const start = parts.length;
       appendSegment(segment);
-      parts.push(<em key={`reminder-${key++}`} className="rules-reminder-text">{parts.splice(start)}</em>);
+      parts.push(<em key={`italic-${key++}`} className={segment.startsWith("(") ? "rules-reminder-text" : undefined}>{parts.splice(start)}</em>);
     } else appendSegment(segment);
   }
   return (

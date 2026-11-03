@@ -59,12 +59,23 @@
 .zone-pile--icon[data-zone-pile="library"] { color: #c9d8ef; }
 .zone-pile--icon[data-zone-pile="graveyard"] { color: #d6cbb9; }
 .zone-pile--icon[data-zone-pile="exile"] { color: #c8b3f0; }
+/* Each zone's border carries the hue its playable cards glow with in the
+   hand (PSEUDO_HAND_ZONES in GameCard.jsx). */
+.zone-pile.zone-pile--icon[data-zone-pile="library"] { --zone-border-rgb: 120, 205, 255; }
+.zone-pile.zone-pile--icon[data-zone-pile="graveyard"] { --zone-border-rgb: 140, 255, 170; }
+.zone-pile.zone-pile--icon[data-zone-pile="exile"] { --zone-border-rgb: 205, 165, 255; }
+.zone-pile.zone-pile--icon[data-zone-pile="command"] { --zone-border-rgb: 255, 214, 120; }
+.zone-pile.zone-pile--icon[data-zone-pile] {
+  border-color: rgba(var(--zone-border-rgb, 216, 191, 122), 0.6);
+}
+.zone-pile.zone-pile--icon[data-zone-pile]:is(:hover, [aria-expanded="true"]) {
+  border-color: rgba(var(--zone-border-rgb, 240, 214, 150), 0.95);
+}
 
 /* A zone holding cards only this perspective has seen wears a small cyan
    eye above its glyph; the chip grows a little to hold it. */
 .zone-pile.zone-pile--icon[data-looking="true"] {
   height: 38px;
-  border-color: rgba(120, 214, 255, 0.45);
 }
 /* The eye floats over the count without moving it off the chip's center. */
 .zone-pile-count-stack {
@@ -131,6 +142,53 @@
   font-weight: 700;
   line-height: 13px;
   text-align: center;
+  pointer-events: none;
+}
+/* A library card whose exact slot we don't know: "?" when we know its span
+   (a random bottom), "??" when we know nothing about where it is. */
+.zone-pile-card-row.is-position-unknown > img {
+  filter: grayscale(1) brightness(0.8);
+}
+.zone-pile-card-row.is-position-unknown > .zone-pile-position {
+  border-color: rgba(200, 210, 216, 0.45);
+  color: #c9d2d8;
+}
+/* Copies whose slots are all unknown share one tile: the art sits up-left
+   and two card edges peek out behind it, inside the tile so a scrolling
+   strip never clips them. The corner says how many copies. */
+.zone-pile-card-slot.is-stacked > .zone-pile-card-row::before,
+.zone-pile-card-slot.is-stacked > .zone-pile-card-row::after {
+  content: "";
+  position: absolute;
+  border-radius: 3px;
+  background: #59636b;
+  border: 1px solid rgba(225, 232, 237, 0.7);
+}
+.zone-pile-card-slot.is-stacked > .zone-pile-card-row::before { background: #454e55; }
+.zone-pile-card-slot.is-stacked > .zone-pile-card-row::before { inset: 8px 0 0 8px; }
+.zone-pile-card-slot.is-stacked > .zone-pile-card-row::after { inset: 4px 4px 4px 4px; }
+.zone-pile-card-slot.is-stacked > .zone-pile-card-row > :is(img, .zone-pile-placeholder) {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 1;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  border-radius: 3px;
+  box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.6);
+}
+.zone-pile-stack-count {
+  position: absolute;
+  top: 3px;
+  right: 11px;
+  z-index: 2;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: rgba(10, 22, 30, 0.88);
+  border: 1px solid rgba(200, 210, 216, 0.45);
+  color: #e6edf1;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 13px;
   pointer-events: none;
 }
 /* A face-down exiled card we know: its face, marked as still face down. */

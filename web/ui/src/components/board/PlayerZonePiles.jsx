@@ -8,7 +8,8 @@ import { useI18n } from "@/i18n/I18nContext";
 import { useCastTargeting, useCastZoneHovered } from "@/context/DragContext";
 import { useHover } from "@/context/HoverContext";
 import ZoneArt from "./ZonePileArt";
-import { freshLookInZone, lookedZoneCards } from "@/lib/look-pile";
+import { HIDDEN_CARD_BACK_IMAGE_URL } from "@/lib/scryfall";
+import { freshLookInZone, knowsLibraryPositions, lookedZoneCards } from "@/lib/look-pile";
 import { samePlayerId } from "@/lib/player-display";
 import { isFaceUpZoneCard, pileZonesFor, zonePileCards } from "@/lib/zone-piles";
 import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
@@ -120,7 +121,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     document.addEventListener("pointerover", trackPointer);
     return () => document.removeEventListener("pointerover", trackPointer);
   });
-  // A library strip holds only the cards this perspective looked at, in
+  // A library strip holds the cards this perspective knows are in there, in
   // library order: deepest first, so the top card ends the strip beside the
   // deck.
   const ordered = zone === "library";
@@ -225,6 +226,11 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     return counters.length > 0 ? `${name}\n${ui("Counters")}:\n${counters.join("\n")}` : name;
   };
 
+  // Rows of a remembered library stand for no object, so they cannot preview.
+  const unpreviewable = (card) => card.synthetic || String(card.id).startsWith("look-top-");
+  const positionBadge = (card) => card.position != null ? (card.position === 0 ? ui("Top") : card.position + 1)
+    : card.position_range ? "?" : card.unknown_position ? "??" : null;
+
   const renderCard = (card) => {
     const legal = canChoose && isLegal(card);
     const disabled = (choosingTarget || choosingObject) && !legal;
@@ -234,21 +240,28 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     const hoverLabel = cardHoverLabel(card);
     // A face-up card opens the preview, which names it already; a bare-name
     // native tooltip would sit on top of that preview.
-    const previews = isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-");
-    const rowLabel = card.position != null && ordered
-      ? ui("{0}, {1} from the top", { 0: card.name, 1: card.position + 1 }) : card.name;
+    const previews = isFaceUpZoneCard(card) && !unpreviewable(card);
+    const rowLabel = !ordered ? card.name
+      : card.position != null ? ui("{0}, {1} from the top", { 0: card.name, 1: card.position + 1 })
+        : card.position_range ? ui("{0}, somewhere from {1} to {2} from the top", {
+          0: card.name, 1: card.position_range[0] + 1, 2: card.position_range[1] + 1,
+        }) : card.card_back ? ui("Unknown card")
+          : card.stack_count > 1 ? ui("{0} ×{1}, positions unknown", { 0: card.name, 1: card.stack_count })
+            : card.unknown_position ? ui("{0}, position unknown", { 0: card.name }) : card.name;
+    const stacked = ordered && card.stack_count > 1;
+    const badge = ordered ? positionBadge(card) : null;
     // The check has to sit outside the row button to stay clickable, so the
     // row gets a wrapper of its own strip width.
-    return <span key={card.id} className="zone-pile-card-slot" data-stack-target={stackTargeted ? "true" : undefined} data-hover-source={hoverSource ? "true" : undefined}>
-      <button type="button" className={`zone-pile-card-row${chosen ? " is-chosen" : ""}`}
+    return <span key={card.id} className={`zone-pile-card-slot${stacked ? " is-stacked" : ""}`} data-stack-target={stackTargeted ? "true" : undefined} data-hover-source={hoverSource ? "true" : undefined}>
+      <button type="button" className={`zone-pile-card-row${chosen ? " is-chosen" : ""}${ordered && card.position == null && badge && !card.card_back ? " is-position-unknown" : ""}`}
         aria-label={rowLabel || ui("Face-down card")}
         title={previews && hoverLabel === card.name ? undefined : hoverLabel}
-        data-object-id={String(card.id).startsWith("look-top-") ? undefined : card.id} data-zone-card={zone}
+        data-object-id={unpreviewable(card) ? undefined : card.id} data-zone-card={zone}
         data-target-legal={legal ? "true" : undefined} data-stack-target={stackTargeted ? "true" : undefined}
         data-hover-source={hoverSource ? "true" : undefined} aria-disabled={disabled || undefined}
         onPointerEnter={(event) => {
           setRowHoveredId(card.id);
-          if (event.pointerType === "touch" || !isFaceUpZoneCard(card) || String(card.id).startsWith("look-top-")) return;
+          if (event.pointerType === "touch" || !isFaceUpZoneCard(card) || unpreviewable(card)) return;
           hoverCard(card.id);
         }}
         onPointerLeave={(event) => {
@@ -256,7 +269,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
           if (event.pointerType !== "touch") clearHover();
         }}
         onFocus={() => {
-          if (isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-")) hoverCard(card.id);
+          if (isFaceUpZoneCard(card) && !unpreviewable(card)) hoverCard(card.id);
         }}
         onBlur={() => clearHover()}
         onClick={(event) => {
@@ -294,15 +307,14 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
           // immediately while keeping the normal inspector selection in sync.
           // Do this after onCardClick because that callback clears any previous
           // anchored preview as part of changing the selected object.
-          if (isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-")) {
+          if (isFaceUpZoneCard(card) && !unpreviewable(card)) {
             showAnchoredCardPreview(card.id, anchor, { placement: "zone" });
           }
           if (choosingTarget || choosingObject) changeOpen(false);
         }}>
-        <ZoneArt card={card} />
-        {ordered && card.position != null ? (
-          <span className="zone-pile-position" aria-hidden="true">{card.position === 0 ? ui("Top") : card.position + 1}</span>
-        ) : null}
+        {card.card_back ? <img src={HIDDEN_CARD_BACK_IMAGE_URL} alt="" draggable={false} /> : <ZoneArt card={card} />}
+        {badge != null ? <span className="zone-pile-position" aria-hidden="true">{badge}</span> : null}
+        {stacked ? <span className="zone-pile-stack-count" aria-hidden="true">×{card.stack_count}</span> : null}
         {card.known_face_down ? <span className="zone-pile-known-face-down" aria-hidden="true"><LookEyeGlyph /></span> : null}
       </button>
       {chosen && <SelectionCheckBadge objectId={card.id} />}
@@ -417,9 +429,11 @@ function ZoneIconRow({ player, zone, onCardClick, legalTargetObjectIds, onOpenDe
   const { state } = useGame();
   const looked = zone === "library" || zone === "exile" ? lookedZoneCards(state, player, zone) : [];
   const fresh = looked.length > 0 && freshLookInZone(state, player, zone);
+  // Our whole deck is always listed; the eye marks only position knowledge.
+  const looking = zone === "library" ? fresh || knowsLibraryPositions(looked) : looked.length > 0;
   const count = zone === "library" ? Math.max(0, Number(player.library_size) || 0) : undefined;
   return <div className="zone-icon-row" data-zone-row={zone} data-zone-owner={String(player.id ?? player.index)}>
-    <ZonePile player={player} zone={zone} variant="icon" count={count} looking={looked.length > 0} fresh={fresh}
+    <ZonePile player={player} zone={zone} variant="icon" count={count} looking={looking} fresh={fresh}
       cardsOverride={zone === "library" ? looked : zone === "exile" ? exileCardsWithKnownFaces(player, looked) : undefined}
       onTriggerClick={zone === "library" && onOpenDecklist ? () => onOpenDecklist(player) : null}
       onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />

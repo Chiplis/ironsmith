@@ -558,6 +558,7 @@ pub fn move_tagged_remainder_to_library_bottom_with_outputs(
                     &top_to_bottom,
                     "consult effect put cards on bottom",
                 );
+                game.remember_library_group(chooser, owner, &ordered_current_ids, matches!(order, LibraryBottomOrder::Random));
                 moved_ids.extend(ordered_current_ids);
             }
             game.close_simultaneous_action(opened_batch);

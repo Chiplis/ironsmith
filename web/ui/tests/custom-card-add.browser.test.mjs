@@ -11,7 +11,6 @@ test('saved custom mechanics survive Add to Game and repeated battlefield inspec
     const page = await browser.newPage();
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.route('**/custommagic/pool.json', route => route.fulfill({ json: { cards: [] } }));
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/custom-card-add-preview.html`);
     await page.getByText('Include custom cards (1 available)', { exact: true }).waitFor();
     await page.getByRole('checkbox', { name: /Include custom cards/ }).check();

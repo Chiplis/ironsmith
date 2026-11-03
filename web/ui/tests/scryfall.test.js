@@ -6,6 +6,7 @@ import {
   preloadCardArt,
   resolveScryfallImageUrl,
   resolveScryfallFlavorText,
+  resolveScryfallPrintingMetadata,
   scryfallImageUrl,
   setCustomCardArtUrls,
   setCompiledCardNames,
@@ -53,6 +54,30 @@ test("flavor lookup follows the displayed printing and face, including an empty 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("printing symbols follow set metadata and the original set of List reprints", async () => {
+  const originalFetch = globalThis.fetch;
+  const cases = [
+    {set:'tneo', set_type:'token', lookup:'tneo', symbol:'neo'},
+    {set:'plst', collector_number:'ELD-42', lookup:'eld', symbol:'eld'},
+    {set:'dmu', set_type:'expansion', lookup:'dmu', symbol:'dmu'},
+  ];
+  try {
+    for (const [index, example] of cases.entries()) {
+      const id = `12345678-0000-4321-8888-12345678900${index}`;
+      const icon = `https://svgs.scryfall.io/sets/${example.symbol}.svg?123`;
+      const urls = [];
+      globalThis.fetch = async url => {
+        urls.push(url);
+        return {ok:true, json:async () => urls.length === 1 ? example : {icon_svg_uri:icon}};
+      };
+      const printing = await resolveScryfallPrintingMetadata(`https://cards.scryfall.io/normal/front/1/2/${id}.jpg`);
+      assert.deepEqual(urls, [`https://api.scryfall.com/cards/${id}`, `https://api.scryfall.com/sets/${example.lookup}`]);
+      assert.deepEqual(printing.printingSymbol, {set:example.set, code:example.symbol, url:icon});
+      assert.equal(printing.set, example.set);
+    }
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("custom art is stored but cannot bypass standard printing resolution", () => {

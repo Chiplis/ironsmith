@@ -239,16 +239,6 @@ struct CombinedLookCards {
     exile: Arc<Vec<Arc<ViewedCardSnapshot>>>,
     output: Arc<Vec<Arc<ViewedCardSnapshot>>>,
 }
-/// Cards above `object` in its owner's library; `None` outside a library.
-pub(super) fn library_position(game: &GameState, object: &ironsmith::object::Object) -> Option<usize> {
-    if object.zone != Zone::Library {
-        return None;
-    }
-    let library = &game.player(object.owner)?.library;
-    let index = library.iter().position(|id| *id == object.id)?;
-    Some(library.len() - 1 - index)
-}
-
 pub(super) fn viewed_card_snapshot(object: &ironsmith::object::Object) -> ViewedCardSnapshot {
     ViewedCardSnapshot {
         id: object.id.0,
@@ -1317,6 +1307,7 @@ impl SnapshotJsEncodingCache {
             "library_cards",
             self.encode_zone_cards(&player.library_cards)?.as_ref(),
         )?;
+        self.set_serde(&object, "library_memory", &player.library_memory)?;
         self.set_serde(&object, "library_top", &player.library_top)?;
         self.set_value(
             &object,
@@ -2956,6 +2947,7 @@ pub(super) struct PlayerSnapshot {
     /// Only the currently visible library top, never the rest of the library.
     pub(super) library_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
     pub(super) library_top: Option<String>,
+    pub(super) library_memory: Vec<LibraryMemoryRow>,
     pub(super) persistent_look_cards: Arc<Vec<Arc<ViewedCardSnapshot>>>,
     pub(super) graveyard_top: Option<String>,
     pub(super) battlefield: Arc<Vec<Arc<PermanentSnapshot>>>,
@@ -2974,6 +2966,16 @@ pub(super) struct ViewedCardsSnapshot {
     pub(super) card_ids: Vec<u64>,
     pub(super) source: Option<u64>,
     pub(super) description: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct LibraryMemoryRow {
+    pub(super) name: String,
+    pub(super) count: usize,
+    pub(super) position: Option<usize>,
+    pub(super) range_start: Option<usize>,
+    pub(super) range_end: Option<usize>,
+    pub(super) id: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -3360,6 +3362,7 @@ impl GameSnapshot {
                     } else {
                         Vec::new()
                     }),
+                    library_memory: Vec::new(),
                     library_top: can_view_library_top
                         .then(|| {
                             p.library
@@ -3746,7 +3749,7 @@ impl GameSnapshot {
                                 name,
                                 oracle_text,
                                 zone: object.map(|object| super::decision_zone_name(object.zone)),
-                                position: object.and_then(|object| library_position(game, object)),
+                                position: None,
                             }
                         })
                         .collect(),

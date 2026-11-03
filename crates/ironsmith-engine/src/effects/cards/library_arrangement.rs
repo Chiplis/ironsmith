@@ -81,6 +81,7 @@ pub(crate) fn arrange_library_cards(
             .filter(|id| !selected.contains(id)),
     );
     order.extend(top.into_iter().rev());
+    game.forget_library_positions(owner, &selected.into_iter().collect::<Vec<_>>());
     game.set_player_library_order_with_audit(owner, order, reason);
     for card in placement_bottom { game.record_simultaneous_library_placement(card, LibraryCardPosition::Bottom); }
     for card in placement_top.into_iter().rev() { game.record_simultaneous_library_placement(card, LibraryCardPosition::Top); }

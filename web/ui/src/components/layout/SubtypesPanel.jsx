@@ -1,10 +1,11 @@
+import BuildCatalogList from './BuildCatalogList';
 import useUiText from '@/i18n/useUiText';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useGame } from '@/context/GameContext';
 import { SUBTYPE_FAMILIES, listCustomSubtypes, mergeSubtypes, storeCustomSubtypes, suggestSubtypePlural, validateSubtype } from '@/lib/custom-subtypes';
 
-export default function SubtypesPanel({ definitions: scopedDefinitions, onChange, setName }) {
+export default function SubtypesPanel({ definitions: scopedDefinitions, onChange, setName, rows }) {
   const { game } = useGame();
   const ui = useUiText();
   const [personalDefinitions, setDefinitions] = useState(() => { try { return listCustomSubtypes(); } catch { return []; } });
@@ -48,6 +49,6 @@ export default function SubtypesPanel({ definitions: scopedDefinitions, onChange
     </form>
     <p className="text-xs text-muted-foreground">Names may contain words, letters, numbers, hyphens, or apostrophes. Check the suggested plural; irregular and identical forms are supported. Subtypes do not grant inherent abilities.</p>
     {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
-    <ul className="space-y-2">{definitions.map(def => <li key={`${def.singular}:${def.family}`} className="flex items-center justify-between gap-3 border-b py-2"><span><strong className="capitalize">{def.singular}</strong> / {def.plural} · {def.family}</span><Button disabled={busy} variant="outline" size="sm" onClick={() => remove(def)}>{ui('Remove')}</Button></li>)}</ul>
+    <BuildCatalogList label="Search subtypes" rows={rows || definitions.map((definition, index) => ({ name: definition.singular, index, definition, detail: `${definition.plural} · ${definition.family}` }))} actions={row => <Button disabled={busy} variant="outline" size="sm" aria-label={`${ui('Remove')} ${row.name}`} onClick={() => remove(row.definition)}>{ui('Remove')}</Button>} />
   </div>;
 }

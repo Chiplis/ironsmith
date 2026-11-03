@@ -6,7 +6,6 @@ export const CUSTOM_CARD_LIBRARY_CHANGED = "custom-card-library-changed";
 export const CUSTOM_MECHANICS_CHANGED = "custom-mechanics-changed";
 export const CUSTOM_TOKENS_CHANGED = "custom-tokens-changed";
 let connection;
-let bundled;
 const normalize = value => String(value || "").trim().toLowerCase();
 
 function database() {
@@ -155,8 +154,9 @@ export async function deleteCustomToken(name) {
 }
 
 export async function previewCustomDraft(draft, compile) {
+  const scoped = draft.customMechanicsScope === 'card';
   const prepared = await prepareCustomCard(draft, compile, {
-    known: await listCustomMechanics().catch(() => []), knownTokens: await listCustomTokens().catch(() => []),
+    known: scoped ? [] : await listCustomMechanics().catch(() => []), knownTokens: await listCustomTokens().catch(() => []),
   });
   if (!scoped) installCustomMechanics(prepared.draft.customMechanics);
   prepared.preview.customMechanics = prepared.draft.customMechanics;
@@ -193,17 +193,6 @@ export const listSavedCustomCards = async () => {
   await listCustomMechanics();
   return transaction("readonly", store => store.getAll());
 };
-
-export async function loadBundledCustomCards() {
-  if (!bundled) {
-    bundled = fetch(`${import.meta.env?.BASE_URL || "/"}custommagic/pool.json`)
-      .then(response => {
-        if (!response.ok) throw new Error("Could not load bundled custom cards");
-        return response.json();
-      }).then(pool => pool.cards).catch(error => { bundled = null; throw error; });
-  }
-  return bundled;
-}
 
 export function customCardOptions(cards, query, limit = 5) {
   const needle = cardSearchKey(query);

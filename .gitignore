@@ -72,15 +72,15 @@ web/relay/.wrangler/
 !web/ui/src/lib/nonstandard-card-layouts.generated.json
 !web/ui/scripts/fixtures/default-card-frame-donors.json
 
-# Reviewed CustomMagic runtime pool and reproducible source audit.
-!web/ui/public/custommagic/pool.json
-
-!web/ui/src/lib/custom-card-assets.generated.json
-!web/ui/public/custommagic/images/
-!web/ui/public/custommagic/images/*.webp
-
 # card-glint is fetched and built before each frontend build.
 /web/ui/public/card-glint/
 
 # Empty same-origin Learn click tracking resource.
 !/web/ui/public/events/learn-click.txt
+
+# Bundled editable MSEM/Revolution source sets and attributed local prints.
+!/web/ui/public/custom-sets/
+!/web/ui/public/custom-sets/*.json
+!/web/ui/public/custom-sets/images/
+!/web/ui/public/custom-sets/images/*.webp
+!/scripts/custom-showcase/sources/*.json.gz

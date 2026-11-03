@@ -194,6 +194,15 @@ impl EffectExecutor for SearchLibraryEffect {
                                         )?;
                                     let shuffle_outcome = shuffle.outcome.clone();
                                     retained_children.push(shuffle);
+                                    // The searcher put it there; a reveal shows the table.
+                                    if game.object(card_id).is_some_and(|card| card.zone == Zone::Library) {
+                                        let viewers: Vec<_> = game.players.iter().map(|player| player.id)
+                                            .filter(|viewer| self.reveal || *viewer == chooser_id)
+                                            .collect();
+                                        for viewer in viewers {
+                                            game.remember_library_group(viewer, player_id, &[card_id], false);
+                                        }
+                                    }
                                     let mut outcome = EffectOutcome::with_objects(vec![card_id])
                                         .with_event(search_event.clone());
                                     if let Some(memory) = chosen_memory {

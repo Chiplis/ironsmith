@@ -128,6 +128,8 @@ impl EffectExecutor for RearrangeLookedCardsInLibraryEffect {
             "rearranged looked-at library cards",
         );
 
+        game.remember_library_group(chooser, library_owner, &chosen_top_to_bottom, false);
+        game.remember_library_group(chooser, library_owner, &to_bottom, true);
         Ok(EffectOutcome::count(current_top_to_bottom.len() as i32))
     }
 }

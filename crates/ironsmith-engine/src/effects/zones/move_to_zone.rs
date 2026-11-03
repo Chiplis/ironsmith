@@ -1845,6 +1845,35 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             apply_library_placement_order(game, &ordered_library_results, self.to_top);
         }
 
+        if self.zone == Zone::Library {
+            let chooser = match &self.library_order {
+                Some(LibraryPlacementOrder::ChosenBy(filter)) =>
+                    Some(crate::effects::helpers::resolve_player_filter_as_chooser(game, filter, ctx)?),
+                _ => None,
+            };
+            let mut arrivals = std::collections::BTreeMap::<PlayerId, Vec<_>>::new();
+            for id in moved_ids.iter().chain(&ordered_library_results) {
+                if let Some(object) = game.object(*id).filter(|o| o.zone == Zone::Library) {
+                    let group = arrivals.entry(object.owner).or_default();
+                    if !group.contains(id) { group.push(*id); }
+                }
+            }
+            for (owner, ids) in arrivals {
+                let sources: Vec<_> = original_snapshots.values().filter(|s| s.owner == owner).collect();
+                let public = !sources.is_empty() && sources.iter().all(|s| !s.zone.is_hidden() && !s.face_down);
+                let from_own_hand = sources.iter().all(|s| s.zone == Zone::Hand);
+                let orderer = chooser.or(matches!(self.library_order, Some(LibraryPlacementOrder::Owners)).then_some(owner));
+                for viewer in game.players.iter().map(|p| p.id).collect::<Vec<_>>() {
+                    let chose = orderer == Some(viewer);
+                    if public || chose || (viewer == owner && from_own_hand) {
+                        let unordered = matches!(self.library_order, Some(LibraryPlacementOrder::Random))
+                            || (orderer.is_some() && !chose);
+                        game.remember_library_group(viewer, owner, &ids, unordered);
+                    }
+                }
+            }
+        }
+
         if self.remember_as_chosen_object && let [chosen] = moved_ids.as_slice()
             && let Some(object) = game.object(*chosen) && object.zone == self.zone
         {

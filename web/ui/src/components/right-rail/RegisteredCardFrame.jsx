@@ -19,14 +19,11 @@ const flows=field=>['rule','flavor'].includes(field.kind)&&!field.noFlow;
 const needsReplacement=(field,text,forceReplace)=>forceReplace || !same(text,field.printedText??field.text) || field.unprinted || field.errata;
 
 function RegisteredRuleText({text,field}) {
-  const abilityWord=field.kind==='rule'?text.match(/^([A-Za-z][A-Za-z ’'’-]+) — /):null;
-  if(!abilityWord&&!/\[[+−-]?\d+\]/.test(text))return <SymbolText text={text} className="interactive-card-frame__rule-line"/>;
-  const body=abilityWord?text.slice(abilityWord[0].length):text;
+  if (!/\[[+−-]?\d+\]/.test(text)) return <SymbolText rulesText={field.kind==='rule'} text={text} className="interactive-card-frame__rule-line"/>;
   return <span className="interactive-card-frame__rule-line">
-    {abilityWord&&<><SymbolText text={abilityWord[1]} style={{fontStyle:'italic'}}/><SymbolText text=" — "/></>}
-    {body.split(/(\[[+−-]?\d+\])/).filter(Boolean).map((part,index)=>/^\[[+−-]?\d+\]$/.test(part)
+    {text.split(/(\[[+−-]?\d+\])/).filter(Boolean).map((part,index)=>/^\[[+−-]?\d+\]$/.test(part)
       ?<svg key={index} className="registered-card-frame__inline-loyalty" viewBox="0 0 34 22" role="img" aria-label={part.slice(1,-1)}><path d="M1 1H33L30 17L17 21L4 17Z" fill="white" stroke="black" strokeWidth="2"/><text x="17" y="15" textAnchor="middle" fill="black" fontSize="16">{part.slice(1,-1)}</text></svg>
-      :<SymbolText key={index} text={part}/>)}</span>;
+      :<SymbolText rulesText={field.kind==='rule'} key={index} text={part}/>)}</span>;
 }
 
 function RegisteredField({field,index,layout,flow,unit,scale=1,onFit,onMeasure,forceReplace,text,actions,group,maskReady,ink,outlined,typography,name,onActivate,highlighted,columnTop=0}) {

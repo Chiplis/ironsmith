@@ -10,20 +10,27 @@ test('Build defers the custom library and compiles only rules changes', { timeou
   try {
     const page = await browser.newPage();
     const errors = [];
-    let poolRequests = 0;
     page.on('pageerror', error => { errors.push(error.message); console.error(error.message); });
     await page.route('https://**', route => route.abort());
     // Compiler/search responsiveness must not depend on the optional renderer.
     await page.route('**/card-glint/*/magic.css', route => route.abort());
-    await page.route('**/custommagic/pool.json', route => {
-      poolRequests++;
-      return route.fulfill({ json: { cards: [{ id: 'custom-test', draft: { faces: [{ name: 'Custom Performance Test' }] } }] } });
+    await page.addInitScript(() => {
+      const request = indexedDB.open('ironsmith-custom-cards-v1', 3);
+      request.onupgradeneeded = () => {
+        for (const [name, keyPath] of [['cards', 'id'], ['mechanics', 'keyword'], ['tokens', 'key']]) {
+          if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name, { keyPath });
+        }
+      };
+      request.onsuccess = () => {
+        const tx = request.result.transaction('cards', 'readwrite');
+        tx.objectStore('cards').put({ id: 'saved:custom performance test', draft: { faces: [{ name: 'Custom Performance Test' }] }, savedAt: 0 });
+        tx.oncomplete = () => request.result.close();
+      };
     });
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/build-workspace.html`, { waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: 'Build', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await page.waitForFunction(() => window.buildPreviewCalls?.length === 1);
-    assert.equal(poolRequests, 0, 'opening Build must not download/parse the unused custom pool');
 
     assert.equal(await dialog.getByRole('combobox', { name: 'Finish', exact: true }).count(), 0);
     assert.equal(await dialog.getByRole('combobox', { name: 'Print effects', exact: true }).count(), 0);
@@ -51,7 +58,6 @@ test('Build defers the custom library and compiles only rules changes', { timeou
     await dialog.getByRole('checkbox', { name: 'Include custom cards', exact: true }).check();
     await dialog.getByPlaceholder('Find a card to add or edit').fill('Custom Performance');
     await dialog.getByRole('button', { name: /Custom Performance Test/ }).waitFor();
-    assert.equal(poolRequests, 1, 'opting into custom search loads the library');
     await dialog.getByRole('checkbox', { name: 'Include custom cards', exact: true }).uncheck();
     await dialog.getByRole('button', { name: /Custom Performance Test/ }).waitFor({ state: 'hidden' });
     assert.deepEqual(errors, []);

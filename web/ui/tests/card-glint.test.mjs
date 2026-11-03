@@ -13,6 +13,26 @@ test('live text, colors and stats override physical printing metadata', () => {
   assert.equal(face.frameStyle,'retro'); assert.equal(face.artist,'Artist');
   assert.equal(face.illustration,'https://cards.scryfall.io/art_crop/front/a/b/id.jpg');
 });
+test('promo frames retain their collector code and print ability words and reminders in italics', () => {
+  const text = 'Flurry — Draw a card. (Then discard it.)\nEquip — Pay 2 life.';
+  const face = cardGlintFace({name:'Test', compiled_text:text}, {printing:{set:'ptdm', printingSymbol:{set:'ptdm',code:'tdm',url:'https://svgs.scryfall.io/sets/tdm.svg'}, rarity:'rare'}});
+  assert.equal(face.setCode,'ptdm');
+  assert.equal(face.printingSymbol.code,'tdm');
+  assert.equal(face.rarity,'rare');
+  assert.equal(face.rulesText,text);
+  assert.deepEqual(face.rulesParagraphs.map(p => p.runs), [
+    [{text:'Flurry', italic:true}, {text:' — Draw a card. '}, {text:'(Then discard it.)', italic:true}],
+    [{text:'Equip — Pay 2 life.'}],
+  ]);
+});
+
+test('custom ability and modal flavor headings share emphasis without styling costs or chapters', () => {
+  const text = "River's blessing — Draw a card.\nChoose one —\n• Start a Brawl — Creatures you control get +2/+2.\nI, II — Add {G}.\nBoast — {T}: Draw a card.";
+  const {rulesParagraphs} = cardGlintFace({compiled_text:text});
+  assert.deepEqual(rulesParagraphs.flatMap(p => p.runs.filter(r => r.italic).map(r => r.text)), ["River's blessing", 'Start a Brawl']);
+  assert.equal(rulesParagraphs.map(p => p.runs.map(r => r.text).join('')).join('\n'), text);
+});
+
 test('faces, split cards, land identity and colorless changes survive adaptation', () => {
   assert.equal(cardGlintFace({card_faces:[{name:'Front'},{name:'Back',oracle_text:'Back rules'}]},{faceIndex:1}).name,'Back');
   const split=cardGlintFace({layout:'split',card_faces:[{name:'Left'},{name:'Right'}]});

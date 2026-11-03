@@ -1,3 +1,5 @@
+import {CustomMechanicsProvider} from "@/lib/mana-symbols";
+import {customCardAssets} from "@/lib/custom-card-assets";
 import {useState} from 'react';
 import {abilityActionState,abilityActionReason} from '@/lib/ability-action-state';
 import useUiText from '@/i18n/useUiText';
@@ -7,7 +9,7 @@ import GroupedManaAbility from '../right-rail/GroupedManaAbility';
 export default function CardFrameRules({name,rulesView,onActivate,highlighted}) {
   const ui=useUiText();
   const [chosen,setChosen]=useState(null);
-  return <div className="card-frame-rules">
+  return <CustomMechanicsProvider definitions={customCardAssets(name)?.customMechanics || []}><div className="card-frame-rules">
     {rulesView.lines.map((line,index)=>{
       const actions=rulesView.actions.get(index)||[];
       const action=actions.find(item=>abilityActionState(item)==='available')||actions[0];
@@ -21,9 +23,9 @@ export default function CardFrameRules({name,rulesView,onActivate,highlighted}) 
             title={status==='unavailable'||status==='pending'?abilityActionReason(action):'Activate ability'}
             aria-disabled={!clickable||status==='unavailable'?'true':undefined} aria-label={ui('{0}: {1}',{0:name||'Card',1:line})}
             onPointerDown={event=>event.stopPropagation()}
-            onClick={event=>{event.preventDefault();event.stopPropagation();if(clickable&&status!=='unavailable'){if(status==='available')setChosen(action);onActivate(action);}}}><LoyaltyAbilityText text={line} keywordHelpers={false}/></button>
+            onClick={event=>{if(event.target.closest('[aria-haspopup="dialog"], [data-keyword-helper]'))return;event.preventDefault();event.stopPropagation();if(clickable&&status!=='unavailable'){if(status==='available')setChosen(action);onActivate(action);}}}><LoyaltyAbilityText text={line}/></button>
           :<LoyaltyAbilityText text={line}/>}
       </p>;
     })}
-  </div>;
+  </div></CustomMechanicsProvider>;
 }

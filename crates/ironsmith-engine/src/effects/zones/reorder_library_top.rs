@@ -51,6 +51,7 @@ impl EffectExecutor for ReorderLibraryTopEffect {
             "reordered top of library",
         );
 
+        game.remember_library_group(chooser, library_owner, &ordered, false);
         Ok(EffectOutcome::resolved())
     }
 }

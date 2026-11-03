@@ -2,7 +2,7 @@ import { searchBundledCustomCards } from "@/lib/bundled-custom-sets";
 import { useEffect, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import useUiText from "@/i18n/useUiText";
-import { CUSTOM_CARD_LIBRARY_CHANGED, loadBundledCustomCards, listSavedCustomCards, customCardOptions } from "@/lib/custom-card-library";
+import { CUSTOM_CARD_LIBRARY_CHANGED, listSavedCustomCards, customCardOptions } from "@/lib/custom-card-library";
 
 export default function BuildCardSearch({ onSelect, disabled, actions, secondaryControls, defaultIncludeCustom = false }) {
   const { game, semanticThreshold } = useGame();
@@ -16,7 +16,7 @@ export default function BuildCardSearch({ onSelect, disabled, actions, secondary
     if (!includeCustom) return undefined;
     let active = true;
     const load = async () => {
-      const results = await Promise.allSettled([loadBundledCustomCards(), listSavedCustomCards()]);
+      const results = await Promise.allSettled([listSavedCustomCards()]);
       if (!active) return;
       setCards(results.flatMap(result => result.status === "fulfilled" ? result.value : []));
       setError(results.filter(result => result.status === "rejected").map(result => String(result.reason?.message || result.reason)).join(". "));

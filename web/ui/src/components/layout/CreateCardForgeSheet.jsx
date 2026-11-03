@@ -6,8 +6,7 @@ import CommunityFormatEditor from './CommunityFormatEditor';
 import { emptyCommunityFormat, normalizeCommunityFormat } from '@/lib/community-format';
 import { normalizeDraftForApi } from "@/lib/custom-card-draft";
 import SandboxPanel from "./SandboxPanel";
-import MechanicsPanel from "./MechanicsPanel";
-import SubtypesPanel from "./SubtypesPanel";
+import BuildLibrary from "./BuildLibrary";
 import { CUSTOM_SUBTYPES_CHANGED } from "@/lib/custom-subtypes";
 import CustomCardArtEditor from "./CustomCardArtEditor";
 import BuildCardSearch from "./BuildCardSearch";
@@ -18,7 +17,6 @@ import {
   setCardPresentation,
   snapshotStableIds,
 } from "@/lib/card-glint/printing-choices.mjs";
-import CustomCardsButton from "./CustomCardsButton";
 import { customCardImageUrl } from "@/lib/custom-card-assets";
 import { tokenKey } from "@/lib/custom-tokens";
 import { CUSTOM_TOKENS_CHANGED, deleteCustomToken, listCustomTokens, saveCustomCard, saveCustomToken, previewCustomDraft, prepareCustomDraftForCreation } from "@/lib/custom-card-library";
@@ -1183,11 +1181,10 @@ export default function CreateCardForgeSheet({
             <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Create cards and mechanics, collect cards into sets, and design custom formats for your games.")}</SheetDescription>
           </SheetHeader>
 
-          <Tabs value={workspaceTab} onValueChange={tab => { if (saving) return; if ((setCardEditing || workspaceTab === 'sets') && ['card', 'mechanics', 'subtypes'].includes(tab)) { if (tab === 'card' && setCardEditing) { setSetAreaOpen(false); setWorkspaceTab('sets'); } else { openSetArea(tab === 'card' ? 'cards' : tab); } return; } if (setCardEditing && tab !== 'sets') closeSetCard(); setWorkspaceTab(tab); }} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Tabs value={workspaceTab} onValueChange={tab => { if (saving) return; if (setCardEditing && tab !== 'sets') closeSetCard(); setWorkspaceTab(tab); }} className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <TabsList variant="line" className="w-full shrink-0 flex-wrap justify-start overflow-visible px-4 pb-2 group-data-[orientation=horizontal]/tabs:h-auto [&>[role=tab]]:h-auto [&>[role=tab]]:flex-none">
               <TabsTrigger value="card" disabled={sandboxBusy}>{ui("Card")}</TabsTrigger>
-              <TabsTrigger value="mechanics" disabled={sandboxBusy}>{ui("Mechanics")}</TabsTrigger>
-              <TabsTrigger value="subtypes" disabled={sandboxBusy}>{ui("Subtypes")}</TabsTrigger>
+              <TabsTrigger value="library" disabled={sandboxBusy}>{ui("Library")}</TabsTrigger>
               <TabsTrigger value="sets" disabled={sandboxBusy}>{ui("Sets")}</TabsTrigger>
               <TabsTrigger value="formats" disabled={sandboxBusy}>{ui("Formats")}</TabsTrigger>
               <TabsTrigger value="sandbox" disabled={submitting}>{ui("Sandbox")}</TabsTrigger>
@@ -1198,10 +1195,7 @@ export default function CreateCardForgeSheet({
             <TabsContent forceMount value="formats" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
               <CommunityFormatEditor active={open && workspaceTab === 'formats'} value={customFormatDraft} onChange={setCustomFormatDraft} />
             </TabsContent>
-            <TabsContent value="subtypes" className="min-h-0 flex-1 overflow-y-auto"><SubtypesPanel /></TabsContent>
-            <TabsContent value="mechanics" className="min-h-0 flex-1 overflow-y-auto">
-              <MechanicsPanel />
-            </TabsContent>
+            <TabsContent value="library" className="min-h-0 flex-1 overflow-y-auto"><BuildLibrary currentSet={customSetDraft} /></TabsContent>
             <TabsContent forceMount value="sandbox" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
               <SandboxPanel currentDraft={draft} onBusyChange={setSandboxBusy} onStarted={() => setOpen(false)} />
             </TabsContent>
@@ -1338,7 +1332,6 @@ export default function CreateCardForgeSheet({
             </div>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="secondary" size="sm" className="stone-pill" disabled={submitting} onClick={() => { if (setCardEditing) setSetCardIndex(null); cancelSelection(); setDraft(blankDraft()); setSeedDraft(null); setCatalogCard(null); setPrintingName(null); setActiveFace("face-0"); }}>{ui("New card")}</Button>
-              <CustomCardsButton className="stone-pill px-3 py-2" label={ui("Load custom cards")} />
               <Button
                 type="button"
                 variant="secondary"

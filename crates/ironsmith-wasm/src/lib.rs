@@ -7710,3 +7710,7 @@ mod combined_object_choice_view_tests {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "tests/highway_robbery.rs"]
 mod highway_robbery_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "tests/library_knowledge.rs"]
+mod library_knowledge_tests;

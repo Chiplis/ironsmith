@@ -1087,7 +1087,10 @@ export function resolveScryfallPrintingMetadata(imageUrl) {
     .then(async response => {
       if (!response.ok) throw new Error('Printing metadata unavailable');
       return response.json();
-    }).then(printing => {
+    }).then(async printing => {
+      const icon = await resolveScryfallSetSymbol(printing);
+      const symbolCode = icon?.match(/\/sets\/([a-z0-9_-]+)\.svg(?:[?#]|$)/i)?.[1];
+      if (icon) printing = {...printing, printingSymbol:{set:printing.set, code:symbolCode, url:icon}};
       resolvedPrintingMetadata.set(id, printing);
       if (resolvedPrintingMetadata.size > 256) resolvedPrintingMetadata.delete(resolvedPrintingMetadata.keys().next().value);
       return printing;
@@ -1114,21 +1117,10 @@ export async function resolveScryfallEnglishPrinting(imageUrl, printing) {
   return face?.image_uris ? {...english, ...face} : english;
 }
 
-const setSymbolRequests = new Map();
 export function resolveScryfallSetSymbol(printing) {
   const embedded = printing?.set === 'plst' ? printing.collector_number?.match(/^([a-z0-9]+)-/i)?.[1] : null;
   const code = String(embedded || printing?.set || '').toLowerCase();
-  if (!code) return Promise.resolve(null);
-  if (setSymbolRequests.has(code)) return setSymbolRequests.get(code);
-  const request = fetchScryfallApiJson(`https://api.scryfall.com/sets/${encodeURIComponent(code)}`)
-    .then(async response => {
-      if (!response.ok) throw new Error('Set metadata unavailable');
-      const set = await response.json();
-      return set.icon_svg_uri || null;
-    }).catch(() => {setSymbolRequests.delete(code);return null;});
-  setSymbolRequests.set(code, request);
-  if (setSymbolRequests.size > 128) setSymbolRequests.delete(setSymbolRequests.keys().next().value);
-  return request;
+  return resolveScryfallSetIcon(code);
 }
 
 const localizedFlavorRequests = new Map();

@@ -420,3 +420,44 @@ test('remaining frame families render through the host adapter', {timeout:120000
     await page.screenshot({path:'/tmp/card-glint-frame-audit.png',fullPage:true});
   }finally{await browser.close();await vite.close();}
 });
+
+test('modern nameplates center short and fitted titles with different mana costs', {timeout:90000}, async () => {
+  const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    const measurements = await page.evaluate(async () => {
+      const {cardGlintFace} = await import('/src/lib/card-glint/card.mjs');
+      const {renderCardGlint} = await import('/src/lib/card-glint/session.mjs');
+      const measurements = [];
+      for (const [name, mana_cost] of [['Sky',''], ['Glyphkeeper of the Wandering Valley','{1}{W}{U}{B}{R}{G}']]) {
+        const {canvas,api} = await renderCardGlint(cardGlintFace({name,mana_cost,type_line:'Creature — Wizard',colors:['U']}));
+        const [x,y,,height] = api.FACE_RECTS.title;
+        const scale = canvas.width / 488;
+        // Sample the first few letters, inside the bevel and clear of mana.
+        const top = Math.ceil(y * canvas.height + 5 * scale);
+        const pixels = canvas.getContext('2d').getImageData(Math.ceil(x * canvas.width + 13 * scale), top,
+          Math.round(60 * scale), Math.floor(height * canvas.height - 10 * scale));
+        const rows = [];
+        for (let row = 0; row < pixels.height; row++) {
+          for (let col = 0; col < pixels.width; col++) {
+            const i = (row * pixels.width + col) * 4;
+            if (Math.max(pixels.data[i], pixels.data[i+1], pixels.data[i+2]) < 65) {
+              rows.push(top + row);
+              break;
+            }
+          }
+        }
+        measurements.push({name, inkHeight:(rows.at(-1) - rows[0]) / scale,
+          offset:((rows[0] + rows.at(-1)) / 2 - (y + height/2) * canvas.height) / scale});
+      }
+      return measurements;
+    });
+    for (const {name,inkHeight,offset} of measurements) {
+      assert.ok(inkHeight > 12, `${name} has measurable title ink`);
+      assert.ok(Math.abs(offset) < 2, `${name} title is ${offset} reference pixels off center`);
+    }
+  } finally {await browser.close();await vite.close();}
+});

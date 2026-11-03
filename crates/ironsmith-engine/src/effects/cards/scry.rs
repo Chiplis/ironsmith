@@ -64,6 +64,7 @@ fn choose_fateseal_opponent(
 
 #[derive(Debug, Clone, PartialEq)]
 struct ScryArrangement {
+    viewer: PlayerId,
     player_id: PlayerId,
     total_looked: usize,
     top_cards_top_to_bottom: Vec<ObjectId>,
@@ -83,6 +84,7 @@ fn choose_scry_arrangement(
     let top_cards_top_to_bottom = top_library_cards_top_to_bottom(game, subject_id, count);
     if top_cards_top_to_bottom.is_empty() {
         return Ok(ScryArrangement {
+            viewer: viewer_id,
             player_id: subject_id,
             total_looked: 0,
             top_cards_top_to_bottom: Vec::new(),
@@ -91,6 +93,7 @@ fn choose_scry_arrangement(
         });
     }
 
+    game.remember_library_group(viewer_id, subject_id, &top_cards_top_to_bottom, false);
     let look = super::look_at_cards_with_outputs(
         game,
         ctx,
@@ -104,6 +107,7 @@ fn choose_scry_arrangement(
     retained_children.push(look);
     if ctx.decision_maker.awaiting_choice() {
         return Ok(ScryArrangement {
+            viewer: viewer_id,
             player_id: subject_id,
             total_looked: 0,
             top_cards_top_to_bottom: Vec::new(),
@@ -115,6 +119,7 @@ fn choose_scry_arrangement(
         game, ctx, viewer_id, &top_cards_top_to_bottom,
     ) else {
         return Ok(ScryArrangement {
+            viewer: viewer_id,
             player_id: subject_id,
             total_looked: 0,
             top_cards_top_to_bottom: Vec::new(),
@@ -144,7 +149,8 @@ fn choose_scry_arrangement(
     );
 
     Ok(ScryArrangement {
-        player_id: subject_id,
+        viewer: viewer_id,
+            player_id: subject_id,
         total_looked: top_cards_top_to_bottom.len(),
         top_cards_top_to_bottom: ordered_top_cards,
         bottom_cards_top_to_bottom: ordered_bottom_cards,
@@ -163,6 +169,9 @@ fn apply_scry_arrangement(game: &mut GameState, arrangement: &ScryArrangement) {
         &arrangement.bottom_cards_top_to_bottom,
         "scry or fateseal arranged library cards",
     );
+    for cards in [&arrangement.top_cards_top_to_bottom, &arrangement.bottom_cards_top_to_bottom] {
+        game.remember_library_group(arrangement.viewer, arrangement.player_id, cards, false);
+    }
 }
 
 /// Effect that lets a player scry N cards.

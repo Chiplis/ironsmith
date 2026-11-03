@@ -17,9 +17,9 @@ export function readStoredPlayerName() {
 
 export function writeStoredPlayerName(name) {
   const value = sanitizeStoredPlayerName(name);
-  if (!value) return;
   try {
-    globalThis.localStorage?.setItem(storageKey, value);
+    if (value) globalThis.localStorage?.setItem(storageKey, value);
+    else globalThis.localStorage?.removeItem(storageKey);
   } catch {
     // Private windows can refuse storage; the name still applies this session.
   }

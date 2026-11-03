@@ -60,6 +60,8 @@ impl EffectExecutor for LookAtTopCardsEffect {
                 let viewers =
                     game.private_information_viewers_for(viewer, crate::zone::Zone::Library);
                 game.hydrate_verified_library_replay_view(&top_cards, &viewers, self.reveal);
+                let entitled = if self.reveal { game.players.iter().map(|p| p.id).collect() } else { viewers };
+                for viewer in entitled { game.remember_library_group(viewer, player_id, &top_cards, false); }
                 let snapshots: Vec<ObjectSnapshot> = top_cards
                     .iter()
                     .filter_map(|&id| {

@@ -164,6 +164,7 @@ fn execute_surveil_body(
         .collect::<Vec<_>>();
     let kept_on_top_snapshots = surveilled_snapshots.clone();
 
+    game.remember_library_group(player_id, player_id, &top_cards_top_to_bottom, false);
     let observation = super::look_at_cards_with_outputs(
         game,
         ctx,
@@ -269,6 +270,7 @@ fn execute_surveil_body(
                 &[],
                 "surveil arranged cards kept on top",
             );
+            game.remember_library_group(player_id, player_id, &ordered_top_cards, false);
             game.close_simultaneous_action(opened_batch);
             let mut object_tags = HashMap::new();
             object_tags

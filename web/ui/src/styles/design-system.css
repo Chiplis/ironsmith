@@ -4055,6 +4055,31 @@ button:disabled,
     animation: none;
   }
 }
+/* The zone a pseudo-hand card plays from: its action halo takes the zone's
+   hue, the same one that zone's icon wears as its border, so it never reads
+   as a card in hand. */
+.game-card.hand-card.pseudo-hand-zone-card.glow-extra {
+  --glow-rgb: var(--pseudo-hand-zone-rgb);
+}
+.game-card.hand-card.pseudo-hand-zone-card.glow-extra:is(:hover, .hovered) {
+  box-shadow:
+    0 0 18px 6px rgba(var(--pseudo-hand-zone-rgb), 0.7),
+    0 0 36px 12px rgba(var(--pseudo-hand-zone-rgb), 0.35),
+    inset 0 0 10px 4px rgba(var(--pseudo-hand-zone-rgb), 0.4) !important;
+}
+.hand-zone-separator {
+  position: relative;
+  pointer-events: none;
+}
+.hand-zone-separator::before {
+  content: "";
+  position: absolute;
+  top: 12%;
+  bottom: 12%;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(205, 165, 255, 0.45), transparent);
+}
 .game-card.battlefield-token-card:not(.battlefield-arena-card) > .card-inspector-source-glow {
   border-radius: 50%;
 }

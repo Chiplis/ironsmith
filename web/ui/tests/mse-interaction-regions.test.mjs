@@ -42,12 +42,13 @@ test('rules helpers resolve exact substrings without matching card names',()=>{
 });
 
 
-test('Equip activation owns its keyword and cost hit area; inactive keywords keep help', async()=>{
+test('Equip row keeps keyword and cost helpers independently clickable', async()=>{
   const {mseRulesHelperView}=await import('../src/lib/mse/rules-helper-ranges.mjs');
   const view={lines:['Flash','Equip {3}{W}'],actions:new Map([[1,[{kind:'activate_ability'}]]])};
   const helpers=mseRulesHelperView(view);
   assert.ok(helpers.ranges.get(0).some(range=>range.helper.type==='keyword'));
-  assert.deepEqual(helpers.ranges.get(1),[]);
+  assert.ok(helpers.ranges.get(1).some(range=>range.helper.type==='keyword'));
+  assert.deepEqual(helpers.ranges.get(1).filter(range=>range.helper.type==='symbol').map(range=>range.helper.symbol),['3','W']);
   assert.ok(mseRulesHelperView({...view,actions:new Map()}).ranges.get(1).length);
 });
 

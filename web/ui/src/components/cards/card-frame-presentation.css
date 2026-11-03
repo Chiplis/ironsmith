@@ -32,7 +32,7 @@
 .mse-card-hit-target[data-hovered=true]{background:#70bc972b}
 .mse-card-hit-target[data-stack-highlighted=true]{background:#ffd16a38}
 .mse-card-live-details{position:absolute;bottom:2%;left:4%;max-width:65%;font:11px/1.2 system-ui,sans-serif;background:#fffbd9e6;color:#111;border-radius:3px;padding:2px 4px}
-.mse-card-rule-helper{position:absolute;transform-origin:0 0;pointer-events:auto;cursor:help;border:0;border-bottom:1px dotted currentColor;border-radius:1px;padding:0;background:transparent;color:#16486f;box-sizing:border-box}
+.mse-card-rule-helper{position:absolute;z-index:3;transform-origin:0 0;pointer-events:auto;cursor:help;border:0;border-bottom:1px dotted currentColor;border-radius:1px;padding:0;background:transparent;color:#16486f;box-sizing:border-box}
 .mse-card-rule-helper:hover{background:#74baf12b}
 .mse-card-rule-helper:focus-visible{outline:2px solid #2384d1;outline-offset:2px}
 .mse-helper-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}

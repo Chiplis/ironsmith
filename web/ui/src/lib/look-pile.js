@@ -21,6 +21,11 @@ export function temporaryLookView(state) {
   return ownHandReveal ? null : view;
 }
 
+// Whether this perspective knows where any card sits in this library.
+export function knowsLibraryPositions(cards) {
+  return cards.some((card) => card.position != null || card.position_range);
+}
+
 function visibleName(card) {
   return Boolean(card?.name) && !/^(hidden card|face.down card|unknown card)$/i.test(card.name.trim());
 }
@@ -65,9 +70,16 @@ function lookedCardZone(card, fallback = null) {
 export function lookedZoneCards(state, player, zone) {
   const owner = playerKey(player);
   const view = temporaryLookView(state);
-  const fromView = view && String(view.subject) === owner
+  // A library view only stands in for the deck while its prompt is open; an
+  // acknowledged search must not leave the whole library on display.
+  const liveView = view && String(view.subject) === owner
+    && !(zone === "library" && view.acknowledged);
+  const fromView = liveView
     ? (view.cards || []).filter((card) => lookedCardZone(card, view.zone) === zone)
     : [];
+  if (zone === "library" && Array.isArray(player?.library_memory) && fromView.length === 0) {
+    return libraryMemoryCards(player);
+  }
   const remembered = (player?.persistent_look_cards || [])
     .filter((card) => lookedCardZone(card) === zone);
   const cards = mergeLookCards(remembered, fromView);
@@ -75,6 +87,55 @@ export function lookedZoneCards(state, player, zone) {
     cards.sort((left, right) => (left.position ?? Infinity) - (right.position ?? Infinity));
   }
   return cards;
+}
+
+// The library as this perspective knows it, top first. Exact positions keep
+// their object; a randomly placed copy knows only its span; the copies of our
+// own deck whose slots are unknown share one stack per name; and the rest of
+// an opponent's deck is backs. Only exact cards carry an object id, and the
+// order inside a span or among the unknowns is not the real one: those cards
+// just fill the slots no exact card claims.
+export function libraryMemoryCards(player) {
+  const owner = playerKey(player);
+  const exact = [];
+  const spans = [];
+  const unknown = [];
+  for (const row of player?.library_memory || []) {
+    if (row.position != null) exact.push({ ...row, slot: row.position });
+    else if (row.range_start != null) spans.push(row);
+    else unknown.push(row);
+  }
+  const taken = new Set(exact.map((card) => card.slot));
+  const claim = (from) => {
+    let slot = from;
+    while (taken.has(slot)) slot += 1;
+    taken.add(slot);
+    return slot;
+  };
+  const cards = exact.map(({ id, name, slot }) => ({ id, name, position: slot, slot }));
+  let index = 0;
+  let named = cards.length;
+  const add = (card, copies = 1) => {
+    cards.push({ id: `library-memory-${owner}-${index}`, synthetic: true, ...card });
+    index += 1;
+    named += copies;
+  };
+  for (const row of spans) {
+    for (let copy = 0; copy < Math.max(1, row.count); copy += 1) {
+      add({ name: row.name, position_range: [row.range_start, row.range_end], slot: claim(row.range_start) });
+    }
+  }
+  for (const row of unknown) {
+    const copies = Math.max(1, row.count);
+    const slot = claim(0);
+    for (let copy = 1; copy < copies; copy += 1) claim(slot);
+    add({ name: row.name, unknown_position: true, stack_count: copies, slot }, copies);
+  }
+  // Whatever we can't name -- an opponent's deck, or ours while the engine
+  // only holds hidden placeholders -- is a card back with no known slot.
+  const size = Math.max(0, Number(player?.library_size) || 0);
+  while (named < size) add({ card_back: true, unknown_position: true, slot: claim(0) });
+  return cards.sort((left, right) => left.slot - right.slot);
 }
 
 // Whether the live view (not yet acknowledged) put cards into this zone.

@@ -75,19 +75,3 @@ test("persistent draw bag exhausts each cycle and avoids repeats across hand bou
   assert.equal(sample(pool).length, 7);
   assert.equal(sample(pool.slice(0, 3)).length, 7);
 });
-
-test("every shipped custom card carries its source URL as display flavor without changing rules", async () => {
-  const {readFile} = await import("node:fs/promises");
-  const {registerCustomCardFlavor, customCardFlavorText} = await import("../src/lib/custom-card-flavor.js");
-  const pool = JSON.parse(await readFile(new URL("../public/custommagic/pool.json", import.meta.url)));
-  assert.ok(pool.cards.length > 0);
-  registerCustomCardFlavor(pool.cards);
-  for (const card of pool.cards) {
-    assert.match(card.source.post, /^https:\/\/www\.reddit\.com\/r\/custommagic\/comments\//);
-    for (const face of card.draft.faces) {
-      assert.equal(face.flavorText, card.source.post);
-      assert.equal(customCardFlavorText(face.name), card.source.post);
-      assert.ok(!face.oracleText.includes(card.source.post));
-    }
-  }
-});

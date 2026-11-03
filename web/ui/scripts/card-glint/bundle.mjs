@@ -33,6 +33,48 @@ const result = await build({
     name:'ironsmith-live-land-palette',
     enforce:'pre',
     transform(code,id) {
+      // The component painter and the retained modern plate share a nameplate.
+      // Fit the larger title to the available width and center the mana discs.
+      const nameplateEdits = {
+        'face-layout.ts': [['normalTitleFont: 26,', 'normalTitleFont: 27,']],
+        'canvas-face.ts': [
+          ["ty + th / 2 + (kind === 'normal' ? 1 : 0)", "kind === 'normal' && !panel ? {center: ty + th / 2} : ty + th / 2 + (kind === 'normal' ? 1 : 0)"],
+          ['ty + th / 2 - manaSize / 2 + FACE_TEXT.manaLift / 2', "ty + th / 2 - manaSize / 2 + (kind === 'normal' && !panel ? 0 : FACE_TEXT.manaLift / 2)"],
+        ],
+        'canvas-text.ts': [
+          ['export function paintFittedText(\n  context: CanvasContext,\n  text: string,\n  x: number,\n  y: number,',
+            'export function paintFittedText(\n  context: CanvasContext,\n  text: string,\n  x: number,\n  anchor: number | {center: number},'],
+          ['  paintTextInk(\n', `  let y: number;
+  if (typeof anchor === 'number') y = anchor;
+  else {
+    const ink = measureFontText(context, text);
+    y = anchor.center + (ink.actualBoundingBoxAscent - ink.actualBoundingBoxDescent) / 2;
+  }
+  paintTextInk(\n`],
+        ],
+        'frame-plates.ts': [
+          ['?? 29.2) : 26,', '?? 29.2) : retained ? FACE_TEXT.normalTitleFont : 26,'],
+          ['FACE_RECTS.title[3] / 2 + FACE_TEXT.manaLift / (2 * 680)', 'FACE_RECTS.title[3] / 2'],
+        ],
+        'frame-plate-paint.ts': [['ty + th / 2 + (retained ? 1 : 0)', 'retained ? {center: ty + th / 2} : ty + th / 2']],
+      };
+      const edits = id.includes('/presentation/') && nameplateEdits[path.basename(id)];
+      if (edits) {
+        for (const [before, after] of edits) {
+          if (!code.includes(before)) throw new Error(`card-glint nameplate patch needs updating in ${id}`);
+          code = code.replaceAll(before, after);
+        }
+        return code;
+      }
+      if (id.endsWith('/presentation/assets.ts')) {
+        // Use the displayed printing's icon identity independently of its frame
+        // and footer. An explicit style may select a different set altogether.
+        const before = "set === 'chr' ? (chroniclesSymbol(face.name) ?? '') : set,";
+        const end = '      printingSetSymbolSource(face),\n    )';
+        if (!code.includes(before) || !code.includes(end)) throw new Error('card-glint set symbol patch needs updating');
+        return code.replace(before, "set === 'chr' ? (chroniclesSymbol(face.name) ?? '') : (face.printingSymbol?.set === set ? face.printingSymbol.code ?? set : set),")
+          .replace(end, end + " ?? (face.printingSymbol?.set === set && set !== 'chr' ? face.printingSymbol.url : null)");
+      }
       if (id.endsWith('/presentation/prepare-frame.ts')) {
         // Prepared has no dedicated colorless stock. Use its neutral artifact
         // plate for colorless faces, without changing their types or colors.

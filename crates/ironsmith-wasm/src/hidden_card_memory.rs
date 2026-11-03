@@ -10,7 +10,7 @@
 //! forgotten rather than tracked.
 use super::*;
 use std::sync::Arc;
-use ui_snapshot::{library_position, GameSnapshot, ViewedCardSnapshot};
+use ui_snapshot::{LibraryMemoryRow, GameSnapshot, ViewedCardSnapshot};
 
 #[derive(Clone, Debug)]
 struct KnownHiddenCard {
@@ -146,10 +146,35 @@ impl HiddenCardMemory {
 
         for player in &mut snapshot.players {
             let owner = PlayerId::from_index(player.id);
-            let needs_position = player
-                .persistent_look_cards
-                .iter()
-                .any(|card| card.zone.as_deref() == Some("library") && card.position.is_none());
+            let Some(subject) = game.player(owner) else { continue; };
+            let mut positions = game.known_library_positions(perspective, owner);
+            if player.can_view_library_top && let Some(id) = subject.library.last() {
+                positions.insert(*id, (0, 0));
+            }
+            let exact = |id: ObjectId| positions.get(&id).and_then(|(a,b)| (a == b).then_some(*a));
+            // Aggregate before crossing the JS boundary. Neither row order nor
+            // allocation IDs may identify a card within an unordered block.
+            let mut inventory = std::collections::BTreeMap::new();
+            for id in subject.library.iter() {
+                let bounds = positions.get(id).copied();
+                if game.is_hidden_card_placeholder(*id) || (perspective != owner && bounds.is_none()) { continue; }
+                let Some(object) = game.object(*id) else { continue; };
+                let key = (bounds, object.name.to_string(), exact(*id).map(|_| id.0));
+                *inventory.entry(key).or_insert(0) += 1;
+            }
+            player.library_memory = inventory.into_iter().map(|((bounds, name, id), count)| {
+                let (first, last) = bounds.unzip();
+                LibraryMemoryRow { name, count, id, position: if first == last { first } else { None },
+                    range_start:first, range_end:last }
+            }).collect();
+            if let Some(view) = &mut snapshot.viewed_cards {
+                for card in &mut view.cards {
+                    if card.zone.as_deref() == Some("library") && game.object(ObjectId::from_raw(card.id)).is_some_and(|o| o.owner == owner) {
+                        card.position = exact(ObjectId::from_raw(card.id));
+                    }
+                }
+            }
+            let needs_position = player.persistent_look_cards.iter().any(|card| card.zone.as_deref() == Some("library"));
             let additions: Vec<&ironsmith::object::Object> = known_ids
                 .iter()
                 .filter_map(|id| game.object(*id))
@@ -163,9 +188,7 @@ impl HiddenCardMemory {
                 .persistent_look_cards
                 .iter()
                 .map(|card| {
-                    let position = game
-                        .object(ObjectId::from_raw(card.id))
-                        .and_then(|object| library_position(game, object));
+                    let position = exact(ObjectId::from_raw(card.id));
                     if card.position == position {
                         card.clone()
                     } else {
@@ -179,7 +202,7 @@ impl HiddenCardMemory {
                 identity.end_face_down_cast_overlay();
                 let mut card = ui_snapshot::viewed_card_snapshot(&identity);
                 card.zone = Some(decision_zone_name(object.zone));
-                card.position = library_position(game, object);
+                card.position = exact(object.id);
                 cards.push(Arc::new(card));
             }
             player.persistent_look_cards = Arc::new(cards);
@@ -266,11 +289,17 @@ mod tests {
         }
         let library = wasm.game.player(bob).unwrap().library.to_vec();
         let top_two = vec![library[library.len() - 1], library[library.len() - 2]];
-        wasm.active_viewed_cards = Some(private_view(&wasm, alice, bob, Zone::Library, top_two));
+        wasm.active_viewed_cards = Some(private_view(&wasm, alice, bob, Zone::Library, top_two.clone()));
         snapshot_with_memory(&mut wasm, alice);
 
+        // Seeing a card (a search) teaches its name, never its slot.
         wasm.active_viewed_cards = None;
         let mut remembered = known(&snapshot_with_memory(&mut wasm, alice), bob);
+        assert!(remembered.iter().all(|(_, _, position)| position.is_none()));
+
+        // A look at the top records where those cards are.
+        wasm.game.remember_library_group(alice, bob, &top_two, false);
+        remembered = known(&snapshot_with_memory(&mut wasm, alice), bob);
         remembered.sort_by_key(|(_, _, position)| *position);
         assert_eq!(remembered, vec![
             ("Top".to_string(), Some("library".to_string()), Some(0)),

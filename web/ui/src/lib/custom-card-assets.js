@@ -1,4 +1,3 @@
-import assets from "./custom-card-assets.generated.json" with { type: "json" };
 import { resolveAssetUrl } from "./card-art-url.js";
 
 const imported = new Map();
@@ -9,6 +8,7 @@ export function registerCustomCardAssets(cards) {
     imported.set(face.name.trim().toLowerCase(), {
       full: face.imageUrl || face.artUrl || '', art: face.artUrl || '',
       typeLine: [...(face.supertypes || []), ...(face.cardTypes || []), ...(face.subtypes?.length ? ['—', ...face.subtypes] : [])].join(' '),
+      displayOracleText: face.displayOracleText ?? face.oracleText,
       manaCost: face.manaCost, flavorText: face.flavorText, power: face.power, toughness: face.toughness,
       loyalty: face.loyalty, defense: face.defense, colorIndicator: face.colorIndicator,
       artist: meta.artist, set: meta.setCode, setName: meta.setName, collectorNumber: meta.collectorNumber,
@@ -21,7 +21,7 @@ export function registerCustomCardAssets(cards) {
 // a few designs intentionally reuse names of official cards.
 export function customCardAssets(name) {
   const key = String(name || "").trim().toLowerCase();
-  return imported.get(key) || assets[key] || null;
+  return imported.get(key) || null;
 }
 
 export function customCardImageUrl(name, version = "normal") {

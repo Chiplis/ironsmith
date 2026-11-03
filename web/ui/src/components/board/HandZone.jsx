@@ -265,18 +265,21 @@ function useNavigationRightEdge(enabled) {
 
 // Clears the fan's outermost card, whose rotation reaches past its slot.
 const HAND_NAVIGATION_GAP = 30;
+// Space between the real hand and the cards playable from other zones.
+const HAND_ZONE_GAP_RATIO = 0.45;
 
 function computeManabrewSpread(total, dims) {
   if (total <= 1) return 0;
+  const zoneGap = dims.zoneGap || 0;
   if (dims.packWidth) {
     return Math.max(0, Math.min(
       dims.maxSpread,
-      (dims.packWidth - dims.cardW) / (total - 1)
+      (dims.packWidth - zoneGap - dims.cardW) / (total - 1)
     ));
   }
   return Math.max(
     dims.minSpread,
-    Math.min(dims.maxSpread, Math.floor((dims.spreadWidth - dims.cardW) / (total - 1)))
+    Math.min(dims.maxSpread, Math.floor((dims.spreadWidth - zoneGap - dims.cardW) / (total - 1)))
   );
 }
 
@@ -311,7 +314,7 @@ function computeRouletteWidth(total, dims) {
 function computeHandRowWidth(total, dims) {
   if (total <= 0) return 0;
   const stride = computeManabrewSpread(total, dims);
-  return Math.round(dims.cardW + Math.max(0, total - 1) * stride);
+  return Math.round(dims.cardW + Math.max(0, total - 1) * stride + (dims.zoneGap || 0));
 }
 
 function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeIsPlayable = false, centerActive = false, spreadAroundActive = false } = {}) {
@@ -897,8 +900,15 @@ export default function HandZone({
   const navigationRight = useNavigationRightEdge(
     (layout === "fan" || layout === "mobile-fan") && !(availableWidth > 0)
   );
+  // Cards playable from another zone sit apart from the real hand: a fixed
+  // gap the fan's overlap cannot close, carved out of the same width.
+  const hasZoneGap = hasExtra && handCards.length > 0;
   const handDimensions = useMemo(() => {
-    const dimensions = computeManabrewHandDimensions(handScale, viewportHeight);
+    const baseDimensions = computeManabrewHandDimensions(handScale, viewportHeight);
+    const dimensions = {
+      ...baseDimensions,
+      zoneGap: hasZoneGap ? Math.round(baseDimensions.cardW * HAND_ZONE_GAP_RATIO) : 0,
+    };
     // The fullscreen hand is already sized for reading. Desktop's upward lift
     // would move its title above the safe header on short landscape phones.
     if (layout === "mobile-fullscreen") {
@@ -931,7 +941,7 @@ export default function HandZone({
       return { ...dimensions, packWidth, hoverScale, centerShift };
     }
     return dimensions;
-  }, [handScale, viewportHeight, viewportWidth, layout, availableWidth, localPreviewHeight, navigationRight]);
+  }, [handScale, viewportHeight, viewportWidth, layout, availableWidth, localPreviewHeight, navigationRight, hasZoneGap]);
   // The shell is centred on the screen; the lane's own centre may sit left of that.
   useLayoutEffect(() => {
     const shell = handListRef.current?.closest(".hand-reveal-shell");
@@ -1891,6 +1901,7 @@ export default function HandZone({
           paymentProven={plays.some(action => action.payment_proven !== false)}
           glowKind={glowKind}
           pseudoHandOwnerId={extra.ownerId}
+          pseudoHandZone={extra.fromZone}
           handCircuitMode="full"
           suppressTooltip={isMobileFan}
           isHovered={isHovered}
@@ -1922,7 +1933,9 @@ export default function HandZone({
         return (
           <div
             key={`${cycleIndex}-${entry.key}`}
-            className="mx-3 w-px self-stretch my-2 bg-[rgba(174,118,255,0.3)]"
+            className="hand-zone-separator shrink-0 self-stretch"
+            style={{ flex: `0 0 ${handDimensions.zoneGap}px`, width: `${handDimensions.zoneGap}px` }}
+            aria-hidden="true"
           />
         );
       }
@@ -2060,6 +2073,7 @@ export default function HandZone({
             paymentProven={plays.some(action => action.payment_proven !== false)}
             glowKind={glowKind}
             pseudoHandOwnerId={extra.ownerId}
+          pseudoHandZone={extra.fromZone}
             isNew={isPrimaryCycle}
             handCircuitMode={isExpanded ? "full" : "top"}
             suppressTooltip={isMobileFan}

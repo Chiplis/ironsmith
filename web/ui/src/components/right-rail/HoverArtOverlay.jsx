@@ -1004,6 +1004,11 @@ export default function HoverArtOverlay({
     if (shouldPreferStackAbilityRules) {
       return compiledRulesLines;
     }
+    // Imported cards retain their authored keyword rows even when their baked
+    // executable definitions contain expanded reminder programs.
+    if (!debugInspector && localCustom?.displayOracleText != null) {
+      return String(localCustom.displayOracleText).split("\n").map(line => line.trim()).filter(Boolean);
+    }
     if (landRulesLines.length > 0) {
       return landRulesLines;
     }
@@ -1014,7 +1019,7 @@ export default function HoverArtOverlay({
       return oracleRulesLines;
     }
     return compiledRulesLines;
-  }, [compiledRulesLines, landRulesLines, oracleRulesLines, shouldPreferStackAbilityRules, hasLiveRules]);
+  }, [compiledRulesLines, landRulesLines, oracleRulesLines, shouldPreferStackAbilityRules, hasLiveRules, debugInspector, localCustom?.displayOracleText]);
   const baseDisplayRulesText = baseDisplayRulesLines.join("\n");
   const baseDisplayObjectName = debugInspector ? null : objectName;
   const baseDisplayTypeLine = debugInspector ? null : typeLineDisplay;
@@ -1071,13 +1076,14 @@ export default function HoverArtOverlay({
   // the engine's compiled paragraphs. Generated translations follow their input.
   const canonicalRulesText = translatedRulesText && activeCardTranslation?.rulesSource === "scryfall"
     && oracleRulesLines.length > 0 ? oracleRulesLines.join("\n") : baseDisplayRulesText;
+  const scopedMechanics = useMemo(() => customCardAssets(baseDisplayObjectName)?.customMechanics || [], [baseDisplayObjectName, details?.id]);
   const faceUpRules = useMemo(() => turnFaceUpRulesLines(paymentActions), [paymentActions]);
   const ungroupedRulesView = useMemo(() => {
     const withFaceUp = text => [text, ...faceUpRules.lines].filter(Boolean).join("\n");
     return interactiveRulesView(
-      withFaceUp(canonicalRulesText), withFaceUp(translatedRulesText || canonicalRulesText), faceUpRules.actions
+      withFaceUp(canonicalRulesText), withFaceUp(translatedRulesText || canonicalRulesText), faceUpRules.actions, scopedMechanics
     );
-  }, [canonicalRulesText, translatedRulesText, faceUpRules]);
+  }, [canonicalRulesText, translatedRulesText, faceUpRules, scopedMechanics]);
   const rulesView = useMemo(() => groupManaAbilities(ungroupedRulesView, locale), [ungroupedRulesView, locale]);
   // Missing legal actions still need a discoverable, non-dispatching surface
   // on our battlefield cards (targets, timing, loyalty limits, other costs).
@@ -1087,20 +1093,20 @@ export default function HoverArtOverlay({
       || controller == null || Number(controller) !== Number(state?.perspective)
       || state?.decision?.kind !== "priority") return rulesView;
     const actions = new Map(rulesView.actions);
-    for (const index of activatedAbilityLineIndices(rulesView.lines)) {
+    for (const index of activatedAbilityLineIndices(rulesView.lines, scopedMechanics)) {
       if (!actions.get(index)?.length) actions.set(index, [{
         available: false, legal: false,
         unavailable_reason: "This ability cannot be activated right now.",
       }]);
     }
     return {...rulesView, actions};
-  }, [rulesView, details?.controller, previewCard?.controller, inspectorZone, state?.perspective, state?.decision?.kind]);
+  }, [rulesView, details?.controller, previewCard?.controller, inspectorZone, state?.perspective, state?.decision?.kind, scopedMechanics]);
   const displayRulesLines = rulesView.lines;
   const displayRulesText = displayRulesLines.join("\n");
   const interactiveRuleLineActions = rulesView.actions;
   const activatedRuleLineIndices = useMemo(
-    () => new Set(activatedAbilityLineIndices(displayRulesLines)),
-    [displayRulesLines]
+    () => new Set(activatedAbilityLineIndices(displayRulesLines, scopedMechanics)),
+    [displayRulesLines, scopedMechanics]
   );
   const displayObjectName = activeCardTranslation?.name || baseDisplayObjectName;
   const displayTypeLine = activeCardTranslation?.typeLine || baseDisplayTypeLine;

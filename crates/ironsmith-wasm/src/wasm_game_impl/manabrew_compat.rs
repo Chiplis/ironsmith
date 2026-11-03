@@ -632,24 +632,6 @@ fn manabrew_plan_is_fully_selected(
                         )
                     })
                 }
-                ironsmith::mana_payment::PlannedPipPayment::PutMinusOneCounter(source) => {
-                    preferences.required_alternatives.iter().any(|selected| {
-                        selected_alternative_matches(
-                            selected,
-                            source,
-                            ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter,
-                        )
-                    })
-                }
-                ironsmith::mana_payment::PlannedPipPayment::PutMinusOneCounter(source) => {
-                    preferences.required_alternatives.iter().any(|selected| {
-                        selected_alternative_matches(
-                            selected,
-                            source,
-                            ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter,
-                        )
-                    })
-                }
                 ironsmith::mana_payment::PlannedPipPayment::Assist { .. } => false,
             })
 }
@@ -716,6 +698,15 @@ fn manabrew_remaining_mana_cost(
                         selected,
                         source,
                         ironsmith::mana_payment::ManaPaymentSourceKind::Delve,
+                    )
+                })
+            }
+            ironsmith::mana_payment::PlannedPipPayment::PutMinusOneCounter(source) => {
+                !preferences.required_alternatives.iter().any(|selected| {
+                    selected_alternative_matches(
+                        selected,
+                        source,
+                        ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter,
                     )
                 })
             }
