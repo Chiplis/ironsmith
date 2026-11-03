@@ -32,6 +32,7 @@ members = [
     "crates/ironsmith-wasm",
     "crates/ironsmith-wasm-facade",
     "crates/ironsmith-compiler-wasm",
+    "crates/ironsmith-oracle-wasm",
     "crates/ironsmith-verifier",
     "crates/ironsmith-verifier-ziffle",
     "crates/ironsmith-verifier-wasm-api",
