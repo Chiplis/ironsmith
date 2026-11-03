@@ -17,10 +17,6 @@ export default function CardGlintInteractions({result,regions,rulesView,onActiva
     const selected=highlighted?.has(region.lineIndex)||chosen===action;
     return [key,selected?'selected':hovered===key?abilityActionState(action):'idle'];
   })),[hitRegions,highlighted,chosen,hovered]);
-  const {locale}=useI18n({optional:true});
-  const helpers=useMemo(()=>cardGlintRegions(result,mseRulesHelperView(rulesView,locale,true,customCardAssets(name)?.customMechanics || [])),[result,rulesView,locale,name]);
-  const position=region=>({left:`${region.left/488*100}%`,top:`${region.top/680*100}%`,
-    width:`${region.width/488*100}%`,height:`${region.height/680*100}%`,transform:`rotate(${region.angle}deg)`});
   return <div className="mse-card-interactions">
     <AbilityTextInk result={result} regions={regions} states={states}/>
     {hitRegions.map((region,index)=>{
@@ -43,6 +39,18 @@ export default function CardGlintInteractions({result,regions,rulesView,onActiva
         onClick={event=>{event.preventDefault();event.stopPropagation();if(onActivate&&status!=='unavailable'){if(status==='available')setChosen(action);onActivate(action);}}}/>
         :<span key={index} {...props} style={{...props.style,zIndex:0,cursor:"default"}}/>;
     })}
+    <CardGlintRuleHelpers result={result} rulesView={rulesView} name={name}/>
+  </div>;
+}
+
+// Keyword and symbol help targets over the painted rules. They also stand
+// alone on non-interactive frames (a hovered hand card) that offer no actions.
+export function CardGlintRuleHelpers({result,rulesView,name}) {
+  const {locale}=useI18n({optional:true});
+  const helpers=useMemo(()=>cardGlintRegions(result,mseRulesHelperView(rulesView,locale,true,customCardAssets(name)?.customMechanics || [])),[result,rulesView,locale,name]);
+  const position=region=>({left:`${region.left/488*100}%`,top:`${region.top/680*100}%`,
+    width:`${region.width/488*100}%`,height:`${region.height/680*100}%`,transform:`rotate(${region.angle}deg)`});
+  return <>
     {helpers.map((region,index)=>{
       const helper=region.helper,style=position(region);
       if(helper.type==='keyword')return <KeywordHelperText key={`helper-${index}`} text={helper.text} rulesLineIndex={region.lineIndex} context={helper.context} rule={helper.rule} respectContext
@@ -52,5 +60,5 @@ export default function CardGlintInteractions({result,regions,rulesView,onActiva
           onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}/>
       </GameSymbolHelper>;
     })}
-  </div>;
+  </>;
 }

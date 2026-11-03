@@ -12,7 +12,7 @@ const WIDTH = CARD_FRAME_RENDER_WIDTH;
 const HEIGHT = CARD_FRAME_RENDER_HEIGHT;
 
 // A landscape frame (a battle, a plane) passes its own composition size.
-export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0, renderWidth=WIDTH, renderHeight=HEIGHT, deferUpgrade=false }) {
+export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0, renderWidth=WIDTH, renderHeight=HEIGHT, deferUpgrade=false, keywordHelpers=false }) {
   const host = useRef(null);
   const [scale, setScale] = useState(0);
   useLayoutEffect(() => {
@@ -22,13 +22,14 @@ export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0, render
     observer.observe(host.current);
     return () => observer.disconnect();
   }, [renderWidth, renderHeight]);
-  return <div ref={host} className="battlefield-prepared-frame" style={{position:'absolute',inset:0,zIndex:1,pointerEvents:'none',overflow:'hidden'}} aria-hidden="true" inert>
+  return <div ref={host} className="battlefield-prepared-frame" style={{position:'absolute',inset:0,zIndex:1,pointerEvents:'none',overflow:'hidden'}}
+    aria-hidden={keywordHelpers?undefined:'true'} inert={!keywordHelpers}>
     <div className="battlefield-prepared-frame__composition" style={{
       width: renderWidth, height: renderHeight,
       position:'absolute',left:'50%',top:'50%',
       transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin:'center', visibility: scale > 0 ? 'visible' : 'hidden',
     }}>
-      <CardFramePresentation card={card} imageUrl={imageUrl} faceIndex={faceIndex} deferUpgrade={deferUpgrade}/>
+      <CardFramePresentation card={card} imageUrl={imageUrl} faceIndex={faceIndex} deferUpgrade={deferUpgrade} keywordHelpers={keywordHelpers}/>
     </div>
   </div>;
 }

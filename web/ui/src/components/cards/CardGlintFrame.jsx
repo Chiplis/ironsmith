@@ -2,7 +2,7 @@ import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {cardGlintFace} from '@/lib/card-glint/card.mjs';
 import {renderCardGlint,peekCardGlintFrame,renderCardGlintWithoutRules} from '@/lib/card-glint/session.mjs';
 import {peekScryfallPrintingMetadata,resolveScryfallPrintingMetadata} from '@/lib/scryfall';
-import CardGlintInteractions from './CardGlintInteractions';
+import CardGlintInteractions,{CardGlintRuleHelpers} from './CardGlintInteractions';
 import CardGlintScrollableRules from './CardGlintScrollableRules';
 import {cardGlintRegions,cardGlintActionsCovered,cardGlintRulesFontSize} from '@/lib/card-glint/interactions.mjs';
 import {cardPresentation} from '@/lib/card-glint/printing-choices.mjs';
@@ -11,7 +11,7 @@ import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 
 // In the inspector, a card with Build choices is drawn by the WebGL renderer
 // over its static face, which still provides the interaction regions.
-export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,rulesView,onActivate,highlighted,details,inspector=false}) {
+export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,rulesView,onActivate,highlighted,details,inspector=false,keywordHelpers=false}) {
   const canvas = useRef(null), [finished,setFinished] = useState(null), [metadata,setMetadata] = useState(null);
   const interactive=Boolean(rulesView);
   const [displayWidth,setDisplayWidth] = useState(null);
@@ -67,6 +67,10 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
     live.pointer({x:(event.clientX-box.left)/box.width,y:(event.clientY-box.top)/box.height});
   };
   const regions = useMemo(() => result?.rulesOmitted?[]:cardGlintRegions(result,rulesView), [result,rulesView]);
+  // Help targets resolve against the painted rules text itself.
+  const helperView = useMemo(() => keywordHelpers && !rulesView && !result?.rulesOmitted
+    ? {lines:String(result?.face.rulesText||'').split('\n').filter(line=>line.trim()),actions:new Map()} : null,
+  [keywordHelpers,rulesView,result]);
   const paintedFontSize=useMemo(()=>rulesView&&!result?.rulesOmitted?cardGlintRulesFontSize(result):null,[result,rulesView]);
   const readable=!rulesView || paintedFontSize==null || displayWidth==null || paintedFontSize*displayWidth/488>=12;
   const covered=cardGlintActionsCovered(regions,rulesView);
@@ -87,6 +91,7 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
         onActivate={onActivate} highlighted={highlighted} name={face.name}/>}
       {ready && rulesView && !scrollable && <CardGlintInteractions result={result} regions={regions} rulesView={rulesView}
         onActivate={onActivate} highlighted={highlighted} name={face.name}/>}
+      {ready && helperView && <div className="mse-card-interactions"><CardGlintRuleHelpers result={result} rulesView={helperView} name={face.name}/></div>}
       {details && <span className="mse-card-live-details">{details}</span>}
     </div>
   </>;

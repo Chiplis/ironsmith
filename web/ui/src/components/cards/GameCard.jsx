@@ -1588,7 +1588,8 @@ export default function GameCard({
           </span>
         )}
         {(usePortraitBattlefield || useHandFrame) && (
-          <MiniatureCardFrame card={presentationCard} imageUrl={artUrl} deferUpgrade={isHovered || isCastTargetHovered || isDragging} />
+          <MiniatureCardFrame card={presentationCard} imageUrl={artUrl} deferUpgrade={isHovered || isCastTargetHovered || isDragging}
+            keywordHelpers={variant === "hand" && isHovered && !isDragging} />
         )}
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (
           <span className="card-action-border" aria-hidden="true" />
