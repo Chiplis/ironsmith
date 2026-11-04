@@ -37,6 +37,34 @@ const LEXING_FUNCTIONS: &[&str] = &[
     "preprocess.rs::station_reminder_threshold",
     "preprocess.rs::supported_sneak_reminder",
     "semantic_line_parsing/lines/lines_ability/static_line_readings.rs::read_standard_menace_reminder",
+    // Sites added by the custom-mechanics checkpoint (23b10081a) and the keyword
+    // reminder definitions (cec9897a8), recorded as
+    // debt on 2026-11-04 in parser-refactor-ledger.md: synthesized mana-cost
+    // and alternative-cost operands, template sentences, and re-lexed
+    // rendered branches.
+    "effect_sentences/creation_handlers.rs::parse_create",
+    "effect_sentences/dispatch_entry.rs::assign",
+    "effect_sentences/dispatch_entry.rs::parse_described_effect_bundle",
+    "effect_sentences/dispatch_entry.rs::parse_tagged_exact_type_with_quoted_ability_sentence",
+    "effect_sentences/emblem_actions.rs::parse_emblem_ability_tokens",
+    "grammar/activation_costs/components.rs::parse_artifact_creature_tap_price",
+    "grammar/filters/predicate_phrases/spell_mana_spending.rs::read",
+    "grammar/shared_util/alternative_cost_lines.rs::described_spell_text_substitution",
+    "grammar/shared_util/alternative_cost_lines.rs::parse_self_zone_alternative_cost",
+    "grammar/shared_util/alternative_cost_lines/prepared_characteristics.rs::characteristics",
+    "grammar/shared_util/alternative_cost_lines/prepared_characteristics.rs::permission",
+    "grammar/shared_util/alternative_cost_lines/prepared_characteristics.rs::preparation",
+    "grammar/shared_util/alternative_cost_lines/transformed_cast_permission.rs::read",
+    "keyword_payloads.rs::parse_additional_cost",
+    "keyword_static/anthem_grant_lines.rs::parse_described_preparation_cost_grant_line",
+    "keyword_static/reminder_definitions.rs::zone",
+    "preprocess/reminder_actions.rs::bind_last_counter_reference",
+    "preprocess/reminder_actions.rs::expand_attachment_pair",
+    "preprocess/reminder_actions.rs::expand_counter_threshold_activation",
+    "preprocess/reminder_actions.rs::front_postposed_entry_trigger",
+    "preprocess/reminder_actions.rs::strip_definition_header",
+    "semantic_line_parsing/activated/activated_permission.rs::parse_activated_line_impl",
+    "semantic_line_parsing/lines/lines_ability.rs::parse_descriptive_static_program",
     // The tokenizer entry point the document phase calls.
     "util.rs::lex_fragment",
     // Lines and their normalization stages.

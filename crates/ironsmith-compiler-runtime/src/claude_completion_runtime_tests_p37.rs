@@ -136,7 +136,7 @@ fn lumbering_laundry_grants_face_down_look_permission_until_end_of_turn() {
         "Mana cost: {5}\nType: Artifact Creature — Golem\nPower/Toughness: 4/5\n{2}: Until end of turn, you may look at face-down creatures you don't control any time.\nDisguise {5} (You may cast this card face down for {3} as a 2/2 creature with ward {2}. Turn it face up any time for its disguise cost.)",
     );
     let compact = p37_compact(&definition);
-    assert!(compact.contains("LookAtFaceDownCreaturesYouDontControl"), "{compact}");
+    assert!(compact.contains("FaceDownVisibleTo(You"), "{compact}");
     assert!(compact.contains("EndOfTurn"), "{compact}");
 }
 

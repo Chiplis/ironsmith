@@ -354,11 +354,16 @@ fn new_payment_predicates_do_not_hide_unencodable_direct_or_nested_bodies() {
     ));
     // A native generic restriction without a retained canonical model must
     // continue to fail instead of being reduced to its display label.
-    let native_restriction = StaticAbility::restriction(
-        ironsmith_core::Restriction::PlayerHexproofFrom(
-            PlayerFilter::You, ObjectFilter::creature(),
-        ),
-        "targeting restriction".into(),
+    // Unconditional restrictions now retain their typed payload, so this
+    // fixture uses a conditioned native leaf, which still has no model.
+    let native_restriction = StaticAbility::new(
+        ironsmith::static_abilities::RuleRestriction::new(
+            ironsmith_core::Restriction::PlayerHexproofFrom(
+                PlayerFilter::You, ObjectFilter::creature(),
+            ),
+            "targeting restriction".into(),
+        )
+        .with_condition(Condition::YourTurn),
     );
     assert!(native_restriction.canonical_model().is_none());
     for effect in [

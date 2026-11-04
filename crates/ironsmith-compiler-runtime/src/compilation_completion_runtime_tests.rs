@@ -683,11 +683,13 @@ fn altar_devotion_bonus_counts_once_per_color_combination_and_tracks_current_abi
         ironsmith::continuous::Modification::RemoveAllAbilities, ironsmith::effect::Until::EndOfTurn));
     ironsmith::effects::execute_effect(&mut game, &removal, &mut ctx).unwrap();
     game.refresh_continuous_state().unwrap();
-    assert_eq!(game.devotion_to_colors(alice, white_blue), 1, "ability loss removes the remaining bonus");
-    assert_eq!(game.calculated_power(devotee), Some(1));
+    // CR 700.5a: the devotion bonus is calculated before layer-6 ability
+    // removal (see cr_700_5a_devotion_bonus_is_calculated_before_altar_loses_abilities).
+    assert_eq!(game.devotion_to_colors(alice, white_blue), 2, "ability loss does not remove the bonus");
+    assert_eq!(game.calculated_power(devotee), Some(2));
     game.phase_in(first);
     game.refresh_continuous_state().unwrap();
-    assert_eq!(game.devotion_to_colors(alice, white_blue), 2);
+    assert_eq!(game.devotion_to_colors(alice, white_blue), 3);
 
     let mana_ability = definition.abilities.iter().find_map(|ability| match &ability.kind {
         ironsmith::ability::AbilityKind::Activated(activated) => Some(activated), _ => None,

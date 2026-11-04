@@ -95,8 +95,8 @@ fn u067_targets_filters_and_attack_options_exclude_out_of_range_players_and_obje
     assert!(legal.contains(&ironsmith::Target::Object(bob_creature)));
     assert!(!legal.contains(&ironsmith::Target::Object(charlie_creature)));
     assert!(
-        !legal.contains(&ironsmith::Target::Object(siege)),
-        "a Battle's general object range follows its controller, not its protector"
+        legal.contains(&ironsmith::Target::Object(siege)),
+        "CR 801.2d: a Battle is also within range through its protector"
     );
 
     let filter_ctx = game.filter_context_for(alice, Some(source));

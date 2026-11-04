@@ -1884,11 +1884,14 @@ mod tests {
     fn described_entry_eligibility_uses_projected_card_types_without_leaking_to_siblings() {
         use crate::continuous::Modification;
         let alice = PlayerId::from_index(0);
-        // Replacing Sorcery admits entry; adding Creature while retaining
-        // Sorcery does not. Conversely, a Creature described as an Instant
-        // cannot enter even though its printed types are permanent types.
+        // CR 205.1a: setting a sorcery's card types still retains Sorcery, so
+        // neither setting nor adding Creature admits it (CR 307.4). A described
+        // Artifact that becomes a Creature enters; conversely, a Creature
+        // described as an Instant cannot enter even though its printed types
+        // are permanent types.
         for (printed, modification, should_enter) in [
-            (CardType::Sorcery, Modification::SetCardTypes(vec![CardType::Creature]), true),
+            (CardType::Sorcery, Modification::SetCardTypes(vec![CardType::Creature]), false),
+            (CardType::Artifact, Modification::SetCardTypes(vec![CardType::Creature]), true),
             (CardType::Sorcery, Modification::AddCardTypes(vec![CardType::Creature]), false),
             (CardType::Creature, Modification::SetCardTypes(vec![CardType::Instant]), false),
         ] {

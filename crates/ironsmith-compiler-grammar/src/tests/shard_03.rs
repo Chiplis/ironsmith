@@ -2009,7 +2009,9 @@ pub(super) fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_
                 as Probe,
             super::super::keyword_static::parse_you_may_look_face_down_creatures_you_dont_control_any_time_line
                 as Parser,
-            crate::static_abilities::StaticAbilityId::LookAtFaceDownCreaturesYouDontControl,
+            // A typed FaceDownVisibleTo(You) object rule over face-down
+            // creatures you don't control.
+            crate::static_abilities::StaticAbilityId::RuleRestriction,
         ),
         (
             "Players play with the top card of their libraries revealed.",
@@ -2076,7 +2078,7 @@ pub(super) fn parse_lens_of_clarity_split_look_permissions() {
         "expected top-card look permission, got {debug}"
     );
     assert!(
-        debug.contains("LookAtFaceDownCreaturesYouDontControl"),
+        debug.contains("FaceDownVisibleTo(You)") && debug.contains("controller: Some(NotYou)"),
         "expected face-down look permission, got {debug}"
     );
 }

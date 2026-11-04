@@ -604,9 +604,46 @@ fn inline_token_with_rule_list(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexTok
     None
 }
 
+/// A quoted rule the creating statement retained (as a granted ability or a
+/// typed blueprint rule) is owned there; the blueprint's generic quoted-rule
+/// reader must not also report it as unread. Rules no owner accepted stay
+/// unread, so lowering still rejects rather than drops them.
 fn parse_inline_token_granted_abilities(
     definition: &mut crate::model::token_definition::TokenDefinitionSpec,
     tokens: &[OwnedLexToken],
+) -> Vec<GrantedAbilityAst> {
+    let mut unowned: Vec<*const OwnedLexToken> = Vec::new();
+    let abilities = parse_inline_token_granted_abilities_owned(definition, tokens, &mut unowned);
+    let token_rules = match definition {
+        crate::model::token_definition::TokenDefinitionSpec::Creature(creature) => {
+            Some(&mut creature.rules.token_rules)
+        }
+        crate::model::token_definition::TokenDefinitionSpec::Artifact(artifact) => {
+            Some(&mut artifact.token_rules)
+        }
+        crate::model::token_definition::TokenDefinitionSpec::Enchantment(enchantment) => {
+            Some(&mut enchantment.token_rules)
+        }
+        _ => None,
+    };
+    if let Some(token_rules) = token_rules {
+        for body in double_quoted_rule_bodies(tokens) {
+            if unowned.contains(&body.as_ptr()) {
+                continue;
+            }
+            let rendered = crate::lexer::render_token_slice(
+                crate::util::trim_edge_punctuation_tokens(body),
+            );
+            token_rules.unread_rules.retain(|unread| unread != &rendered);
+        }
+    }
+    abilities
+}
+
+fn parse_inline_token_granted_abilities_owned(
+    definition: &mut crate::model::token_definition::TokenDefinitionSpec,
+    tokens: &[OwnedLexToken],
+    unowned: &mut Vec<*const OwnedLexToken>,
 ) -> Vec<GrantedAbilityAst> {
     fn preserve_authored_trigger_intro(
         ability: &mut GrantedAbilityAst,
@@ -895,8 +932,12 @@ fn parse_inline_token_granted_abilities(
             // An unsupported generic nested rule must leave those paths
             // available rather than turning an otherwise parseable card into
             // a hard error.
+            unowned.push(rule_tokens.as_ptr());
             continue;
         };
+        if parsed.is_empty() {
+            unowned.push(rule_tokens.as_ptr());
+        }
         for mut ability in parsed {
             preserve_authored_trigger_intro(&mut ability, rule_tokens);
             if !abilities.iter().any(|existing| existing == &ability) {
@@ -1880,7 +1921,18 @@ pub fn parse_create(
     let mut attached_to_target: Option<TargetAst> = None;
     // Copy-source selectors and where-value expressions own their nested
     // attachment predicates. They are not residual token-entry modifiers.
-    let copy_source_owns_tail = creation_grammar::parse_copy_source_clause_tokens(&tail_tokens).is_some();
+    // An anaphoric copy source ("a copy of that Aura attached to that
+    // creature", "a copy of it attached to ...") selects nothing by its
+    // attachment: the clause is the created copy's entry destination.
+    let anaphoric_copy_attachment = creation_grammar::parse_attachment_clause_tokens(&tail_tokens)
+        .is_some_and(|attached| {
+            let words = token_word_refs(attached.prefix_tokens);
+            words.iter().rposition(|word| *word == "of").is_some_and(|of| {
+                matches!(&words[of + 1..], ["it"] | ["them"] | ["that", _] | ["those", _] | ["each", "of", "them"])
+            })
+        });
+    let copy_source_owns_tail = !anaphoric_copy_attachment
+        && creation_grammar::parse_copy_source_clause_tokens(&tail_tokens).is_some();
     let value_binding_owns_tail = crate::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(&tail_tokens).is_some();
     if !copy_source_owns_tail && !value_binding_owns_tail
         && let Some(attached) = creation_grammar::parse_attachment_clause_tokens(&tail_tokens) {

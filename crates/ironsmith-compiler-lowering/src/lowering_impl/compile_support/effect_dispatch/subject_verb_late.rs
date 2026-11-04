@@ -457,8 +457,10 @@ pub(super) fn compile_put_counters_action(
     // Bare Object specs are legacy cast-time selections in target discovery,
     // so expose the existing ChooseObjects + tagged-counter composition for
     // "you" as well as other players. Existing bound object references do not
-    // introduce a new selection.
-    if !spec.is_target() {
+    // introduce a new selection. A division with a mandatory member
+    // ("among it and any number of commanders") keeps the executor's own
+    // recipient selection, which always includes that member.
+    if !spec.is_target() && required_recipient.is_none() {
         let chosen = match &spec {
             ChooseSpec::WithCount(inner, choice_count) => match inner.as_ref() {
                 ChooseSpec::Object(filter) => Some((filter.clone(), *choice_count)),

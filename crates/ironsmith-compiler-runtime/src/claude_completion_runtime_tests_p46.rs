@@ -138,8 +138,13 @@ fn close_encounter_additional_cost_chooses_a_creature_or_warped_card() {
     let debug = format!("{definition:?}");
     assert!(debug.contains("warped: true"), "{debug}");
     let cost = format!("{:?}", definition.additional_cost);
-    assert!(cost.contains("tag: TagKey(\"__it__\")")
-        && debug.contains("PowerOf(Tagged(TagKey(\"__it__\")))"),
+    // The cost's single choice tag is the one the damage reads.
+    let tag = cost
+        .split("tag: TagKey(\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap_or_else(|| panic!("the additional cost exports a chosen tag: {cost}"));
+    assert!(debug.contains(&format!("PowerOf(Tagged(TagKey(\"{tag}\")))")),
         "both object domains export the same choice read by the damage: {debug}");
     assert!(!debug.contains("ExileEffect"), "choosing is not exiling");
 

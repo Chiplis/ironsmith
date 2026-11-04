@@ -13,6 +13,12 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     let source = non_article_token_word_refs(&tokens[..deal_index]);
     if !crate::util::is_source_reference_words(&source) { return Ok(None); }
     let after = &tokens[deal_index + 1..];
+    // "each opponent and planeswalker it has dealt damage to this game": the
+    // trailing history clause qualifies the whole union; its typed historical
+    // recipient reader owns it.
+    if crate::effect_sentences::verb_handlers::is_historical_player_object_damage_recipient_clause(after) {
+        return Ok(None);
+    }
     let (target_tokens, amount) = if after.first().is_some_and(|token| token.is_word("damage"))
         && after.get(1).is_some_and(|token| token.is_word("to"))
     {
@@ -29,6 +35,10 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         (&after[damage_end..],amount)
     };
     if target_tokens.iter().any(|token|token.is_word("target")){return Ok(None);}
+    // A per-recipient amount or condition ("3 damage to each creature without
+    // flying if {R} was spent ... and 3 damage to each creature with flying
+    // if {G} was spent ...") is two gated instructions, not one shared set.
+    if target_tokens.iter().any(|token|token.is_any_word(&["if","unless","damage"])){return Ok(None);}
     // One inherited quantifier can govern a comma/conjunction list of
     // independently read recipient operands ("each creature, player, and
     // planeswalker"). Do not execute the operands as separate instructions.
@@ -45,6 +55,16 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
             ["player"] if explicit_each || inherited_each=>player_groups.push(PlayerFilter::Any),
             ["opponent"] if explicit_each || inherited_each=>player_groups.push(PlayerFilter::Opponent),
             ["that","creature"]|["that","permanent"]|["that","player"]|["you"]=>recipients.push(parse_target_phrase(piece)?),
+            // "each player who controls a white creature" (Disorder): a
+            // player group qualified by what it controls, not an object group.
+            ["player"|"players"|"opponent"|"opponents","who","control"|"controls",..] if explicit_each || inherited_each=>{
+                let mut controlled=match parse_object_filter(&operand[3..],false){Ok(filter)=>filter,Err(_)=>return Ok(None)};
+                if controlled.zone.is_none(){controlled.zone=Some(Zone::Battlefield);}
+                let controls=PlayerFilter::ControlsMatchingObject{filter:Box::new(controlled)};
+                player_groups.push(if words[0].starts_with("opponent"){
+                    PlayerFilter::Excluding{base:Box::new(controls),excluded:Box::new(PlayerFilter::You)}
+                }else{controls});
+            }
             _ if explicit_each || inherited_each=>{
                 let filter=match parse_object_filter(operand,false){Ok(filter)=>filter,Err(_)=>return Ok(None)};
                 object_groups.push(filter);

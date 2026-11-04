@@ -3119,8 +3119,15 @@ fn parse_player_controls_predicate(
     // and can normalize singular `exactly one` to an existential control
     // condition, which is not equivalent for intervening-if triggers.
     let has_authored_exact_count = tokens.iter().any(|token| token.is_word("exactly"));
+    // "you control a creature with the journeyed status": the tolerant
+    // possession grammar has no custom-status operand and would drop it;
+    // the complete object-filter reader below owns that qualifier.
+    let has_custom_status = crate::word_claims::probe_only(|| {
+        crate::custom_status::filter_clause(tokens).is_some()
+    });
     if !has_power_toughness_relation
         && !has_authored_exact_count
+        && !has_custom_status
         && let Some(control_condition) = crate::grammar::conditions::parse_control_condition(
             tokens,
             crate::grammar::conditions::ControlConditionOptions {

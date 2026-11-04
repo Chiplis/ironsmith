@@ -87,17 +87,19 @@ fn source_combat_prohibitions_gated_by_trailing_static_conditions() {
     game.refresh_continuous_state().unwrap();
     assert!(game.can_attack(source), "the restriction stops when the other creature leaves");
 
-    let (mut game, alice, _bob) = p5_game();
+    let (mut game, alice, bob) = p5_game();
+    // A conditional be-blocked restriction is evaluated against the defender
+    // in combat, so query it through the defender-contextual check.
     let source = game.create_object_from_definition(&stature, alice, ironsmith::Zone::Battlefield);
     game.refresh_continuous_state().unwrap();
-    assert!(!game.can_be_blocked(source), "a 1-power Stature can't be blocked");
+    assert!(!game.can_be_blocked_by_defender(source, bob), "a 1-power Stature can't be blocked");
     game.add_counters(source, ironsmith::object::CounterType::PlusOnePlusOne, 1);
     game.refresh_continuous_state().unwrap();
     assert_eq!(game.calculated_power(source), Some(2));
-    assert!(game.can_be_blocked(source), "the condition uses power after counters");
+    assert!(game.can_be_blocked_by_defender(source, bob), "the condition uses power after counters");
     game.remove_counters(source, ironsmith::object::CounterType::PlusOnePlusOne, 1, Some(source), Some(alice)).unwrap();
     game.refresh_continuous_state().unwrap();
-    assert!(!game.can_be_blocked(source), "the permission follows later power changes");
+    assert!(!game.can_be_blocked_by_defender(source, bob), "the permission follows later power changes");
 }
 
 #[test]
@@ -672,6 +674,9 @@ fn tied_greatest_creatures_offer_only_one_to_each_controller() {
         false,
     ).expect("Tariff should compile");
     let (mut game, alice, bob) = p5_game();
+    // Surface every per-player choice, including Bob's forced singleton,
+    // which the decision layer otherwise auto-resolves.
+    game.set_auto_choose_single_object_decisions(false);
     let creature = |name: &str, mana_value: u8| {
         CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Creature])

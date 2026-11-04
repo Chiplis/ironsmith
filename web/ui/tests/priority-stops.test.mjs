@@ -56,6 +56,38 @@ test('recurring stops do not retrigger in the same step, but return next turn', 
   assert.match(stops.stopReason(state({ turn_number: 3 })), /Upkeep/);
 });
 
+test('resolving the stack does not consume the main phase stop it returns to', () => {
+  const stops = createPriorityStops({ phaseStopsEnabled: true });
+  const main = (changes = {}) => state({ active_player: 0, phase: 'precombat main phase', step: null, ...changes });
+  assert.match(stops.stopReason(main()), /Main/);
+  stops.beforeCommand(cast, main());
+  stops.beforeCommand(pass, main({ stack_size: 1, stack_objects: [{ id: 10, controller: 0 }] }));
+  assert.match(stops.stopReason(main()), /Main/, 'priority after the resolution still stops in main');
+  stops.beforeCommand(pass, main());
+  assert.equal(stops.stopReason(main()), null, 'an empty-stack pass moves on from the phase');
+});
+
+test('an opponent response that resolves after an empty-stack pass re-arms the stop', () => {
+  const stops = createPriorityStops({ phaseStopsEnabled: true });
+  const main = (changes = {}) => state({ active_player: 0, phase: 'precombat main phase', step: null, ...changes });
+  stops.beforeCommand(pass, main());
+  assert.equal(stops.stopReason(main()), null, 'the empty-stack pass consumes the stop');
+  const response = main({ stack_size: 1, stack_objects: [{ id: 20, controller: 1 }] });
+  stops.beforeCommand(pass, response);
+  assert.equal(stops.stopReason(response), null, 'the response itself is a stack decision');
+  assert.match(stops.stopReason(main()), /Main/, 'the stop holds again once the response resolves');
+  stops.beforeCommand(pass, main());
+  assert.equal(stops.stopReason(main()), null, 'passing again moves on');
+});
+
+test('own stack objects after an empty-stack pass do not re-arm the stop', () => {
+  const stops = createPriorityStops({ phaseStopsEnabled: true });
+  const main = (changes = {}) => state({ active_player: 0, phase: 'precombat main phase', step: null, ...changes });
+  stops.beforeCommand(pass, main());
+  stops.observe(main({ stack_size: 1, stack_objects: [{ id: 21, controller: 0 }] }));
+  assert.equal(stops.stopReason(main()), null);
+});
+
 test('combat step stops remain independent of a broad combat stop and rearm for extra combat', () => {
   const stops = createPriorityStops({ phaseStopsEnabled: true });
   const combat = step => state({ phase: 'combat phase', step });

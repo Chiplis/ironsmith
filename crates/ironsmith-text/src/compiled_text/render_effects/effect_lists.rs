@@ -17115,10 +17115,10 @@ pub(super) fn describe_target_base_stat_choice_inline(effects: &[Effect]) -> Opt
 
     let mut stat_values = Vec::with_capacity(2);
     let mut shared_duration = None;
+    if choose_mode_has_authored_mode_text(choice) {
+        return None;
+    }
     for (index, mode) in choice.modes.iter().enumerate() {
-        if !mode.source_text.trim().is_empty() {
-            return None;
-        }
         let [effect] = mode.effects.as_slice() else {
             return None;
         };
@@ -17219,10 +17219,10 @@ fn describe_target_ability_removal_choice_inline(effects: &[Effect]) -> Option<S
 
     let mut ability_names = Vec::with_capacity(2);
     let mut shared_duration = None;
+    if choose_mode_has_authored_mode_text(choice) {
+        return None;
+    }
     for (index, mode) in choice.modes.iter().enumerate() {
-        if !mode.source_text.trim().is_empty() {
-            return None;
-        }
         let [effect] = mode.effects.as_slice() else {
             return None;
         };
@@ -23650,7 +23650,9 @@ fn describe_selected_outside_cards_shuffle(effects: &[Effect]) -> Option<String>
         ) { return None; }
     let choice_text = describe_effect(choice_effect);
     let objects = choice_text.strip_prefix("Choose ")?.trim_end_matches('.');
-    let objects = objects.strip_suffix(" outside the game")?;
+    let objects = objects
+        .strip_suffix(" from outside the game")
+        .or_else(|| objects.strip_suffix(" outside the game"))?;
     Some(format!("Shuffle {objects} from outside the game into your library"))
 }
 

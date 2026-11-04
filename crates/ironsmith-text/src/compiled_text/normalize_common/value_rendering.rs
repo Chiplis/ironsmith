@@ -4534,6 +4534,7 @@ pub(crate) fn describe_compact_keyword_change_choice(effect: &Effect) -> Option<
     // retains the random instruction and repeated options' probabilities.
     let mut expected = crate::effects::ChooseModeEffect::choose_one(choose_mode.modes.clone());
     expected.chooser = choose_mode.chooser.clone();
+    expected.decision_labels = crate::compiled_text::echoed_choice_decision_labels(choose_mode);
     if choose_mode.random
         || *choose_mode != expected
         || !matches!(choose_mode.chooser.as_ref(), None | Some(PlayerFilter::You))
@@ -5195,6 +5196,7 @@ pub(crate) fn describe_compact_keyword_choice(effect: &Effect) -> Option<String>
     // its resolution-time random variant have this compact surface.
     let mut expected = crate::effects::ChooseModeEffect::choose_one(choose_mode.modes.clone());
     expected.chooser = choose_mode.chooser.clone();
+    expected.decision_labels = crate::compiled_text::echoed_choice_decision_labels(choose_mode);
     expected.random = choose_mode.random;
     if choose_mode.modes.len() < 2
         || *choose_mode != expected
@@ -6483,12 +6485,16 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
             ))
         }
         // "for each card you've discarded this turn" (Living Laser)
-        Value::CardsDiscardedThisTurn(player) => Some(match player {
-            PlayerFilter::You => "card you've discarded this turn".to_string(),
-            PlayerFilter::Opponent => "card your opponents have discarded this turn".to_string(),
-            PlayerFilter::Any => "card discarded this turn".to_string(),
-            other => format!("card {} discarded this turn", describe_player_filter(other)),
-        }),
+        // A single named player's discards read as a count: "Draw cards
+        // equal to the number of cards target opponent discarded this turn".
+        Value::CardsDiscardedThisTurn(player) => match player {
+            PlayerFilter::You => Some("card you've discarded this turn".to_string()),
+            PlayerFilter::Opponent => {
+                Some("card your opponents have discarded this turn".to_string())
+            }
+            PlayerFilter::Any => Some("card discarded this turn".to_string()),
+            _ => None,
+        },
         Value::TurnHistoryCount(TurnHistoryCount::Sacrificed { player, filter }) => {
             let subject = describe_history_event_object(filter);
             Some(match player {

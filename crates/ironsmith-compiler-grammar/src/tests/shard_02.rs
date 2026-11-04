@@ -4637,10 +4637,19 @@ pub(super) fn rewrite_grammar_doesnt_untap_line_matches_attached_subject_shape()
     let parsed = super::super::keyword_static::parse_doesnt_untap_during_untap_step_line(&tokens)
         .expect("attached doesnt-untap line should parse");
 
+    // CR 303.4/613.1: the Aura's effect on the enchanted permanent is an
+    // untap restriction of the Aura, not an ability the permanent gains.
     assert!(matches!(
         parsed,
-        Some(crate::cards::builders::StaticAbilityAst::AttachedStaticAbilityGrant { .. })
-    ));
+        Some(crate::cards::builders::StaticAbilityAst::Static(ref ability))
+            if matches!(
+                &ability.payload,
+                ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                    restriction: crate::effect::Restriction::Untap(filter),
+                    ..
+                } if filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == "enchanted")
+            )
+    ), "{parsed:#?}");
 }
 
 #[test]

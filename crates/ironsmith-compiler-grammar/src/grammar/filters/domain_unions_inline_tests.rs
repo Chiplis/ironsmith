@@ -430,7 +430,7 @@ fn nontoken_comma_modifier_is_not_a_standalone_union_arm() {
     assert_eq!(filter.controller, Some(PlayerFilter::You));
     assert_eq!(
         filter.description(),
-        "a nontoken non-angel creature you control"
+        "a nontoken non-Angel creature you control"
     );
 }
 

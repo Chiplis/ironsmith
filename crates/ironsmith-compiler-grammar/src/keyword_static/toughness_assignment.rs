@@ -278,12 +278,32 @@ pub(super) fn attached_axis_condition(tokens: &[OwnedLexToken]) -> Option<Predic
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn grant(ability: &StaticAbilityAst) -> (&ObjectFilter, &Option<PredicateAst>) {
+    /// The recipient filter and condition of the assignment rule: either a
+    /// granted ability (with a coordinated permission) or the source's own
+    /// object rule (CR 510.1a), optionally condition-wrapped.
+    fn grant(ability: &StaticAbilityAst) -> (&ObjectFilter, Option<&PredicateAst>) {
         match ability {
             StaticAbilityAst::WithSetQuantifierSurface { ability, .. } => grant(ability),
             StaticAbilityAst::GrantStaticAbility {
                 filter, condition, ..
-            } => (filter, condition),
+            } => (filter, condition.as_ref()),
+            StaticAbilityAst::ConditionalStaticAbility { ability, condition } => {
+                let (filter, inner) = grant(ability);
+                assert!(inner.is_none(), "nested assignment condition: {ability:#?}");
+                (filter, Some(condition))
+            }
+            StaticAbilityAst::Static(StaticAbility {
+                payload:
+                    ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                        restriction:
+                            crate::effect::Restriction::ObjectRule {
+                                objects,
+                                rule: ironsmith_core::ObjectRule::AssignsCombatDamageUsingToughness,
+                            },
+                        ..
+                    },
+                ..
+            }) => (objects, None),
             _ => panic!("expected a receiver-local grant: {ability:#?}"),
         }
     }

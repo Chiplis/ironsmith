@@ -321,21 +321,23 @@ fn primitive_justice_targets_one_artifact_plus_one_per_additional_payment() {
     .expect("Primitive Justice should compile");
     assert_eq!(definition.optional_costs.len(), 2, "{:?}", definition.optional_costs);
     assert!(definition.optional_costs.iter().all(|cost| cost.repeatable));
+    // One announced target vector of 1 + R + G artifacts; each authored
+    // sentence then acts on its own contiguous slot range (CR 601.2c), and
+    // the {1}{G} range gains 1 life per paid slot.
     let effects = p12_all_effects(&definition);
-    let destroys: Vec<_> = effects
+    let slots: Vec<String> = effects
         .iter()
-        .filter_map(|effect| effect.downcast_ref::<ironsmith::effects::DestroyEffect>())
+        .filter_map(|effect| effect.downcast_ref::<ironsmith::effects::ForEachAnnouncedTargetSlotEffect>())
+        .map(|slot| format!("{slot:?}"))
         .collect();
-    assert_eq!(destroys.len(), 1, "one destroy over every chosen artifact");
-    let destroy = format!("{:?}", destroys[0]);
-    assert!(destroy.contains("WithCountValue"), "{destroy}");
-    assert_eq!(destroy.matches("TimesPaidLabel").count(), 2, "{destroy}");
-    let repeat = effects
-        .iter()
-        .find_map(|effect| effect.downcast_ref::<ironsmith::effects::RepeatEffectsEffect>())
-        .expect("life per {1}{G} payment");
-    assert!(format!("{:?}", repeat.count).contains("TimesPaidLabel"));
-    assert!(format!("{repeat:?}").contains("GainLife"), "{repeat:?}");
+    assert_eq!(slots.len(), 3, "one slot range per destroy sentence: {:?}", definition.spell_effect);
+    for slot in &slots {
+        assert!(slot.contains("DestroyEffect"), "{slot}");
+        assert!(slot.contains("WithCountValue"), "{slot}");
+        assert_eq!(slot.matches("TimesPaidLabel").count() >= 2, true, "the shared vector counts both payments: {slot}");
+    }
+    assert!(slots[2].contains("GainLife"), "life per {{1}}{{G}} payment: {}", slots[2]);
+    assert!(!slots[1].contains("GainLife"), "{}", slots[1]);
 }
 
 #[test]
@@ -403,7 +405,15 @@ fn opal_palace_commander_mana_carries_cast_count_entry_counters() {
     assert!(bonus.0.is_commander, "{:?}", bonus.0);
     assert_eq!(bonus.1.len(), 1);
     assert_eq!(bonus.1[0].0, ironsmith::object::CounterType::PlusOnePlusOne);
-    assert!(matches!(bonus.1[0].1, ironsmith::effect::Value::CommanderCastCount(_)), "{:?}", bonus.1);
+    assert!(
+        matches!(
+            &bonus.1[0].1,
+            ironsmith::effect::Value::CommanderCastCountOf(spec)
+                if matches!(**spec, ironsmith::target::ChooseSpec::Source)
+        ),
+        "the count reads the entering commander itself: {:?}",
+        bonus.1
+    );
 }
 
 #[test]

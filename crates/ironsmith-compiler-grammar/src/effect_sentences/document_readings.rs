@@ -1181,6 +1181,13 @@ fn read_effect_clause_with_trailing_if(
     if sentence.iter().filter(|token| token.is_word("if")).count() >= 2 {
         return Ok(None);
     }
+    // "..., except it has X if it doesn't have X": the condition belongs to
+    // the copy exception, not to the whole effect (the become reading owns it).
+    if crate::grammar::structure::split_trailing_if_clause_lexed(sentence)
+        .is_some_and(|trailing| trailing.leading_tokens.iter().any(|token| token.is_word("except")))
+    {
+        return Ok(None);
+    }
     // A pump-and-grant with a trailing condition is the compound gain statement's, which keeps the condition.
     if crate::grammar::structure::split_trailing_if_clause_lexed(sentence).is_some_and(|trailing| {
         effect_grammar::gain_ability_shapes::parse_get_then_ability_shape(trailing.leading_tokens)

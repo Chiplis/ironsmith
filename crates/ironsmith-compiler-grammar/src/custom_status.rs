@@ -176,6 +176,28 @@ pub(crate) fn source_effect(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     // The ordinary target reader owns target/non-target/reference distinctions.
     // Never infer Source from an arbitrary recipient phrase.
     let target = crate::util::parse_target_phrase(&tokens[1..at]).ok()?;
+    // "until it has no +1/+1 counters": a counter-absence lifetime. The kind
+    // is read by the ordinary counter-type reader.
+    let tail_tokens = trimmed(&tokens[end + 1..]);
+    let tail_words = words(tail_tokens);
+    if let ["until", "it", "has", "no", ..] = tail_words.as_slice()
+        && tail_tokens.len() > 4
+        && tokens[..at].iter().all(|token| token.kind == TokenKind::Word)
+        && let Some(counter_type) = crate::grammar::filters::parse_counter_type_from_tokens(&tail_tokens[4..])
+    {
+        let name = name(&tokens[at + 1..end])?;
+        crate::word_claims::claim_tokens(tokens);
+        return Some(EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::You,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation {
+                target,
+                designation: ironsmith_core::PermanentDesignation::CustomStatusUntilEvent {
+                    name, event: ironsmith_core::CustomStatusExpiryEvent::NoCounters(counter_type),
+                },
+            }),
+        ));
+    }
     if tokens[..at]
         .iter()
         .chain(tokens[end + 1..].iter())

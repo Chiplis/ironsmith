@@ -15,10 +15,12 @@ fn setup_with_protection(protected: bool) -> (GameState, ObjectId, ObjectId, Tri
     )
     .unwrap();
     let definition = ironsmith_tools::compile_definition_from_payload(&payloads[0]).unwrap();
+    // Enchant (CR 702.5), the ETB trigger, and the attached power effect; the
+    // leaves-the-battlefield sacrifice is delayed inside the ETB trigger.
     assert_eq!(
         definition.abilities.len(),
-        2,
-        "ETB trigger and attached power effect; sacrifice must be delayed"
+        3,
+        "Enchant, ETB trigger and attached power effect; sacrifice must be delayed"
     );
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);

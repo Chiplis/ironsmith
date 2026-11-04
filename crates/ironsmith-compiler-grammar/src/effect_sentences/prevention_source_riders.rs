@@ -225,23 +225,48 @@ fn parse_body(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextErr
         && tokens.get(1).is_some_and(|token| token.is_word("that"))
         && tokens.get(2).is_some_and(|token| token.is_word("many"))
     {
-        let mut effects = crate::clause_support::parse_effect_sentences_lexed(tokens)?;
-        if let [
-            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::Tokens(
-                        crate::cards::builders::TokenActionAst::CreateTokenWithMods {
-                            count, ..
-                        },
-                    ),
-                ..
-            }),
-        ] = effects.as_mut_slice()
-        {
-            *count = prevented_amount();
-            return Ok(effects.pop());
+        // Edge trimming strips the closing quote of a trailing quoted token
+        // ability ("... and \"This token can't block.\""); restore it.
+        let mut balanced = tokens.to_vec();
+        if balanced.iter().filter(|token| token.kind == crate::lexer::TokenKind::Quote).count() % 2 == 1 {
+            let span = balanced.last().map(|token| token.span()).unwrap_or_else(crate::cards::TextSpan::synthetic);
+            balanced.push(OwnedLexToken::quote(span));
         }
-        return Ok(None);
+        let mut effects = crate::clause_support::parse_effect_sentences_lexed(&balanced)?;
+        // A quoted token ability ("... with toxic 1 and \"This token can't
+        // block.\"") may wrap or accompany the creation; bind the one
+        // creation it contains.
+        fn bind_count(effects: &mut [EffectAst], bound: &mut usize) {
+            for effect in effects {
+                if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::Tokens(
+                            crate::cards::builders::TokenActionAst::CreateTokenWithMods {
+                                count, ..
+                            },
+                        ),
+                    ..
+                }) = effect
+                {
+                    *count = prevented_amount();
+                    *bound += 1;
+                    continue;
+                }
+                crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                    bind_count(nested, bound)
+                });
+            }
+        }
+        let mut bound = 0;
+        bind_count(&mut effects, &mut bound);
+        if bound != 1 || effects.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(if effects.len() == 1 {
+            effects.pop().expect("one effect")
+        } else {
+            EffectAst::Sequence { effects }
+        }));
     }
     // "each <sources> deal(s) damage equal to its power to that creature"
     if let Some(effect) = parse_each_source_power_damage(tokens)? {

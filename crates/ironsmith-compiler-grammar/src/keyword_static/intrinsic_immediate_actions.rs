@@ -89,10 +89,10 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<StaticAbility
     if !matches!(body_words.get(..3), Some(["if", "you" | "they", "do"])) || body_words.len() <= 3 { return Ok(None); }
     let body_start = body_view.token_start_indices()[3];
     let mut body = body_head[body_start..].to_vec();
-    body.extend(crate::lexer::lex_line(".", 0)?);
+    body.push(OwnedLexToken::period(crate::cards::TextSpan::synthetic()));
     for sentence in &sentences[1..] {
         body.extend_from_slice(sentence);
-        body.extend(crate::lexer::lex_line(".", 0)?);
+        body.push(OwnedLexToken::period(crate::cards::TextSpan::synthetic()));
     }
     let effects = crate::effect_sentences::parse_effect_sentences_lexed(&body)?;
     crate::word_claims::claim_tokens(first);

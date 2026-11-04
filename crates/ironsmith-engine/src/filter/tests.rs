@@ -317,7 +317,7 @@ fn branch_scoped_type_union_applies_shared_controller_and_mana_value_once() {
 
     assert_eq!(
         filter.description(),
-        "a non-equipment artifact and non-aura enchantment you control with mana value 4 or greater"
+        "a non-Equipment artifact and non-Aura enchantment you control with mana value 4 or greater"
     );
     assert!(filter.matches(game.object(artifact).unwrap(), &context, &game));
     assert!(filter.matches(game.object(enchantment).unwrap(), &context, &game));
@@ -1264,7 +1264,7 @@ fn test_filter_description_includes_excluded_subtypes() {
         .without_subtype(crate::types::Subtype::Zombie);
     assert_eq!(
         filter.description(),
-        "non-vampire non-werewolf non-zombie creature"
+        "non-Vampire non-Werewolf non-Zombie creature"
     );
 }
 
@@ -1308,7 +1308,7 @@ fn filter_description_preserves_relative_and_independently_negated_unions() {
     independently_negated.set_explicit_card_noun(true);
     assert_eq!(
         ObjectFilterExt::description(&independently_negated),
-        "artifact or non-aura enchantment card in your graveyard"
+        "artifact or non-Aura enchantment card in your graveyard"
     );
 }
 

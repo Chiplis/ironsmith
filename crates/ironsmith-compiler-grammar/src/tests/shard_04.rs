@@ -3385,7 +3385,7 @@ fn repeated_revealed_permanent_groups_lower_with_one_shared_collection_tag() {
                         .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
                 })
         })
-        .expect("shuffle producer");
+        .unwrap_or_else(|| panic!("shuffle producer: {first:#?}"));
     assert!(
         matches!(&shuffle.target, crate::target::ChooseSpec::All(_)),
         "{shuffle:#?}"

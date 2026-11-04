@@ -267,7 +267,10 @@ fn p7_stalking_leonin_remembers_the_secret_opponent_for_its_reveal_ability() {
     }).expect("reveal ability");
     let activated_debug = format!("{activated:?}");
     assert!(activated_debug.contains("ChosenPlayer"), "the exile is gated on the chosen player: {activated_debug}");
-    assert!(activated_debug.contains("Generic(0)"), "revealing costs nothing: {activated_debug}");
+    // The whole cost is revealing the chosen player: no mana payment at all.
+    let cost = format!("{:?}", activated.mana_cost);
+    assert!(cost.contains("RevealChosenPlayerEffect") && !cost.contains("ManaPaymentCost"),
+        "revealing costs nothing: {activated_debug}");
     let triggered = definition.abilities.iter().find_map(|ability| match &ability.kind {
         AbilityKind::Triggered(triggered) => Some(triggered),
         _ => None,
@@ -282,7 +285,9 @@ fn p7_stalking_leonin_remembers_the_secret_opponent_for_its_reveal_ability() {
     for effect in triggered.effects.all_effects() {
         ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
     }
-    assert_eq!(game.chosen_player(leonin), Some(bob), "the only opponent is the chosen player");
+    // A secret choice stays hidden until revealed: only the chooser sees it.
+    assert_eq!(game.secret_chosen_player(leonin, alice), Some(bob), "the only opponent is the chosen player");
+    assert_eq!(game.chosen_player(leonin), None, "not public before the reveal");
 }
 
 #[test]

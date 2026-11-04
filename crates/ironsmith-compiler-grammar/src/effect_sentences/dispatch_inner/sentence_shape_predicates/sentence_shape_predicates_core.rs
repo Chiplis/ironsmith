@@ -112,10 +112,9 @@ fn parse_effect_sentence_lexed_uncached(
     }
     if let Some(effect)=crate::keyword_static::parse_resolving_spell_replacement_program(tokens)? {return Ok(vec![effect]);}
     if let Some(effect)=crate::keyword_static::parse_timed_event_replacement_program(tokens)? {return Ok(vec![effect]);}
-    if crate::grammar::effects::for_each_shapes::parse_participant_clause_shape(tokens)
-        .is_some_and(|shape| !shape.participant_is_actor && shape.inner_tokens.first().is_some_and(|token| token.is_word("you")))
-        && let Some(effect) = crate::effect_sentences::for_each_helpers::parse_for_each_player_clause(tokens)?
-    { return Ok(vec![effect]); }
+    if let Some(effect) = crate::effect_sentences::for_each_helpers::parse_for_each_participant_you_clause(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(effects)=crate::effect_sentences::face_state_actions::parse(tokens)?{return Ok(effects);}
     if let Some(effects)=crate::effect_sentences::object_group_instructions::parse(tokens)?{return Ok(effects);}
     if let Some(program) = crate::effect_sentences::bounded_source_programs::parse(tokens)? { return Ok(program); }

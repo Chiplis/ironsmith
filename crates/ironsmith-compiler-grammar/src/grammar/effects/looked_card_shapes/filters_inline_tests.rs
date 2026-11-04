@@ -35,7 +35,8 @@ fn repeated_complete_card_union_preserves_branch_scope_and_surface() {
 }
 
 fn parse(raw: &str) -> ObjectFilter {
-    parse_looked_card_reveal_filter_shape(&lex_line(raw, 0).unwrap()).unwrap()
+    parse_looked_card_reveal_filter_shape(&lex_line(raw, 0).unwrap())
+        .unwrap_or_else(|| panic!("looked-card filter should parse: {raw}"))
 }
 
 #[test]

@@ -221,6 +221,8 @@ fn doc_aurlock_reduces_the_plot_special_action_only() {
             ironsmith::ability::AbilityKind::Static(ability) => Some(ability),
             _ => None,
         })
+        // Each printed line also carries a structural source-line group marker.
+        .filter(|ability| !format!("{ability:?}").contains("SourceLineStaticGroup"))
         .collect::<Vec<_>>();
     assert_eq!(statics.len(), 2, "{statics:?}");
     let plot = statics

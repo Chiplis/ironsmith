@@ -299,16 +299,25 @@ fn read_aftermath(
             ironsmith_core::Condition::SourceIsInZone(crate::zone::Zone::Graveyard),
         ), "Cast this spell only from your graveyard",
     );
-    let permission = crate::model::CompilerAlternativeCastingMethod::cast_from_zone_with_total_cost(
-        if native { "Aftermath" } else { "Parsed exclusive graveyard permission" },
-        crate::zone::Zone::Graveyard, ironsmith_core::TotalCost::free(), None, false,
-    ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
-        add_printed_mana_cost: true, exile_on_stack_exit: true, ..Default::default()
-    });
+    // CR 702.127a: "You may cast this half of this split card from your
+    // graveyard" is a self-grant of the half, which the other half's card in
+    // a graveyard carries (CR 709.3); the half is cast for its mana cost.
+    let mut permission = crate::model::CompilerStaticAbilityCore::grants(
+        crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::graveyard_cast_from_cards_mana_cost(
+                Vec::<crate::model::CompilerCost>::new(),
+                true,
+            ),
+            crate::target::ObjectFilter::source(),
+            crate::zone::Zone::Graveyard,
+        ),
+    );
+    permission.label =
+        if native { "Aftermath" } else { "Parsed exclusive graveyard permission" }.to_string();
     Ok(ast(LineAst::Multiple(vec![
         LineAst::StaticAbility(restriction.into()),
         LineAst::StaticAbility(crate::model::CompilerStaticAbilityCore::keyword_marker("If this spell was cast from your graveyard, exile it instead of putting it anywhere else any time it would leave the stack.").into()),
-        LineAst::AlternativeCastingMethod(permission),
+        LineAst::StaticAbility(permission.into()),
     ])))
 }
 

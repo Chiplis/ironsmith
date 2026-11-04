@@ -459,7 +459,7 @@ mod external_registry_tests {
             "group": {
                 "kind": "single",
                 "name": "Lightning Bolt",
-                "block": "Type: Creature — Impostor\nPower/Toughness: 1/1",
+                "block": "Type: Creature — Shapeshifter\nPower/Toughness: 1/1",
                 "score": 1.0
             }
         });
@@ -482,7 +482,7 @@ mod external_registry_tests {
             "group": {
                 "kind": "single",
                 "name": "Lightning Bolt",
-                "block": "Type: Creature — Impostor\nPower/Toughness: 1/1",
+                "block": "Type: Creature — Shapeshifter\nPower/Toughness: 1/1",
                 "score": 1.0
             }
         });

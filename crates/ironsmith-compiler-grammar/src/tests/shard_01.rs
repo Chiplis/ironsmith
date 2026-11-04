@@ -4151,7 +4151,7 @@ pub(super) fn rewrite_lowering_choose_from_opponent_graveyard_or_hand_keeps_choi
     assert!(matches!(
         &exile.spec,
         crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-    ));
+    ), "exile {:?} choose tag {:?}", exile.spec, choose.tag);
 
     Ok(())
 }

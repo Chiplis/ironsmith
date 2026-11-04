@@ -327,7 +327,7 @@ fn parses_differently_qualified_type_branches_as_typed_disjunction() {
     assert!(enchantment.mana_value.is_none(), "{enchantment:#?}");
     assert_eq!(
         filter.description(),
-        "a non-equipment artifact and non-aura enchantment you control with mana value 4 or greater"
+        "a non-Equipment artifact and non-Aura enchantment you control with mana value 4 or greater"
     );
 }
 

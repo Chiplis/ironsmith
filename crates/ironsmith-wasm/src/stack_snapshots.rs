@@ -5,6 +5,22 @@ fn stamped_activation_identity(definition: [u8; 32]) -> String {
     format!("activated:definition:{hex}")
 }
 
+/// Triggered automation preferences key on the compiler's authored
+/// occurrence stamp, never on the runtime acquisition identity: acquisition
+/// hashes the host's per-incarnation ObjectId (CR 400.7), so a card that
+/// leaves and returns to a zone would otherwise lose every saved preference.
+/// Unstamped triggers already use the host-free structural identity.
+pub(super) fn triggered_automation_identity(
+    effects: Option<&ironsmith::resolution::ResolutionProgram>,
+    fallback: Option<ironsmith::triggers::TriggerIdentity>,
+) -> Option<String> {
+    if let Some(definition) = effects.and_then(|effects| effects.retained_trigger_definition()) {
+        let hex = definition.0.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+        return Some(format!("trigger:definition:{hex}"));
+    }
+    fallback.map(|identity| format!("trigger:{}", identity.0))
+}
+
 pub(super) fn activated_automation_identity(
     ability: &ironsmith::ability::ActivatedAbility,
     index: usize,
@@ -337,7 +353,8 @@ pub(super) fn build_stack_object_snapshot(
             colors: None,
             effect_text: None,
             ability_kind: Some(ability_kind.to_string()),
-            automation_identity: entry.trigger_identity.map(|identity| format!("trigger:{}", identity.0))
+            automation_identity: entry.trigger_identity
+                .and_then(|identity| triggered_automation_identity(entry.ability_effects.as_ref(), Some(identity)))
                 .or_else(|| stack_activation_automation_identity(entry, source_obj.or(obj))),
             source_ability_text,
             ability_text,
@@ -474,6 +491,47 @@ mod source_ability_tests {
     }
 
     #[test]
+    fn trigger_automation_identity_survives_source_zone_changes() {
+        // A rule saved for a graveyard trigger must still match after the card
+        // returns to hand and goes back to the graveyard as a new object.
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = compile_to_runtime_definition(
+            "Zone Identity Fixture",
+            "Type: Creature — Human\nPower/Toughness: 1/1\nWhenever an artifact you control enters, you may return this card from your graveyard to your hand.",
+            false,
+        ).expect("fixture should compile");
+        let first = game.create_object_from_definition(&definition, alice, Zone::Graveyard);
+        let view = |game: &GameState, object: ObjectId| {
+            let obj = game.object(object).unwrap();
+            // Live triggers read calculated abilities, which bind the host.
+            let abilities = game.current_characteristics(object).unwrap().abilities.to_vec();
+            let ironsmith::ability::AbilityKind::Triggered(triggered) = &abilities[0].kind
+            else { panic!("expected triggered ability"); };
+            assert!(triggered.effects.retained_trigger_definition().is_some(), "printed trigger is stamped");
+            let entry = StackEntry::ability(object, alice, triggered.effects.clone())
+                .with_source_stable_id(obj.stable_id)
+                .with_trigger_identity(ironsmith::triggers::compute_trigger_identity(triggered));
+            let snapshot = build_stack_object_snapshot(game, alice, None, &entry);
+            let preferences = crate::ui_snapshot::build_object_details_snapshot(game, object, None)
+                .unwrap().ability_preferences;
+            assert_eq!(preferences[0]["automation_identity"], snapshot.automation_identity.clone().unwrap(),
+                "inspector and stack keys agree");
+            (snapshot.source_stable_id, snapshot.automation_identity.unwrap(),
+                ironsmith::triggers::compute_trigger_identity(triggered))
+        };
+        let (first_stable, first_identity, first_acquisition) = view(&game, first);
+        let in_hand = game.move_object(first, Zone::Hand, ironsmith::events::cause::EventCause::effect()).expect("move to hand");
+        let second = game.move_object(in_hand, Zone::Graveyard, ironsmith::events::cause::EventCause::effect()).expect("move to graveyard");
+        assert_ne!(first, second, "zone changes create a new object (CR 400.7)");
+        let (second_stable, second_identity, second_acquisition) = view(&game, second);
+        assert_ne!(first_acquisition, second_acquisition,
+            "acquisition identity is per incarnation; automation must not use it");
+        assert_eq!(first_stable, second_stable);
+        assert_eq!(first_identity, second_identity);
+    }
+
+    #[test]
     fn stack_source_ability_text_preserves_identity_and_captured_source() {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let alice = PlayerId::from_index(0);
@@ -535,12 +593,14 @@ mod source_ability_tests {
         else {
             panic!("expected third ability to be triggered");
         };
-        let trigger = StackEntry::ability(source, alice, Vec::new())
+        let trigger = StackEntry::ability(source, alice, triggered.effects.clone())
             .with_source_stable_id(captured.stable_id)
             .with_trigger_identity(ironsmith::triggers::compute_trigger_identity(triggered))
             .with_source_snapshot(captured);
         let trigger_view = build_stack_object_snapshot(&game, alice, None, &trigger);
         assert!(trigger_view.automation_identity.as_ref().unwrap().starts_with("trigger:"));
+        assert!(trigger_view.automation_identity.as_ref().unwrap().starts_with("trigger:definition:"),
+            "compiled triggers key on their authored occurrence stamp");
         assert_eq!(preferences[2]["automation_identity"], trigger_view.automation_identity.clone().unwrap());
         assert_eq!(preferences[2]["source_stable_id"], trigger_view.source_stable_id.unwrap());
         assert!(crate::ui_snapshot::build_object_details_snapshot(&game, source, None)

@@ -917,7 +917,7 @@ fn cr_604_7_static_effect_stops_immediately_without_last_known_information() {
 fn walker_def() -> CardDefinition {
     compile(
         "Test walker",
-        "Mana cost: {0}\nType: Legendary Planeswalker — Test\nLoyalty: 3\n+1: You gain 1 life.\n−2: You gain 2 life.\n−4: You gain 4 life.",
+        "Mana cost: {0}\nType: Legendary Planeswalker — Jace\nLoyalty: 3\n+1: You gain 1 life.\n−2: You gain 2 life.\n−4: You gain 4 life.",
     )
 }
 

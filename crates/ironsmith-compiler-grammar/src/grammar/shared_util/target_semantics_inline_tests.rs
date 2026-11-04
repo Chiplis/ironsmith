@@ -160,11 +160,9 @@ fn definite_combat_role_targets_keep_the_block_pair_identity() {
         ("the blocking creature", "blocking", "blocking"),
         ("the attacking creature", "blocked", "attacking"),
     ] {
+        // Both definite participants are tagged object filters (CR 608.2k);
+        // "the blocking creature" is the pure blocker tag.
         let parsed = parse(text);
-        if expected_tag == "blocking" {
-            assert!(matches!(parsed, TargetAst::Tagged(tag, _) if tag.as_str() == "blocking"));
-            continue;
-        }
         let TargetAst::Object(filter, explicit_target, _) = parsed else {
             panic!("expected object target for {text}");
         };

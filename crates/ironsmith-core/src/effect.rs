@@ -391,16 +391,7 @@ pub enum EffectPredicate {
     SearchedLibrary,
     HappenedNotReplaced,
     ExcessDamageDealt,
-    /// "If excess damage was dealt to a creature this way" (Vikya,
-    /// Scorching Stalwart): excess damage dealt to a recipient that was a
-    /// creature, not to a planeswalker or battle (CR 120.4a). Appended.
-    ExcessDamageDealtToCreature,
     DealtDamageToPlayer,
-    /// The antecedent damage instruction's CR 120.4a excess-to-controller
-    /// replacement applied ("If excess damage would be dealt ..., instead
-    /// ... and you convert Megatron"): it assigned damage to a player,
-    /// whether or not that damage was then prevented.
-    ExcessDamageRedirected,
     AffectedObjectMatchesCardType {
         card_type: CardType,
         negated: bool,
@@ -447,6 +438,15 @@ pub enum EffectPredicate {
     /// A completed named receipt inside the exact preceding program result.
     /// This never queries global/turn history or a different producer.
     NamedActionCompleted { label:String },
+    /// "If excess damage was dealt to a creature this way" (Vikya,
+    /// Scorching Stalwart): excess damage dealt to a recipient that was a
+    /// creature, not to a planeswalker or battle (CR 120.4a). Appended.
+    ExcessDamageDealtToCreature,
+    /// The antecedent damage instruction's CR 120.4a excess-to-controller
+    /// replacement applied ("If excess damage would be dealt ..., instead
+    /// ... and you convert Megatron"): it assigned damage to a player,
+    /// whether or not that damage was then prevented.
+    ExcessDamageRedirected,
 }
 
 /// Authored grammatical subject for a prior-result predicate.
@@ -759,8 +759,6 @@ impl RetargetMode {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum DelayedTriggerSpec {
-    /// A fully typed zone change, including event provenance restrictions.
-    ZoneChange(crate::trigger_model::ZoneChangeTrigger),
     /// An event-time condition qualifies the delayed event matcher, rather
     /// than becoming an intervening condition checked again on resolution.
     ConditionQualified {
@@ -944,6 +942,8 @@ pub enum DelayedTriggerSpec {
     PlayedOrCastThroughPreviousPermission,
     /// Append-only: typed characteristic gain for a delayed registration.
     CharacteristicGained(crate::trigger_model::CharacteristicGainTrigger),
+    /// Append-only. A fully typed zone change, including event provenance restrictions.
+    ZoneChange(crate::trigger_model::ZoneChangeTrigger),
 }
 
 /// Lifetime policy for a delayed trigger registration.
@@ -8091,7 +8091,10 @@ pub struct RippleEffect {
 /// An object-state transition that ends one application of a named status.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TagKeyWalk)]
-pub enum CustomStatusExpiryEvent { TurnsFaceUp, PhasesIn }
+pub enum CustomStatusExpiryEvent { TurnsFaceUp, PhasesIn,
+    /// "until it has no <kind> counters": ends the first time the incarnation
+    /// has none of that kind; it never revives from later counters.
+    NoCounters(crate::CounterType) }
 
 /// A noncopiable permanent designation, independent of a keyword action.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

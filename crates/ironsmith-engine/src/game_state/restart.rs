@@ -421,6 +421,10 @@ impl GameState {
         // suspended parent frame attached to the rebuilt child so the parent
         // remains wholly unaffected and can still resume normally.
         restarted.subgame_parent = self.subgame_parent.take();
+        // The restarting effect is still inside its action-observation
+        // scopes; their owners close them on the rebuilt game.
+        restarted.effect_store.action_observation_records =
+            std::mem::take(&mut self.effect_store.action_observation_records);
         // CR 726.1/726.4: the host loop runs the new game's rule 103
         // procedure (mulligans, opening-hand actions) and restarts the turn
         // structure at turn 1's untap step once the effect finishes resolving.

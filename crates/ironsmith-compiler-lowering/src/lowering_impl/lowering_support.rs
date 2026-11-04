@@ -8347,9 +8347,15 @@ mod tests {
             leading_then: false,
             starting_with_controller: false,
         }];
-        let (_, segments) = flatten_top_level_source_sentences(effects.clone());
-        assert_eq!(segments.len(), 1);
-        assert!(segments[0].starting_with_controller);
+        // A lone source sentence needs no segment boundary: its participant
+        // order is carried on the first iteration itself (see
+        // preserve_participant_order_on_first_effect).
+        let (flattened, segments) = flatten_top_level_source_sentences(effects.clone());
+        assert!(segments.is_empty());
+        assert!(
+            matches!(flattened.as_slice(), [EffectAst::SourceSentence { starting_with_controller: true, .. }]),
+            "{flattened:#?}"
+        );
         let prepared = stage_effects_for_lowering(&effects, ReferenceImports::default())
             .expect("prepare nested ordered player sentence");
         let lowered = materialize_prepared_statement_effects(&prepared)

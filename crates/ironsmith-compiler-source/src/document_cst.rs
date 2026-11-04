@@ -201,7 +201,14 @@ fn classify_line(
             CstNodeKind::FaceSeparator,
         );
         (CstLineKind::FaceSeparator, None)
-    } else if is_fully_parenthetical(text) {
+    } else if is_fully_parenthetical(text)
+        // Markdown-italic reminder rows ("*({T}: Add {U}.)*") as authored in
+        // custom-set exports are the same reminder-only line.
+        || text
+            .strip_prefix('*')
+            .and_then(|inner| inner.strip_suffix('*'))
+            .is_some_and(|inner| is_fully_parenthetical(inner.trim()))
+    {
         (CstLineKind::ReminderOnly, None)
     } else if let Some((chapters, header, body)) = saga_chapter_prefix(text) {
         push_node(

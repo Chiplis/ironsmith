@@ -85,7 +85,7 @@ fn lumbering_laundry_grants_face_down_look_permission_until_end_of_turn() {
         "Mana cost: {5}\nType: Artifact Creature — Golem\nPower/Toughness: 4/5\n{2}: Until end of turn, you may look at face-down creatures you don't control any time.\nDisguise {5}", false)
         .expect("Lumbering Laundry should compile");
     let debug = format!("{:?}", definition.abilities);
-    assert!(debug.contains("LookAtFaceDownCreaturesYouDontControl"), "{debug}");
+    assert!(debug.contains("FaceDownVisibleTo(You)"), "{debug}");
     assert!(debug.contains("EndOfTurn"), "the permission lasts until end of turn: {debug}");
 }
 

@@ -18,6 +18,9 @@ pub fn parse_designated_ability_inheritance_line(tokens: &[OwnedLexToken]) -> Re
         _ => return Ok(None),
     };
     if donor_word >= words.len() { return Ok(None); }
+    // "all abilities of ability stickers on ..." (Clandestine Chameleon)
+    // borrows sticker abilities, not the abilities of the named objects.
+    if words[donor_word..].starts_with(&["ability", "stickers"]) { return Ok(None); }
     let filter = parse_object_filter_lexed(&tokens[view.token_start_indices()[donor_word]..], false)?;
     let mut activated = crate::static_abilities::CopyActivatedAbilities::new(filter.clone());
     activated.excluded_ability_designations = excluded.clone();

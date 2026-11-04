@@ -301,7 +301,7 @@ pub fn parse_activated_line_with_raw(
                 surcharges.extend_from_slice(parts);
             } else {
                 kept.extend_from_slice(sentence);
-                kept.extend(crate::lexer::lex_line(".", 0)?);
+                kept.push(OwnedLexToken::period(crate::cards::TextSpan::synthetic()));
             }
         }
         if !surcharges.is_empty() {
@@ -1520,7 +1520,7 @@ mod intrinsic_activation_surcharge_tests {
         let parsed=parse_activated_line(&tokens).unwrap().unwrap();
         let crate::model::CompilerAbilityKindCore::Activated(ability)=parsed.kind() else{panic!()};
         assert_eq!(ability.mana_cost.costs().len(),2);
-        assert!(ability.mana_cost.costs().iter().any(|cost|matches!(cost,crate::model::CompilerCost::DynamicMana(dynamic) if matches!(dynamic.additional_generic.as_ref().map(crate::effect::Value::unhinted),Some(crate::effect::Value::CountersOn(_,Some(crate::object::CounterType::PlusOnePlusOne)))))));
+        assert!(ability.mana_cost.costs().iter().any(|cost|matches!(cost,crate::model::CompilerCost::DynamicMana(dynamic) if matches!(dynamic.additional_generic.as_ref().map(crate::effect::Value::unhinted),Some(crate::effect::Value::CountersOn(_,Some(crate::object::CounterType::PlusOnePlusOne))|crate::effect::Value::CountersOnSource(crate::object::CounterType::PlusOnePlusOne))))));
         assert_eq!(parsed.effects_ast.as_ref().unwrap().len(),1,"the own surcharge must never execute as an effect");
     }
 }

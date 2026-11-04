@@ -1359,7 +1359,7 @@ pub fn parse_reselect_attack_target_clause(
     let view=crate::lexer::TokenWordView::new(tokens);let words=view.word_refs();
     let target=if matches!(words.as_slice(),["its"|"it's"|"theyre"|"they're","attacking"]) {
         Some(TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(),crate::util::span_from_tokens(tokens)))
-    } else if words.len()>2 && matches!(words[words.len()-2..],["is"|"are","attacking"]) {
+    } else if words.len()>2 && words[0]!="reselect" && matches!(words[words.len()-2..],["is"|"are","attacking"]) {
         let end=view.token_start_indices()[words.len()-2];Some(parse_target_phrase(&tokens[..end])?)
     }else{None};
     if let Some(target)=target {
@@ -1386,6 +1386,7 @@ pub fn parse_reselect_attack_target_clause(
     } else {
         parse_target_phrase(subject_tokens)?
     };
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(EffectAst::subject_verb_reselect_attack_target(
         target,
         shape.players_only,

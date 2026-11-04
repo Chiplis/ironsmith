@@ -151,7 +151,9 @@ mod graph_compilation_tests {
         for node in &bundle.catalog {
             let program=node.spell_effect.as_ref().expect("one creation spell per catalog node");
             let authoritative=program.segments.iter().flat_map(|segment|segment.default_effects.iter()).collect::<Vec<_>>();
-            assert_eq!(program.flattened_default_effects().iter().collect::<Vec<_>>(),authoritative);
+            // Compiler effects have no structural PartialEq (it is always
+            // false); compare the serialized programs.
+            assert_eq!(serde_json::to_value(program.flattened_default_effects()).unwrap(),serde_json::to_value(&authoritative).unwrap());
             check(&serde_json::to_value(&program.segments).unwrap(),root_id.0,&mut authoritative_references);
             check(&serde_json::to_value(program.flattened_default_effects()).unwrap(),root_id.0,&mut cached_references);
         }

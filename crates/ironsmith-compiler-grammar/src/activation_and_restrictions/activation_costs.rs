@@ -1078,6 +1078,19 @@ pub fn parse_cant_clauses(
             }, format_negated_restriction_display(zone_tokens))]));
         }
     }
+    // "Damage dealt by ... can't be prevented this turn" is a timed one-shot
+    // rule effect (CR 611.2a), never a static ability of the source.
+    {
+        let words = crate::lexer::parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens));
+        let damage_subject = words.first() == Some(&"damage")
+            || words.starts_with(&["combat", "damage"]);
+        if damage_subject
+            && (words.ends_with(&["can't", "be", "prevented", "this", "turn"])
+                || words.ends_with(&["cant", "be", "prevented", "this", "turn"]))
+        {
+            return Ok(None);
+        }
+    }
     if let Some(abilities) = opponent_cause_protection_static_abilities(tokens) {
         return Ok(Some(abilities));
     }

@@ -8029,6 +8029,25 @@ impl AttachedAbilityGrant {
         self.protection_does_not_remove_controlled_attachments = enabled;
         self
     }
+
+    /// CR 113.12: "Enchanted creature can't block" states a quality of the
+    /// attached object; it does not grant an ability. The restriction is
+    /// applied directly by [`StaticAbilityKind::apply_restrictions`], so it
+    /// survives the object losing its abilities and never makes the object
+    /// count as having an ability. A quoted grant ("has \"...\"") is an ability.
+    fn states_restriction_quality(&self) -> bool {
+        let display = self.display.to_ascii_lowercase();
+        if display.contains('"') || display.contains(" has ") || display.contains(" have ")
+            || !display.contains("can't")
+        {
+            return false;
+        }
+        std::iter::once(&self.ability).chain(&self.additional_abilities).all(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(granted) if matches!(granted.id(),
+                StaticAbilityId::RuleRestriction | StaticAbilityId::Unblockable
+                    | StaticAbilityId::CantAttack | StaticAbilityId::CantBlock))
+        })
+    }
 }
 
 fn materialize_named_granting_source_in_effect(
@@ -8498,6 +8517,9 @@ impl StaticAbilityKind for AttachedAbilityGrant {
                 .with_source_type(EffectSourceType::StaticAbility),
                 &self.condition,
             )];
+        }
+        if self.states_restriction_quality() {
+            return Vec::new();
         }
         let mut effects = Vec::with_capacity(1 + self.additional_abilities.len());
         effects.push(effect_with_optional_static_condition(

@@ -3912,8 +3912,9 @@ pub(super) fn build_object_details_snapshot(
     let ability_preferences = live_abilities.iter().enumerate().filter_map(|(index, ability)| {
         use ironsmith::ability::{AbilityKind, ActivatedAbilityRuntimeExt};
         let (kind, identity) = match &ability.kind {
-            AbilityKind::Triggered(triggered) => ("Triggered", format!("trigger:{}",
-                ironsmith::triggers::compute_trigger_identity(triggered).0)),
+            AbilityKind::Triggered(triggered) => ("Triggered",
+                super::stack_snapshots::triggered_automation_identity(Some(&triggered.effects),
+                    Some(ironsmith::triggers::compute_trigger_identity(triggered)))?),
             AbilityKind::Activated(activated)
                 if !activated.is_runtime_mana_ability(game, obj.id, current_controller) => {
                 ("Activated", super::stack_snapshots::activated_automation_identity(

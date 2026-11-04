@@ -22,7 +22,7 @@ pub(super) fn read(sentences: &[SentenceInput], index: usize)
     // conditional owns evaluation before the tap; the original tap executes
     // once in either branch, including when prevented or already satisfied.
     let mut state = header[..header.len()-3].to_vec();
-    state.extend(crate::lexer::lex_line("is tapped", 0)?);
+    state.extend(crate::lexer::synthetic_word_tokens(["is", "tapped"]));
     let predicate = crate::grammar::filters::parse_condition_predicate_lexed(&state)?;
     let action = crate::effect_sentences::parse_effect_sentences_lexed(first)?;
     let followup = crate::effect_sentences::parse_effect_sentences_lexed(&second[comma+1..])?;

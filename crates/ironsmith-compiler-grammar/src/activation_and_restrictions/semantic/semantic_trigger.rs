@@ -418,7 +418,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if let Some(becomes) = words.iter().position(|word| *word == "becomes") {
             let mut value_start = becomes + 1;
             if matches!(words.get(value_start), Some(&"a" | &"an")) { value_start += 1; }
-            if becomes > 0 && value_start < words.len() {
+            // An object noun phrase never opens with a player subject: "you
+            // cast a creature spell or a creature you control becomes ..." is
+            // a union of two events, owned by the union reader.
+            let player_subject = words.first() == Some(&"you")
+                || matches!(words.get(1), Some(&"player" | &"opponent" | &"players" | &"opponents"));
+            if becomes > 0 && value_start < words.len() && !player_subject {
                 let value = words[value_start..].join(" ");
                 let characteristic = crate::util::parse_card_type(&value)
                     .map(ironsmith_core::trigger_model::GainedCharacteristic::CardType)

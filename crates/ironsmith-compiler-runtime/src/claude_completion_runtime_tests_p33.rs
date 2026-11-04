@@ -55,7 +55,9 @@ fn hall_of_echoes_exempts_your_permanents_from_the_legend_rule_this_turn() {
         "Hall of Echoes",
         "Type: Land\n{T}: Add {C}.\n{5}: This land becomes a copy of target creature you control until end of turn. The \"legend rule\" doesn't apply to permanents you control this turn.",
     );
-    assert!(debug.contains("LegendRuleDoesntApplyToController"), "{debug}");
+    // The exemption is a this-turn object rule over permanents you control.
+    assert!(debug.contains("rule: LegendRuleDoesntApply"), "{debug}");
+    assert!(debug.contains("duration: EndOfTurn"), "{debug}");
 }
 
 #[test]

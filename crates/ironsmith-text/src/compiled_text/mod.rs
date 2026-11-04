@@ -279,7 +279,7 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                                 lines.push((AuditLine::Rendered, format!("{power}/{toughness}.")));
                             }
                             for granted in &level.abilities {
-                                let text = granted.display();
+                                let text = render_effects::level_granted_ability_text(granted);
                                 let text = text.trim().trim_end_matches('.');
                                 let text = audit_static_subject_surface(
                                     &format!("{}.", capitalize_first(text)),
@@ -3509,6 +3509,21 @@ fn audit_merge_conditional_keyword_lines(lines: Vec<String>) -> Vec<String> {
     out
 }
 
+/// Decision labels that only repeat each mode's own text are prompt
+/// metadata, not a distinct modal presentation. Structural renderers compare
+/// a choice against its canonical shape with such labels carried over.
+pub(crate) fn echoed_choice_decision_labels(
+    choose: &crate::effects::ChooseModeEffect,
+) -> Vec<String> {
+    let echoes = choose.decision_labels.len() == choose.modes.len()
+        && choose
+            .decision_labels
+            .iter()
+            .zip(&choose.modes)
+            .all(|(label, mode)| label.trim() == mode.source_text.trim());
+    if echoes { choose.decision_labels.clone() } else { Vec::new() }
+}
+
 /// A mode choice among losing one keyword each reads as the choice of
 /// keyword: "Target creature loses your choice of flying, first strike, or
 /// trample until end of turn" (Walking Sponge), "loses first strike or
@@ -6713,6 +6728,15 @@ fn remove_redundant_period_after_terminal_quote(line: &str) -> String {
 /// hand. Round down each time.": a sentence whose every fraction rounds the
 /// same way states the rounding once, after the sentence.
 fn fold_repeated_rounding_into_trailing_sentence(line: String) -> String {
+    // One fraction's rounding stated twice in a row is still one rounding
+    // ("half your life total, rounded up, rounded up"), not a repeated one.
+    let mut line = line;
+    for direction in ["down", "up"] {
+        let doubled = format!(", rounded {direction}, rounded {direction}");
+        while line.contains(&doubled) {
+            line = line.replace(&doubled, &format!(", rounded {direction}"));
+        }
+    }
     let mut out = Vec::new();
     let mut changed = false;
     for sentence in line.split_inclusive(". ") {

@@ -55,6 +55,11 @@ pub struct ExileToGraveyardReplacementSpec<'a> {
     pub filter_kind: ExileGraveyardFilterKind,
     pub graveyard_owner: ReplacementPlayerKind,
     pub exclude_cycled: bool,
+    /// "a nontoken creature an opponent owns would die or a creature card
+    /// not on the battlefield" (Anafenza, the Foremost): the token index of
+    /// the first arm's dies phrase ("would die", before its "or"), which is
+    /// that arm's battlefield-to-graveyard move.
+    pub battlefield_arm_dies_at: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -227,11 +232,15 @@ fn parse_exile_to_graveyard_replacement_lexed<'a>(
     primitives::sentence_end().parse_next(input)?;
     let filter_tokens = trim_lexed_commas(filter_tokens);
     let filter_kind = classify_exile_graveyard_filter(filter_tokens);
+    let battlefield_arm_dies_at = filter_tokens.windows(3).position(|words| {
+        words[0].is_word("would") && words[1].is_word("die") && words[2].is_word("or")
+    });
     Ok(ExileToGraveyardReplacementSpec {
         filter_tokens,
         filter_kind,
         graveyard_owner,
         exclude_cycled,
+        battlefield_arm_dies_at,
     })
 }
 

@@ -425,7 +425,7 @@ fn u070_day_night_counts_each_previous_active_teammate_separately() {
             .turn_history
             .record_event(&event, None, None);
     }
-    game.next_turn();
+    next_turn_through_untap_step(&mut game);
     assert!(
         game.is_night,
         "one spell by each teammate is not two by one player"
@@ -440,11 +440,21 @@ fn u070_day_night_counts_each_previous_active_teammate_separately() {
             .turn_history
             .record_event(&event, None, None);
     }
-    game.next_turn();
+    next_turn_through_untap_step(&mut game);
     assert!(
         !game.is_night,
         "two spells by one active teammate make it day"
     );
+}
+
+/// CR 502.2: the day/night check is part of the untap step, so advance from
+/// the turn transition through the untap entry exactly as the turn runner does.
+fn next_turn_through_untap_step(game: &mut ironsmith::GameState) {
+    game.next_turn();
+    let mut queue = ironsmith::triggers::TriggerQueue::new();
+    let mut runner =
+        ironsmith::TurnRunner::from_state_for_sync(ironsmith::TurnRunnerState::BeginTurn);
+    runner.advance(game, &mut queue).expect("untap step runs");
 }
 
 #[test]

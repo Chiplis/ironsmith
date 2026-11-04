@@ -2981,14 +2981,6 @@ fn parse_predicate_battlefield_change_this_turn_uses_shared_capture_parser()
             ),
         ),
         (
-            "If creatures left battlefield under your control this turn",
-            PredicateAst::TurnEvents(
-                TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
-                    surface: crate::PermanentLeftBattlefieldControlSurface::LeftUnderYourControl,
-                },
-            ),
-        ),
-        (
             "If lands you controlled were put into graveyard from battlefield this turn",
             PredicateAst::TurnEvents(
                 TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
@@ -3006,6 +2998,29 @@ fn parse_predicate_battlefield_change_this_turn_uses_shared_capture_parser()
 
         assert_eq!(parsed, expected, "{text}");
     }
+
+    // A typed object noun keeps its type: "creatures left" counts creatures
+    // that left under your control, not any permanent.
+    let tokens = lex_line("If creatures left battlefield under your control this turn", 0)?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    assert!(
+        matches!(
+            &parsed,
+            PredicateAst::ValueComparison {
+                left: crate::effect::Value::TurnHistoryCount(
+                    ironsmith_core::TurnHistoryCount::MovedZones {
+                        filter,
+                        from: Some(crate::zone::Zone::Battlefield),
+                        to: None,
+                    }
+                ),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: crate::effect::Value::Fixed(1),
+            } if filter.card_types == vec![crate::types::CardType::Creature]
+                && filter.controller == Some(crate::target::PlayerFilter::You)
+        ),
+        "{parsed:?}"
+    );
     Ok(())
 }
 

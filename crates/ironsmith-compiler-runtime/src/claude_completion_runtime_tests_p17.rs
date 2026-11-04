@@ -399,9 +399,12 @@ fn runesword_gives_the_pumped_attacker_damage_riders_until_end_of_turn() {
     let debug = format!("{:?}", activated.effects);
     assert!(debug.contains("ScheduleDelayedTriggerEffect") && debug.contains("SacrificeTargetEffect"),
         "the artifact is sacrificed when the creature leaves this turn: {debug}");
-    assert!(debug.contains("ExileWouldDieInstead") && debug.contains("damaged_by: Some(ThisCreature)"),
+    // Both riders range over creatures dealt damage this turn by the pumped
+    // (targeted) creature, named by its tag.
+    assert!(debug.contains("RegisterFutureZoneReplacementEffect") && debug.contains("replacement_zone: Exile")
+        && debug.contains("relation: WasDealtDamageByTaggedThisTurn"),
         "creatures it damaged are exiled instead of dying: {debug}");
-    assert!(debug.contains("BeRegenerated") && debug.contains("dealt_damage_by_source_this_turn: Some(ThisCreature)"),
+    assert!(debug.contains("BeRegenerated") && debug.matches("relation: WasDealtDamageByTaggedThisTurn").count() >= 2,
         "creatures it damaged can't be regenerated: {debug}");
     assert_eq!(debug.matches("\"pumped_0\"").count() >= 3, true,
         "the pump, the leave watcher and the riders all name the same target: {debug}");

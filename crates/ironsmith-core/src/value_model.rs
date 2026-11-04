@@ -2947,12 +2947,9 @@ pub enum Condition {
     PlayerHasEnduringStory {
         player: PlayerFilter,
     },
-    PlayerHasDesignation { player: PlayerFilter, designation: String },
     SourceIsRingBearer {
         player: PlayerFilter,
     },
-    /// Actual mana paid to cast spells this turn; excludes mana spent on abilities.
-    PlayerSpentManaToCastSpellsThisTurnAtLeast { player: PlayerFilter, amount: FrozenNumericParameter },
     PlayerRingTemptedThisGameOrMore {
         player: PlayerFilter,
         count: u32,
@@ -3100,8 +3097,6 @@ pub enum Condition {
     TargetPaidLabel(OptionalCostRef),
     ThisSpellWasKicked,
     ThisSpellPaidLabel(OptionalCostRef),
-    /// One named optional payment completed for this exact source incarnation.
-    NamedPaymentOutcome {label:String,paid:bool,payer:Option<PlayerFilter>},
     YouHaveFullParty,
     TargetSpellCastOrderThisTurn(u32),
     TargetSpellControllerIsPoisoned,
@@ -3481,6 +3476,12 @@ pub enum Condition {
     EachCurrentDesignatedAbilityActivatedByYou { designation: String },
     /// Any player's whole ending phase, including its cleanup step.
     InEndingPhase,
+    // Successor variants are appended to keep published variant positions.
+    PlayerHasDesignation { player: PlayerFilter, designation: String },
+    /// Actual mana paid to cast spells this turn; excludes mana spent on abilities.
+    PlayerSpentManaToCastSpellsThisTurnAtLeast { player: PlayerFilter, amount: FrozenNumericParameter },
+    /// One named optional payment completed for this exact source incarnation.
+    NamedPaymentOutcome {label:String,paid:bool,payer:Option<PlayerFilter>},
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

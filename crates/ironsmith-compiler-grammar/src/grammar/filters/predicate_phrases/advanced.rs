@@ -2364,6 +2364,9 @@ pub(super) fn is_predicate_reference_value(value: &Value) -> bool {
 }
 
 pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    if let Some(predicate) = parse_paid_named_label_without_cost_noun(tokens) {
+        return Some(predicate);
+    }
     let clause = LexedClause::new(tokens);
     let paid_tail_phrases: &[&[&str]] = &[
         &["cost", "was", "paid"],
@@ -2423,6 +2426,35 @@ pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Optio
     } else {
         Some(predicate)
     }
+}
+
+/// "its tithe was paid": a named custom price spelled without the "cost"
+/// noun. Only a possessive plus one plain label word qualifies.
+fn parse_paid_named_label_without_cost_noun(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let mut end = tokens.len();
+    while end > 0 && matches!(tokens[end - 1].kind, TokenKind::Comma | TokenKind::Period) { end -= 1; }
+    let body = &tokens[..end];
+    if body.iter().any(|token| token.kind != TokenKind::Word) { return None; }
+    let words: Vec<&str> = body.iter().map(|token| match token.parser_text() { "wasn't" => "wasnt", word => word }).collect();
+    let words = words.strip_prefix(&["if"]).unwrap_or(&words);
+    let (words, this_turn) = if crate::word_primitives::ends_with(words, &["this", "turn"]) {
+        (&words[..words.len() - 2], true)
+    } else { (words, false) };
+    let (possessive, label, negated) = match words {
+        [possessive, label, "was", "paid"] => (*possessive, *label, false),
+        [possessive, label, "wasnt", "paid"] | [possessive, label, "was", "not", "paid"] => (*possessive, *label, true),
+        _ => return None,
+    };
+    if !is_paid_cost_possessive_word(possessive) || matches!(label, "cost" | "mana" | "life" | "price")
+        || !label.chars().all(|ch| ch.is_ascii_alphabetic())
+    {
+        return None;
+    }
+    let mut reference = crate::cost::OptionalCostRef::from(named_paid_cost_label_from_word(label)?);
+    if this_turn { reference = reference.this_turn(); }
+    crate::word_claims::claim_tokens(tokens);
+    let predicate = PredicateAst::ThisSpellPaidLabel(reference);
+    Some(if negated { PredicateAst::Not(Box::new(predicate)) } else { predicate })
 }
 
 fn paid_cost_tail(clause: LexedClause<'_>) -> Option<(bool, bool)> {

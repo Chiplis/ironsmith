@@ -618,6 +618,17 @@ fn revealed_type_partition_moves_only_the_unchosen_remainder_and_casts_one_exile
     let mut ctx = EffectContext::new_default(source, alice).with_decision_maker(&mut chooser);
     ctx.set_tagged_objects(look.tag.clone(), revealed);
     ctx.set_tagged_objects(choice.tag.clone(), selected);
+    // The exile instruction publishes its result set ("exiled this way"),
+    // which the cast gate and the final return read; seed it with the cards
+    // this simulated exile moved.
+    let exile_tag = effects[2]
+        .downcast_ref::<ironsmith::effects::TaggedEffect>()
+        .expect("the exile publishes its result set")
+        .tag
+        .clone();
+    let exiled_snapshots = exiled.iter()
+        .map(|id| ObjectSnapshot::from_object_id(&game, *id).unwrap()).collect::<Vec<_>>();
+    ctx.set_tagged_objects(exile_tag, exiled_snapshots);
 
     for effect in &effects[3..] {
         execute_effect(&mut game, effect, &mut ctx).expect("partition follow-up resolves");

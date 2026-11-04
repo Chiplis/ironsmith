@@ -512,7 +512,10 @@ fn next_turn_attack_ban_starts_on_that_players_next_turn() {
         let definition = compile_to_runtime_definition(name, text, false)
             .unwrap_or_else(|error| panic!("{name}: {error:?}"));
         let debug = format!("{:?}", definition.abilities);
-        assert!(debug.contains("AttackPlayerOrPlaneswalkersControlledBy"), "{name}: {debug}");
+        // "you or permanents you control": the permanents-wide restriction
+        // (planeswalkers and battles alike), or its older planeswalker form.
+        assert!(debug.contains("AttackPlayerOrPermanentsControlledBy")
+            || debug.contains("AttackPlayerOrPlaneswalkersControlledBy"), "{name}: {debug}");
         assert!(debug.contains("NextTurn("), "{name}: {debug}");
     }
 }

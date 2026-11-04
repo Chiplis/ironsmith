@@ -402,7 +402,7 @@ fn named_tap_label(tokens:&[OwnedLexToken],prefix:&[&str])->Option<String>{
 }
 fn named_tap_prohibition(tokens:&[OwnedLexToken])->Option<String>{
     for subject in ["creature","permanent"]{
-        for negative in ["can't","cannot"]{
+        for negative in ["can't","cant","cannot"]{
             if let Some(name)=named_tap_label(tokens,&["this",subject,negative,"be","tapped","to","pay","the","generic","tap","payment","named"]){return Some(name)}
         }
     }

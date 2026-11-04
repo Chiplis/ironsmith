@@ -13,9 +13,28 @@ pub fn parse_recipient_optional_spell_cost_line(
     };
     let header = &tokens[..period];
     let words = TokenWordView::new(header);
-    if words.to_word_refs() != ["as", "an", "additional", "cost", "to", "cast", "this", "spell", "you", "may", "pay", "mana", "equal", "to", "this", "spell's", "mana", "value"] {
+    let header_refs = words.to_word_refs();
+    let lead = ["as", "an", "additional", "cost", "to", "cast", "this", "spell", "you", "may", "pay"];
+    if !header_refs.starts_with(&lead) {
         return Ok(None);
     }
+    // The price is either the recipient-relative generic mana value or an
+    // ordinary authored cost ("you may pay {2}{R}").
+    let price = if header_refs[lead.len()..] == ["mana", "equal", "to", "this", "spell's", "mana", "value"] {
+        GrantedOptionalCostPrice::GenericManaValue
+    } else {
+        let Some(pay) = header.iter().position(|token| token.is_word("pay")) else {
+            return Ok(None);
+        };
+        let price_tokens = &header[pay + 1..];
+        if price_tokens.is_empty() || !price_tokens.iter().all(|token| token.kind == TokenKind::ManaGroup || token.kind == TokenKind::Comma) {
+            return Ok(None);
+        }
+        let Ok(cost) = crate::activation_and_restrictions::parse_compiler_activation_cost(price_tokens) else {
+            return Ok(None);
+        };
+        GrantedOptionalCostPrice::Fixed(cost)
+    };
     let mut tail = &tokens[period + 1..];
     let mut name = None;
     // An explicit local label survives heterogeneous grants without guessing
@@ -51,7 +70,7 @@ pub fn parse_recipient_optional_spell_cost_line(
     let Some(frame) = tail_words.token_span_for_words(0, prefix.len()) else { return Ok(None); };
     crate::word_claims::claim_tokens(&tail[frame]);
     Ok(Some(StaticAbility::grant_optional_spell_cost(
-        ObjectFilter::source(), GrantedOptionalCostPrice::GenericManaValue,
+        ObjectFilter::source(), price,
         reference, effects, GrantedOptionalCostTiming::CastTrigger,
         crate::lexer::render_token_slice(tokens),
     )))

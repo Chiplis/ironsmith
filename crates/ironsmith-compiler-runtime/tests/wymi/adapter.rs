@@ -193,7 +193,8 @@ fn definition_uncached(v: &J) -> R<CardDefinition> {
     if !v["ManaCost"].is_null() {
         builder = builder.mana_cost(native_mana(&v["ManaCost"])?);
     }
-    if let Some(pt) = v.get("CardPT") {
+    // A flip side without printed P/T (Kuon's Essence) has none, not 0/0.
+    if let Some(pt) = v.get("CardPT").filter(|pt| !pt["CardPT"].is_null()) {
         builder = builder.power_toughness(PowerToughness::fixed(
             pt["CardPT"]["Power"].as_i64().unwrap_or(0) as i32,
             pt["CardPT"]["Toughness"].as_i64().unwrap_or(0) as i32,

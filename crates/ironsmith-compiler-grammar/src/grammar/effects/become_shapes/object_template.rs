@@ -92,6 +92,8 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
         let name_tokens = trim_separators(&descriptor_tokens[i+1..]);
         if name_tokens.is_empty() { return None; }
         let name = crate::lexer::render_literal_token_slice(name_tokens).trim().to_string();
+        // The literal name is read whole as the characteristic.
+        crate::word_claims::claim_tokens(&descriptor_tokens[i..]);
         descriptor_tokens = trim_separators(&descriptor_tokens[..i]);
         Some(name)
     } else { None };

@@ -1087,6 +1087,8 @@ mod day_night {
         game.set_daytime(true);
         cast_event(&mut game, bob());
         game.next_turn();
+        // CR 502.2: the day/night check is performed in the untap step.
+        ironsmith::turn::execute_untap_step(&mut game);
         assert!(game.is_night);
     }
 
@@ -1096,6 +1098,7 @@ mod day_night {
         game.set_daytime(true);
         cast_event(&mut game, alice());
         game.next_turn();
+        ironsmith::turn::execute_untap_step(&mut game);
         assert!(!game.is_night);
     }
 

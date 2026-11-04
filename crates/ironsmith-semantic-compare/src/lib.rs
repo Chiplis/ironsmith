@@ -8050,6 +8050,7 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         .replace("Choose up to two -", "Choose up to two —")
         .replace("choose up to two —", "choose one or both —")
         .replace("Choose up to two —", "Choose one or both —")
+        .replace(". • ", ". ")
         .replace(" • ", ". ")
         .replace("• ", ". ")
         .replace(

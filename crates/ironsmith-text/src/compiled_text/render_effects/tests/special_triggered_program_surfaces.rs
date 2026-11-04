@@ -9,8 +9,9 @@ fn oath_of_ghouls_uses_the_migrated_graveyard_minority_program() {
         .expect("graveyard-minority trigger should compile");
 
     assert_eq!(
+        // The current Oracle wording round-trips.
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
-        "At the beginning of each player's upkeep, that player chooses target opponent of that player whose graveyard has fewer creature cards in it than their graveyard does, then that player may return a creature card from that player's graveyard to that player's hand."
+        oracle
     );
     let debug = format!("{definition:#?}");
     assert!(

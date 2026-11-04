@@ -142,11 +142,10 @@ pub fn parse_become_clause(
             else if matches!(rest_words.get(2), Some(&"creature" | &"card")) { 4 } else { 3 };
         let view=crate::lexer::TokenWordView::new(rest_tokens);
         let start=view.token_start_indices().get(count).copied().unwrap_or(rest_tokens.len());
-        // Use the production lexer for this canonical operand. The authored
-        // suffix tokens retain their original spans and the consumed source
-        // phrase is claimed explicitly below.
-        let mut replacement=crate::lexer::lex_line("the creature type of your choice",0)?;
-        for token in &mut replacement { token.lowercase_word(); }
+        // The canonical operand is built as word tokens. The authored suffix
+        // tokens retain their original spans and the consumed source phrase is
+        // claimed explicitly below.
+        let mut replacement=crate::lexer::synthetic_phrase_tokens("the creature type of your choice");
         replacement.extend_from_slice(&rest_tokens[start..]);
         let mut effect=parse_become_clause(&subject_tokens, &replacement)?;
         if let EffectAst::SubjectVerb(subject)=&mut effect
@@ -976,6 +975,8 @@ pub fn parse_become_clause(
                         "missing transformation name".into(),
                     ));
                 }
+                // The literal name is read whole as the new characteristic.
+                crate::word_claims::claim_tokens(&suffix_tokens[index..]);
                 suffix_tokens = crate::util::trim_edge_punctuation_tokens(&suffix_tokens[..index]);
                 Some(name)
             } else {

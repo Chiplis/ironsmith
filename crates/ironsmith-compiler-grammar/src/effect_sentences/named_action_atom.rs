@@ -36,6 +36,8 @@ pub(super) fn parse_have_performer(tokens: &[OwnedLexToken]) -> Result<Option<Ef
 mod tests {
     #[test]
     fn performer_atom_is_shared_by_nested_clause_owners() {
+        let probe = crate::lexer::lex_line("If you control a creature, draw a card.", 0).unwrap();
+        eprintln!("P2PROBE ifclause {:?}", crate::effect_sentences::clause_dispatch::parse_effect_clause(&probe).map(|e| format!("{e:?}").chars().take(400).collect::<String>()));
         for text in [
             "Have this permanent perform the cadence action.",
             "If you control a creature, have this permanent perform the cadence action.",

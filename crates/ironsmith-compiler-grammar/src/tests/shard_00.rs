@@ -1612,9 +1612,15 @@ pub(super) fn rewrite_structure_cast_source_intervening_if_keeps_multi_sentence_
         super::super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
             .expect("cast-source conditional trigger should split");
 
+    // "if you cast it" names the caster (CR 601.2): the source was cast by
+    // its controller, a narrower turn-history fact than "it was cast".
     assert_eq!(
         spec.predicate,
-        super::super::model::ast::PredicateAst::Source(SourcePredicateAst::SourceWasCast)
+        super::super::model::ast::PredicateAst::TurnHistory(
+            crate::cards::builders::TurnHistoryPredicateAst::SourceWasCastByController {
+                surface: crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
+            }
+        )
     );
     assert!(
         spec.effects_tokens

@@ -30,6 +30,7 @@ pub(super) fn describe(effects: &[Effect]) -> Option<String> {
         crate::effects::ChooseModeEffect::choose_one(choice.modes.clone());
     expected_choice.chooser = Some(PlayerFilter::You);
     expected_choice.random = true;
+    expected_choice.decision_labels = crate::compiled_text::echoed_choice_decision_labels(choice);
     if choice != &expected_choice {
         return None;
     }

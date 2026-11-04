@@ -91,7 +91,10 @@ fn found_footage_face_down_look_permission() {
         "Found Footage",
         "Mana cost: {1}\nType: Artifact — Clue\nYou may look at face-down creatures your opponents control any time.\n{2}, Sacrifice this artifact: Surveil 2, then draw a card. (To surveil 2, look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)",
     );
-    assert!(debug.contains("LookAtFaceDownCreaturesYouDontControl"), "{debug}");
+    // CR 708.6: the look permission is a rule effect revealing the matching
+    // face-down creatures to this source's controller.
+    assert!(debug.contains("FaceDownVisibleTo(You)") && debug.contains("face_down: Some(true)"), "{debug}");
+    assert!(debug.contains("controller: Some(Opponent)"), "{debug}");
 }
 
 #[test]

@@ -693,6 +693,12 @@ fn p03_rules_content(abilities: &[ironsmith::ability::Ability], labels: &[&str])
     for label in labels {
         text = text.replace(&format!("presentation_label: Some(AbilityWord(\"{label}\"))"), "presentation_label: None");
         text = text.replace(&format!("\"__ironsmith_activation_label:{label}\""), "");
+        // A recorded designation is reference metadata: it only matters when
+        // another card names that designation, which these fixtures never do.
+        text = text.replace(
+            &format!("ability_designations: [\"{}\"]", label.to_ascii_lowercase()),
+            "ability_designations: []",
+        );
     }
     text = strip_between(&text, "LinkedExileDefinition([", "])");
     strip_between(&text, "InstanceId(", ")")

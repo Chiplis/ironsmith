@@ -438,6 +438,16 @@ fn read_companion_ability(
     if let Some(ability) = parse_companion_ability(tokens) {
         return Ok(Some(vec![ability.into()]));
     }
+    // CR 702.139a: Companion is a keyword whose deck-building condition is
+    // a closed family. An unrecognized condition stays the keyword's
+    // non-executable marker; it never acquires a guessed deck predicate.
+    if is_companion_marker_line_lexed(tokens)
+        && split_em_dash_label_prefix_tokens(tokens).is_some()
+    {
+        // The whole labeled line is this marker's authored surface.
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(Some(vec![StaticAbility::keyword_marker(keyword_static_clause_text(tokens)).into()]));
+    }
     Ok(None)
 }
 fn read_keyword_or_ticket_marker(
@@ -882,7 +892,17 @@ fn read_quoted_granted_ability_line(
     // Attached combat restrictions can precede the quoted grant. Route
     // that coordinated shape before the broad `has "<ability>"` parser
     // treats the restriction prefix as an anthem subject.
-    if contains_token_kind(tokens, TokenKind::Quote) {
+    // A quoted designation operand (`... by its ability with designation
+    // "engorge"`) is a literal name, never a granted ability.
+    let mut opening = true;
+    let only_designation_quotes = tokens.iter().enumerate().all(|(index, token)| {
+        if token.kind != TokenKind::Quote { return true; }
+        let ok = !opening || index.checked_sub(1).and_then(|prior| tokens.get(prior))
+            .is_some_and(|prior| prior.is_word("designation"));
+        opening = !opening;
+        ok
+    });
+    if contains_token_kind(tokens, TokenKind::Quote) && !only_designation_quotes {
         if let Some(abilities) = parse_filter_is_pt_creature_in_addition_and_has_line(tokens)? {
             return Ok(Some(abilities));
         }

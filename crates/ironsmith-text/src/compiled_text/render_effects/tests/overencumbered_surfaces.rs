@@ -12,9 +12,10 @@ fn enchanted_player_token_list_keeps_one_actor_and_all_three_tokens() {
     let lines = crate::compiled_text::compiled_text_lines(&definition);
     assert_eq!(
         lines[1],
-        "When this Aura enters, enchanted player creates a Clue token, a Food token, and a Junk token."
+        // The printed "Enchant opponent" wording names the enchanted opponent.
+        "When this Aura enters, enchanted opponent creates a Clue token, a Food token, and a Junk token."
     );
-    assert_eq!(lines[1].matches("enchanted player creates").count(), 1);
+    assert_eq!(lines[1].matches("enchanted opponent creates").count(), 1);
     let debug = format!("{definition:#?}");
     assert_eq!(debug.matches("CreateTokenEffect").count(), 3, "{debug}");
     assert!(debug.contains("duration: EndOfCombat"), "{debug}");

@@ -231,6 +231,14 @@ pub(in crate::compiled_text) fn describe_relative_player_target_then_optional_se
     ))
 }
 
+fn graveyard_card_noun(noun: &str) -> String {
+    if noun.split_whitespace().any(|word| word == "card" || word == "cards") {
+        noun.to_string()
+    } else {
+        format!("{noun} card")
+    }
+}
+
 /// "At the beginning of each player's upkeep, that player chooses target
 /// player whose graveyard has fewer creature cards in it than their graveyard
 /// does and is their opponent. The first player may return a creature card
@@ -264,9 +272,11 @@ pub(in crate::compiled_text) fn describe_relative_player_target_then_optional_ac
             let mut counted = filter.as_ref().clone();
             counted.zone = None;
             counted.owner = None;
+            // Objects in a graveyard are cards (CR 404.1).
+            let counted = graveyard_card_noun(strip_leading_article(&counted.description()));
             format!(
                 "whose graveyard has fewer {} in it than their graveyard does",
-                pluralize_noun_phrase(strip_leading_article(&counted.description()))
+                pluralize_noun_phrase(&counted)
             )
         }
         ChooseSpec::Player(PlayerFilter::QuantityGreaterThanPlayer {
@@ -345,7 +355,7 @@ pub(in crate::compiled_text) fn describe_relative_player_target_then_optional_ac
             card.owner = None;
             format!(
                 "return {} from their graveyard to their hand",
-                with_indefinite_article(strip_leading_article(&card.description()))
+                with_indefinite_article(&graveyard_card_noun(strip_leading_article(&card.description())))
             )
         }
         _ => return None,

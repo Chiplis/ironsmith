@@ -5052,5 +5052,9 @@ fn describe_copy_spell_starting_loyalty_override() {
 fn bounded_variable_life_payment_renders_its_limit() {
     let effect = Effect::new(crate::effects::PayAnyLifeEffect::new(ChooseSpec::you(), 0)
         .with_maximum(Value::Fixed(7)).with_source_retention());
-    assert_eq!(describe_effect(&effect), "Pay any amount of life, up to 7");
+    // The controller's bound uses the printed Nameless Race sentence.
+    assert_eq!(
+        describe_effect(&effect),
+        "Pay any amount of life. The amount you pay can't be more than 7"
+    );
 }

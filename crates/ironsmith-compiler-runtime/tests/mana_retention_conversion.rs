@@ -173,12 +173,12 @@ fn kruphix_keeps_its_devotion_type_rule_indestructible_and_no_maximum_hand_size(
 fn void_landfall_and_ozai_firebending_execute_their_real_secondary_bodies() {
     for definition in definitions("Omnath, Locus of the Void") {
         let mut game = game(); let omnath = game.create_object_from_definition(&definition, A, Zone::Battlefield);
-        let land = card(&mut game, A, "Type: Basic Land — Wastes", Zone::Hand);
+        let land = card(&mut game, A, "Type: Basic Land", Zone::Hand);
         let receipt = game.move_object_with_etb_processing_with_dm(land, Zone::Battlefield, &mut SelectFirstDecisionMaker).unwrap();
         assert!(!receipt.pending); assert!(receipt.programs.is_empty()); assert!(receipt.original.into_result().is_some());
         let mut queue = ironsmith::triggers::TriggerQueue::new(); settle(&mut game, &mut queue);
         assert_eq!(game.player(A).unwrap().mana_pool.colorless, 2); assert_eq!(pt(&game, omnath), (8, 8));
-        let foreign = card(&mut game, B, "Type: Basic Land — Wastes", Zone::Hand);
+        let foreign = card(&mut game, B, "Type: Basic Land", Zone::Hand);
         let receipt = game.move_object_with_etb_processing_with_dm(foreign, Zone::Battlefield, &mut SelectFirstDecisionMaker).unwrap();
         assert!(!receipt.pending); assert!(receipt.original.into_result().is_some()); settle(&mut game, &mut queue);
         assert_eq!(game.player(A).unwrap().mana_pool.colorless, 2);

@@ -354,6 +354,27 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         ));
     }
 
+    // "each Treasure you've created this turn": a token subtype names the
+    // created tokens without the redundant "token" noun.
+    if words.len() > 4
+        && !matches!(words[words.len() - 5], "token" | "tokens")
+        && matches!(words[words.len() - 4], "you" | "youve" | "you've")
+        && words[words.len() - 3..] == ["created", "this", "turn"]
+        && let Some(mut filter) =
+            history_filter_from_word_prefix(&tokens, &word_view, words.len() - 4)
+        && !filter.subtypes.is_empty()
+    {
+        filter.token = true;
+        filter.controller = None;
+        filter.zone = None;
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::TokensCreatedMatching {
+                player: PlayerFilter::You,
+                filter,
+            },
+        ));
+    }
+
     if crate::word_primitives::parse_choice_sequence_complete(
         &words,
         &[

@@ -3030,7 +3030,9 @@ pub fn preprocess_document_with_provenance(
         // "Round down each time." (Hydroid Krasis) restates the default
         // rounding of the "half X" values in the same line.
         let stripped = strip_rounding_instruction_sentence(&stripped);
-        if stripped.trim().is_empty() {
+        // "*(Reminder.)*": the italic markers around a stripped reminder are
+        // typography, not rules text.
+        if stripped.trim().chars().all(|ch| ch == '*' || ch.is_whitespace()) {
             return Ok(None);
         }
 

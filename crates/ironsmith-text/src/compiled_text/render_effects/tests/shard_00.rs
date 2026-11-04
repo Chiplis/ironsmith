@@ -940,7 +940,8 @@ pub(super) fn source_exile_then_source_exiled_return_compacts_without_graveyard(
 
     assert_eq!(
         describe_effect_list(&[exile_source, return_source]),
-        "Exile this, then return it to the battlefield"
+        // A bare source reference with no card type reads as "this permanent".
+        "Exile this permanent, then return it to the battlefield"
     );
 }
 

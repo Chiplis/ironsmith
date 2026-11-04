@@ -169,6 +169,27 @@ pub(super) fn run_triggered_line_family(
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("triggered-line");
     if crate::keyword_static::parse_descriptive_reminder_line(&ctx.line.tokens).is_some() { return ParseOutcome::NoMatch; }
+    // "Once/Twice each turn, when ..." is the prefix spelling of the
+    // trailing "This ability triggers only once/twice each turn" limit.
+    if let Some((cap, body)) = trigger_frequency_prefix(&ctx.line.tokens)
+        && line_starts_with_trigger_intro_tokens(body)
+        && let Some((_, source_body)) = trigger_frequency_prefix(&ctx.line.info.source_tokens)
+    {
+        let mut line = ctx.line.clone();
+        line.tokens = body.to_vec();
+        line.info.source_tokens = source_body.to_vec();
+        let inner = LineDispatchContext { line: &line, ..*ctx };
+        return run_triggered_line_family(&inner).map(|mut result| {
+            for recognized in &mut result.lines {
+                if let RecognizedLine::Triggered(triggered) = recognized
+                    && triggered.max_triggers_per_turn.is_none()
+                {
+                    triggered.max_triggers_per_turn = Some(cap);
+                }
+            }
+            result
+        });
+    }
     if !line_starts_with_trigger_intro_tokens(&ctx.line.tokens) {
         return ParseOutcome::NoMatch;
     }
@@ -3041,4 +3062,15 @@ mod alternative_trigger_boundary_tests {
         assert_eq!(alternative_trigger_boundaries(&tokens).len(), 1);
     }
 
+}
+
+fn trigger_frequency_prefix(tokens: &[OwnedLexToken]) -> Option<(u32, &[OwnedLexToken])> {
+    let cap = match tokens.first()? {
+        token if token.is_word("once") => 1,
+        token if token.is_word("twice") => 2,
+        _ => return None,
+    };
+    if !(tokens.get(1)?.is_word("each") && tokens.get(2)?.is_word("turn")) { return None; }
+    let comma = tokens.get(3)?;
+    (comma.kind == TokenKind::Comma).then(|| (cap, &tokens[4..]))
 }

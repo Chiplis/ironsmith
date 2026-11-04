@@ -92,5 +92,7 @@ test("manual seat selection holds priority until the player acts without changin
   assert.ok(stops.stopReason(state));
   assert.deepEqual(stops.getSnapshot().stops, {});
   stops.beforeCommand({ type: "priority_action", action_index: 0 }, state);
-  assert.equal(stops.stopReason(state), null);
+  // Passing over the stack releases the hold; the Main stop itself waits for
+  // the stack to empty, so only the hold is checked here.
+  assert.notEqual(stops.stopReason(state), "priority held");
 });

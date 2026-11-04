@@ -47,19 +47,25 @@ fn read_player_owns_at_least(
         _ => return Ok(None),
     };
     let rest = &tokens[subject_len + 1..];
-    let Some(quantity) =
+    let (count, consumed) = if let Some(quantity) =
         crate::grammar::shared_util::value_shapes::parse_quantity_comparison_prefix_tokens(
             rest, false, true,
         )
-    else {
+    {
+        let count = match quantity.comparison {
+            crate::effect::Comparison::GreaterThanOrEqual(n) if n >= 1 => n as u32,
+            crate::effect::Comparison::GreaterThan(n) if n >= 0 => (n + 1) as u32,
+            _ => return Ok(None),
+        };
+        (count, quantity.consumed_tokens)
+    } else if rest.first().is_some_and(|token| token.is_any_word(&["a", "an"])) {
+        // "you own a card in exile with the journeyed status": the
+        // indefinite article is the existential one-or-more count.
+        (1, 1)
+    } else {
         return Ok(None);
     };
-    let count = match quantity.comparison {
-        crate::effect::Comparison::GreaterThanOrEqual(n) if n >= 1 => n as u32,
-        crate::effect::Comparison::GreaterThan(n) if n >= 0 => (n + 1) as u32,
-        _ => return Ok(None),
-    };
-    let filter_tokens = &rest[quantity.consumed_tokens..];
+    let filter_tokens = &rest[consumed..];
     if filter_tokens.is_empty() {
         return Ok(None);
     }
@@ -88,6 +94,9 @@ fn read_player_owns_at_least(
     }
     // The owning player subject and the "own(s)" verb.
     crate::word_claims::claim_tokens(&tokens[..=subject_len]);
+    if consumed == 1 && rest[0].is_any_word(&["a", "an"]) {
+        crate::word_claims::claim_tokens(&rest[..1]);
+    }
     Ok(Some(PredicateAst::Player(
         crate::cards::builders::PlayerPredicateAst::PlayerHasAtLeast { player, filter, count },
     )))

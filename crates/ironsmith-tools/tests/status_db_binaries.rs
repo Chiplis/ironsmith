@@ -1558,7 +1558,8 @@ fn compile_oracle_text_strictly_compiles_indomitable_might_from_workspace_cards(
     );
     assert!(
         stdout.contains(
-            "Enchanted creature gets +3/+3 and has \"You may have this creature assign its combat damage as though it weren't blocked.\""
+            // The pump and the grant keep their printed lines.
+            "Enchanted creature has \"You may have this creature assign its combat damage as though it weren't blocked.\""
         ),
         "expected compiled output to keep assign-as-unblocked grant text, got {stdout}"
     );

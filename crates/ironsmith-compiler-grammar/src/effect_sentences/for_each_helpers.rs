@@ -1268,7 +1268,10 @@ mod participant_scopes;
 use participant_scopes::{
     opponent_filter, player_filter, reanchor_other_player_copy_filter, wrap_players,
 };
-pub use participant_scopes::{parse_for_each_player_clause, parse_for_each_target_players_clause};
+pub use participant_scopes::{
+    parse_for_each_participant_you_clause, parse_for_each_player_clause,
+    parse_for_each_target_players_clause,
+};
 #[path = "for_each_helpers/combat_history.rs"]
 mod combat_history;
 use combat_history::parse_combat_damage_history_participant;

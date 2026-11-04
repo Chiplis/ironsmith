@@ -11496,9 +11496,18 @@ pub(crate) fn describe_static_ability_with_subject(
                     && filter.source
                 {
                     let rule = describe_static_ability_with_subject(&inner, subject);
+                    let rule = rule.trim().trim_end_matches('.');
+                    // A keyword-style rule ("Doesn't untap during your untap
+                    // step") has no subject of its own; the source is it.
+                    let rule = if rule.starts_with("Doesn't ") || rule.starts_with("Can't ") {
+                        let subject = if subject.trim().is_empty() { "this creature" } else { subject };
+                        format!("{subject} {}", lowercase_first(rule))
+                    } else {
+                        rule.to_string()
+                    };
                     return format!(
                         "{} if it attacked during your last turn",
-                        capitalize_first(rule.trim().trim_end_matches('.'))
+                        capitalize_first(&rule)
                     );
                 }
                 if matches!(&ability.payload,
@@ -14179,9 +14188,43 @@ fn describe_optional_source_cant_attack_then_vigilance_rule(
     let [restriction_effect] = may.effects.as_slice() else {
         return None;
     };
-    let restriction = restriction_effect.downcast_ref::<crate::effects::CantEffect>()?;
-    let crate::effect::Restriction::Attack(attacker) = &restriction.restriction else {
-        return None;
+    // The source either takes the restriction directly or gains the quoted
+    // "can't attack" ability until end of combat.
+    let (attacker, duration, immediate) = if let Some(restriction) =
+        restriction_effect.downcast_ref::<crate::effects::CantEffect>()
+    {
+        let crate::effect::Restriction::Attack(attacker) = &restriction.restriction else {
+            return None;
+        };
+        (
+            attacker.clone(),
+            restriction.duration.clone(),
+            restriction.start == crate::effect::RestrictionStart::Immediate,
+        )
+    } else {
+        let grant = restriction_effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if !matches!(grant.target, crate::continuous::EffectTarget::Source)
+            || !grant.additional_modifications.is_empty()
+            || !grant.runtime_modifications.is_empty()
+            || grant.condition.is_some()
+        {
+            return None;
+        }
+        let Some(crate::continuous::Modification::AddAbility(granted)) = &grant.modification else {
+            return None;
+        };
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+            restriction: crate::effect::Restriction::Attack(attacker),
+            additional_restrictions,
+            ..
+        } = &granted.compiled_model()?.payload
+        else {
+            return None;
+        };
+        if !additional_restrictions.is_empty() {
+            return None;
+        }
+        (attacker.clone(), grant.until.clone(), true)
     };
     let mut normalized_attacker = attacker.clone();
     normalized_attacker.source_surface = None;
@@ -14203,8 +14246,8 @@ fn describe_optional_source_cant_attack_then_vigilance_rule(
         .is_none_or(|decider| decider == &PlayerFilter::You)
         || may.fallback != crate::decision::FallbackStrategy::Decline
         || normalized_attacker != ObjectFilter::source()
-        || restriction.duration != Until::EndOfCombat
-        || restriction.start != crate::effect::RestrictionStart::Immediate
+        || duration != Until::EndOfCombat
+        || !immediate
     {
         return None;
     }
@@ -18508,8 +18551,10 @@ fn describe_additional_mana_amount(effect: &Effect, player: &PlayerFilter) -> Op
         return Some(amount.to_string());
     }
     let subject_prefix = format!("{} adds ", describe_player_filter(player));
+    // A sentence-initial subject is capitalized ("Its controller adds ...").
     rendered
         .strip_prefix(&subject_prefix)
+        .or_else(|| rendered.strip_prefix(&capitalize_first(&subject_prefix)))
         .map(ToString::to_string)
 }
 

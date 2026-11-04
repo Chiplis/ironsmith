@@ -422,7 +422,7 @@ fn cr_107_3d_suspend_x_is_chosen_immediately_before_paying() {
 fn cr_107_7_loyalty_symbols_put_or_remove_counters() {
     let pw = compile(
         "Loyalty symbol walker",
-        "Mana cost: {0}\nType: Legendary Planeswalker — Testwalker\nLoyalty: 4\n+1: You gain 1 life.\n0: You gain 2 life.\n−2: You gain 3 life.\n−X: You gain X life.",
+        "Mana cost: {0}\nType: Legendary Planeswalker — Jace\nLoyalty: 4\n+1: You gain 1 life.\n0: You gain 2 life.\n−2: You gain 3 life.\n−X: You gain X life.",
     );
     let mut failures = Vec::new();
     for (ordinal, expected_loyalty, expected_life) in [(0usize, 5u32, 21), (1, 4, 22), (2, 2, 23), (3, 1, 23)] {
@@ -623,7 +623,7 @@ fn cr_110_4b_permanent_spell_means_artifact_creature_enchantment_planeswalker_ba
         ("artifact", "Mana cost: {0}\nType: Artifact", true),
         ("creature", "Mana cost: {0}\nType: Creature — Bear\nPower/Toughness: 2/2", true),
         ("enchantment", "Mana cost: {0}\nType: Enchantment", true),
-        ("planeswalker", "Mana cost: {0}\nType: Legendary Planeswalker — Testwalker\nLoyalty: 3\n+1: You gain 1 life.", true),
+        ("planeswalker", "Mana cost: {0}\nType: Legendary Planeswalker — Jace\nLoyalty: 3\n+1: You gain 1 life.", true),
         ("instant", "Mana cost: {0}\nType: Instant\nScry 1.", false),
         ("sorcery", "Mana cost: {0}\nType: Sorcery\nScry 1.", false),
         ("kindred instant", "Mana cost: {0}\nType: Kindred Instant — Elf\nScry 1.", false),

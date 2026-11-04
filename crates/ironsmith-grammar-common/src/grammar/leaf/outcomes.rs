@@ -188,6 +188,9 @@ pub fn recognize_target_head(tokens: &[OwnedLexToken]) -> ParseOutcome<LeafTarge
                 // your graveyard"); the head only commits to the rule, the
                 // grammar below still has to parse the phrase.
                 | "one"
+                // "exile exactly one card milled this way": an explicit exact
+                // count prefix read by the leaf choice-count grammar.
+                | "exactly"
                 | "two"
                 | "three"
                 | "four"

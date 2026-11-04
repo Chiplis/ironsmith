@@ -50,7 +50,7 @@ fn unrelated_effect_tap_does_not_create_the_named_relation(){
   let mut game=GameState::new(vec!["A".into(),"B".into()],20);
   let observer=game.create_object_from_definition(&observer,a,Zone::Battlefield);
   let source=game.create_object_from_definition(&source_support::definitions(&card("Dust Smugglers")).unwrap()[0],a,Zone::Battlefield);
-  let spell=ironsmith_compiler_runtime::compile_to_runtime_definition("Tap","Type: Instant\nTap target creature.",false).unwrap();
+  let spell=ironsmith_compiler_runtime::compile_to_runtime_definition("Tapping witness","Type: Instant\nTap target creature.",false).unwrap();
   let mut ctx=ironsmith::effects::EffectContext::new_default(observer,a).with_targets(vec![ironsmith::effects::ResolvedTarget::Object(source)]);
   let program=ironsmith::Effect::new(ironsmith::effects::SequenceEffect::new(spell.spell_effect.as_ref().unwrap().all_effects_owned()));
   let outcome=ironsmith::effects::execute_effect(&mut game,&program,&mut ctx).unwrap();

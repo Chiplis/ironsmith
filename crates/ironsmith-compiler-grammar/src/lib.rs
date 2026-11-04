@@ -356,3 +356,38 @@ mod tests;
 pub use ironsmith_grammar_common::custom_subtypes::with_custom_subtypes;
 
 mod instruction_menu;
+
+#[cfg(test)]
+mod p2_probe_tmp {
+    #[test]
+    fn p2_probe_tmp() {
+        use crate::effect_sentences::parse_create;
+        for text in [
+            "Create Tamiyo's Notebook, a legendary colorless Book artifact token with \"Spells you cast cost {2} less to cast\" and \"{T}: Draw a card.\"",
+            "Create a white Gnome Soldier artifact creature token with \"This token's power and toughness are each equal to the number of artifacts and/or creatures you control.\"",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let ast = parse_create(&tokens, None).unwrap();
+            if let crate::cards::builders::EffectAst::SubjectVerb(sv) = &ast
+                && let crate::cards::builders::SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenWithMods { definition, granted_abilities, .. }) = &sv.action
+            {
+                eprintln!("P2PROBE createdef {text}\n{definition:#?}\nGRANTED {}", granted_abilities.len());
+                eprintln!("P2PROBE createlower {:?}", ironsmith_compiler_lowering::compile_support::lower_token_definition_shape(definition.clone()).is_some());
+            }
+        }
+        for text in ["This creature gains protection until end of turn if that creature had protection.", "This creature gains trample until end of turn if that creature had trample.", "This enchantment deals 1 damage to the player or planeswalker that creature is attacking."] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let (result, trace) = crate::parse_trace::capture(|| crate::clause_support::parse_effect_sentences_lexed(&tokens).map(|e| format!("{e:?}").chars().take(300).collect::<String>()));
+            eprintln!("P2PROBE histkw {text} => {result:?}\n{}", trace.render());
+        }
+        for text in ["a land and/or legendary permanent card", "land and/or legendary permanent card", "creature cards put there from the battlefield this turn"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            eprintln!("P2PROBE filter {text} => {:?}", crate::object_filters::parse_object_filter(&tokens, false).map(|f| f.description()));
+        }
+        let (companion, trace) = crate::parse_trace::capture(|| crate::parse_card_text(crate::CardDefinitionBuilder::new(ironsmith_core::ids::CardId(2), "Companion Probe").card_types(vec![crate::types::CardType::Creature]), "Companion — Your deck is mysterious."));
+        eprintln!("P2PROBE companion {:?}\n{}", companion.map(|d| d.abilities.len()), trace.render());
+        let text = "Type: Creature — Bird\nFlying\nWhen this creature enters, look at the top two cards of your library, then put one onto the battlefield face down as a 2/2 creature with ward {2} and the other into your graveyard. Turn it face up any time for its mana cost if it's a creature card.\nPower/Toughness: 1/1";
+        let (actual, trace) = crate::parse_trace::capture(|| crate::parse_card_text(crate::CardDefinitionBuilder::new(ironsmith_core::ids::CardId(1), "Reminder Test"), text));
+        eprintln!("P2PROBE reminder {:?}\n{}", actual.map(|d| d.abilities.iter().map(|a| format!("{:?}", a.kind).chars().take(200).collect::<String>()).collect::<Vec<_>>()), trace.render());
+    }
+}

@@ -561,7 +561,9 @@ fn token_name_boundary<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         primitives::kw("that").void(),
         primitives::kw("which").void(),
         primitives::kw("thats").void(),
-        primitives::phrase(&["for", "each"]),
+        // "a ... token named Oath of Secrets attached to that creature": the
+        // attachment destination follows the unquoted name operand.
+        alt((primitives::phrase(&["for", "each"]), primitives::phrase(&["attached", "to"]))),
         eof.void(),
     ))
     .parse_next(input)

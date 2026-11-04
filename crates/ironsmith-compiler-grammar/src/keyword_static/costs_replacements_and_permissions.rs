@@ -751,6 +751,10 @@ pub fn parse_spells_cost_modifier_line(
         return Ok(None);
     }
     let is_this_spell = is_this_subject_reference_lexed(&subject_tokens);
+    // "All spells cost ...": the universal quantifier adds no constraint.
+    if crate::lexer::parser_token_word_refs(&subject_tokens) == ["all"] {
+        crate::word_claims::claim_tokens(&subject_tokens);
+    }
 
     let Some(cost_token_idx) =
         static_mid_facts::parse_cost_component_boundary(tokens, spells_token_idx + 1)
@@ -6753,9 +6757,8 @@ pub fn parse_you_may_static_grant_line(
         });
         // "you may cast the exiled card" (Null Summoner): a cast-only
         // permission never lets a land be played from the pool.
-        let words = parser_token_word_refs(tokens);
-        if words.word_windows(3).any(|window| window == ["you", "may", "cast"])
-            && !words.contains(&"play")
+        if crate::grammar::primitives::has_phrase(tokens, &["you", "may", "cast"])
+            && !crate::grammar::primitives::contains_word(tokens, "play")
         {
             filter.excluded_card_types.push(crate::types::CardType::Land);
         }
@@ -6764,8 +6767,10 @@ pub fn parse_you_may_static_grant_line(
         ).with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
             mana_rider: (!mode.is_normal()).then_some(rider_surface),
             source: reference.surface,
-            plural_spell_subject: parser_token_word_refs(tokens).word_windows(3)
-                .any(|words| words == ["and", "cast", "spells"]),
+            plural_spell_subject: crate::grammar::primitives::has_phrase(
+                tokens,
+                &["and", "cast", "spells"],
+            ),
             generic_card_pool: true, generic_cast_this_way_subject: true,
         });
         spec.requires_linked_exile_pair = true;
@@ -8391,7 +8396,35 @@ pub fn parse_keyword_action_replacement_line(
                     crate::word_claims::claim_tokens(tokens);
                     return Ok(Some(StaticAbility::named_action_first_then_other_mode(label, performer, first - 1, render_token_slice(tokens))));
                 }
-                let effects = crate::clause_support::parse_effect_sentences_lexed(body)?;
+                // "If you would perform the catalyze action, catalyze twice
+                // instead.": the action's name used as its verb, performed
+                // twice (once per repetition, CR 614.5 keeps it from
+                // replacing itself).
+                let label_words = label.split(' ').collect::<Vec<_>>();
+                let repeated_action = {
+                    let verb_form = mode_words.len() == label_words.len() + 1
+                        && mode_words[..label_words.len()] == label_words[..]
+                        && mode_words.last() == Some(&"twice");
+                    let mut explicit = vec!["perform", "the"];
+                    explicit.extend(label_words.iter().copied());
+                    explicit.extend(["action", "twice"]);
+                    verb_form || mode_words == explicit
+                };
+                let effects = if repeated_action {
+                    let mut once = vec!["perform".to_string(), "the".to_string()];
+                    once.extend(label_words.iter().map(|word| word.to_string()));
+                    once.push("action".to_string());
+                    let mut synthetic = crate::lexer::synthetic_word_tokens(once.iter());
+                    synthetic.push(OwnedLexToken::period(crate::cards::TextSpan::synthetic()));
+                    let single = crate::clause_support::parse_effect_sentences_lexed(&synthetic)?;
+                    if single.is_empty() { return Ok(None); }
+                    crate::word_claims::claim_tokens(body);
+                    let mut both = single.clone();
+                    both.extend(single);
+                    both
+                } else {
+                    crate::clause_support::parse_effect_sentences_lexed(body)?
+                };
                 if effects.is_empty() { return Ok(None); }
                 crate::word_claims::claim_tokens(&tokens[..=comma]);
                 let mut ability = StaticAbility::named_action_replacement(label, ObjectFilter::default(), Some(performer), effects, optional, render_token_slice(tokens));
@@ -8655,13 +8688,10 @@ pub fn parse_exile_to_exile_instead_of_graveyard_line(
             filter
         }
         keyword_static_lines::ExileGraveyardFilterKind::ObjectFilter => {
-            // "a nontoken creature an opponent owns would die or a creature
-            // card not on the battlefield" (Anafenza, the Foremost): the
-            // first arm's "would die" is its battlefield-to-graveyard move,
-            // which this graveyard replacement covers for a battlefield arm.
-            let would_die = spec.filter_tokens.windows(3).position(|words| {
-                words[0].is_word("would") && words[1].is_word("die") && words[2].is_word("or")
-            });
+            // Anafenza, the Foremost: the typed spec marks the first arm's
+            // dies phrase, its battlefield-to-graveyard move, which this
+            // graveyard replacement covers for a battlefield arm.
+            let would_die = spec.battlefield_arm_dies_at;
             let without_would_die = would_die.map(|index| {
                 [&spec.filter_tokens[..index], &spec.filter_tokens[index + 2..]].concat()
             });
@@ -10160,9 +10190,11 @@ mod tests {
         let value = parse_dynamic_cost_modifier_value(&tokens)
             .expect("dynamic count should not hard-error")
             .expect("dynamic count should produce a value");
+        // The "for each" surface hint is presentation; the typed value is
+        // the command-zone history count.
         assert_eq!(
-            value,
-            Value::CommanderCastCount(PlayerFilter::You),
+            value.unhinted(),
+            &Value::CommanderCastCount(PlayerFilter::You),
             "the narrow command-zone history value must win before generic object counting"
         );
     }
@@ -11478,9 +11510,14 @@ mod attached_compound_lock_tests {
         let tokens = crate::lexer::lex_line("Enchanted permanent doesn't untap during its controller's untap step and its activated abilities can't be activated.", 0).unwrap();
         let abilities = parse_attached_untap_and_activation_restrictions_line(&tokens).unwrap().unwrap();
         assert_eq!(abilities.len(), 2);
-        assert!(matches!(&abilities[0], StaticAbilityAst::AttachedStaticAbilityGrant { condition: None, .. }));
+        // The untap half is the Aura's own restriction on the attached
+        // permanent (CR 303.4), unconditional.
+        assert!(matches!(&abilities[0], StaticAbilityAst::Static(ability)
+            if matches!(&ability.payload, ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                restriction: crate::effect::Restriction::Untap(_), ..
+            })), "{abilities:#?}");
         let debug = format!("{abilities:?}");
-        assert!(debug.contains("DoesntUntap"), "{debug}");
+        assert!(debug.contains("doesn't untap"), "{debug}");
         assert!(debug.contains("ActivateAbilities"), "{debug}");
         assert!(debug.to_lowercase().contains("enchanted"), "{debug}");
         assert!(parse_doesnt_untap_during_untap_step_line(&tokens).unwrap().is_none());

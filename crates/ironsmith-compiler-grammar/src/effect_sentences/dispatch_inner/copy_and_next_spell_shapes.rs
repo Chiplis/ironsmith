@@ -609,6 +609,13 @@ fn parse_unbounded_next_cast_sentence(tokens:&[OwnedLexToken])->Result<Option<Ve
  let Some(comma)=tokens.iter().position(|token|token.is_comma()) else{return Ok(None)};
  let head=&tokens[..comma];let words=crate::lexer::TokenWordView::new(head).word_refs();
  if !words.starts_with(&["when","you","next","cast"]) || words.ends_with(&["this","turn"]) || words.ends_with(&["this","combat"]) {return Ok(None)}
+ // A serial event list ("When you next cast an instant spell, cast a sorcery
+ // spell, or activate a loyalty ability this turn, ...") ends its trigger at a
+ // later "this turn" comma; that bounded form belongs to the this-turn family.
+ if tokens.iter().enumerate().skip(comma+1).any(|(index,token)|token.is_comma()&&{
+  let words=crate::lexer::TokenWordView::new(&tokens[..index]).word_refs();
+  words.ends_with(&["this","turn"])||words.ends_with(&["this","combat"])
+ }) {return Ok(None)}
  // Remove only the temporal selector, whose one-shot meaning is represented
  // by the delayed registration; ordinary trigger grammar owns the cast filter.
  let view=crate::lexer::TokenWordView::new(head);let next=view.token_start_indices()[2];

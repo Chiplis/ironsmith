@@ -243,7 +243,8 @@ fn malcolm_creates_one_treasure_per_damaged_opponent_occurrence() {
     let trigger = format!("{:?}", triggered.trigger);
     assert!(trigger.contains("Pirate") && trigger.contains("Opponent"), "{trigger}");
     let effects = format!("{:?}", triggered.effects);
-    assert!(effects.contains("CountPlayers(DamagedPlayer)"), "{effects}");
+    // One Treasure per opponent dealt damage in the trigger's damage batch.
+    assert!(effects.contains("CountPlayers(TaggedPlayer(TagKey(\"__damage_batch_players__\")))"), "{effects}");
     assert!(effects.contains("Treasure"), "{effects}");
 }
 

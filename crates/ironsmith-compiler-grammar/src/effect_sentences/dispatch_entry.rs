@@ -8416,6 +8416,7 @@ pub fn parse_effect_sentences_lexed(
     // This entrypoint owns a complete instruction program. An unmatched
     // executable/name quote cannot be discarded by a narrower fallback reader.
     if tokens.iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 != 0 {
+        if std::env::var("P6_DEBUG_QUOTES").is_ok() { eprintln!("P6DBG {}\n{}", crate::lexer::render_token_slice(tokens), std::backtrace::Backtrace::force_capture()); } // P6TEMP
         return Err(CardTextError::ParseError("incomplete quoted operand in effect program".into()));
     }
     if let Some(effect)=parse_linked_face_token(tokens)? {return Ok(vec![effect]);}
@@ -14291,19 +14292,37 @@ mod tests {
             panic!("expected an optional restriction and gated result: {parsed:#?}");
         };
 
+        // The quoted rule is an ability the source gains until end of combat
+        // (removable by ability loss), whose payload restricts the source.
         let [
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::Cant {
-                        restriction: crate::effect::Restriction::Attack(source),
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                        target: crate::cards::builders::TargetAst::Object(recipient, None, _),
+                        abilities,
                         duration: crate::effect::Until::EndOfCombat,
                         ..
-                    },
+                    }),
                 ..
             }),
         ] = optional.as_slice()
         else {
             panic!("expected a source attack restriction: {optional:#?}");
+        };
+        assert!(recipient.source, "{recipient:#?}");
+        let [crate::cards::builders::GrantedAbilityAst::StaticAbility(granted)] = abilities.as_slice()
+        else {
+            panic!("expected one granted restriction: {abilities:#?}");
+        };
+        let crate::cards::builders::StaticAbilityAst::Static(granted) = granted.as_ref() else {
+            panic!("expected a typed restriction: {granted:#?}");
+        };
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+            restriction: crate::effect::Restriction::Attack(source),
+            ..
+        } = &granted.payload
+        else {
+            panic!("expected a source attack restriction: {granted:#?}");
         };
         assert!(
             source.source,
@@ -14453,7 +14472,7 @@ mod tests {
                     ..
                 }
             )
-        )));
+        )), "{effects:#?}");
         assert!(effects.iter().any(|effect| matches!(
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(

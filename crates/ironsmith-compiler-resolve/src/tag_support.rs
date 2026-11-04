@@ -1519,7 +1519,10 @@ pub fn value_references_event_derived_amount(value: &Value) -> bool {
         Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount)
         | Value::EventValueOffset(EventValueSpec::Amount, _)
-        | Value::EventValueOffset(EventValueSpec::LifeAmount, _) => true,
+        | Value::EventValueOffset(EventValueSpec::LifeAmount, _)
+        // The total of a die-roll batch is that roll event's amount.
+        | Value::EventValue(EventValueSpec::DieBatchTotal)
+        | Value::EventValueOffset(EventValueSpec::DieBatchTotal, _) => true,
         Value::PendingEffectMetric { .. }
         | Value::PendingEffectMetricOffset { .. }
         | Value::PendingPriorEffectMetric(_) => true,

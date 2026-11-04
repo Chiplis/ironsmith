@@ -52,7 +52,11 @@ fn recipient_action_actual_sources_compile_strictly() {
         for source in mechanic["representative_cards"].as_array().unwrap() {
             for face in source["executable_faces"].as_array().unwrap() {
                 let name = face["name"].as_str().unwrap();
-                card(name, face["executable_text"].as_str().unwrap());
+                // Source-scoped subtype vocabulary (e.g. the planar type
+                // Vereaux) travels with the face, never as a global registry.
+                let vocabulary: Vec<ironsmith_core::custom_subtypes::CustomSubtypeDefinition> =
+                    serde_json::from_value(face.get("custom_subtypes").cloned().unwrap_or(serde_json::json!([]))).unwrap();
+                ironsmith_compiler::with_custom_subtypes(&vocabulary, || card(name, face["executable_text"].as_str().unwrap())).unwrap();
             }
         }
     }

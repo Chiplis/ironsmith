@@ -60,8 +60,9 @@ pub(super) fn describe_face_down_library_search(effects: &[Effect]) -> Option<St
     ).in_zone(Zone::Library);
     if *complement != expected_complement { return None; }
     let pick = pick.downcast_ref::<crate::effects::ChooseModeEffect>()?;
-    let expected_pick = crate::effects::ChooseModeEffect::choose_one(pick.modes.clone())
+    let mut expected_pick = crate::effects::ChooseModeEffect::choose_one(pick.modes.clone())
         .with_chooser(PlayerFilter::You);
+    expected_pick.decision_labels = crate::compiled_text::echoed_choice_decision_labels(pick);
     if *pick != expected_pick || pick.modes.len() != 2 { return None; }
     let mut selected = None;
     for (index, (mode, (exiled, searched))) in pick.modes.iter().zip([

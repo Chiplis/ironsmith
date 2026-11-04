@@ -751,8 +751,11 @@ pub(crate) fn execute_effect_with_outputs_using<'a>(
             // This occurs inside the resource meter and world/context checkpoint.
             ctx.tagged_objects.retain(|tag,_|!tag.as_str().starts_with("__entry_reference_exiled"));
             ctx.exact_object_reference_tags.retain(|tag|!tag.as_str().starts_with("__entry_reference_exiled"));
+            // An empty domain binds nothing; filters rebind entry references
+            // from the source themselves, so it is not recorded as a tag.
             for (tag,objects) in crate::filter::entry_exiled_reference_domains(game,ctx.source,ctx.source_snapshot.as_ref()) {
-                ctx.tagged_objects.insert(tag.clone(),objects);ctx.exact_object_reference_tags.insert(tag);
+                if !objects.is_empty() { ctx.tagged_objects.insert(tag.clone(),objects); }
+                ctx.exact_object_reference_tags.insert(tag);
             }
             let (mut result, recorded) =
                 crate::effects::outcome_recording::capture_instruction_records(game, |game| {

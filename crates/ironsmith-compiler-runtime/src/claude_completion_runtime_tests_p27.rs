@@ -54,9 +54,11 @@ fn p27_commanders_insight_draws_x_plus_one_per_commander_cast() {
         "Mana cost: {X}{U}{U}{U}\nType: Instant\nTarget player draws X cards plus an additional card for each time they've cast a commander from the command zone this game.", false)
         .expect("Commander's Insight should compile");
     let debug = format!("{:?}", definition.spell_effect);
-    assert!(debug.contains("Add(") && debug.contains("CommanderCastCount"),
-        "the draw count is X plus the commander-cast count: {debug}");
-    assert!(!debug.contains("CommanderCastCount(IteratedPlayer)"),
+    // "each time they've cast a commander" counts by caster (any commander),
+    // which is `CommandersCastFromCommandZoneBy`, not the owner-keyed count.
+    assert!(debug.contains("Add(") && debug.contains("CommandersCastFromCommandZoneBy(Target("),
+        "the draw count is X plus the targeted player's commander-cast count: {debug}");
+    assert!(!debug.contains("CommandersCastFromCommandZoneBy(IteratedPlayer)"),
         "\"they\" is the targeted drawing player, not an unbound iterated player: {debug}");
 }
 

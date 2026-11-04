@@ -118,7 +118,9 @@ fn top_only_graveyard_exile_preserves_filtered_top_card_surface() {
 
     assert_eq!(
         describe_choose_then_exile(&choose, &exile).as_deref(),
-        Some("you exile the top creature card of your graveyard")
+        // The controller's fixed edge-card exile reads imperatively, as in
+        // "Exile the bottom card of target player's graveyard" (Phyrexian Furnace).
+        Some("exile the top creature card of your graveyard")
     );
 }
 

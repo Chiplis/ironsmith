@@ -5302,7 +5302,10 @@ pub(super) fn describe_draw_count_for_each_phrase(count: &Value) -> Option<Strin
                 PlayerFilter::You => "you've discarded this turn".to_string(),
                 PlayerFilter::Opponent => "your opponents have discarded this turn".to_string(),
                 PlayerFilter::Any => "discarded this turn".to_string(),
-                other => format!("{} discarded this turn", describe_player_filter(other)),
+                // A named player's discards read as a count: "Draw cards
+                // equal to the number of cards target opponent discarded
+                // this turn".
+                _ => return None,
             };
             Some(format!("a card for each card {tail}"))
         }
@@ -10027,7 +10030,13 @@ fn describe_each_player_turn_source_exiled_then_put_permanents(
 
     let return_all = structural_unwrap_render_wrappers(return_effect)
         .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
-    let return_source_surface = iterated_owner_source_exiled_filter(&return_all.filter, true)?;
+    // "among them" names the turned set; the return filter need not repeat
+    // the source's surface.
+    let mut return_filter = return_all.filter.clone();
+    if return_filter.source_surface.is_none() {
+        return_filter.source_surface = Some(source_surface.clone());
+    }
+    let return_source_surface = iterated_owner_source_exiled_filter(&return_filter, true)?;
     if source_surface != return_source_surface
         || return_all.tapped
         || return_all.face_down

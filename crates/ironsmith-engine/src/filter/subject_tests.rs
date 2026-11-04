@@ -83,10 +83,6 @@ fn shared_subject_keeps_live_only_predicate_policy() {
             dealt_damage_this_turn: true,
             ..Default::default()
         },
-        ObjectFilter {
-            entered_graveyard_this_turn: true,
-            ..Default::default()
-        },
     ];
     for filter in filters {
         assert!(
@@ -98,6 +94,15 @@ fn shared_subject_keeps_live_only_predicate_policy() {
             "{filter:?}"
         );
     }
+    // `entered_graveyard_this_turn` is no longer live-only: a retained subject
+    // needs its exact graveyard-incarnation receipt (see
+    // `graveyard_snapshot_history_tests`), so a battlefield snapshot fails both.
+    let graveyard_history = ObjectFilter {
+        entered_graveyard_this_turn: true,
+        ..Default::default()
+    };
+    assert!(!graveyard_history.matches(game.object(candidate).unwrap(), &ctx, &game));
+    assert!(!graveyard_history.matches_snapshot(&snapshot, &ctx, &game));
     let union = ObjectFilter {
         type_or_subtype_union: true,
         card_types: vec![CardType::Artifact],

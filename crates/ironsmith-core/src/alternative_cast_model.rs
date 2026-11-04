@@ -142,6 +142,10 @@ pub struct ZoneCastInstructions {
     pub return_at_next_end_step: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub sacrifice_at_next_end_step: bool,
+    /// The selected price schedules a one-shot sacrifice of the resulting
+    /// permanent at the beginning of the next cleanup step.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub sacrifice_at_next_cleanup_step: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub sacrifice_on_entry: bool,
     /// On entry, match only this permanent's own dies abilities using entry LKI.

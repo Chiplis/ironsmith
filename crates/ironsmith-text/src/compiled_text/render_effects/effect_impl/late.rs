@@ -10299,7 +10299,7 @@
                 else { format!("Remove the {name} status from {} {zone}", describe_choose_spec(&designation.target)) }
             },
             ironsmith_core::PermanentDesignation::Harnessed => format!("If {} isn't harnessed, it becomes harnessed", describe_choose_spec(&designation.target)),
-            ironsmith_core::PermanentDesignation::CustomStatusUntilEvent { name, event } => format!("Give {} the {name} status until it {}", describe_choose_spec(&designation.target), match event { ironsmith_core::CustomStatusExpiryEvent::TurnsFaceUp => "turns face up", ironsmith_core::CustomStatusExpiryEvent::PhasesIn => "phases in" }),
+            ironsmith_core::PermanentDesignation::CustomStatusUntilEvent { name, event } => format!("Give {} the {name} status until it {}", describe_choose_spec(&designation.target), match event { ironsmith_core::CustomStatusExpiryEvent::TurnsFaceUp => "turns face up".to_string(), ironsmith_core::CustomStatusExpiryEvent::PhasesIn => "phases in".to_string(), ironsmith_core::CustomStatusExpiryEvent::NoCounters(kind) => format!("has no {} counters on it", kind.description()) }),
             ironsmith_core::PermanentDesignation::CustomStatus { name, until_end_of_turn } => format!("Give {} the {name} status{}", describe_choose_spec(&designation.target), if *until_end_of_turn { " until end of turn" } else { "" }),
         };
     }

@@ -54,10 +54,13 @@ pub fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     // An explicitly untapped aggregate selection is the same primitive
     // whether used in a cost or an optional entry instruction. Keep the
     // object's complete filter and the group's lower bound independent.
+    // A selection the aggregate reader cannot read whole ("an untapped land
+    // they control for each fade counter on this artifact") falls through to
+    // the ordinary tap readings below rather than failing the sentence.
     if tokens.iter().any(|token| token.is_word("untapped")) {
         let mut payment = vec![OwnedLexToken::synthetic_word("tap")];
         payment.extend_from_slice(tokens);
-        if let Some(cost) = crate::activation_and_restrictions::activated_line_core::parse_aggregate_tap_cost(&payment)?
+        if let Ok(Some(cost)) = crate::activation_and_restrictions::activated_line_core::parse_aggregate_tap_cost(&payment)
             && let [crate::model::CompilerCost::ValidatedEffect(effect)] = cost.costs() {
             return Ok((**effect).clone());
         }

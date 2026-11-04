@@ -42,6 +42,12 @@ fn fallback_static_ability_issue(
         // A complete typed announcement program is executable semantics, not
         // display fallback text. Its nested grant keeps that same typed owner.
         | crate::static_abilities::StaticAbilityPayload::CastAnnouncementProgram { .. }
+        // A declared trigger-class event choice is a typed engine program
+        // (triggers::class_event_choice), not display text.
+        | crate::static_abilities::StaticAbilityPayload::TriggerClassEventChoice { .. }
+        // A spell's terminal destination replacement carries a complete typed
+        // continuation program (spell_resolution_destination).
+        | crate::static_abilities::StaticAbilityPayload::SpellResolutionDestinationProgram { .. }
         | crate::static_abilities::StaticAbilityPayload::ActivateAbilitiesAsThoughZone { .. }) {
         return Some(format!(
             "{context} compiled to an unsupported static ability without a semantic id: {}",

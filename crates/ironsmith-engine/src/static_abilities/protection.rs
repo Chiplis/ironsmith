@@ -825,7 +825,7 @@ mod tests {
     fn test_protection_display_permanents_filter() {
         let filter = ObjectFilter::artifact();
         let prot = Protection::new(ProtectionFrom::Permanents(filter));
-        assert_eq!(prot.display(), "Protection from artifact");
+        assert_eq!(prot.display(), "Protection from artifacts");
     }
 
     #[test]

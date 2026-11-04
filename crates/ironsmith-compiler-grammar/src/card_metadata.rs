@@ -25,6 +25,10 @@ pub fn apply_metadata_line(
                 card = card.mana_cost(cost);
             }
         }
+        // CR 123.2: a sticker sheet is not a card and has no card type; its
+        // "Stickers" type line names the sheet's kind, not a face fact.
+        crate::front_end::MetadataLine::TypeLine(raw)
+            if raw.trim().eq_ignore_ascii_case("Stickers") => {}
         crate::front_end::MetadataLine::TypeLine(raw) => {
             let (supertypes, card_types, subtypes) =
                 crate::effect_sentences::parse_type_line(&raw)?;

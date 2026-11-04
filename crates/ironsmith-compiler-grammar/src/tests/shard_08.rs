@@ -840,7 +840,12 @@ fn conditional_untap_last_attack_remains_a_static_restriction() -> Result<(), Ca
             debug.contains("ObjectAttackedDuringControllersLastTurn"),
             "{debug}"
         );
-        assert!(debug.contains("DoesntUntap"), "{debug}");
+        // The source's own rule is DoesntUntap; an Aura's rule over the
+        // enchanted creature is its untap Restriction (CR 303.4).
+        assert!(
+            debug.contains("DoesntUntap") || debug.contains("restriction: Untap("),
+            "{debug}"
+        );
         assert!(!debug.contains("UntapEffect"), "{debug}");
     }
     Ok(())

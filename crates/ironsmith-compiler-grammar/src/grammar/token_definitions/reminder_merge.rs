@@ -11,6 +11,18 @@ fn merge_token_rules(base: &mut TokenRulesSurfaces, reminder: &TokenRulesSurface
             base.embedded_rules.push(rule.clone());
         }
     }
+    // Quoted rules read by the ordinary ability readers are abilities of the
+    // token too; a follow-up reminder ("It has \"...\"") must not drop them.
+    for ability in &reminder.parsed_abilities {
+        if !base.parsed_abilities.contains(ability) {
+            base.parsed_abilities.push(ability.clone());
+        }
+    }
+    for ability in &reminder.static_abilities {
+        if !base.static_abilities.contains(ability) {
+            base.static_abilities.push(ability.clone());
+        }
+    }
 }
 
 fn equipment_rule_display(line: &EquipmentRuleLineShape) -> String {

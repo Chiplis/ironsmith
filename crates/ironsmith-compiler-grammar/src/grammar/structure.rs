@@ -770,6 +770,9 @@ pub(crate) fn is_source_controlled_by_non_owner_condition(tokens: &[OwnedLexToke
 }
 
 pub(crate) fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    if let Some(predicate) = crate::object_filters::source_noted_names::predicate(tokens) {
+        return Some(predicate);
+    }
     if is_source_controlled_by_non_owner_condition(tokens) {
         return Some(PredicateAst::Source(
             crate::cards::builders::SourcePredicateAst::SourceMatches(

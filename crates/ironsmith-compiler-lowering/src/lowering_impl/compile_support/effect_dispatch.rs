@@ -1452,7 +1452,7 @@ fn compile_effect_inner(
             Selection::Duplicate(target)=>{let (target,choices)=resolve_target_spec_with_choices(target,&current_reference_env(ctx))?;(vec![ironsmith_core::CardCreationSelection::Duplicate(target)],choices)},
         };
         let count=resolve_value_it_tag(count,&current_reference_env(ctx))?;
-        let (player,player_choices)=resolve_effect_player_filter(*player,ctx,true,true,true)?;
+        let (player,player_choices)=LoweredSubject::resolve_actor(*player,ctx,true,true,true)?.into_parts();
         choices.extend(player_choices);
         let mut creations=selections.into_iter().map(|selection|Effect::new(ironsmith_core::CreateCardsEffect {definition_scope:graph_scope.as_ref().map(|(scope,_)|*scope),definition_refs:graph_scope.as_ref().map(|(_,refs)|refs.clone()).unwrap_or_default(),definitions:definitions.clone(),selection,count:count.clone(),player:player.clone(),zone:*zone,library_position:*library_position,operation_label:operation_label.clone()})).collect::<Vec<_>>();
         let creation=if creations.len()==1{creations.remove(0)}else{Effect::new(crate::effects::SequenceEffect::coordinated(creations))};

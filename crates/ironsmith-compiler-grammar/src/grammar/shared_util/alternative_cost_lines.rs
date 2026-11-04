@@ -1314,6 +1314,7 @@ fn read_zone_price_permission(tokens: &[OwnedLexToken]) -> Result<Option<(Option
         match tail.get(..4) {
             Some(["from", "your", "hand", "for"]) => (Some(crate::zone::Zone::Hand), 4),
             Some(["from", "your", "graveyard", "for"]) => (Some(crate::zone::Zone::Graveyard), 4),
+            Some(["from", "the", "battlefield", "for"]) => (Some(crate::zone::Zone::Battlefield), 4),
             _ => return Ok(None),
         }
     };
@@ -1409,6 +1410,11 @@ fn read_price_entry_instruction(tokens: &[OwnedLexToken], instructions: &mut iro
     // with the price and other entry instructions.
     if words == ["if", "you", "cast", "this", "spell", "this", "way", "sacrifice", "it", "at", "the", "beginning", "of", "the", "next", "end", "step"] {
         instructions.sacrifice_at_next_end_step = true;
+        crate::word_claims::claim_tokens(tokens);
+        return true;
+    }
+    if words == ["if", "you", "cast", "this", "spell", "this", "way", "sacrifice", "it", "at", "the", "beginning", "of", "the", "next", "cleanup", "step"] {
+        instructions.sacrifice_at_next_cleanup_step = true;
         crate::word_claims::claim_tokens(tokens);
         return true;
     }

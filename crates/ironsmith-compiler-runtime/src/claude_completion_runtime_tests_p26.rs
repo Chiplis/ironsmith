@@ -200,9 +200,15 @@ fn caged_sun_adds_chosen_color_when_your_land_produces_it() {
     assert!(debug.contains("TriggeringManaIncludesSourceChosenColor"), "{debug}");
     assert!(debug.contains("ManaFromSourceTrigger"), "{debug}");
     assert!(!debug.contains("TapForManaTrigger"), "{debug}");
-    let ironsmith::ability::AbilityKind::Triggered(ability) = &definition.abilities[2].kind else {
-        panic!("expected a triggered mana ability");
-    };
+    // Structural static markers may precede it; find the mana trigger itself.
+    let ability = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            ironsmith::ability::AbilityKind::Triggered(ability) => Some(ability),
+            _ => None,
+        })
+        .expect("expected a triggered mana ability");
     assert_eq!(ability.trigger.display(), "Whenever a land's ability causes you to add one or more mana of the chosen color");
     assert!(debug.contains("AddMana"), "{debug}");
 }

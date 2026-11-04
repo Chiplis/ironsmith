@@ -86,7 +86,7 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 33] = [
     },
     LineFamilyRuleDef {
         id: RuleId::new("triggered-line"),
-        head: HeadDiscriminator::words(&["when", "whenever", "at"]),
+        head: HeadDiscriminator::words(&["when", "whenever", "at", "once", "twice"]),
         run: run_triggered_line_family,
     },
     LineFamilyRuleDef {

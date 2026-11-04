@@ -5455,6 +5455,9 @@ retain_original_types: false, retain_original_name: false,
         if removed == 0 {
             return None;
         }
+        if count_after == 0 {
+            self.expire_custom_status_event(id, ironsmith_core::CustomStatusExpiryEvent::NoCounters(counter_type));
+        }
         self.record_counter_ui_effect_event("counters_removed", id, counter_type, removed);
 
         let event_provenance = self

@@ -30,7 +30,7 @@ fn unblocked_assignment_is_granted_to_your_creatures(){
   ironsmith::game_loop::try_execute_combat_damage_step(&mut game,&combat,false).unwrap();
   assert_eq!(game.player(B).unwrap().life,20-source_damage-if enabled{2}else{0},"{name}: chosen combat damage reaches the defender only when permitted");assert_eq!(game.damage_on(blocker),if enabled{0}else{2});
   if enabled{
-   if name=="Predatory Focus"{game.next_turn();}else{game.combat.as_mut().unwrap().attackers.retain(|entry|entry.creature!=source);}
+   if name=="Predatory Focus"{ironsmith::turn::execute_cleanup_step(&mut game);game.next_turn();}else{game.combat.as_mut().unwrap().attackers.retain(|entry|entry.creature!=source);}
    game.refresh_continuous_state().unwrap();assert!(!permitted(&game,attacker),"{name}: permission expires with its printed turn/attacking condition");
   }
  }}}

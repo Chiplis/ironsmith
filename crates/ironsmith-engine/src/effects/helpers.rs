@@ -180,6 +180,21 @@ pub(crate) fn resolve_tagged_object_id(
     game.object(snapshot.object_id).map(|_| snapshot.object_id)
 }
 
+/// An exact object reference names only the incarnation it recorded. A card
+/// that has since changed zones is a new object (CR 400.7) the tag can't find.
+pub(crate) fn resolve_exact_tagged_object_id(
+    game: &GameState,
+    snapshot: &ObjectSnapshot,
+) -> Option<ObjectId> {
+    if game.stack_ability_entry(snapshot.object_id).is_some() {
+        return Some(snapshot.object_id);
+    }
+    game.object(snapshot.object_id)
+        .filter(|object| object.stable_id == snapshot.stable_id
+            && game.find_object_by_stable_id(snapshot.stable_id) == Some(snapshot.object_id))
+        .map(|object| object.id)
+}
+
 /// Locate an iterated card for a physical action while retaining its tagged
 /// snapshot for characteristic and controller queries.
 fn resolve_iterated_object_id(game: &GameState, ctx: &ExecutionContext) -> Option<ObjectId> {
@@ -4680,9 +4695,14 @@ pub fn resolve_objects_from_spec(
             let Some(tagged) = ctx.get_tagged_all(tag) else {
                 return Ok(Vec::new());
             };
+            let exact = ctx.exact_object_reference_tags.contains(tag);
             Ok(tagged
                 .iter()
-                .filter_map(|snapshot| resolve_tagged_object_id(game, ctx, snapshot))
+                .filter_map(|snapshot| if exact {
+                    resolve_exact_tagged_object_id(game, snapshot)
+                } else {
+                    resolve_tagged_object_id(game, ctx, snapshot)
+                })
                 .collect())
         }
 
@@ -4725,12 +4745,17 @@ pub fn resolve_players_from_spec(
         | ChooseSpec::WithCountValue(inner, _, _) => {
             let players = matching_player_targets_for_spec(game, spec, ctx);
 
-            if !players.is_empty() || ctx.target_assignments.iter()
-                .any(|assignment| assignment.spec.base() == spec.base()) {
+            if !players.is_empty() {
                 return Ok(players);
             }
+            // An object-or-player target that selected an object refers to no
+            // player; it never falls through to an empty player list.
             if !matching_object_targets_for_spec(game, spec, ctx).is_empty() {
                 return Err(ExecutionError::InvalidTarget);
+            }
+            if ctx.target_assignments.iter()
+                .any(|assignment| assignment.spec.base() == spec.base()) {
+                return Ok(players);
             }
 
             // A targeted object spec with no chosen target ("up to two target

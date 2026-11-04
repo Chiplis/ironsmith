@@ -4869,6 +4869,19 @@ impl StaticAbilityKind for SpliceAbility {
     fn splice_spec(&self) -> Option<&crate::static_abilities::SpliceSpec<crate::costs::Cost>> {
         Some(&self.spec)
     }
+
+    /// A hand-built splice spec is the same complete model the compiler
+    /// emits, so it survives the artifact wire boundary unchanged.
+    fn canonical_model(&self) -> Option<crate::static_abilities::CompiledStaticAbility> {
+        let mut model = crate::static_abilities::CompiledStaticAbility::splice(
+            self.spec.quality,
+            self.spec.cost.clone(),
+        );
+        model.id = Some(self.id());
+        model.label = self.display();
+        model.payload = ironsmith_core::StaticAbilityPayload::Splice(self.spec.clone());
+        Some(model)
+    }
 }
 
 /// CR 702.120 escalate ability that adds its typed cost per mode beyond the first.

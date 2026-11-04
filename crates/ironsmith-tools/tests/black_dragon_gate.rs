@@ -75,7 +75,12 @@ fn black_dragon_gate_prompts_before_entry_and_remembers_nonblack_color() {
         );
         assert_eq!(game.chosen_color(entered), Some(Color::Blue));
         assert!(game.is_tapped(entered));
-        let AbilityKind::Activated(mana) = &definition.abilities[2].kind else {
+        // Printed-line presentation markers may precede the static lines, so
+        // find the mana ability by kind rather than by position.
+        let Some(mana) = definition.abilities.iter().find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(mana) => Some(mana),
+            _ => None,
+        }) else {
             panic!("expected mana ability")
         };
         let symbols = mana.inferred_mana_symbols(&game, entered, alice);

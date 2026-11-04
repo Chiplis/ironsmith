@@ -155,6 +155,10 @@ export function createPriorityStops({
   let heldKey = null;
   let phaseVisit = '', stepVisit = '', phaseSerial = 0, stepSerial = 0;
   let consumed = new Set();
+  // The seat whose pass consumed this visit's stops, and whether another
+  // player has since put something on the stack. Once that response leaves
+  // the stack, the board has changed and the step's stops apply again.
+  let consumedBy = null, respondedTo = false;
   // Declaring attackers is the decision a declare-attackers stop exists for;
   // the priority that follows in the same combat must not stop again.
   let attackersDeclaredIn = null;
@@ -170,7 +174,15 @@ export function createPriorityStops({
     const step = [phase, priorityStepKey(state)].join('|');
     const combatRestart = priorityStepKey(state) === 'BeginCombat' && phase === phaseVisit
       && stepVisit && !stepVisit.endsWith('|BeginCombat');
-    if (phase !== phaseVisit || combatRestart) { phaseVisit = phase; phaseSerial++; consumed = new Set(); }
+    if (phase !== phaseVisit || combatRestart) {
+      phaseVisit = phase; phaseSerial++; consumed = new Set(); consumedBy = null; respondedTo = false;
+    }
+    const stackObjects = state.stack_objects || [];
+    if (consumedBy != null && stackObjects.some(entry => entry?.controller != null
+      && Number(entry.controller) !== Number(consumedBy))) respondedTo = true;
+    if (respondedTo && Number(state.stack_size || 0) === 0 && !stackObjects.length) {
+      consumed = new Set(); consumedBy = null; respondedTo = false;
+    }
     if (step !== stepVisit) { stepVisit = step; stepSerial++; }
     let changed = false;
     if (window && (!isLocalPriority(state) || window.key !== priorityKey(state) || state.game_over)) {
@@ -235,6 +247,7 @@ export function createPriorityStops({
       const key = stopKey(base, state);
       if (modeOf(key) === 'off') continue;
       consumed.add(`${key}|${visit}`);
+      consumedBy = state?.decision?.player ?? state?.perspective;
     }
   };
   return {
@@ -285,12 +298,16 @@ export function createPriorityStops({
     },
     beforeCommand(command, state) {
       observe(state);
-      const checkpoint = { stops: { ...stops }, consumed: new Set(consumed), attackersDeclaredIn };
+      const checkpoint = { stops: { ...stops }, consumed: new Set(consumed), attackersDeclaredIn, consumedBy, respondedTo };
       if (isLocalTurnDecision(state)) {
         const pass = state.decision?.actions?.find(action => action.kind === 'pass_priority');
-        if (command.type === 'declare_attackers' || command.type === 'declare_blockers'
-          || (command.type === 'priority_action' && !isPregameDecision(state.decision) && (command.action_ref?.kind === 'pass_priority'
-            || (pass && command.action_index === pass.index)))) releaseStops(state);
+        // Passing over a non-empty stack asks for the top object to resolve;
+        // priority returns to this same step afterwards, where the stop must
+        // still hold. Only an empty-stack pass moves on from the step.
+        const stepPass = command.type === 'priority_action' && !isPregameDecision(state.decision)
+          && Number(state.stack_size || 0) === 0 && !(state.stack_objects || []).length
+          && (command.action_ref?.kind === 'pass_priority' || (pass && command.action_index === pass.index));
+        if (command.type === 'declare_attackers' || command.type === 'declare_blockers' || stepPass) releaseStops(state);
         heldKey = null;
         if (window) { window = null; publish(); }
       }
@@ -359,7 +376,10 @@ export function createPriorityStops({
       return true;
     },
     rollbackAction(checkpoint, state) {
-      if (checkpoint) { stops = checkpoint.stops; consumed = checkpoint.consumed; attackersDeclaredIn = checkpoint.attackersDeclaredIn; }
+      if (checkpoint) {
+        stops = checkpoint.stops; consumed = checkpoint.consumed; attackersDeclaredIn = checkpoint.attackersDeclaredIn;
+        consumedBy = checkpoint.consumedBy ?? null; respondedTo = checkpoint.respondedTo ?? false;
+      }
       window = null;
       heldKey = isLocalPriority(state) ? priorityKey(state) : null;
       publish();
@@ -367,6 +387,7 @@ export function createPriorityStops({
     cancelAction() { if (window) { window = null; publish(); } },
     reset() {
       window = null; heldKey = null; phaseVisit = ''; stepVisit = ''; consumed = new Set();
+      consumedBy = null; respondedTo = false;
       attackersDeclaredIn = null; publish();
     },
   };

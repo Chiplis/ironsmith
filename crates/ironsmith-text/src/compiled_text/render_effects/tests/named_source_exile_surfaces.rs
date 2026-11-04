@@ -39,7 +39,8 @@ fn ordinary_this_creature_exile_is_not_rewritten_as_a_name() {
     let text = "{1}, {T}: Exile this creature, then return it to the battlefield under its owner's control.";
     let rendered = render_named_creature("Source Map Probe", text);
 
-    assert!(rendered.contains("Exile this,"), "{rendered}");
+    // The typed source reference keeps its printed noun.
+    assert!(rendered.contains("Exile this creature,"), "{rendered}");
     assert!(!rendered.contains("Exile Source Map Probe"), "{rendered}");
 }
 
@@ -114,7 +115,8 @@ fn named_source_copy_keeps_the_complete_copy_exception_bundle() {
         "{rendered}"
     );
     assert!(
-        rendered.contains("legendary 4/4 human villain creature"),
+        // Creature types keep their printed capitalization.
+        rendered.contains("legendary 4/4 Human Villain creature"),
         "{rendered}"
     );
     assert!(rendered.contains("and it has vigilance"), "{rendered}");

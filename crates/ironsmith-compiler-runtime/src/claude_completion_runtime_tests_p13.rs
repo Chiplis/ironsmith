@@ -150,7 +150,8 @@ fn ruxa_grants_unblocked_assignment_to_abilityless_creatures() {
         .expect("Ruxa should compile");
     let grant = definition.abilities.iter()
         .map(|ability| format!("{:?}", ability.kind))
-        .find(|debug| debug.contains("MayAssignDamageAsUnblocked"))
+        // Now an object rule over the matching creatures you control.
+        .find(|debug| debug.contains("MayAssignDamageAsUnblocked") || debug.contains("MayAssignCombatDamageAsThoughUnblocked"))
         .expect("unblocked-assignment grant");
     assert!(grant.contains("no_abilities: true"), "{grant}");
 }

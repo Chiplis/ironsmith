@@ -2364,7 +2364,8 @@ pub(super) fn keyword_static_heterogeneous_animation_attached_probe_uses_token_w
         "pub struct AnimationVerbShape",
         "pub fn parse_animation_verbs",
         "first_token_word(tokens, &[\"is\", \"are\"])",
-        "first_token_word(tail, &[\"have\", \"has\"])",
+        // The have/has boundary skips quoted granted abilities (23b10081a).
+        "first_outer_token_word(tail, &[\"have\", \"has\"])",
         "pub fn parse_animation_creature_word",
         "first_word(words, &[\"creature\", \"creatures\"])",
         "let mut input = LexStream::new(tokens)",

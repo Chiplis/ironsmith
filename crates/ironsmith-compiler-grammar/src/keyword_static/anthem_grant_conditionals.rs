@@ -3690,7 +3690,6 @@ pub fn parse_anthem_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
     if has_omitted_subject_anthem_predicates(tokens) {
         return Ok(None);
     }
-    let keyword_head = anthem_grant_grammar::parse_anthem_keyword_head(tokens);
     let trailing_condition_start =
         match anthem_grant_grammar::split_anthem_keyword_trailing_condition(tokens) {
             Ok(Some(split)) => Some(split.ability_tokens.len()),
@@ -3702,6 +3701,11 @@ pub fn parse_anthem_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
     let where_x_start = words.word_refs().windows(3)
         .position(|part| part == ["where", "x", "is"])
         .map(|index| words.token_start_indices()[index]);
+    // Read the keyword head before the binding, so a binding's own "has"
+    // cannot hide a real sibling keyword grant ahead of the modifier.
+    let keyword_head = anthem_grant_grammar::parse_anthem_keyword_head(
+        &tokens[..where_x_start.unwrap_or(tokens.len())],
+    );
     if keyword_head.is_some_and(|head| {
         trailing_condition_start.is_none_or(|condition_start| head.have_token < condition_start)
             && where_x_start.is_none_or(|binding_start| head.have_token < binding_start)

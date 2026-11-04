@@ -2413,6 +2413,30 @@ fn resolve_stack_entry_full_inner(
                         return Ok(root_outputs);
                     }
                 }
+                if instructions.sacrifice_at_next_cleanup_step {
+                    let sacrifice_at_cleanup = crate::effects::ScheduleDelayedTriggerEffect::new(
+                        Trigger::beginning_of_cleanup_step(crate::target::PlayerFilter::Any),
+                        vec![crate::effect::Effect::new(
+                            crate::effects::SacrificeTargetEffect::new(
+                                crate::target::ChooseSpec::SpecificObject(new_id),
+                            ),
+                        )],
+                        true,
+                        vec![new_id],
+                        crate::target::PlayerFilter::Specific(entry.controller),
+                    );
+                    let annotation = execute_resolved_permanent_annotation(
+                        game,
+                        &mut ctx,
+                        new_id,
+                        entry.controller,
+                        &crate::effect::Effect::new(sacrifice_at_cleanup),
+                    )?;
+                    root_outputs.retain_published_children([annotation]);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(root_outputs);
+                    }
+                }
                 if cast_with_suspend && obj.has_card_type(crate::types::CardType::Creature) {
                     let suspend_haste = crate::effects::ApplyContinuousEffect::new(
                         crate::continuous::EffectTarget::Specific(new_id),

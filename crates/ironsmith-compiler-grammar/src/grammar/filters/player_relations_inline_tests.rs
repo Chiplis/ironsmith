@@ -418,7 +418,8 @@ fn bare_graveyard_entry_predicate_preserves_the_existing_origin_and_turn_qualifi
     ] {
         assert_eq!(parse_put_there_from_battlefield_this_turn_words(&words), Some(words.len()));
     }
-    for text in ["put there from the battlefield this turn", "put there from battlefield this turn"] {
+    // The relative clause qualifies a card noun; a filter needs its noun.
+    for text in ["creature cards put there from the battlefield this turn", "creature cards put there from battlefield this turn"] {
         let tokens = crate::lexer::lex_line(text, 0).unwrap();
         let filter = crate::object_filters::parse_object_filter(&tokens, false).unwrap();
         assert!(filter.entered_graveyard_this_turn);

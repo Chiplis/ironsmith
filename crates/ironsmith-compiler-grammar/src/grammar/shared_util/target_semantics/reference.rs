@@ -105,6 +105,12 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         crate::word_claims::claim_tokens(tokens);
         return Ok(TargetAst::Player(PlayerFilter::Defending, None));
     }
+    // "remove a rad counter from yourself": the reflexive pronoun names the
+    // controller of the ability, exactly like "you" in a player slot.
+    if crate::lexer::parser_token_word_refs(tokens).as_slice() == ["yourself"] {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(TargetAst::Player(PlayerFilter::You, token_slice_span(tokens)));
+    }
 
     // `each` is a set quantifier rather than part of the object filter. Let
     // the ordinary target-head parser see a following `other` so it can retain

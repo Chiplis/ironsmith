@@ -375,7 +375,7 @@ fn white_static_text(kind: &str) -> String {
 #[test]
 fn cr_613_7h_plane_receives_a_timestamp_when_turned_face_up() {
     use ironsmith::PlanarCardKind;
-    let plane = compile("Whitewash Plane", &white_static_text("Plane — Whitewash"));
+    let plane = compile("Whitewash Plane", &white_static_text("Plane — Alara"));
     let filler = |i: usize| {
         CardDefinitionBuilder::new(CardId::new(), &format!("Filler Plane {i}"))
             .card_types(vec![CardType::Plane])
@@ -1450,7 +1450,7 @@ fn cr_704_1a_state_triggers_use_the_stack() {
 
 #[test]
 fn cr_704_5i_zero_loyalty_planeswalker_goes_to_graveyard() {
-    let walker = compile("Walker", "Mana cost: {0}\nType: Legendary Planeswalker — Test\nLoyalty: 3\n+1: You gain 1 life.");
+    let walker = compile("Walker", "Mana cost: {0}\nType: Legendary Planeswalker — Jace\nLoyalty: 3\n+1: You gain 1 life.");
     let mut game = new_game();
     let w = game.create_object_from_definition(&walker, alice(), Zone::Battlefield);
     let src = put_creature(&mut game, bob(), "Hitter", 3, 3, ColorSet::RED);

@@ -119,8 +119,11 @@ Whenever Delina attacks, choose target creature you control, then roll a d20.
 1—14 | Create a tapped and attacking token that's a copy of that creature, except it's not legendary and it has "At end of combat, exile this token."
 15—20 | Create one of those tokens. You may roll again."#,
     );
+    // The quoted ability is granted to the copy as a real triggered ability
+    // (so later copies of the token keep it), or as the legacy rider flag.
     assert!(
-        debug.contains("exile_at_end_of_combat: true"),
+        debug.contains("exile_at_end_of_combat: true")
+            || (debug.contains("EndOfCombatTrigger") && debug.contains("At end of combat, exile this token.")),
         "the quoted end-of-combat exile is kept: {debug}"
     );
 }

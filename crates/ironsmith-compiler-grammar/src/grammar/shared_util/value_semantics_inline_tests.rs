@@ -526,8 +526,11 @@ fn turn_history_values_require_complete_supported_provenance_surfaces() {
         );
     assert!(
         matches!(parse_turn_history_count_value(&lex_words("Treasure tokens you created this turn")),
-        Some(Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::EnteredBattlefield(filter)))
-        if filter.token && filter.subtypes.contains(&crate::types::Subtype::Treasure) && filter.controller == Some(crate::target::PlayerFilter::You))
+        Some(Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::TokensCreatedMatching {
+            player: crate::target::PlayerFilter::You,
+            filter,
+        }))
+        if filter.token && filter.subtypes.contains(&crate::types::Subtype::Treasure))
     );
 }
 

@@ -1063,6 +1063,13 @@ pub fn trim_edge_punctuation_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken
     {
         end -= 1;
     }
+    // Never strip the closing quote of a quoted operand whose opening quote
+    // stays inside the slice ('... with "Ability."'): that would leave an
+    // unmatched quote. A fully wrapped slice still loses both edges.
+    let quotes = |slice: &[OwnedLexToken]| slice.iter().filter(|token| token.kind == TokenKind::Quote).count();
+    if quotes(tokens) % 2 == 0 && quotes(&tokens[start..end]) % 2 != 0 {
+        return trim_statement_separators(tokens);
+    }
     &tokens[start..end]
 }
 

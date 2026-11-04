@@ -182,6 +182,7 @@ pub fn parse_become_copy_exception_shape(
         let mut shape = parse_become_copy_exception_shape(&tokens[..index])?;
         if shape.granted_ability_tokens.is_none() { return None; }
         shape.copy_ability_absent_marker = Some(missing[0].to_string());
+        crate::word_claims::claim_tokens(&tokens[index..]);
         return Some(shape);
     }
     // "it doesn't copy that creature's color [and <more exceptions>]"

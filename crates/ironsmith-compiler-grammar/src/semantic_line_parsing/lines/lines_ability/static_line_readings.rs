@@ -319,7 +319,18 @@ fn read_quoted_granted_ability_line(
     // before the broad cost parser scans the whole line for "spells ... cost".
     // Keep that same precedence at the CST-to-semantic boundary: this is the
     // document path used by ordinary card compilation.
+    // Quotes that only delimit designation operands (`with designation
+    // "engorge"`) are literal names, not a granted ability.
+    let mut opening = true;
+    let only_designation_quotes = lexed.iter().enumerate().all(|(index, token)| {
+        if token.kind != TokenKind::Quote { return true; }
+        let ok = !opening || index.checked_sub(1).and_then(|prior| lexed.get(prior))
+            .is_some_and(|prior| prior.is_word("designation"));
+        opening = !opening;
+        ok
+    });
     if lexed.iter().any(|token| token.kind == TokenKind::Quote)
+        && !only_designation_quotes
         && let Some(abilities) = input.broad_static()?
     {
         return Ok(Some(LineAst::StaticAbilities(abilities)));

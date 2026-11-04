@@ -184,8 +184,10 @@ pub(super) fn rewrite_lexed_effect_sentence_supports_radiance_duration_prefix_qu
         debug.contains("SharesColorWithTagged"),
         "expected shared-color tagged constraint, got {debug}"
     );
+    // The granted "This creature can't block." is the typed source block
+    // restriction (formerly the CantBlock marker id).
     assert!(
-        debug.contains("CantBlock"),
+        debug.contains("CantBlock") || debug.contains("restriction: Block("),
         "expected CantBlock grant, got {debug}"
     );
     assert!(
@@ -225,10 +227,22 @@ pub(super) fn rewrite_lexed_effect_sentence_supports_compound_damage_to_object_g
         .expect("rewrite effect sentence parser should split compound object damage");
     let debug = format!("{parsed:?}");
 
-    assert_eq!(
-        debug.matches("DealDamageEach").count(),
-        2,
-        "expected two object fanout damage effects, got {debug}"
+    // One shared-amount damage instruction over both object groups (dealt
+    // simultaneously), not two sequential fanouts.
+    assert!(
+        matches!(
+            parsed.as_slice(),
+            [crate::cards::builders::EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Damage(crate::cards::builders::DamageActionAst::DealDamageToRecipients {
+                    recipients,
+                    object_groups,
+                    player_groups,
+                    ..
+                }),
+                ..
+            })] if recipients.is_empty() && object_groups.len() == 2 && player_groups.is_empty()
+        ),
+        "expected two object damage groups, got {debug}"
     );
     assert!(debug.contains("Creature"), "{debug}");
     assert!(debug.contains("Planeswalker"), "{debug}");
@@ -650,7 +664,21 @@ pub(super) fn rewrite_lexed_effect_sentence_supports_compound_damage_to_you_and_
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("Player(You"), "{debug}");
-    assert!(debug.contains("DealDamageEach"), "{debug}");
+    // One shared-amount instruction: you as a recipient plus the object group.
+    assert!(
+        matches!(
+            parsed.as_slice(),
+            [crate::cards::builders::EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Damage(crate::cards::builders::DamageActionAst::DealDamageToRecipients {
+                    recipients,
+                    object_groups,
+                    ..
+                }),
+                ..
+            })] if recipients.len() == 1 && object_groups.len() == 1
+        ),
+        "{debug}"
+    );
     assert!(debug.contains("controller: Some(You)"), "{debug}");
 }
 

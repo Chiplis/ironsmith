@@ -220,6 +220,40 @@ fn returned_set_control_gate_keeps_explicit_draw_subject(
             })
 }
 
+/// "Target opponent draws two cards, then you draw up to four cards": a
+/// coordinated draw after another player's action keeps its own subject, or
+/// the imperative would read as that other player's second action.
+fn other_player_sentence_keeps_explicit_draw_subject(prefix: &str, explicit: &str) -> bool {
+    if !matches!(
+        explicit,
+        ", You draw " | ", you draw " | "then You draw " | "then you draw "
+    ) {
+        return false;
+    }
+    let sentence_prefix = prefix
+        .rsplit(['.', '\n', ';', '—', ':'])
+        .next()
+        .unwrap_or(prefix)
+        .trim_start()
+        .to_ascii_lowercase();
+    [
+        "target opponent ",
+        "target player ",
+        "each opponent ",
+        "each player ",
+        "each other player ",
+        "that player ",
+        "that opponent ",
+        "an opponent ",
+        "defending player ",
+        "enchanted player ",
+        "its controller ",
+        "its owner ",
+    ]
+    .iter()
+    .any(|subject| sentence_prefix.starts_with(subject))
+}
+
 fn conditional_draw_keeps_explicit_subject(prefix: &str, explicit: &str) -> bool {
     if !matches!(explicit, ", You draw " | ", you draw ") {
         return false;
@@ -245,6 +279,7 @@ fn replace_imperative_draw_subject(segment: &str, explicit: &str, imperative: &s
             || revealed_hand_union_keeps_explicit_draw_subject(&output, explicit, tail)
             || returned_set_control_gate_keeps_explicit_draw_subject(&output, explicit, tail)
             || conditional_draw_keeps_explicit_subject(&output, explicit)
+            || other_player_sentence_keeps_explicit_draw_subject(&output, explicit)
         {
             output.push_str(explicit);
         } else {

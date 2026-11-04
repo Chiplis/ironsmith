@@ -26,7 +26,11 @@ fn read_payment(tokens: &[OwnedLexToken]) -> Result<Option<TapPayment>, CardText
     };
     let tail = crate::util::trim_commas(tail);
     let Some((_, cost_tokens)) = primitives::parse_prefix(&tail, primitives::phrase(&["you", "may"])) else { return Ok(None); };
-    let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(cost_tokens)?;
+    // Only a tap payment belongs to this adapter; any other optional price
+    // ("pay mana equal to this spell's mana value") has its own reader.
+    let Ok(cost) = crate::activation_and_restrictions::parse_compiler_activation_cost(cost_tokens) else {
+        return Ok(None);
+    };
     let [crate::model::CompilerCost::TapChosen { count, filter }] = cost.costs() else { return Ok(None); };
     // This adapter links one object to one characteristic value. Other cost
     // counts retain their ordinary readers and require a distinct composition.

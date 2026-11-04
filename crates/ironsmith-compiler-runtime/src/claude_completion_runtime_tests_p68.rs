@@ -52,7 +52,7 @@ fn p68_rendered_internal_references_use_their_authored_wording() {
         "Mana cost: {3}{R}{R}\nType: Artifact\n{T}, Exile this artifact: Each player exiles the top seven cards of their library. Until your next turn, players may play cards they exiled this way, and they can't play cards from their hand. Activate only as a sorcery.");
     let surface = p68_text(&vessel);
     assert!(!surface.contains("tagged"), "{surface}");
-    assert!(surface.contains("the cards they exiled this way"), "{surface}");
+    assert!(surface.contains("players may play cards they exiled this way"), "{surface}");
 }
 
 #[test]

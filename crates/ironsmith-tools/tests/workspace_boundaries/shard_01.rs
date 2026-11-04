@@ -2693,7 +2693,8 @@ pub(super) fn counter_marker_family_routes_shape_gates_through_typed_grammar() {
         "counter_shapes::parse_return_with_counters_tokens(clause.tokens())",
         "counter_shapes::parse_put_onto_battlefield_with_counters_tokens(clause.tokens())",
         "counter_shapes::parse_if_enters_additional_tokens(clause.tokens())",
-        "counter_shapes::parse_tagged_enters_additional_tokens(clause.tokens())",
+        // The tagged-entry shape also reads an X amount (23b10081a).
+        "counter_shapes::parse_tagged_enters_additional_tokens_with_x(clause.tokens())",
     ] {
         assert!(
             content.contains(required),

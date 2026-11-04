@@ -252,19 +252,19 @@ pub(super) fn bind_last_counter_reference(text: &str) -> String {
     let Ok(tokens) = crate::lexer::lex_line(text, 0) else { return text.to_owned(); };
     let sentences = crate::lexer::split_lexed_sentences(&tokens);
     let Some(first) = sentences.first() else { return text.to_owned(); };
-    let first_words = crate::lexer::token_word_refs(first);
+    let first_words = crate::lexer::parser_token_word_refs(first);
     let Some(enters) = first_words.iter().position(|word| *word == "enters") else { return text.to_owned(); };
     if !crate::util::is_source_reference_words(&first_words[..enters])
         || first_words.get(enters + 1) != Some(&"with")
         || !first_words.ends_with(&["counters", "on", "it"])
     { return text.to_owned(); }
     let has_last_counter_trigger = sentences.iter().any(|sentence|
-        crate::lexer::token_word_refs(sentence).starts_with(&["when", "the", "last", "is", "removed"]));
+        crate::lexer::parser_token_word_refs(sentence).starts_with(&["when", "the", "last", "is", "removed"]));
     let mut counter = None;
     let mut changed = false;
     let mut output = Vec::new();
     for sentence in sentences {
-        let words = crate::lexer::token_word_refs(sentence);
+        let words = crate::lexer::parser_token_word_refs(sentence);
         if let Some(remove) = words.iter().position(|word| *word == "remove")
             && words.get(remove + 1) == Some(&"a")
             && words.ends_with(&["counter", "from", "it"])
@@ -288,7 +288,7 @@ pub(super) fn bind_last_counter_reference(text: &str) -> String {
         if words.starts_with(&["when", "the", "last", "is", "removed"])
             && let Some(counter) = &counter
             && let Some(comma) = sentence.iter().position(|token| token.is_comma())
-            && crate::lexer::token_word_refs(&sentence[..comma]) == ["when", "the", "last", "is", "removed"]
+            && crate::lexer::parser_token_word_refs(&sentence[..comma]) == ["when", "the", "last", "is", "removed"]
         {
             let body = crate::lexer::render_token_slice(crate::util::trim_edge_punctuation_tokens(&sentence[comma + 1..]));
             output.push(format!("When the last {counter} counter is removed from this permanent, {body}"));

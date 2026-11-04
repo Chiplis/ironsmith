@@ -324,6 +324,8 @@ fn p22_tapestry_warden_makes_high_toughness_creatures_station_with_toughness() {
     };
     assert_eq!(station(&game, wall), 1, "without the Warden a creature stations with its power");
     let _warden = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    // The Warden's static is a continuous rule effect; apply it.
+    game.refresh_continuous_state().unwrap();
     assert_eq!(station(&game, wall), 4, "toughness greater than power: stations with toughness");
     assert_eq!(station(&game, brute), 4, "power greater than toughness keeps its power");
     assert_eq!(station(&game, theirs), 1, "only creatures you control");

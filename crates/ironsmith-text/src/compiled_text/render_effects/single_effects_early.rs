@@ -3212,6 +3212,22 @@ pub(super) fn describe_timed_keyword_choice(
     ))
 }
 
+/// Whether any mode carries authored modal text. An instruction-level "A or
+/// B" choice may name its alternatives with prompt labels; a mode text that
+/// only repeats its decision label is that prompt label, not a printed mode.
+pub(super) fn choose_mode_has_authored_mode_text(
+    choose: &crate::effects::ChooseModeEffect,
+) -> bool {
+    choose.modes.iter().enumerate().any(|(index, mode)| {
+        let text = mode.source_text.trim();
+        !text.is_empty()
+            && choose
+                .decision_labels
+                .get(index)
+                .is_none_or(|label| label.trim() != text)
+    })
+}
+
 pub(super) fn describe_inline_action_choice(
     choose: &crate::effects::ChooseModeEffect,
 ) -> Option<String> {
@@ -3237,10 +3253,7 @@ pub(super) fn describe_inline_action_choice(
         || choose.mode_point_costs.iter().any(|cost| *cost != 1)
         || !choose.common_prefix_effects.is_empty()
         || choose.common_suffix_effect_count != 0
-        || choose
-            .modes
-            .iter()
-            .any(|mode| !mode.source_text.trim().is_empty())
+        || choose_mode_has_authored_mode_text(choose)
     {
         return None;
     }
@@ -3380,10 +3393,7 @@ pub(super) fn describe_inline_destroy_all_choice(
         || choose.conditional_mode_range.is_some()
         || !choose.mode_additional_mana_costs.is_empty()
         || choose.mode_point_costs.iter().any(|cost| *cost != 1)
-        || choose
-            .modes
-            .iter()
-            .any(|mode| !mode.source_text.trim().is_empty())
+        || choose_mode_has_authored_mode_text(choose)
     {
         return None;
     }
@@ -7365,10 +7375,7 @@ pub(super) fn describe_inline_pt_modifier_choice(
         || !choose_mode.common_prefix_effects.is_empty()
         || choose_mode.spree
         || !matches!(choose_mode.chooser.as_ref(), None | Some(PlayerFilter::You))
-        || choose_mode
-            .modes
-            .iter()
-            .any(|mode| !mode.source_text.trim().is_empty())
+        || choose_mode_has_authored_mode_text(choose_mode)
     {
         return None;
     }

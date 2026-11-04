@@ -24581,11 +24581,16 @@ fn describe_each_player_extremum_unless_own_mana_cost_program(
     if *choose != expected_choose { return None; }
     let [sacrifice_effect] = unless.effects.as_slice() else { return None; };
     let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
-    let expected_sacrifice = crate::effects::SacrificeTargetEffect::new(
-        ChooseSpec::Object(ObjectFilter::tagged(choose.tag.clone())))
+    // The sacrificed object is the chosen one, by membership or by exact
+    // object identity.
+    let expected_sacrifice = |filter: ObjectFilter| crate::effects::SacrificeTargetEffect::new(
+        ChooseSpec::Object(filter))
         .with_player(PlayerFilter::IteratedPlayer);
+    let sacrifices_choice = *sacrifice == expected_sacrifice(ObjectFilter::tagged(choose.tag.clone()))
+        || *sacrifice == expected_sacrifice(ObjectFilter::default().match_tagged(
+            choose.tag.clone(), crate::filter::TaggedOpbjectRelation::SameObjectId));
     let [cost] = unless.cost.as_all()? else { return None; };
-    if *sacrifice != expected_sacrifice
+    if !sacrifices_choice
         || unless.player != PlayerFilter::IteratedPlayer
         || unless.leading_surface || unless.before_delayed_step
         || cost.dynamic_mana_cost_ref() != Some(&ironsmith_core::DynamicManaCost::from_object_mana_cost(
@@ -37333,23 +37338,56 @@ fn describe_land_entry_damage_unless_creature_counter(
     let [cost] = unless.cost.as_all()? else {
         return None;
     };
-    let put = cost
-        .effect_ref()?
-        .downcast_ref::<crate::effects::PutCountersEffect>()?;
-    let ChooseSpec::Object(counter_filter) = put.target.base() else {
-        return None;
+    let cost_effect = cost.effect_ref()?;
+    // The payer's choice may be explicit: choose one creature they control,
+    // then put the counter on exactly that chosen creature.
+    let explicit_choice = cost_effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .and_then(|sequence| match sequence.effects.as_slice() {
+            [choose, put] => Some((
+                choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?,
+                put.downcast_ref::<crate::effects::PutCountersEffect>()?,
+            )),
+            _ => None,
+        });
+    let (put, counter_filter) = if let Some((choose, put)) = explicit_choice {
+        if choose.count != ChoiceCount::exactly(1)
+            || choose.chooser != PlayerFilter::You
+            || choose.is_search
+            || choose.reveal
+            || choose.count_value.is_some()
+            || !matches!(put.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        {
+            return None;
+        }
+        (put, &choose.filter)
+    } else {
+        let put = cost_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+        let ChooseSpec::Object(counter_filter) = put.target.base() else {
+            return None;
+        };
+        if put.target.count() != ChoiceCount::exactly(1) {
+            return None;
+        }
+        (put, counter_filter)
     };
     let mut semantic_counter_filter = counter_filter.clone();
     semantic_counter_filter.union_surface = Default::default();
+    let expected_counter_filter = ObjectFilter::creature().controlled_by(PlayerFilter::You);
+    // A chosen creature "they control" is on the battlefield either way.
+    if expected_counter_filter.zone.is_none()
+        && semantic_counter_filter.zone == Some(Zone::Battlefield)
+    {
+        semantic_counter_filter.zone = None;
+    }
     if put.counter_type != CounterType::MinusOneMinusOne
         || put.amount.unhinted() != &Value::Fixed(1)
-        || put.target.count() != ChoiceCount::exactly(1)
         || put
             .target_count
             .as_ref()
             .is_some_and(|target_count| target_count != &put.target.count())
         || put.distributed
-        || semantic_counter_filter != ObjectFilter::creature().controlled_by(PlayerFilter::You)
+        || semantic_counter_filter != expected_counter_filter
     {
         return None;
     }
@@ -41334,7 +41372,12 @@ mod ordered_target_slot_render_tests {
         let program = definition.spell_effect.as_ref().expect("spell program");
         let effects = &program.segments[0].default_effects;
         assert_eq!(effects.len(), 4);
-        assert!(effects[0].downcast_ref::<crate::effects::TargetOnlyEffect>().is_some());
+        // The declaration may carry its target-result tag.
+        let declaration = effects[0]
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map(|tagged| tagged.effect.as_ref())
+            .unwrap_or(&effects[0]);
+        assert!(declaration.downcast_ref::<crate::effects::TargetOnlyEffect>().is_some());
         assert!(effects[1..].iter().all(|effect| effect.downcast_ref::<
             crate::effects::ForEachAnnouncedTargetSlotEffect>().is_some()));
 
@@ -41349,7 +41392,7 @@ mod ordered_target_slot_render_tests {
         let initial = game.create_object_from_definition(&artifact, alice, Zone::Battlefield);
         let red_target = game.create_object_from_definition(&artifact, alice, Zone::Battlefield);
         let invalid_green = game.create_object_from_definition(&artifact, alice, Zone::Battlefield);
-        let target_spec = effects[0].downcast_ref::<crate::effects::TargetOnlyEffect>()
+        let target_spec = declaration.downcast_ref::<crate::effects::TargetOnlyEffect>()
             .expect("combined target declaration").target.clone();
         let mut paid = crate::cost::OptionalCostsPaid::from_costs(&definition.optional_costs);
         paid.costs[0].1 = 1;

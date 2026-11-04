@@ -164,6 +164,23 @@ use crate::recognition::ParseOutcome;
 #[path = "participant_scopes/for_each_player_readings.rs"]
 mod for_each_player_readings;
 
+/// "For each opponent, you ...": a participant scope whose inner clause is
+/// performed by you, not by each participant, read as a whole sentence
+/// before the ordinary sentence families.
+pub fn parse_for_each_participant_you_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let you_act = crate::grammar::effects::for_each_shapes::parse_participant_clause_shape(tokens)
+        .is_some_and(|shape| {
+            !shape.participant_is_actor
+                && shape.inner_tokens.first().is_some_and(|token| token.is_word("you"))
+        });
+    if !you_act {
+        return Ok(None);
+    }
+    parse_for_each_player_clause(tokens)
+}
+
 pub fn parse_for_each_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {

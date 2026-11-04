@@ -649,6 +649,10 @@ impl GameState {
         }
         child.subgame_starting_procedure_pending = true;
 
+        // The creating instruction is still inside its action-observation
+        // scopes; their owners close them on the active child game.
+        child.effect_store.action_observation_records =
+            std::mem::take(&mut self.effect_store.action_observation_records);
         let parent = std::mem::replace(self, child);
         self.subgame_parent = Some(Box::new(SubgameFrame {
             parent: Box::new(parent),

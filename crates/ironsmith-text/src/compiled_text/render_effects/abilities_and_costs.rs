@@ -1412,7 +1412,7 @@ fn describe_ability_in_zone(
                         lines.push(format!("Static ability {index}: {power}/{toughness}"));
                     }
                     for granted in &level.abilities {
-                        lines.push(format!("Static ability {index}: {}", granted.display()));
+                        lines.push(format!("Static ability {index}: {}", level_granted_ability_text(granted)));
                     }
                 }
                 return lines;
@@ -4104,4 +4104,19 @@ fn describe_keyword_cost_choice_body(
         }
     }
     Some(capitalize_first(&out.join(" ")))
+}
+
+/// A level tier's triggered ability is carried as an undisplayed source grant
+/// (CR 711.2b); print the tier's ability itself rather than an empty quote.
+pub(crate) fn level_granted_ability_text(granted: &crate::static_abilities::StaticAbility) -> String {
+    let display = granted.display();
+    if (display.contains("\".\"") || display.contains("\"\""))
+        && let [ability] = granted.source_granted_inline_abilities().as_slice()
+    {
+        let text = describe_inline_ability(ability);
+        if !text.trim().is_empty() {
+            return text;
+        }
+    }
+    display
 }

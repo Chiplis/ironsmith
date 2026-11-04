@@ -150,15 +150,22 @@ fn triggered_unless_effect_cost_keeps_the_choice_payer_relative() {
     else {
         panic!("expected one effect cost: {unless:#?}");
     };
-    let put = cost_effect
+    // The payment is a choose-then-put program: the payer chooses a creature
+    // they control, then puts the -1/-1 counter on the chosen creature.
+    let sequence = cost_effect
+        .downcast_ref::<ironsmith_compiler::effects::SequenceEffect>()
+        .expect("the player pays by putting a -1/-1 counter");
+    let [choose, put] = sequence.effects.as_slice() else {
+        panic!("expected a choice and a counter placement: {sequence:#?}");
+    };
+    let choose = choose
+        .downcast_ref::<ironsmith_compiler::effects::ChooseObjectsEffect>()
+        .expect("the payer chooses the creature");
+    let put = put
         .downcast_ref::<ironsmith_compiler::effects::PutCountersEffect>()
         .expect("the player pays by putting a -1/-1 counter");
-    let ChooseSpec::WithCount(target, _) = &put.target else {
-        panic!("expected an exact-one creature choice: {put:#?}");
-    };
-    let ChooseSpec::Object(filter) = target.as_ref() else {
-        panic!("expected a creature object filter: {put:#?}");
-    };
+    assert!(matches!(&put.target, ChooseSpec::Tagged(tag) if *tag == choose.tag), "{put:#?}");
+    let filter = &choose.filter;
     assert_eq!(
         filter.controller,
         Some(ironsmith_compiler::target::PlayerFilter::You),
@@ -534,12 +541,14 @@ fn single_exile_lowering_preserves_explicit_actor() {
     )
     .expect("typed single-object exile should lower");
     assert!(choices.is_empty());
+    // A singular exile lowers to ExileEffect (which keeps affected-object LKI
+    // for "exiled this way" followups) carrying the explicit actor.
     let lowered = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<ironsmith_compiler::effects::MoveToZoneEffect>())
-        .expect("face-up single exile should lower to a move effect");
-    assert_eq!(lowered.zone, ironsmith_compiler::zone::Zone::Exile);
-    assert_eq!(lowered.actor_surface, Some(PlayerFilter::Opponent));
+        .find_map(|effect| effect.downcast_ref::<ironsmith_compiler::effects::ExileEffect>())
+        .expect("face-up single exile should lower to an exile effect");
+    assert!(!lowered.face_down);
+    assert_eq!(lowered.actor, Some(PlayerFilter::Opponent));
 }
 
 #[test]

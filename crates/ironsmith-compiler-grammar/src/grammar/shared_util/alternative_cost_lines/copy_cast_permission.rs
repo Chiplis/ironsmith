@@ -60,6 +60,8 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<AlternativeCasting
             let mut counters = method.entry_counters().to_vec();
             counters.extend_from_slice(counter_method.entry_counters());
             method = method.with_entry_counters(counters);
+            // The complete "if you do, it enters with ..." rider is read here.
+            crate::word_claims::claim_tokens(sentence);
             continue;
         }
         return Ok(None);

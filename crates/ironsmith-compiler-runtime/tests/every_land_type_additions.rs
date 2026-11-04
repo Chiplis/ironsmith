@@ -40,10 +40,12 @@ fn omo_adds_every_land_type_and_every_creature_type() {
         for id in [marked_land, marked_creature] {
             game.add_counters(id, CounterType::Named("everything".into()), 1).unwrap();
         }
-        for subtype in Subtype::all_land_types() {
+        // CR 205.3i: "every land type" is the official list; legacy custom
+        // vocabulary (Satrapy) is only admitted per game, never implied.
+        for subtype in Subtype::all_land_types().iter().filter(|subtype| !subtype.is_custom_vocabulary()) {
             assert!(game.current_has_subtype(marked_land, *subtype), "missing land subtype {subtype:?}");
         }
-        for subtype in Subtype::all_creature_types() {
+        for subtype in Subtype::all_creature_types().iter().filter(|subtype| !subtype.is_custom_vocabulary()) {
             assert!(game.current_has_subtype(marked_creature, *subtype), "missing creature subtype {subtype:?}");
         }
         assert_eq!(game.current_subtypes(unmarked_land).unwrap(), vec![Subtype::Forest]);

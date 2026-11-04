@@ -416,6 +416,11 @@ pub fn parse_token_rules_surfaces_for_named_token(
             rules.embedded_rules.push(rule);
             continue;
         }
+        // Exact typed token shapes keep their compact blueprint rule.
+        if let Some(rule) = parse_exact_quoted_legacy_rule(quoted) {
+            rules.embedded_rules.push(rule);
+            continue;
+        }
         let quoted = crate::util::trim_edge_punctuation(quoted);
         if let Ok(Some(parsed)) = crate::keyword_static::parse_triggered_granted_ability(&quoted) {
             rules.generic_rule_spans.push((tokens[*open].span.start, tokens[*close].span.end));
@@ -432,9 +437,38 @@ pub fn parse_token_rules_surfaces_for_named_token(
             rules.static_abilities.extend(parsed);
             continue;
         }
+        // A quoted dynamic P/T rule is the token's characteristic-defining
+        // ability. The creating statement owns it (it may reference the
+        // creator's state), so it is read there, not left unread here.
+        if super::reminder::parse_token_dynamic_power_toughness_tokens(&quoted).is_some() {
+            continue;
+        }
         rules.unread_rules.push(render_token_slice(&quoted));
     }
     rules
+}
+
+/// The quoted forms of the legacy typed token rules, read only when the quote
+/// is exactly that rule (never by word presence).
+fn parse_exact_quoted_legacy_rule(quoted: &[OwnedLexToken]) -> Option<TokenEmbeddedRuleShape> {
+    let quoted = crate::util::trim_edge_punctuation_tokens(quoted);
+    let words = parser_token_word_refs(quoted);
+    let opponent_casts: &[&str] = &[
+        "whenever", "an", "opponent", "casts", "a", "creature", "spell", "this", "token", "isnt",
+        "a", "creature", "until", "end", "of", "turn",
+    ];
+    if words.as_slice() == opponent_casts {
+        return Some(TokenEmbeddedRuleShape::OpponentCastsCreatureRemoveCreatureTypeUntilEndOfTurn);
+    }
+    let creatures_you_control = Value::Count(ObjectFilter::creature().you_control());
+    if matches!(
+        super::reminder::parse_token_dynamic_power_toughness_tokens(quoted),
+        Some((power, toughness))
+            if power == creatures_you_control && toughness == creatures_you_control
+    ) {
+        return Some(TokenEmbeddedRuleShape::PowerToughnessEqualCreaturesYouControl);
+    }
+    None
 }
 
 /// Preserve all intrinsic and legacy-only rules while removing just the quoted

@@ -468,13 +468,61 @@ pub fn authored_inline_rule_presentations(
     presentations
 }
 
+/// The token description with every quoted rule owned by the typed creature
+/// blueprint removed (quotes included). Positions keep their authored spans.
+fn typed_quote_free_tokens(
+    source_tokens: &[OwnedLexToken],
+    named_card: Option<&str>,
+) -> Vec<OwnedLexToken> {
+    let quotes: Vec<usize> = source_tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(index, token)| token.is_quote().then_some(index))
+        .collect();
+    let mut owned = vec![false; source_tokens.len()];
+    for pair in quotes.chunks(2) {
+        let [open, close] = pair else { break };
+        let body = &source_tokens[*open + 1..*close];
+        if body.iter().any(OwnedLexToken::is_quote) {
+            continue;
+        }
+        let words = parser_token_word_refs(body);
+        let typed = crate::word_claims::probe_only(|| {
+            let rules = creature_rules(body, &words, &words, named_card);
+            rules.combat_restriction.is_some()
+                || rules.dies_damage_any_target.is_some()
+                || rules.leaves_return_named_to_hand.is_some()
+                || rules::parse_token_tap_mana_ability_tokens(&source_tokens[*open..=*close])
+                    .is_some()
+                || (words.starts_with(&["cumulative", "upkeep"])
+                    && rules::cumulative_upkeep_mana_symbols(&words).is_some_and(|symbols| {
+                        !symbols.is_empty() && words.len() == symbols.len() + 2
+                    }))
+        });
+        if typed {
+            owned[*open..=*close].fill(true);
+        }
+    }
+    source_tokens
+        .iter()
+        .zip(owned)
+        .filter_map(|(token, owned)| (!owned).then(|| token.clone()))
+        .collect()
+}
+
 pub(super) fn creature_rules(
     source_tokens: &[OwnedLexToken],
     words: &[&str],
     intrinsic_words: &[&str],
     named_card: Option<&str>,
  ) -> CreatureTokenRulesShape {
-    let token_rules = rules::parse_token_rules_surfaces_for_named_token(source_tokens, named_card);
+    // A quoted rule that the typed creature-token blueprint already models
+    // (a combat restriction, a tap-mana ability, a complete cumulative upkeep
+    // keyword, a dies/leaves trigger) stays with those typed facts. Only the
+    // remaining quoted rules go to the ordinary ability readers.
+    let generic_source = typed_quote_free_tokens(source_tokens, named_card);
+    let token_rules =
+        rules::parse_token_rules_surfaces_for_named_token(&generic_source, named_card);
     let legacy_tokens = rules::legacy_rule_tokens(source_tokens, &token_rules);
     let legacy_words = parser_token_word_refs(&legacy_tokens);
     let words = if token_rules.generic_rule_spans.is_empty() { words } else { &legacy_words };

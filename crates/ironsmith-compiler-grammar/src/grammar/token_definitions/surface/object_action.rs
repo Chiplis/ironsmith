@@ -247,7 +247,27 @@ pub fn parse_token_definition_shape_tokens(
     let equipment_subject =
         has("equipment") && common::phrase_present(&rule_words, &["equipped", "creature"]);
     if has("artifact") && pt.is_none() && (!has("creature") || equipment_subject) {
-        let token_rules = rules::parse_token_rules_surfaces_tokens(&scope.rule_source);
+        // Quoted rules owned by the typed artifact blueprint (an Equipment
+        // grant to "equipped creature", a leaves-the-battlefield damage rule)
+        // stay with those typed facts; only the rest go to the generic readers.
+        let generic_source = {
+            let source = &scope.rule_source;
+            let quotes: Vec<usize> = source.iter().enumerate()
+                .filter_map(|(index, token)| token.is_quote().then_some(index)).collect();
+            let mut owned = vec![false; source.len()];
+            for pair in quotes.chunks(2) {
+                let [open, close] = pair else { break };
+                let body_words = parser_token_word_refs(&source[*open + 1..*close]);
+                let typed = (equipment_subject && body_words.starts_with(&["equipped", "creature"]))
+                    || common::all_words_present(&body_words, &[
+                        "when", "token", "leaves", "battlefield", "deals", "damage", "target",
+                    ]);
+                if typed { owned[*open..=*close].fill(true); }
+            }
+            source.iter().zip(owned).filter_map(|(token, owned)| (!owned).then(|| token.clone()))
+                .collect::<Vec<_>>()
+        };
+        let token_rules = rules::parse_token_rules_surfaces_tokens(&generic_source);
         let legacy_tokens = rules::legacy_rule_tokens(&scope.rule_source, &token_rules);
         let rule_words = parser_token_word_refs(&legacy_tokens);
         let leaves_damage = common::all_words_present(&rule_words, &[

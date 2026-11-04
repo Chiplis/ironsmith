@@ -898,11 +898,11 @@ fn parse_filtered_object_animation_static_line(
         .collect();
     if !granted_keyword_words.is_empty() {
         let keyword_tokens = crate::lexer::synthetic_word_tokens(granted_keyword_words.iter());
+        // The words lost their list punctuation ("flying, indestructible, and
+        // haste"); when they do not read as one keyword line, leave the
+        // sentence to readers that see its original separators.
         let Some(actions) = parse_ability_line(&keyword_tokens) else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported keyword grant in animation line (clause: '{}')",
-                granted_keyword_words.join(" ")
-            )));
+            return Ok(None);
         };
         for action in actions {
             if !action.lowers_to_static_ability() {
@@ -3968,7 +3968,10 @@ pub fn parse_static_condition_clause(
     if matches!(clause_words.as_slice(),
         ["it's" | "its" | "it is", "the", "first", "main", "phase", "of", "the", "turn"]
         | ["it", "is", "the", "first", "main", "phase", "of", "the", "turn"])
-    { return Ok(PredicateAst::FirstMainPhaseOfTurn); }
+    {
+        crate::word_claims::claim_tokens(&tokens);
+        return Ok(PredicateAst::FirstMainPhaseOfTurn);
+    }
     if clause_words.is_empty() {
         return Err(CardTextError::ParseError(
             "missing condition clause after 'as long as'".to_string(),

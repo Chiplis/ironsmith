@@ -79,7 +79,9 @@ fn fearless_swashbuckler_requires_attacking_pirate_and_vehicle() {
         "Mana cost: {1}{U}{R}\nType: Creature — Fish Pirate\nPower/Toughness: 3/2\nHaste\nVehicles you control have haste.\nWhenever you attack, if a Pirate and a Vehicle attacked this combat, draw three cards, then discard two cards.");
     let debug = format!("{:?}", p31_intervening_if(&definition));
     assert!(debug.contains("Pirate") && debug.contains("Vehicle"), "{debug}");
-    assert!(debug.contains("attacking: true"), "{debug}");
+    // "attacked this combat" is a this-combat attack-history count, not a
+    // current attacking-state filter.
+    assert!(debug.contains("CreaturesAttackedWith") && debug.matches("this_combat: true").count() >= 2, "{debug}");
     assert!(debug.starts_with("And("), "both attackers are required: {debug}");
 }
 
@@ -92,7 +94,11 @@ fn firemane_commando_other_player_draws_only_when_not_attacking_you() {
         _ => None,
     }).collect();
     assert_eq!(triggers.len(), 2);
-    assert!(triggers[1].contains("attacking_player_only: true") && triggers[1].contains("Not("),
+    // None of the triggering player's creatures attacked you this combat:
+    // a this-combat attack-history count against you that must be zero.
+    assert!(triggers[1].contains("CreaturesAttackedWith { player: ControllerOf(Tagged(TagKey(\"triggering\")))")
+        && triggers[1].contains("this_combat: true, attacked: Some(You)")
+        && triggers[1].contains("operator: Equal, right: Fixed(0)"),
         "draw is gated on no creature attacking you: {}", triggers[1]);
 }
 

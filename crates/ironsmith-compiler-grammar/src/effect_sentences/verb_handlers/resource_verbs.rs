@@ -509,6 +509,11 @@ fn parse_note(
             });
         }
     }
+    // "note the triggering card's name for this permanent": a source-owned
+    // noted name (the same reading as the bare imperative sentence).
+    if let Some(effect) = crate::object_filters::source_noted_names::action_after_verb(tokens) {
+        return Ok(effect);
+    }
     Err(CardTextError::ParseError(format!(
         "unsupported note clause: '{}' (subject: {subject:?})",
         crate::lexer::token_word_refs(tokens).join(" ")

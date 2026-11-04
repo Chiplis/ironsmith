@@ -9,7 +9,7 @@ fn source_owner(words:&[&str])->Option<ChooseSpec>{
 }
 fn name_reference(words:&[&str])->Option<bool>{
     match words{
-        ["the","triggering","card's","name"]|["the","triggering","object's","name"]=>Some(true),
+        ["the","triggering","card's"|"cards"|"card’s"|"object's"|"objects"|"object’s","name"]=>Some(true),
         ["its","name"]=>Some(false),_=>None,
     }
 }
@@ -45,9 +45,19 @@ pub(crate) fn action(tokens:&[OwnedLexToken])->Option<EffectAst>{
     if tokens.iter().any(OwnedLexToken::is_quote){return None;}
     let view=TokenWordView::new(tokens);let words=view.word_refs();
     if words.first()!=Some(&"note"){return None;}
-    let at=words.iter().rposition(|word|*word=="for")?;
-    let for_object=source_owner(&words[at+1..])?;
-    let triggering=name_reference(&words[1..at])?;
+    noted_name_action(tokens,&words[1..])
+}
+/// The operand after an already-consumed "note" verb ("you may note ...").
+pub(crate) fn action_after_verb(tokens:&[OwnedLexToken])->Option<EffectAst>{
+    if tokens.iter().any(OwnedLexToken::is_quote){return None;}
+    let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
+    let view=TokenWordView::new(tokens);let words=view.word_refs();
+    noted_name_action(tokens,&words)
+}
+fn noted_name_action(tokens:&[OwnedLexToken],operand:&[&str])->Option<EffectAst>{
+    let at=operand.iter().rposition(|word|*word=="for")?;
+    let for_object=source_owner(&operand[at+1..])?;
+    let triggering=name_reference(&operand[..at])?;
     let tag=if triggering{crate::tag::CompilerReferenceTag::Triggering}else{crate::tag::CompilerReferenceTag::It};
     let object=ChooseSpec::Tagged(tag.bind().into());
     crate::word_claims::claim_tokens(tokens);

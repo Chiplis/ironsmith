@@ -923,6 +923,9 @@ fn read_trigger_line_sentence(
         .first()
         .is_some_and(|word| matches!(*word, "when" | "whenever" | "at"))
         && !has_later_trigger_sentence
+        // "when you next cast ..." registers a one-shot delayed trigger; it is
+        // never the header of the enclosing (already triggered) rule.
+        && !source_words.starts_with(&["when", "you", "next"])
         && let Ok(crate::cards::builders::LineAst::Triggered { effects, .. }) =
             super::super::super::clause_support::parse_triggered_line_lexed(tokens)
     {

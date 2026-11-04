@@ -157,7 +157,11 @@ pub(super) fn describe_delayed_targeted_source_damage(
 
     let with_source = structural_unwrap_render_wrappers(damage_effect)
         .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
-    if !matches!(&with_source.source, ChooseSpec::Tagged(tag) if tag == &tagged_source.tag) {
+    // The damage source is the declared target: by its tag, or by the same
+    // target specification resolving to that one declared slot.
+    if !matches!(&with_source.source, ChooseSpec::Tagged(tag) if tag == &tagged_source.tag)
+        && with_source.source != source_target.target
+    {
         return None;
     }
     let damage = structural_unwrap_render_wrappers(&with_source.effect)

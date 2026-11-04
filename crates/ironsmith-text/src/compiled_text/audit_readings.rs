@@ -1696,8 +1696,10 @@ pub(crate) fn audit_payload_reading(
             sr(card_types)
         ),
         P::SearchLimitedToTopCards { searcher, count, .. } => format!(
-            "If {} would search a library, they search only its top {count} cards",
-            player(searcher)
+            "If {} would search a library, that player searches the top {} {} of that library instead",
+            player(searcher),
+            count_words(*count),
+            if *count == 1 { "card" } else { "cards" }
         ),
         P::PlayerProtectionFrom { player: who, source_filter, .. } => format!(
             "{} {} protection from {}",

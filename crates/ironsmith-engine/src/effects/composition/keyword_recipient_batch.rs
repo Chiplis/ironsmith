@@ -81,8 +81,8 @@ pub(crate) fn execute_keyword_recipient_batch<'a>(
                         parent.restore_ref_preserving_resolution_control(ctx);
                         Ok(receipts)
                     })?;
-                Ok(CompletedEffectOutputs::with_primary_result(
-                    EffectOutcome::aggregate_summing_counts(outcomes.iter().map(|child|child.outcome.clone())), outcomes))
+                // Each recipient's observations enter the aggregate exactly once.
+                Ok(CompletedEffectOutputs::from_children(outcomes, EffectOutcome::aggregate_summing_counts))
             })();
             parent.restore_preserving_resolution_control(ctx);
             result

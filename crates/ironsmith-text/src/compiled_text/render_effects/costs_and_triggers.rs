@@ -5319,25 +5319,43 @@ pub(in crate::compiled_text) fn describe_for_players_choose_graveyard_then_exile
     {
         return None;
     }
-    let move_to_zone = structural_unwrap_render_wrappers(move_effect)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    if move_to_zone.zone != Zone::Exile
-        || move_to_zone.library_order.is_some()
-        || move_to_zone.verb_surface != ironsmith_core::MoveToZoneVerbSurface::Canonical
-        || move_to_zone.actor_surface != Some(PlayerFilter::IteratedPlayer)
-        || move_to_zone.destination_player_surface.is_some()
-        || move_to_zone.exiled_with_source_surface.is_some()
-        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
-        || !move_to_zone.enters_with_counters.is_empty()
-        || move_to_zone.enters_tapped
-        || move_to_zone.enters_attacking
-        || move_to_zone.enters_face_down
-        || move_to_zone.enters_transformed
-    {
-        return None;
-    }
-    let ChooseSpec::Object(complement) = move_to_zone.target.base() else {
-        return None;
+    let moved = structural_unwrap_render_wrappers(move_effect);
+    // The rest is exiled by the participant: a zone move with that actor's
+    // surface, or an exile instruction naming that actor.
+    let complement = if let Some(exile) = moved.downcast_ref::<crate::effects::ExileEffect>() {
+        if exile.face_down
+            || exile.turn_face_up
+            || exile.source_controller_may_look
+            || exile.remember_on_source
+            || exile.actor != Some(PlayerFilter::IteratedPlayer)
+        {
+            return None;
+        }
+        let ChooseSpec::Object(complement) = exile.spec.base() else {
+            return None;
+        };
+        complement
+    } else {
+        let move_to_zone = moved.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if move_to_zone.zone != Zone::Exile
+            || move_to_zone.library_order.is_some()
+            || move_to_zone.verb_surface != ironsmith_core::MoveToZoneVerbSurface::Canonical
+            || move_to_zone.actor_surface != Some(PlayerFilter::IteratedPlayer)
+            || move_to_zone.destination_player_surface.is_some()
+            || move_to_zone.exiled_with_source_surface.is_some()
+            || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
+            || !move_to_zone.enters_with_counters.is_empty()
+            || move_to_zone.enters_tapped
+            || move_to_zone.enters_attacking
+            || move_to_zone.enters_face_down
+            || move_to_zone.enters_transformed
+        {
+            return None;
+        }
+        let ChooseSpec::Object(complement) = move_to_zone.target.base() else {
+            return None;
+        };
+        complement
     };
     let mut expected_complement = choose.filter.clone();
     expected_complement

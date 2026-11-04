@@ -824,6 +824,12 @@ impl GameState {
 
     pub fn apply_custom_status_until_event(&mut self, id: ObjectId, name: &str, event: ironsmith_core::CustomStatusExpiryEvent) -> bool {
         if name.is_empty() || !self.object(id).is_some_and(|o| o.zone == Zone::Battlefield) { return false; }
+        // A counter-absence lifetime that has already ended applies nothing.
+        if let ironsmith_core::CustomStatusExpiryEvent::NoCounters(kind) = event
+            && self.object(id).is_none_or(|object| object.counters.get(&kind).copied().unwrap_or(0) == 0)
+        {
+            return false;
+        }
         let fresh = !self.has_custom_status(id, name);
         self.battlefield_flags_mut().custom_status_event_expiry.entry(id).or_default().entry(name.to_owned()).or_default().insert(event);
         self.mark_object_changed_and_continuous_state_dirty(id);

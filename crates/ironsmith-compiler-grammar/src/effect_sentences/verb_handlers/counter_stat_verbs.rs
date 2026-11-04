@@ -1448,7 +1448,10 @@ mod filtered_prior_action_life_tests {
                         ironsmith_core::EffectMetric::Count,
                     )
                     .with_filter({
+                        // A discarded land card is no longer on the
+                        // battlefield; the count is a card-type filter only.
                         let mut filter = ObjectFilter::land();
+                        filter.zone = None;
                         filter.set_explicit_card_noun(true);
                         filter
                     })

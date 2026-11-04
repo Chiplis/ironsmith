@@ -126,6 +126,10 @@ fn recognized_line_kind(line: &RecognizedLine) -> &'static str {
 }
 
 fn trace_recognized_line(line: &RecognizedLine) {
+    // Metadata lines are already traced with their parsed value.
+    if matches!(line, RecognizedLine::Metadata(_)) {
+        return;
+    }
     parse_trace::event(format!("classified as {}", recognized_line_kind(line)));
 }
 
@@ -1228,8 +1232,15 @@ fn preflight_invalid_payment_keyword_lines(lines: &[&[OwnedLexToken]]) -> Option
                     continue;
                 };
 
+            // A period inside a quoted granted ability ("... with \"{T}: Deal
+            // 1 damage to target creature.\"") does not end the cost.
+            let mut inside_quotes = false;
             let reminder_start = locate_token_index(segment, |token| {
-                token.is_period() || token.kind == TokenKind::LParen
+                if token.kind == TokenKind::Quote {
+                    inside_quotes = !inside_quotes;
+                    return false;
+                }
+                !inside_quotes && (token.is_period() || token.kind == TokenKind::LParen)
             })
             .or_else(|| {
                 if is_echo {
@@ -2890,12 +2901,8 @@ fn claim_max_speed_label(label_tokens: &[OwnedLexToken], chosen: Option<&ChosenO
 /// label as its presentation, and the activated lowering reads that label as
 /// the forecast rules (activate only from hand during your upkeep, once each
 /// turn, the reveal lasts until the ability resolves).
-fn claim_forecast_label(
-    label: &str,
-    label_tokens: &[OwnedLexToken],
-    presentation: Option<&PresentationLabel>,
-) {
-    if label.trim().eq_ignore_ascii_case("forecast") && presentation.is_some() {
+fn claim_forecast_label(label_tokens: &[OwnedLexToken], presentation: Option<&PresentationLabel>) {
+    if presentation.is_some() && matches!(label_tokens, [token] if token.is_word("forecast")) {
         crate::word_claims::claim_tokens(label_tokens);
     }
 }
@@ -3284,10 +3291,17 @@ fn claim_presentation_only_label(
             .first()
             .is_some_and(|token| token.kind == TokenKind::Bullet)
         // The first word, not a leading number ("10,000 Needles").
-        || !label_tokens
+        || !(label_tokens
             .iter()
             .find(|token| token.kind == TokenKind::Word)
             .is_some_and(|token| token.slice.chars().next().is_some_and(char::is_uppercase))
+            // A lowercase authored label ("inscribe — ...") is still read:
+            // it becomes the line's ability designation.
+            || crate::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(
+                &line.info.source_tokens,
+            )
+            .ability_designations
+            .contains(&label.to_ascii_lowercase()))
         || is_meaningful_line_label(&label, label_tokens)
     {
         return;
@@ -3688,7 +3702,7 @@ fn try_parse_labeled_line_dispatch_inner(
                     &effect_parse_tokens,
                 )?;
                 claim_max_speed_label(label_tokens, max_speed_chosen_option.as_ref());
-                claim_forecast_label(&label, label_tokens, presentation.as_ref());
+                claim_forecast_label(label_tokens, presentation.as_ref());
                 let activated = RecognizedActivatedLine {
                     info: line.info.clone(),
                     cost,
@@ -3864,7 +3878,7 @@ fn try_parse_labeled_line_dispatch_inner(
                     &effect_parse_tokens,
                 )?;
                 claim_max_speed_label(label_tokens, max_speed_chosen_option.as_ref());
-                claim_forecast_label(&label, label_tokens, presentation.as_ref());
+                claim_forecast_label(label_tokens, presentation.as_ref());
                 let activated = RecognizedActivatedLine {
                     info: line.info.clone(),
                     cost,
@@ -9419,8 +9433,11 @@ mod tests {
             assert_eq!(replace_named_source_aliases(text, alias, "this enchantment"), text.to_lowercase());
             assert_eq!(replace_named_source_aliases_from_set(text, alias, "this enchantment", &[alias.to_string()], false), text.to_lowercase());
         }
-        assert_eq!(replace_named_source_aliases("Amount gets +1/+1.", "amount", "this creature"), "this creature gets +1/+1.");
-        assert_eq!(replace_named_source_aliases("Put a counter on Number.", "number", "this artifact"), "put a counter on this artifact.");
+        // Real source references are rewritten by the source-aware
+        // (non-surface-preserving) route; the surface-preserving route keeps
+        // a sentence-leading "<name> gets" authored by design.
+        assert_eq!(replace_named_source_aliases_from_set("Amount gets +1/+1.", "amount", "this creature", &["amount".to_string()], false), "this creature gets +1/+1.");
+        assert_eq!(replace_named_source_aliases_from_set("Put a counter on Number.", "number", "this artifact", &["number".to_string()], false), "put a counter on this artifact.");
     }
 
     #[test]
@@ -10253,14 +10270,14 @@ mod labeled_trigger_ownership_regressions {
             card,
             "Keyword ability \"echoing\" — Whenever this creature attacks, you gain 1 life.",
         ).expect("preprocess explicit label");
-        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
-            panic!("expected labeled line");
-        };
-        let dispatch = try_parse_labeled_line_dispatch(&preprocessed, 0, line, false)
-            .expect("dispatch succeeds").expect("explicit label is recognized");
-        let Some(RecognizedLine::Triggered(triggered)) = dispatch.lines.first() else {
-            panic!("expected triggered line");
-        };
+        // Preprocessing now strips the explicit group label from the line's
+        // tokens (keeping it in the source tokens), so the document
+        // dispatch, not the bare labeled-line entry, owns the group.
+        let recognized = recognize_document(&preprocessed, false).expect("dispatch succeeds");
+        let triggered = recognized.lines.into_iter().find_map(|line| match line {
+            RecognizedLine::Triggered(triggered) => Some(triggered),
+            _ => None,
+        }).expect("expected triggered line");
         assert!(triggered.info.semantic_facts.ability_designations.iter()
             .any(|name| name == "echoing"));
     }
