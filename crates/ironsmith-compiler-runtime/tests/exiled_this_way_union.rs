@@ -49,11 +49,13 @@ fn separate_exile_sentences_bind_this_way_to_the_latest_exile() {
     }
 }
 
-use ironsmith::{CardDefinitionBuilder,CardId,CardType,Effect,EffectContext,GameState,ObjectId,PlayerId,PowerToughness,StableId,Zone};
+use ironsmith::cards::builders::CardDefinitionBuilder;
+use ironsmith::ids::StableId;
+use ironsmith::{CardId,CardType,Effect,EffectContext,GameState,ObjectId,PlayerId,PowerToughness,Zone};
 use ironsmith::decision::{DecisionMaker,LegalAction,SelectFirstDecisionMaker,compute_legal_actions};
 use ironsmith::decisions::context::{BooleanContext,SelectObjectsContext,SelectOptionsContext,TargetsContext};
 use ironsmith::effects::execute_effect;
-use ironsmith::target::ResolvedTarget;
+use ironsmith::effects::ResolvedTarget;
 const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);
 struct PickPool { preferred:StableId, observed:std::collections::HashSet<StableId> }
 impl DecisionMaker for PickPool {

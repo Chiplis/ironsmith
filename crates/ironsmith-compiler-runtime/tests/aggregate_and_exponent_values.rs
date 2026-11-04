@@ -53,7 +53,8 @@ fn winter_constrains_the_exiled_set_not_each_card() {
 /// counted once, multitype spells contribute every type, and an opponent's
 /// additional type does not belong to "you". Resolved spells still contribute.
 fn april_actual_cast_history_draw(definition:&ironsmith::CardDefinition,program:&ironsmith::resolution::ResolutionProgram){
- use ironsmith::{CardDefinitionBuilder,CardId,CardType,Effect,EffectContext,GameState,PlayerId,PowerToughness,Zone};
+ use ironsmith::cards::builders::CardDefinitionBuilder;
+ use ironsmith::{CardId,CardType,Effect,EffectContext,GameState,PlayerId,PowerToughness,Zone};
  use ironsmith::decision::{LegalAction,SelectFirstDecisionMaker,compute_legal_actions};
  use ironsmith::game_loop::{PriorityLoopState,PriorityResponse,apply_priority_response_with_dm,apply_decision_context_with_dm};
  const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);

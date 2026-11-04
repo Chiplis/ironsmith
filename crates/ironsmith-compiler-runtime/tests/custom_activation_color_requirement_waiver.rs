@@ -15,7 +15,7 @@ fn index(d:&CardDefinition,designation:&str)->usize{d.abilities.iter().position(
 fn legal(g:&GameState,p:PlayerId,s:ObjectId,i:usize)->bool{compute_legal_actions(g,p).unwrap().contains(&LegalAction::ActivateAbility{source:s,ability_index:i})}
 #[test]fn full_linked_alluring_and_janneke_sources_admit_with_complete_typed_parity(){
  for name in ["Alluring Rider","Janneke, Surface Scholar"]{let faces=actual(name);assert_eq!(faces.len(),2);for pair in &faces{
-  assert_eq!(serde_json::to_value(ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(&pair[0]).unwrap()).unwrap(),serde_json::to_value(ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(&pair[1]).unwrap()).unwrap());
+  assert_eq!(serde_json::to_value(ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(pair[0].clone()).unwrap()).unwrap(),serde_json::to_value(ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(pair[1].clone()).unwrap()).unwrap());
  }for route in 0..2{assert_eq!(faces[0][route].card.other_face,Some(faces[1][route].card.id));assert_eq!(faces[1][route].card.other_face,Some(faces[0][route].card.id));index(&faces[0][route],"attain");}}
 }
 #[test]fn actual_janneke_waives_only_controlled_attain_color_minimum_and_actual_activation_transforms(){
@@ -48,7 +48,7 @@ fn legal(g:&GameState,p:PlayerId,s:ObjectId,i:usize)->bool{compute_legal_actions
 
 #[test]fn permission_wire_retains_exact_exception_and_legacy_payload_has_none(){
  let pair=routes::definitions(&serde_json::json!({"name":"Wire exception","executable_text":"Type: Enchantment\nYou may spend any number of colors of mana to activate rite abilities of permanents you control."})).unwrap();
- let values:Vec<_>=pair.iter().map(|d|serde_json::to_value(ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(d).unwrap()).unwrap()).collect();assert_eq!(values[0],values[1]);
+ let values:Vec<_>=pair.iter().map(|d|serde_json::to_value(ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(d.clone()).unwrap()).unwrap()).collect();assert_eq!(values[0],values[1]);
  let permission=ironsmith::effect::ManaSpendPermission::any_color(ironsmith::target::PlayerFilter::You);
  let mut wire=serde_json::to_value(&permission).unwrap();wire.as_object_mut().unwrap().remove("ignore_minimum_colors_for_designation");
  let legacy:ironsmith::effect::ManaSpendPermission=serde_json::from_value(wire).unwrap();assert!(legacy.ignore_minimum_colors_for_designation.is_none());

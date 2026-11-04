@@ -34,7 +34,7 @@ fn actual_imitator_card_copy_does_not_take_token_exception_even_when_donor_is_a_
   let mut game=game();let donor_def=donor();let donor=if donor_is_token{game.create_token_object_from_definition(&donor_def,A,Zone::Battlefield)}else{game.create_object_from_definition(&donor_def,A,Zone::Battlefield)};
   let cost=game.object(donor).unwrap().mana_cost.clone();let colors=game.current_characteristics(donor).unwrap().colors;
   let entrant=game.create_object_from_definition(&definition,A,Zone::Hand);let mut dm=CopyChoice;
-  let entered=game.move_object_with_etb_processing_with_dm(entrant,Zone::Battlefield,&mut dm).unwrap().assert_without_additions().into_result().expect("actual copy entry").new_id;
+  let entry=game.move_object_with_etb_processing_with_dm(entrant,Zone::Battlefield,&mut dm).unwrap();assert!(entry.programs.is_empty()&&!entry.pending,"fixture must finish retained replacement programs");let entered=entry.original.into_result().expect("actual copy entry").new_id;
   assert_eq!(game.object(entered).unwrap().name.as_ref(),"Chosen donor");assert_eq!(game.object(entered).unwrap().mana_cost,cost);
   assert_eq!(game.calculated_power(entered),Some(6));assert_eq!(game.calculated_toughness(entered),Some(7));assert_eq!(game.current_characteristics(entered).unwrap().colors,colors);
   assert!(game.current_has_static_ability_id(entered,ironsmith_core::StaticAbilityId::Vigilance));

@@ -5,7 +5,7 @@ use ironsmith::decision::{DecisionMaker, LegalAction, SelectFirstDecisionMaker, 
 use ironsmith::decisions::context::{BooleanContext, SelectOptionsContext};
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
-    apply_priority_response_with_dm, resolve_stack_entry_with,
+    apply_priority_response_with_dm,
 };
 use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;

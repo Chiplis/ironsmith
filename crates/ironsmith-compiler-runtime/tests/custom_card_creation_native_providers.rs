@@ -4,7 +4,9 @@ use ironsmith::effects::{EffectContext, execute_effect};
 use ironsmith::static_abilities::{CardCreationSelectionReplacement, StaticAbility};
 use ironsmith::types::CardType;
 use ironsmith::{
-    Ability, CardDefinition, CardDefinitionBuilder, Effect, GameState, PlayerId, Zone,
+    Ability, CardDefinition, Effect, GameState, PlayerId, Zone,
+};
+use ironsmith::cards::builders::{CardDefinitionBuilder
 };
 use ironsmith_core::{
     CardCreationLibraryPosition, CardCreationSelection, CardId, CreateCardsEffect, PlayerFilter,

@@ -4238,7 +4238,6 @@ impl GameState {
             crate::ability::AbilityKind::Static(ability)=>ability.source_exiled_inspection_pair().flatten(),
             crate::ability::AbilityKind::Activated(ability)=>ability.effects.linked_exile_pair,
             crate::ability::AbilityKind::Triggered(ability)=>ability.effects.linked_exile_pair,
-            _=>None,
         }).collect::<Vec<_>>()).unwrap_or_default();
         self.add_exiled_with_source_link(token,member);
         for pair in pairs{

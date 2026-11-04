@@ -171,7 +171,7 @@ fn p51_cyclopean_tomb_clears_one_land_it_mired_each_upkeep_forever() {
         .next()
         .expect("mire activation")
         .clone();
-    let leaves = tomb
+    let _leaves = tomb
         .abilities
         .iter()
         .find_map(|ability| match &ability.kind {

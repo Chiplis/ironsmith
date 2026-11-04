@@ -177,7 +177,7 @@ fn actual_upgrade_curse_keeps_enchanted_performer_and_source_controller_distinct
  let source=&fixture["mechanics"][0]["representative_cards"][0];
  assert!(source["original_text"].as_str().unwrap().contains("that player upgrades a creature you control"));
  let faces=custom_final_next_wave_support::linked_definitions(source).unwrap();
- let pair=faces.into_iter().find(|pair|pair[0].name=="Curse of Rebalancing").expect("actual back face retained");
+ let pair=faces.into_iter().find(|pair|pair[0].name()=="Curse of Rebalancing").expect("actual back face retained");
  for definition in pair{
   let mut game=GameState::new(vec!["A".into(),"B".into()],20);
   let body=ironsmith_compiler_runtime::compile_to_runtime_definition("Upgrade recipient","Type: Creature\nPower/Toughness: 2/2",false).unwrap();

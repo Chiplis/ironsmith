@@ -1,5 +1,5 @@
 //! Generic external triggered classes use choices of occurrences and normal trigger announcements.
-use ironsmith::{CardDefinition,Effect,GameState,ObjectId,PlayerId,Zone};
+use ironsmith::{CardDefinition,Effect,GameState,PlayerId,Zone};
 use ironsmith::decision::{DecisionMaker,SelectFirstDecisionMaker};
 use ironsmith::effects::{EffectContext,execute_effect};
 use ironsmith_compiled_artifact::CompiledCardArtifact;

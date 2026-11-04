@@ -99,7 +99,7 @@ fn cast(game: &mut GameState, definition: &CardDefinition, dm: &mut Choices) -> 
 fn definitions(name:&str,text:&str,identity:bool)->[CardDefinition;2] {
  let builder=ironsmith_compiler::CardDefinitionBuilder::new(ironsmith_compiler::ids::CardId::new(),name);
  let builder=if identity{builder.with_custom_keyword("tithe")}else{builder};
- let (result,loss)=ironsmith_compiler::parse_loss::capture(||ironsmith_compiler::word_claims::with_enforcement_options(true,true,||ironsmith_compiler::CompilerFacade::new().compile_definition(builder,text.into(),ironsmith_compiler::CompilePolicy{allow_unsupported:false})));
+ let (result,loss)=ironsmith_compiler::parse_loss::capture(||ironsmith_compiler::word_claims::with_enforcement_options(true,true,||ironsmith_compiler::CompilerFacade::new().compile_definition(builder,text,ironsmith_compiler::CompilePolicy{allow_unsupported:false})));
  assert!(!loss.is_lossy(),"{}",loss.reasons_text());let mut compiled=result.unwrap();
  assert!(compiled.definition.attribute_custom_keyword_payment("tithe"));
  let wire=wire_definition_from_serializable(&compiled.definition).unwrap();let direct=ironsmith_runtime_catalog::artifact_materializer::materialize_definition(wire.clone()).unwrap();

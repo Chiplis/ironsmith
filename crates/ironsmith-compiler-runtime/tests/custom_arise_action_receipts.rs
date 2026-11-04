@@ -1,5 +1,4 @@
 //! Generic selected sacrifice prices compose origin, payment and discount riders.
-use ironsmith::alternative_cast::CastingMethod;
 use ironsmith::decision::{LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
 use ironsmith::effects::{EffectContext, execute_effect};
 use ironsmith::game_loop::{
@@ -8,7 +7,7 @@ use ironsmith::game_loop::{
 };
 use ironsmith::mana::ManaSymbol;
 use ironsmith::target::ChooseSpec;
-use ironsmith::{CardDefinition, Effect, GameState, ObjectId, PlayerId, Zone};
+use ironsmith::{CardDefinition, Effect, GameState, PlayerId, Zone};
 use ironsmith_compiled_artifact::{
     ArtifactCardId, ArtifactCardIdentity, CompiledCardArtifact, CompiledCardPayload,
     wire_definition_from_serializable,

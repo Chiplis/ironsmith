@@ -225,8 +225,7 @@ mod keyword_action;
 mod keyword_recipient_batch;
 pub(crate) use keyword_recipient_batch::execute_keyword_recipient_batch;
 pub(crate) use keyword_action::{
-    KeywordActionAmount, KeywordActionOutput, execute_keyword_action,
-    execute_keyword_action_with_outputs,
+    KeywordActionAmount, KeywordActionOutput, execute_keyword_action_with_outputs,
 };
 
 mod keyword_programs;

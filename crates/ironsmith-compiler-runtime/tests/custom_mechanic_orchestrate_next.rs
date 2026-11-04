@@ -39,7 +39,7 @@ fn resolution_event(game: &mut GameState, controller: PlayerId) -> ironsmith::tr
     let card = CardBuilder::new(CardId::new(), "Resolved spell witness").card_types(vec![CardType::Instant]).build();
     let spell = game.create_object_from_card(&card, controller, Zone::Stack);
     let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(game.object(spell).unwrap(), game);
-    ironsmith::triggers::TriggerEvent::new(ironsmith::events::spells::SpellResolvedEvent::new(spell, controller, snapshot))
+    ironsmith::triggers::TriggerEvent::new(ironsmith::events::spells::SpellResolvedEvent::new(spell, controller, snapshot), Default::default())
 }
 #[test]
 fn intrinsic_preparation_is_immediate_then_one_shot_resolution_trigger_casts_card() {

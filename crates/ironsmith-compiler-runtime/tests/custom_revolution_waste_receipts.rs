@@ -77,7 +77,7 @@ struct SelectConversion { count:usize }
 impl ironsmith::decision::DecisionMaker for SelectConversion {
  fn decide_boolean(&mut self,_:&GameState,_:&ironsmith::decisions::context::BooleanContext)->bool{true}
  fn decide_objects(&mut self,game:&GameState,ctx:&ironsmith::decisions::context::SelectObjectsContext)->Vec<ironsmith::ObjectId>{
-  if ctx.candidates.iter().any(|candidate|game.current_is_land(candidate.id)) {
+  if ctx.candidates.iter().any(|candidate|game.current_has_card_type(candidate.id,ironsmith::CardType::Land)) {
    return ctx.candidates.iter().filter(|candidate|candidate.legal).take(self.count).map(|candidate|candidate.id).collect();
   }
   ironsmith::decision::DecisionMaker::decide_objects(&mut SelectFirstDecisionMaker,game,ctx)

@@ -9,6 +9,7 @@ import { clearCardPresentations } from '../lib/card-glint/printing-choices.mjs';
 import { installEmbeddedCardCatalog } from '../lib/embedded-card-catalog.js';
 import { attachRuntimeBranches } from '../lib/runtime-branches.js';
 import { shouldShareAnalysisRuntime, preferredVerifierWorkerCount } from '../lib/analysis-memory-policy.js';
+import { withFreshDeckLoadSeed } from "../lib/deck-load-seed.js";
 
 const WORKER_METHODS = [
   "addCardToHand",
@@ -151,6 +152,11 @@ function createGameProxy(callWorker, callZiffleWorker) {
       // seed, while each new local table gets fresh randomness.
       if ((method === "reset" || method === "resetEmpty") && args[2] == null) {
         args[2] = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
+      }
+      // Deck loads shuffle too: without a seed the engine derives one from the
+      // deck list, so the same deck would deal the same opening hand forever.
+      if (method === "loadDecks") {
+        args[0] = withFreshDeckLoadSeed(args[0]);
       }
       if (ZIFFLE_WORKER_METHODS.has(method) && typeof callZiffleWorker === "function") {
         return callZiffleWorker(method, args);

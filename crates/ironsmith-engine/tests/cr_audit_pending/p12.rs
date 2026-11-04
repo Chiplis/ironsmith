@@ -212,7 +212,7 @@ impl DecisionMaker for Script {
         if !self.plays.is_empty() {
             let pred = &mut self.plays[0];
             if let Some(a) = ctx.actions.iter().find(|a| pred(g, a)).cloned() {
-                self.plays.remove(0);
+                drop(self.plays.remove(0));
                 self.actions_taken.push(format!("{a:?}"));
                 return a;
             }
@@ -2618,7 +2618,7 @@ fn cr_702_103c_copy_of_bestowed_aura_spell_is_bestowed() {
     );
     lands(&mut g, "Plains", 4, ALICE);
     lands(&mut g, "Island", 1, ALICE);
-    let mut dm = Script {
+    let dm = Script {
         plays: vec![cast_alt("Hopeful Eidolon"), cast_named("Spell Copier")],
         prefer_targets: vec![Target::Object(host)],
         boolean: false,

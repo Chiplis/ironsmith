@@ -2,8 +2,12 @@
 mod custom_final_next_wave_support;
 use ironsmith::{GameState,PlayerId,Zone};
 use ironsmith::object::ObjectKind;
-use ironsmith::filter::ObjectFilterExt as _;
 const A:PlayerId=PlayerId(0);
+// Public frozen-condition API: the engine's filter matcher is crate-private.
+fn snapshot_matches(game:&GameState,filter:&ironsmith::target::ObjectFilter,snapshot:&ironsmith::snapshot::ObjectSnapshot,source:ironsmith::ObjectId,you:PlayerId)->bool{
+ let mut ctx=ironsmith::effects::EffectContext::new_default(source,you);ctx.set_tagged_objects("test_snapshot",vec![snapshot.clone()]);
+ ironsmith::condition_eval::evaluate_condition_resolution(game,&ironsmith::effect::Condition::TaggedObjectMatchedLastKnown("test_snapshot".into(),filter.clone()),&ctx).unwrap()
+}
 #[test]
 fn exact_copy_and_keyword_predicate_ignores_payment_and_rejects_uncast_originals(){
  for label in ["arbitrary spark","tapped story"] {
@@ -13,10 +17,10 @@ fn exact_copy_and_keyword_predicate_ignores_payment_and_rejects_uncast_originals
   if copy{game.object_mut(id).unwrap().kind=ObjectKind::SpellCopy;}
   if !identity{game.object_mut(id).unwrap().abilities_mut().retain(|ability|!matches!(&ability.kind,ironsmith::ability::AbilityKind::Static(s)if s.custom_keyword_name().is_some_and(|name|name==label)));}
   if paid{let mut receipt=ironsmith_core::OptionalCostRef::from("Additional");receipt.custom_keyword=Some(label.into());game.object_mut(id).unwrap().optional_costs_paid.costs.push((receipt,1));}
-  let filter=ironsmith::target::ObjectFilter{zone:Some(Zone::Stack),spell_copy:true,ability_markers:vec![format!("custom keyword:{label}")],..Default::default()};let context=game.filter_context_for(A,Some(id));
+  let filter=ironsmith::target::ObjectFilter{zone:Some(Zone::Stack),spell_copy:true,ability_markers:vec![format!("custom keyword:{label}")],..Default::default()};
   let snapshot=ironsmith::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(id).unwrap(),&game);
-  assert_eq!(filter.matches_snapshot(&snapshot,&context,&game),copy&&identity,"LKI retains exact copy kind and keyword identity");
-  ironsmith::effects::execute_effect(&mut game,&definition.spell_effect.as_ref().unwrap()[0].0,&mut ironsmith::effects::EffectContext::new_default(id,A)).unwrap();
+  assert_eq!(snapshot_matches(&game,&filter,&snapshot,id,A),copy&&identity,"LKI retains exact copy kind and keyword identity");
+  ironsmith::effects::execute_effect(&mut game,&definition.spell_effect.as_ref().unwrap()[0],&mut ironsmith::effects::EffectContext::new_default(id,A)).unwrap();
   assert_eq!(game.player(A).unwrap().life,if copy&&identity{23}else{20},"copy={copy} identity={identity} paid={paid}");
  }}}}
  }

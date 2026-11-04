@@ -8,10 +8,6 @@ use ironsmith_compiled_artifact::CompiledCardArtifact;
 const A: PlayerId=PlayerId(0);
 const B: PlayerId=PlayerId(1);
 const GRANT:&str="Give this artifact the energized status until end of turn. While this artifact has the energized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.";
-fn definitions() -> [CardDefinition;2] {
-    let text=format!("Type: Artifact\n{{W}}, {{T}}: You gain 2 life.\n{{R}}, {{T}}, Pay 3 life, Sacrifice this artifact: You gain 5 life.\n{{0}}: {GRANT}\n{{2}}: You gain 1 life. Activate only as a sorcery.");
-    materialized("Alternative witness", &text)
-}
 fn materialized(name:&str,text:&str)->[CardDefinition;2] {
     let(result,loss)=ironsmith_compiler::parse_loss::capture(||ironsmith_compiler::word_claims::with_enforcement_options(true,true,||ironsmith_compiler_runtime::compile_to_artifact(name,text,false)));
     assert!(!loss.is_lossy(),"{}",loss.reasons_text());let(artifact,direct)=result.unwrap();let decoded=CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();assert_eq!(artifact,decoded);

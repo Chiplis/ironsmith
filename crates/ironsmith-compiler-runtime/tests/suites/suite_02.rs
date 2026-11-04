@@ -86,9 +86,6 @@ mod r#triggered_object_predicates;
 #[path = "../twice_that_much_damage.rs"]
 mod r#twice_that_much_damage;
 
-#[path = "../unfunded_activation_support.rs"]
-mod r#unfunded_activation_support;
-
 #[path = "../value_driven_payments.rs"]
 mod r#value_driven_payments;
 

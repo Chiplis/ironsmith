@@ -2159,7 +2159,7 @@ fn cr_702_141a_encore_token_per_opponent_attacks_and_is_sacrificed() {
     game.turn.phase = Phase::Combat;
     game.turn.step = Some(ironsmith::Step::DeclareAttackers);
     let mut combat = combat_state::new_combat();
-    let mut q = TriggerQueue::new();
+    let q = TriggerQueue::new();
     let wrong: Vec<AttackerDeclaration> = tokens
         .iter()
         .map(|t| AttackerDeclaration {

@@ -1,5 +1,5 @@
 //! Generic real-card creation: source-owned definitions, typed receipts, and artifact transport.
-use ironsmith::{GameState,PlayerId,Zone,CardDefinition,ObjectId};
+use ironsmith::{GameState,PlayerId,Zone,CardDefinition};
 use ironsmith::effects::{EffectContext,execute_effect};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 const A:PlayerId=PlayerId(0);
@@ -18,7 +18,7 @@ fn resolve(game:&mut GameState,definition:&CardDefinition)->Vec<ironsmith::trigg
  for effect in definition.spell_effect.as_ref().expect("spell program").flattened_default_effects(){let result=execute_effect(game,effect,&mut context).unwrap();events.extend(result.events);}
  events
 }
-fn names(game:&GameState,player:PlayerId)->Vec<String>{game.player(player).unwrap().hand.iter().map(|id|game.object(*id).unwrap().name.clone()).collect()}
+fn names(game:&GameState,player:PlayerId)->Vec<String>{game.player(player).unwrap().hand.iter().map(|id|game.object(*id).unwrap().name.to_string()).collect()}
 #[test]
 fn named_creation_uses_supplied_custom_fatigue_as_real_cards_and_one_exact_batch_receipt(){
  for definition in routes("Type: Sorcery\nCreate three real cards named \"Fatigue\" in your hand as part of the named call action."){

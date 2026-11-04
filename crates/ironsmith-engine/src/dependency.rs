@@ -454,11 +454,10 @@ fn effect_output_changed(
     }
 
     if let Modification::CopyStaticAbilityVariants {
-        excluded_ability_designations,
-        copy_all,
         filter,
         selectors,
         exclude_source_id,
+        ..
     } = &a.modification
     {
         let before = collect_static_ability_variant_signatures(
@@ -484,10 +483,10 @@ fn effect_output_changed(
     }
 
     if let Modification::CopyTriggeredAbilities {
-        excluded_ability_designations,
         filter,
         exclude_source_name,
         exclude_source_id,
+        ..
     } = &a.modification
     {
         let before = collect_triggered_ability_signatures(

@@ -259,15 +259,15 @@ fn hellcarver_chooses_none_or_several_original_exiles_and_casts_each_selected_sp
             let body=definition.abilities.iter().find_map(|ability|match &ability.kind {
                 AbilityKind::Triggered(trigger)=>Some(trigger.effects.clone()),_=>None,
             }).unwrap();
-            let filler=ironsmith::CardDefinitionBuilder::new(ironsmith::CardId::new(),"Sacrifice witness")
+            let filler=ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(),"Sacrifice witness")
                 .card_types(vec![ironsmith::CardType::Creature]).power_toughness(ironsmith::PowerToughness::fixed(1,2)).build();
             let permanent=game.create_object_from_definition(&filler,A,Zone::Battlefield);let permanent=game.object(permanent).unwrap().stable_id;
             let hand=game.create_object_from_definition(&filler,A,Zone::Hand);let hand=game.object(hand).unwrap().stable_id;
             let mut original=Vec::new();let mut spell_names=std::collections::HashSet::new();
             for i in 0..6 {
                 let name=format!("Original exile member {i}");
-                let card=if i==5 {ironsmith::CardDefinitionBuilder::new(ironsmith::CardId::new(),&name).card_types(vec![ironsmith::CardType::Land]).build()}
-                    else {spell_names.insert(name.clone());ironsmith::CardDefinitionBuilder::new(ironsmith::CardId::new(),&name)
+                let card=if i==5 {ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(),&name).card_types(vec![ironsmith::CardType::Land]).build()}
+                    else {spell_names.insert(name.clone());ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(),&name)
                         .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::ManaSymbol::Generic(5)]))
                         .card_types(vec![ironsmith::CardType::Sorcery]).with_spell_effect(vec![ironsmith::Effect::gain_life(i+2)]).build()};
                 let id=game.create_object_from_definition(&card,A,Zone::Library);original.push(game.object(id).unwrap().stable_id);

@@ -25,7 +25,7 @@ fn filler()->CardDefinition {source_routes::definitions(&serde_json::json!({"nam
 fn fill(game:&mut GameState,count:usize){for _ in 0..count{game.create_object_from_definition(&filler(),A,Zone::Graveyard);}}
 fn mana(game:&mut GameState,symbol:ManaSymbol,amount:u32){game.player_mut(A).unwrap().mana_pool.add(symbol,amount);}
 fn available(game:&GameState,donor:ObjectId)->Vec<LegalAction>{compute_legal_actions(game,A).unwrap().into_iter().filter(|action|matches!(action,LegalAction::CastSpell{spell_id,from_zone:Zone::Graveyard,..}if *spell_id==donor)).collect()}
-fn announce(game:&mut GameState,action:LegalAction,dm:&mut dyn ironsmith::decision::DecisionMaker)->ObjectId {
+fn announce<D:ironsmith::decision::DecisionMaker>(game:&mut GameState,action:LegalAction,dm:&mut D)->ObjectId {
  use ironsmith::game_loop::{PriorityLoopState,PriorityResponse,apply_priority_response_with_dm,apply_decision_context_with_dm};
  let mut state=PriorityLoopState::new(3);let mut queue=ironsmith::triggers::TriggerQueue::new();
  let mut progress=apply_priority_response_with_dm(game,&mut queue,&mut state,&PriorityResponse::PriorityAction(action),dm).unwrap();

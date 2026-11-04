@@ -409,7 +409,7 @@ impl EffectExecutor for ExploreEffect {
                             .with_snapshot(pre_snapshot.clone()),
                             ctx.provenance,
                         );
-                        let mut run = |game: &mut GameState, ctx: &mut ExecutionContext, action: &KeywordActionEvent| {
+                        let run = |game: &mut GameState, ctx: &mut ExecutionContext, action: &KeywordActionEvent| {
                                     let controller = action.player;
                                     let target_id = action.source;
                                     let mut explored_objects = Vec::new();

@@ -72,7 +72,7 @@ fn definitions(id: &str) -> [CardDefinition; 2] {
             ironsmith_compiler::word_claims::with_enforcement_options(true, true, || {
                 ironsmith_compiler::CompilerFacade::new().compile_definition(
                     builder,
-                    text.into(),
+                    text,
                     ironsmith_compiler::CompilePolicy {
                         allow_unsupported: false,
                     },
@@ -500,10 +500,21 @@ fn duplicate_provider_recipes_keep_independent_prices_and_require_distinct_contr
 fn retained_payment_snapshots_must_recursively_be_public_claims() {
     let mut game = game();
     let payer = body(&mut game, "Ox", 3, A);
-    let mut outer =
+    let nested =
         ironsmith::snapshot::ObjectSnapshot::from_object(game.object(payer).unwrap(), &game);
-    let nested = outer.clone();
-    outer.strip_to_public_claim_form();
+    // The engine's stripping helper is crate-private; the public placeholder
+    // is the public claim form of the same object identity.
+    let public = |snapshot: &ironsmith::snapshot::ObjectSnapshot| {
+        ironsmith::snapshot::ObjectSnapshot::public_placeholder(
+            snapshot.object_id,
+            snapshot.stable_id,
+            snapshot.owner,
+            snapshot.controller,
+            snapshot.zone,
+        )
+    };
+    assert!(!nested.is_public_claim_form());
+    let mut outer = public(&nested);
     assert!(outer.is_public_claim_form());
     outer
         .paid_optional_cost_objects
@@ -513,7 +524,7 @@ fn retained_payment_snapshots_must_recursively_be_public_claims() {
         "public outer cannot hide a private nested receipt"
     );
     for snapshot in outer.paid_optional_cost_objects.values_mut().flatten() {
-        snapshot.strip_to_public_claim_form();
+        *snapshot = public(snapshot);
     }
     assert!(outer.is_public_claim_form());
 }

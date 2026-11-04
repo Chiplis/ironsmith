@@ -1,6 +1,7 @@
 //! Exact source-incarnation name notes with independent native and wire routes.
 #[path="custom_final_next_wave_support.rs"]mod source_support;
-use ironsmith::{CardDefinition,CardDefinitionBuilder,Effect,GameState,ObjectId,PlayerId,Zone};
+use ironsmith::{CardDefinition,Effect,GameState,ObjectId,PlayerId,Zone};
+use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::{DecisionMaker,LegalAction,SelectFirstDecisionMaker,compute_legal_actions};
 use ironsmith::effects::{EffectContext,execute_effect};
 use ironsmith::target::{ChooseSpec,PlayerFilter};
@@ -22,7 +23,7 @@ fn create(game:&mut GameState,definition:&CardDefinition,count:i32,actor:PlayerI
   operation_label:Some("conjure".into()),selection:ironsmith_core::CardCreationSelection::Named(definition.card.name.clone()),count:count.into(),
   player:PlayerFilter::You,zone:Zone::Hand,library_position:ironsmith_core::CardCreationLibraryPosition::Top});
  let effect=Effect::new(ironsmith::effects::NamedActionProgramEffect{label:"conjure".into(),player:PlayerFilter::You,
-  effects:vec![Effect::new(ironsmith::effects::TaggedEffect{tag:tag.clone(),effect:Box::new(creation),outcome_only:true})],
+  effects:vec![Effect::new(ironsmith::effects::TaggedEffect{tag:tag.clone(),effect:Box::new(creation),outcome_only:true,action:None})],
   completion:ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted,objects:Some(ChooseSpec::Tagged(tag))});
  let outcome=execute_effect(game,&effect,&mut EffectContext::new_default(source,actor)).unwrap();
  for event in &outcome.events{if event.downcast::<ironsmith::events::NamedActionEvent>().is_some(){game.queue_trigger_event(event.provenance(),event.clone());}}
@@ -49,6 +50,13 @@ fn cast(game:&mut GameState,id:ObjectId){
  let mut progress=ironsmith::game_loop::apply_priority_response_with_dm(game,&mut pending,&mut state,&ironsmith::game_loop::PriorityResponse::PriorityAction(action),&mut dm).unwrap();
  for _ in 0..64{if !state.has_pending_action(){break;}let ironsmith::GameProgress::NeedsDecisionCtx(ctx)=progress else{panic!("{progress:?}")};progress=ironsmith::game_loop::apply_decision_context_with_dm(game,&mut pending,&mut state,&ctx,&mut dm).unwrap();}
  assert!(!state.has_pending_action());ironsmith::game_loop::resolve_stack_entry_with(game,&mut dm).unwrap();
+}
+// Public selector route for the engine's private filter matcher: the effect
+// context's filter frame carries the exact source and linked-ability owner.
+fn filter_matches(game:&GameState,filter:&ironsmith::target::ObjectFilter,id:ObjectId,source:ObjectId,owner:ironsmith::linked_exile::LinkedExileOwner)->bool{
+ let mut filter=filter.clone();filter.zone=Some(game.object(id).unwrap().zone);
+ let ctx=EffectContext::new_default(source,A).with_source_number_owner(Some(owner));
+ ironsmith::effects::helpers::resolve_objects_from_spec(game,&ChooseSpec::All(filter),&ctx).unwrap().contains(&id)
 }
 #[test]
 fn source_filter_action_and_condition_compile_on_both_independent_routes(){
@@ -88,8 +96,8 @@ fn source_notes_do_not_copy_to_another_source_and_survive_ability_loss_but_not_a
   assert!(!can_cast(&game,ids[0],A),"removed discount does not remain active via memory");
   game.object_mut(source).unwrap().abilities=definition.abilities.clone().into();game.refresh_continuous_state().unwrap();
   assert!(can_cast(&game,ids[0],A),"restored ability sees the same incarnation's notes");
-  let departed=game.move_object(source,Zone::Hand,Default::default()).unwrap();
-  let returned=game.move_object(departed,Zone::Battlefield,Default::default()).unwrap();
+  let departed=game.move_object(source,Zone::Hand,ironsmith::events::EventCause::effect()).unwrap();
+  let returned=game.move_object(departed,Zone::Battlefield,ironsmith::events::EventCause::effect()).unwrap();
   assert_ne!(returned,source);assert!(game.noted_card_names_for_source(returned).is_empty());
   assert!(!can_cast(&game,ids[0],A),"return does not inherit the old object's noted names");
  }
@@ -101,7 +109,7 @@ fn note_uses_current_name_for_same_incarnation_and_exact_departure_lki_after_zon
   let card=witness("Original creation name",ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::mana::ManaSymbol::Generic(2)]));
   let id=create(&mut game,&card,1,A)[0];let mut pending=queue(&mut game);assert_eq!(pending.entries.len(),1);
   game.object_mut(id).unwrap().name="Name before departure".into();
-  if departed{let new=game.move_object(id,Zone::Graveyard,Default::default()).unwrap();game.object_mut(new).unwrap().name="Later incarnation name".into();}
+  if departed{let new=game.move_object(id,Zone::Graveyard,ironsmith::events::EventCause::effect()).unwrap();game.object_mut(new).unwrap().name="Later incarnation name".into();}
   ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game,&mut pending,&mut Accept{yes:true,prompts:0}).unwrap();
   ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut Accept{yes:true,prompts:0}).unwrap();
   assert_eq!(game.noted_card_names_for_source(source),vec!["Name before departure".to_owned()]);
@@ -114,7 +122,7 @@ fn another_performers_action_does_not_note_and_generated_object_departure_does_n
   let card=witness("Persistently remembered spell",ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::mana::ManaSymbol::Generic(2)]));
   create(&mut game,&card,1,B);assert_eq!(settle(&mut game,&mut Accept{yes:true,prompts:0}),0);
   let created=create(&mut game,&card,1,A)[0];settle(&mut game,&mut Accept{yes:true,prompts:0});
-  game.move_object(created,Zone::Exile,Default::default()).unwrap();assert_eq!(game.noted_card_names_for_source(source).len(),1);
+  game.move_object(created,Zone::Exile,ironsmith::events::EventCause::effect()).unwrap();assert_eq!(game.noted_card_names_for_source(source).len(),1);
   let matching=game.create_object_from_definition(&card,A,Zone::Hand);game.player_mut(A).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless,1);
   assert!(can_cast(&game,matching,A));cast(&mut game,matching);assert_eq!(game.player(A).unwrap().life,23);assert_eq!(game.player(A).unwrap().mana_pool.total(),0);
  }
@@ -151,7 +159,6 @@ fn notes_persist_under_control_change_and_discount_follows_current_controller(){
 
 #[test]
 fn generic_note_executor_and_source_filter_use_exact_object_memory_without_an_observer(){
- use ironsmith::filter::ObjectFilterExt as _;
  let mut game=game();let body=CardDefinitionBuilder::new(ironsmith::CardId::new(),"Memory holder").card_types(vec![ironsmith::CardType::Artifact]).build();
  let first=game.create_object_from_definition(&body,A,Zone::Battlefield);let second=game.create_object_from_definition(&body,A,Zone::Battlefield);
  let named=witness("Executor noted name",ironsmith::mana::ManaCost::new());let card=game.create_object_from_definition(&named,A,Zone::Hand);
@@ -160,16 +167,14 @@ fn generic_note_executor_and_source_filter_use_exact_object_memory_without_an_ob
  let owner=ironsmith::linked_exile::LinkedExileOwner{host:first,pair,acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed};
  let action=Effect::new(ironsmith_core::NoteObjectNamesEffect{pair:Some(pair),object:ChooseSpec::Tagged("input-name".into()),for_object:ChooseSpec::Source});
  for roundtrip in [false,true]{
-  let action=if roundtrip{let wire=ironsmith::artifact_materializer::encode_runtime_effect(action.clone()).unwrap();ironsmith::artifact_materializer::materialize_effect(wire).unwrap()}else{action.clone()};
+  let action=if roundtrip{let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_effect(action.clone()).unwrap();ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire).unwrap()}else{action.clone()};
   let mut ctx=EffectContext::new_default(first,A).with_source_number_owner(Some(owner.clone()));ctx.tag_object("input-name",snapshot.clone());
   let result=execute_effect(&mut game,&action,&mut ctx).unwrap();assert_eq!(result.as_count(),Some(if roundtrip{0}else{1}));
  }
  let filter=ironsmith::target::ObjectFilter{name_noted_for:Some(Box::new(ChooseSpec::Source)),noted_name_pair:Some(pair),..Default::default()};
- let mut context=game.filter_context_for(A,Some(first));context.source_number_owner=Some(owner);
- assert!(filter.matches(game.object(card).unwrap(),&context,&game));
- context.source=Some(second);context.source_number_owner=Some(ironsmith::linked_exile::LinkedExileOwner{host:second,pair,acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed});
- assert!(!filter.matches(game.object(card).unwrap(),&context,&game));
- let new=game.move_object(first,Zone::Hand,Default::default()).unwrap();assert_ne!(new,first);
+ assert!(filter_matches(&game,&filter,card,first,owner));
+ assert!(!filter_matches(&game,&filter,card,second,ironsmith::linked_exile::LinkedExileOwner{host:second,pair,acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed}));
+ let new=game.move_object(first,Zone::Hand,ironsmith::events::EventCause::effect()).unwrap();assert_ne!(new,first);
  assert!(game.noted_card_names_for_source(new).is_empty());assert_eq!(game.noted_card_names_for_source(first),vec![named.card.name]);
 }
 
@@ -181,7 +186,7 @@ fn old_pending_triggers_do_not_rebind_name_memory_to_a_returned_source(){
   create(&mut game,&card,2,A);let mut pending=queue(&mut game);assert_eq!(pending.entries.len(),2);
   let mut accept=Accept{yes:true,prompts:0};ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game,&mut pending,&mut accept).unwrap();
   ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut accept).unwrap();assert_eq!(accept.prompts,1);
-  let departed=game.move_object(source,Zone::Hand,Default::default()).unwrap();let returned=game.move_object(departed,Zone::Battlefield,Default::default()).unwrap();
+  let departed=game.move_object(source,Zone::Hand,ironsmith::events::EventCause::effect()).unwrap();let returned=game.move_object(departed,Zone::Battlefield,ironsmith::events::EventCause::effect()).unwrap();
   ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut accept).unwrap();
   assert_eq!(accept.prompts,1,"old source LKI still knows the first trigger's note");
   assert!(game.noted_card_names_for_source(returned).is_empty());
@@ -207,7 +212,6 @@ fn another_link_on_the_same_source_cannot_supply_names_to_the_discount(){
 
 #[test]
 fn same_pair_separately_acquired_on_the_same_source_has_separate_name_memory(){
- use ironsmith::filter::ObjectFilterExt as _;
  for definition in definitions(){
   let mut game=game();let source=game.create_object_from_definition(&definition,A,Zone::Battlefield);
   let pair=definition.abilities.iter().find_map(|ability|match &ability.kind{ironsmith::ability::AbilityKind::Triggered(trigger)=>trigger.effects.source_number_pair,_=>None}).unwrap();
@@ -217,9 +221,8 @@ fn same_pair_separately_acquired_on_the_same_source_has_separate_name_memory(){
   let gained=ironsmith::linked_exile::LinkedExileOwner{host:source,pair,acquisition:ironsmith::linked_exile::LinkedExileAcquisition::EffectGroup(ironsmith::continuous::ContinuousEffectGroupId(719))};
   assert!(game.note_card_name_for_owner(gained.clone(),card.card.name.clone()));
   let filter=ironsmith::target::ObjectFilter{name_noted_for:Some(Box::new(ChooseSpec::Source)),noted_name_pair:Some(pair),..Default::default()};
-  let mut context=game.filter_context_for(A,Some(source));context.source_number_owner=Some(original.clone());
-  assert!(!filter.matches(game.object(id).unwrap(),&context,&game));
-  context.source_number_owner=Some(gained);assert!(filter.matches(game.object(id).unwrap(),&context,&game));
+  assert!(!filter_matches(&game,&filter,id,source,original.clone()));
+  assert!(filter_matches(&game,&filter,id,source,gained));
   game.player_mut(A).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless,1);
   assert!(!can_cast(&game,id,A),"printed reader cannot use a separately acquired record with the same definition pair");
   assert!(game.note_card_name_for_owner(original,card.card.name.clone()));assert!(can_cast(&game,id,A));

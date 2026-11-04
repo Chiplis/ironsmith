@@ -621,7 +621,7 @@ pub(crate) fn choose_color_as_becomes_attached(
 
 pub use attach_objects::AttachObjectsEffect;
 pub(crate) use attach_objects::{
-    aura_can_enter_attached_to, aura_preview_can_enter_attached_to, entry_attachment_for_move, resolve_entry_attachment_target,
+    aura_can_enter_attached_to, entry_attachment_for_move,
     attachment_destinations, choose_attachment_destination,
 };
 pub use attach_to::AttachToEffect;

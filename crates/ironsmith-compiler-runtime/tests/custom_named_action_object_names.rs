@@ -4,8 +4,13 @@ use ironsmith::{GameState,ObjectId,PlayerId,Zone};
 use ironsmith::decision::{LegalAction,compute_legal_actions};
 use ironsmith::effects::{EffectContext,execute_effect};
 use ironsmith::target::{ChooseSpec,ObjectFilter,PlayerFilter};
-use ironsmith::filter::ObjectFilterExt;
 const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);
+// Public frozen-condition API: the engine's filter matcher is crate-private.
+fn snapshot_matches(game:&GameState,filter:&ObjectFilter,snapshot:&ironsmith::snapshot::ObjectSnapshot,source:ObjectId,you:PlayerId)->bool{
+ let mut ctx=EffectContext::new_default(source,you);ctx.set_tagged_objects("test_snapshot",vec![snapshot.clone()]);
+ ironsmith::condition_eval::evaluate_condition_resolution(game,&ironsmith::effect::Condition::TaggedObjectMatchedLastKnown("test_snapshot".into(),filter.clone()),&ctx).unwrap()
+}
+fn object_matches(game:&GameState,filter:&ObjectFilter,id:ObjectId,you:PlayerId)->bool{snapshot_matches(game,filter,&ironsmith::snapshot::ObjectSnapshot::from_object_id(game,id).unwrap(),id,you)}
 fn definition(name:&str,text:&str)->ironsmith::CardDefinition{ironsmith_compiler_runtime::compile_to_runtime_definition(name,text,false).unwrap()}
 fn complete(game:&mut GameState,source:ObjectId,object:ObjectId,label:&str,player:PlayerId){
  let program=ironsmith::effects::NamedActionProgramEffect{completion:ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted,objects:Some(ChooseSpec::SpecificObject(object)),label:label.into(),player:PlayerFilter::Specific(player),effects:vec![]};
@@ -36,11 +41,11 @@ fn global_discount_uses_exact_completed_names_actor_and_turn_before_a_spell_is_c
   complete(&mut game,maker,object,"sample forge",A);assert!(can_cast(&game,candidate,A),"global reduction matches the independent prospective spell");
   let object=game.move_object_by_game_rule(object,Zone::Graveyard).unwrap();game.object_mut(object).unwrap().name="Changed later".into();game.move_object_by_game_rule(maker,Zone::Graveyard).unwrap();
   assert!(can_cast(&game,candidate,A),"historical names survive participant and performer departure");
-  let context=game.filter_context_for(A,Some(observer));let mut filter=ObjectFilter::default();filter.shares_name_with_named_action_objects=Some(ironsmith_core::NamedActionObjectNameCondition{label:"sample forge".into(),player:PlayerFilter::You,this_turn:true});
-  let snapshot=ironsmith::snapshot::ObjectSnapshot::from_object_id(&game,candidate).unwrap();assert!(filter.matches_snapshot(&snapshot,&context,&game));
+  let mut filter=ObjectFilter::default();filter.shares_name_with_named_action_objects=Some(ironsmith_core::NamedActionObjectNameCondition{label:"sample forge".into(),player:PlayerFilter::You,this_turn:true});
+  let snapshot=ironsmith::snapshot::ObjectSnapshot::from_object_id(&game,candidate).unwrap();assert!(snapshot_matches(&game,&filter,&snapshot,observer,A));
   game.turn_store.turn_history=Default::default();game.turn.turn_number+=1;
   assert!(!can_cast(&game,candidate,A),"the source's this-turn restriction expires at the turn boundary");
-  assert!(!filter.matches_snapshot(&snapshot,&context,&game));filter.shares_name_with_named_action_objects.as_mut().unwrap().this_turn=false;assert!(filter.matches_snapshot(&snapshot,&context,&game),"explicit full-game history remains available");
+  assert!(!snapshot_matches(&game,&filter,&snapshot,observer,A));filter.shares_name_with_named_action_objects.as_mut().unwrap().this_turn=false;assert!(snapshot_matches(&game,&filter,&snapshot,observer,A),"explicit full-game history remains available");
  }
 }
 #[test]
@@ -51,6 +56,6 @@ fn retained_split_card_both_names_match_and_unrelated_names_do_not(){
  let object=game.create_object_from_definition(&split,A,Zone::Hand);complete(&mut game,performer,object,"inscribe example",A);
  let candidate=game.create_object_from_definition(&definition("Second Name","Type: Instant\nYou gain 1 life."),A,Zone::Hand);
  let mut filter=ObjectFilter::default();filter.shares_name_with_named_action_objects=Some(ironsmith_core::NamedActionObjectNameCondition{label:"inscribe example".into(),player:PlayerFilter::You,this_turn:true});
- let context=game.filter_context_for(A,None);assert!(filter.matches(game.object(candidate).unwrap(),&context,&game));
- let other=game.create_object_from_definition(&definition("Unrelated Name","Type: Instant\nYou gain 1 life."),A,Zone::Hand);assert!(!filter.matches(game.object(other).unwrap(),&context,&game));
+ assert!(object_matches(&game,&filter,candidate,A));
+ let other=game.create_object_from_definition(&definition("Unrelated Name","Type: Instant\nYou gain 1 life."),A,Zone::Hand);assert!(!object_matches(&game,&filter,other,A));
 }

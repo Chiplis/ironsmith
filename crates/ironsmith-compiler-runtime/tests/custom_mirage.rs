@@ -8,7 +8,7 @@ const TEXT:&str="Mana cost: {3}{B}{B}\nType: Enchantment\nAny time you could cas
 fn definitions()->Vec<CardDefinition>{definitions_for(TEXT)}
 fn definitions_for(text:&str)->Vec<CardDefinition>{
     let mut compiled=ironsmith_compiler::CompilerFacade::new().compile_definition(
-        ironsmith_compiler::CardDefinitionBuilder::new(ironsmith_compiler::ids::CardId::new(),"Selected timing price").with_custom_keyword("Mirage"),text.into(),ironsmith_compiler::CompilePolicy{allow_unsupported:false}).unwrap();
+        ironsmith_compiler::CardDefinitionBuilder::new(ironsmith_compiler::ids::CardId::new(),"Selected timing price").with_custom_keyword("Mirage"),text,ironsmith_compiler::CompilePolicy{allow_unsupported:false}).unwrap();
     assert!(compiled.definition.attribute_custom_keyword_payment("Mirage"),"selected generic price retains its own payment identity");
     let wire=ironsmith_compiled_artifact::wire_definition_from_serializable(&compiled.definition).unwrap();
     let direct=ironsmith_compiler_runtime::into_runtime_definition(compiled.definition.clone()).unwrap();

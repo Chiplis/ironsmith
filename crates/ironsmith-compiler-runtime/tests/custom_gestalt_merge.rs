@@ -88,14 +88,14 @@ fn complete_gestalt_source_phases_out_with_attachments_until_cleanup_not_extra_u
   game.tap(source);game.object_mut(source).unwrap().counters.insert(CounterType::Charge,3);
   let body=ironsmith_compiler_runtime::compile_to_runtime_definition("Ordinary body","Type: Creature\nPower/Toughness: 2/2",false).unwrap();let normal=game.create_object_from_definition(&body,A,Zone::Battlefield);
   let equipment=ironsmith_compiler_runtime::compile_to_runtime_definition("Attachment","Type: Artifact — Equipment",false).unwrap();let attachment=game.create_object_from_definition(&equipment,A,Zone::Battlefield);
-  game.object_mut(attachment).unwrap().attached_to=Some(AttachmentTarget::Object(source));game.object_mut(source).unwrap().attachments.push(attachment);game.mark_continuous_state_dirty();
+  game.object_mut(attachment).unwrap().attached_to=Some(AttachmentTarget::Object(source));game.object_mut(source).unwrap().attachments.push(attachment);game.invalidate_continuous_state_public();
   let cast=ironsmith_compiler_runtime::compile_to_runtime_definition("Opponent spell","Type: Instant\nYou gain 1 life.",false).unwrap();let spell=game.create_object_from_definition(&cast,B,Zone::Stack);
   let mut dm=Choices{accept:false,incoming_top:false};flush(&mut game,&mut dm);
   for _ in 0..8 {if game.stack.is_empty(){break;}ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();flush(&mut game,&mut dm);}assert!(game.stack.is_empty());
   game.queue_trigger_event(Default::default(),ironsmith::triggers::TriggerEvent::new_with_provenance(ironsmith::events::SpellCastEvent::new(spell,B,Zone::Hand),Default::default()));
   flush(&mut game,&mut dm);assert_eq!(game.stack.len(),1);
   ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();assert!(game.is_phased_out(source));assert!(game.is_phased_out(attachment));assert!(game.effect_store.delayed_triggers.is_empty(),"duration return is not a delayed stack trigger");
-  execute_effect(&mut game,&Effect::new(ironsmith::effects::PhaseOutEffect::new(ironsmith::target::ChooseSpec::SpecificObject(normal))),&mut EffectContext::new_default(normal,A)).unwrap();
+  execute_effect(&mut game,&Effect::new(ironsmith::effects::PhaseOutEffect::with_spec(ironsmith::target::ChooseSpec::SpecificObject(normal))),&mut EffectContext::new_default(normal,A)).unwrap();
   ironsmith::turn::execute_untap_step(&mut game);assert!(game.is_phased_out(source));assert!(game.is_phased_out(attachment));assert!(!game.is_phased_out(normal),"normal phasing still returns at untap");
   ironsmith::turn::try_execute_cleanup_step(&mut game).unwrap();assert!(!game.is_phased_out(source));assert!(!game.is_phased_out(attachment));assert_eq!(game.find_object_by_stable_id(physical),Some(source));assert!(game.is_tapped(source));assert_eq!(game.counter_count(source,CounterType::Charge),3);assert_eq!(game.object(attachment).unwrap().attached_to,Some(AttachmentTarget::Object(source)));
   flush(&mut game,&mut dm);assert!(game.stack.is_empty(),"phasing creates no false Gestalt entry event");
@@ -105,9 +105,9 @@ fn complete_gestalt_source_phases_out_with_attachments_until_cleanup_not_extra_u
 #[test]
 fn end_of_turn_phase_deadline_does_not_follow_a_new_incarnation() {
  let mut game=GameState::new(vec!["A".into(),"B".into()],20);let body=ironsmith_compiler_runtime::compile_to_runtime_definition("Physical creature","Type: Creature\nPower/Toughness: 2/2",false).unwrap();let source=game.create_object_from_definition(&body,A,Zone::Battlefield);
- let mut phase=ironsmith::effects::PhaseOutEffect::new(ironsmith::target::ChooseSpec::SpecificObject(source));phase.duration=ironsmith::effects::PhaseOutDuration::UntilEndOfTurn;execute_effect(&mut game,&Effect::new(phase),&mut EffectContext::new_default(source,A)).unwrap();
- game.phase_in(source);let hand=game.move_object(source,Zone::Hand,Default::default()).unwrap();let new=game.move_object(hand,Zone::Battlefield,Default::default()).unwrap();assert_ne!(source,new);
- execute_effect(&mut game,&Effect::new(ironsmith::effects::PhaseOutEffect::new(ironsmith::target::ChooseSpec::SpecificObject(new))),&mut EffectContext::new_default(new,A)).unwrap();
+ let mut phase=ironsmith::effects::PhaseOutEffect::with_spec(ironsmith::target::ChooseSpec::SpecificObject(source));phase.duration=ironsmith::effects::PhaseOutDuration::UntilEndOfTurn;execute_effect(&mut game,&Effect::new(phase),&mut EffectContext::new_default(source,A)).unwrap();
+ game.phase_in(source);let hand=game.move_object(source,Zone::Hand,ironsmith::events::cause::EventCause::effect()).unwrap();let new=game.move_object(hand,Zone::Battlefield,ironsmith::events::cause::EventCause::effect()).unwrap();assert_ne!(source,new);
+ execute_effect(&mut game,&Effect::new(ironsmith::effects::PhaseOutEffect::with_spec(ironsmith::target::ChooseSpec::SpecificObject(new))),&mut EffectContext::new_default(new,A)).unwrap();
  ironsmith::turn::try_execute_cleanup_step(&mut game).unwrap();assert!(game.is_phased_out(new),"the canceled old deadline cannot return a different incarnation");
  ironsmith::turn::execute_untap_step(&mut game);assert!(!game.is_phased_out(new));
 }

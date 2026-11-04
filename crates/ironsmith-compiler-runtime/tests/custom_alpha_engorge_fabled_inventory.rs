@@ -120,7 +120,7 @@ fn settle(game:&mut GameState,dm:&mut dyn DecisionMaker) {
     }
     panic!("source scenario did not settle");
 }
-fn announce(game:&mut GameState,action:ironsmith::decision::LegalAction,dm:&mut dyn DecisionMaker) {
+fn announce(game:&mut GameState,action:ironsmith::decision::LegalAction,dm:&mut impl DecisionMaker) {
     use ironsmith::game_loop::{PriorityLoopState,PriorityResponse,apply_priority_response_with_dm,apply_decision_context_with_dm};
     let mut queue=ironsmith::triggers::TriggerQueue::new();let mut state=PriorityLoopState::new(2);
     let mut progress=apply_priority_response_with_dm(game,&mut queue,&mut state,&PriorityResponse::PriorityAction(action),dm).unwrap();

@@ -9,7 +9,6 @@ use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
-use crate::types::CardType;
 
 /// Effect that gains control of a target permanent.
 ///

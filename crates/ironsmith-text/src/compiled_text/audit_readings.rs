@@ -1179,7 +1179,6 @@ fn amount_replacement(
                 _ => amount("many counters", "counters"),
             }
         ),
-        other => format!("If {} would happen, {}{} its amount instead", sr(other), may(optional), sr(modifier)),
     }
 }
 

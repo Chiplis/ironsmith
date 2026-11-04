@@ -68950,7 +68950,7 @@ fn cr_115_5_actual_stack_spells_and_abilities_cannot_retarget_to_themselves() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
     use ironsmith::effects::{CounterEffect, RetargetMode, RetargetStackObjectEffect};
-    use ironsmith::triggers::TriggerQueue;
+    
     use ironsmith::{
         Ability, CardId, CardType, ChooseSpec, Effect, LegalAction, ObjectFilter, Phase, Target,
         Zone,
@@ -87351,7 +87351,6 @@ fn cr_707_10b_copied_activated_abilities_keep_named_source_and_resolution_identi
                 assert_eq!(g.stack.len(), 1);
                 assert!(g.stack[0].is_ability);
                 dm.target = Some(g.stack[0].target_id());
-                let mut copy_stable = None;
                 if scenario != 0 {
                     let mut state = ironsmith::PriorityLoopState::new(g.players_in_game());
                     for _ in 0..g.players_in_game() {
@@ -87383,7 +87382,7 @@ fn cr_707_10b_copied_activated_abilities_keep_named_source_and_resolution_identi
                     assert!(copy.is_ability);
                     assert_ne!(copy.object_id, source);
                     assert_eq!(copy.controller, copier);
-                    copy_stable = Some(g.object(copy.object_id).unwrap().stable_id);
+                    let copy_stable = Some(g.object(copy.object_id).unwrap().stable_id);
                     copies += 1;
                     if scenario == 2 {
                         let responder = g.turn.priority_player.unwrap();
@@ -92535,7 +92534,7 @@ fn cr_102_3_700_14_expend_opponent_triggers_exclude_actual_teammate_spending() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
     use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,CounterType,ManaSymbol};
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectId,Phase,Target,Zone,CounterType,ManaSymbol};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -92611,14 +92610,13 @@ fn cr_102_3_mana_added_and_tapped_source_triggers_exclude_teammates() {
 fn cr_700_16_equip_worthy_uses_legendary_non_villain_red_or_white_creatures() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,LegalAction,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
         fn decide_options(&mut self,_:&GameState,c:&SelectOptionsContext)->Vec<usize>{c.options.iter().filter(|o|o.legal).take(c.min).map(|o|o.index).collect()}
     }
-    fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
     let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Mjölnir, Hammer of Thor","Mana cost: {3}{R}\nType: Legendary Artifact — Equipment\nFirst printed set: Marvel Super Heroes\nWhen Mjölnir enters, it deals 4 damage to up to one target creature.\nDouble all damage equipped creature would deal.\nEquip worthy {1} (A creature is worthy if it's a legendary non-Villain that's red and/or white.)\n{2}{R}, Discard this card: It deals 2 damage to each creature.",false).expect("complete canonical card compiles strictly");
@@ -92640,14 +92638,13 @@ fn cr_700_16_equip_worthy_uses_legendary_non_villain_red_or_white_creatures() {
 fn cr_700_16_equip_worthy_uses_current_colors_supertypes_and_subtypes() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
         fn decide_options(&mut self,_:&GameState,c:&SelectOptionsContext)->Vec<usize>{c.options.iter().filter(|o|o.legal).take(c.min).map(|o|o.index).collect()}
     }
-    fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
     let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Mjölnir, Hammer of Thor","Mana cost: {3}{R}\nType: Legendary Artifact — Equipment\nFirst printed set: Marvel Super Heroes\nWhen Mjölnir enters, it deals 4 damage to up to one target creature.\nDouble all damage equipped creature would deal.\nEquip worthy {1} (A creature is worthy if it's a legendary non-Villain that's red and/or white.)\n{2}{R}, Discard this card: It deals 2 damage to each creature.",false).expect("complete canonical card compiles strictly");
@@ -92670,14 +92667,13 @@ fn cr_700_16_equip_worthy_uses_current_colors_supertypes_and_subtypes() {
 fn cr_700_15_canonical_enters_and_enters_the_battlefield_trigger_identically() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,LegalAction,Phase,Target,Zone,ManaSymbol,PowerToughness};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
         fn decide_options(&mut self,_:&GameState,c:&SelectOptionsContext)->Vec<usize>{c.options.iter().filter(|o|o.legal).take(c.min).map(|o|o.index).collect()}
     }
-    fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
     let short=ironsmith_compiler_runtime::compile_to_runtime_definition("Mjölnir, Hammer of Thor","Mana cost: {3}{R}\nType: Legendary Artifact — Equipment\nFirst printed set: Marvel Super Heroes\nWhen Mjölnir enters, it deals 4 damage to up to one target creature.\nDouble all damage equipped creature would deal.\nEquip worthy {1} (A creature is worthy if it's a legendary non-Villain that's red and/or white.)\n{2}{R}, Discard this card: It deals 2 damage to each creature.",false).expect("complete canonical card compiles strictly");
@@ -92695,14 +92691,13 @@ fn cr_700_15_canonical_enters_and_enters_the_battlefield_trigger_identically() {
 fn cr_700_15_enter_and_enter_the_battlefield_apply_the_same_tapped_entry_replacement() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,CardId,CardType,Effect,LegalAction,ManaCost,Phase,Target,Zone,PowerToughness};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
         fn decide_options(&mut self,_:&GameState,c:&SelectOptionsContext)->Vec<usize>{c.options.iter().filter(|o|o.legal).take(c.min).map(|o|o.index).collect()}
     }
-    fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
     let short=ironsmith_compiler_runtime::compile_to_runtime_definition("Orb of Dreams","Mana cost: {3}\nType: Artifact\nFirst printed set: Betrayers of Kamigawa\nPermanents enter tapped.",false).expect("complete canonical card compiles strictly");
@@ -92721,14 +92716,13 @@ fn cr_700_15_enter_and_enter_the_battlefield_apply_the_same_tapped_entry_replace
 fn cr_700_16_worthy_excludes_implicit_changeling_villains_and_uses_later_type_effects() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
         fn decide_options(&mut self,_:&GameState,c:&SelectOptionsContext)->Vec<usize>{c.options.iter().filter(|o|o.legal).take(c.min).map(|o|o.index).collect()}
     }
-    fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
     let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Mjölnir, Hammer of Thor","Mana cost: {3}{R}\nType: Legendary Artifact — Equipment\nFirst printed set: Marvel Super Heroes\nWhen Mjölnir enters, it deals 4 damage to up to one target creature.\nDouble all damage equipped creature would deal.\nEquip worthy {1} (A creature is worthy if it's a legendary non-Villain that's red and/or white.)\n{2}{R}, Discard this card: It deals 2 damage to each creature.",false).expect("complete canonical card compiles strictly");
@@ -92751,7 +92745,7 @@ fn cr_700_14_full_bark_knuckle_boxer_expend_crossing_expires_and_resets_next_tur
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
     use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,Effect,LegalAction,ManaCost,ObjectId,Phase,Target,Zone,ManaSymbol};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -92795,7 +92789,7 @@ fn cr_102_3_opponent_crime_keyword_observers_exclude_teammates() {
     use ironsmith::events::KeywordActionKind;
     use ironsmith::effect::Condition;
     use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,CounterType};
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectId,Phase,Target,Zone,CounterType};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -92824,7 +92818,7 @@ fn cr_102_3_opponent_crime_keyword_observers_exclude_teammates() {
 fn cr_702_6c_equipped_quality_and_control_changes_do_not_detach_or_disable_equipment() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
+    use ironsmith::triggers::TriggerQueue;
     use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
@@ -92855,8 +92849,8 @@ fn cr_702_6c_equipped_quality_and_control_changes_do_not_detach_or_disable_equip
 fn cr_702_6c_other_attach_effects_can_attach_to_unworthy_and_opponent_creatures() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Supertype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -92865,12 +92859,10 @@ fn cr_702_6c_other_attach_effects_can_attach_to_unworthy_and_opponent_creatures(
     fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
-    use ironsmith::continuous::Modification;use ironsmith::effects::ApplyContinuousEffect;use ironsmith::Until;
+    
     fn cast(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId,effects:Vec<Effect>)->ObjectId {priority(g,q,d,p);let def=CardDefinitionBuilder::new(CardId::new(),"Native equipment contract instruction").card_types(vec![CardType::Instant]).mana_cost(ManaCost::new()).with_spell_effect(effects).build();let hand=g.create_object_from_definition(&def,p,Zone::Hand);let stable=g.object(hand).unwrap().stable_id;let a=ironsmith::compute_legal_actions(g,p).unwrap().into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==hand)).expect("actual contract instruction cast is legal");cr_audit_complete_priority_action_with_dm(g,p,a,d,q).unwrap();g.find_object_by_stable_id(stable).unwrap()}
     fn mana(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId,source:ObjectId){priority(g,q,d,p);assert_eq!(g.player(p).unwrap().mana_pool.total(),0);let a=ironsmith::compute_legal_actions(g,p).unwrap().into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source:s,..}if *s==source)).unwrap();cr_audit_complete_priority_action_with_dm(g,p,a,d,q).unwrap();assert_eq!(g.player(p).unwrap().mana_pool.total(),1);}
     fn payer(g:&mut GameState,p:PlayerId)->ObjectId {let mut a=Ability::activated(ironsmith::cost::TotalCost::free(),vec![]);if let AbilityKind::Activated(a)=&mut a.kind {a.mana_output=Some(vec![ManaSymbol::Colorless]);}g.create_object_from_definition(&CardDefinitionBuilder::new(CardId::new(),"Actual equip contract payer").card_types(vec![CardType::Artifact]).with_ability(a).build(),p,Zone::Battlefield)}
-    fn equip(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId,device:ObjectId,host:ObjectId){priority(g,q,d,p);d.wanted=vec![Target::Object(host)];let actions=ironsmith::compute_legal_actions(g,p).unwrap().into_iter().filter(|a|matches!(a,LegalAction::ActivateAbility{source,..}if *source==device)).collect::<Vec<_>>();assert_eq!(actions.len(),1,"one actual canonical equip action");cr_audit_complete_priority_action_with_dm(g,p,actions[0].clone(),d,q).unwrap();let e=g.stack.last().unwrap();assert_eq!(e.object_id,device);assert_eq!(e.targets,vec![Target::Object(host)]);assert_eq!(e.mana_spent_on_activation.total(),1);assert_eq!(g.player(p).unwrap().mana_pool.total(),0);}
-    fn change(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,actor:PlayerId,host:ObjectId,kind:u8,restore:bool){let other=PlayerId::from_index(1-actor.0);let modification=match(kind,restore){(0,false)=>Modification::SetColors(ColorSet::from_color(Color::Blue)),(0,true)=>Modification::SetColors(ColorSet::from_color(Color::Red)),(1,false)=>Modification::RemoveSupertypes(vec![Supertype::Legendary]),(1,true)=>Modification::AddSupertypes(vec![Supertype::Legendary]),(2,false)=>Modification::AddSubtypes(vec![Subtype::Villain]),(2,true)=>Modification::RemoveSubtypes(vec![Subtype::Villain]),(3,false)=>Modification::ChangeController(other),(3,true)=>Modification::ChangeController(actor),_=>unreachable!()};d.wanted=vec![Target::Object(host)];let id=cast(g,q,d,actor,vec![Effect::new(ApplyContinuousEffect::with_spec(ChooseSpec::target(ChooseSpec::Object(ObjectFilter::specific(host).in_zone(Zone::Battlefield))),modification,Until::Forever))]);assert_eq!(g.stack.last().unwrap().object_id,id);one(g,q,d);match kind{0=>assert_eq!(g.current_colors(host),Some(ColorSet::from_color(if restore{Color::Red}else{Color::Blue}))),1=>assert_eq!(g.current_supertypes(host).unwrap().contains(&Supertype::Legendary),restore),2=>assert_eq!(g.current_subtypes(host).unwrap().contains(&Subtype::Villain),!restore),3=>assert_eq!(g.current_controller(host),Some(if restore{actor}else{other})),_=>unreachable!()};}
     fn damage(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,host:ObjectId)->(PlayerId,i32){let controller=g.current_controller(host).unwrap();let victim=PlayerId::from_index(1-controller.0);priority(g,q,d,controller);d.wanted=vec![Target::Player(victim)];let a=ironsmith::compute_legal_actions(g,controller).unwrap().into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0}if *source==host)).expect("host current controller activates its own damage ability");cr_audit_complete_priority_action_with_dm(g,controller,a,d,q).unwrap();assert_eq!(g.stack.last().unwrap().object_id,host);assert_eq!(g.stack.last().unwrap().controller,controller);settle(g,q,d);(victim,g.player(victim).unwrap().life)}
     fn host_definition()->ironsmith::cards::CardDefinition {let effects=vec![Effect::deal_damage(2,ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any)))];let choices=effects.iter().filter_map(|e|e.0.get_target_spec().cloned()).collect::<Vec<_>>();let mut a=Ability::activated(ironsmith::cost::TotalCost::free(),effects);if let AbilityKind::Activated(a)=&mut a.kind{a.choices=choices;}CardDefinitionBuilder::new(CardId::new(),"Equipment quality damage witness").card_types(vec![CardType::Creature]).supertypes(vec![Supertype::Legendary]).color_indicator(ColorSet::from_color(Color::Red)).power_toughness(PowerToughness::fixed(4,4)).with_ability(a).build()}
     let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Mjölnir, Hammer of Thor","Mana cost: {3}{R}\nType: Legendary Artifact — Equipment\nFirst printed set: Marvel Super Heroes\nWhen Mjölnir enters, it deals 4 damage to up to one target creature.\nDouble all damage equipped creature would deal.\nEquip worthy {1} (A creature is worthy if it's a legendary non-Villain that's red and/or white.)\n{2}{R}, Discard this card: It deals 2 damage to each creature.",false).expect("complete canonical Mjölnir compiles strictly");
@@ -92886,7 +92878,7 @@ fn cr_702_6c_other_attach_effects_can_attach_to_unworthy_and_opponent_creatures(
 fn cr_702_6c_equip_rechecks_quality_and_control_when_resolving_and_can_restore_legality() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
+    use ironsmith::triggers::TriggerQueue;
     use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
@@ -92902,7 +92894,6 @@ fn cr_702_6c_equip_rechecks_quality_and_control_when_resolving_and_can_restore_l
     fn payer(g:&mut GameState,p:PlayerId)->ObjectId {let mut a=Ability::activated(ironsmith::cost::TotalCost::free(),vec![]);if let AbilityKind::Activated(a)=&mut a.kind {a.mana_output=Some(vec![ManaSymbol::Colorless]);}g.create_object_from_definition(&CardDefinitionBuilder::new(CardId::new(),"Actual equip contract payer").card_types(vec![CardType::Artifact]).with_ability(a).build(),p,Zone::Battlefield)}
     fn equip(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId,device:ObjectId,host:ObjectId){priority(g,q,d,p);d.wanted=vec![Target::Object(host)];let actions=ironsmith::compute_legal_actions(g,p).unwrap().into_iter().filter(|a|matches!(a,LegalAction::ActivateAbility{source,..}if *source==device)).collect::<Vec<_>>();assert_eq!(actions.len(),1,"one actual canonical equip action");cr_audit_complete_priority_action_with_dm(g,p,actions[0].clone(),d,q).unwrap();let e=g.stack.last().unwrap();assert_eq!(e.object_id,device);assert_eq!(e.targets,vec![Target::Object(host)]);assert_eq!(e.mana_spent_on_activation.total(),1);assert_eq!(g.player(p).unwrap().mana_pool.total(),0);}
     fn change(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,actor:PlayerId,host:ObjectId,kind:u8,restore:bool){let other=PlayerId::from_index(1-actor.0);let modification=match(kind,restore){(0,false)=>Modification::SetColors(ColorSet::from_color(Color::Blue)),(0,true)=>Modification::SetColors(ColorSet::from_color(Color::Red)),(1,false)=>Modification::RemoveSupertypes(vec![Supertype::Legendary]),(1,true)=>Modification::AddSupertypes(vec![Supertype::Legendary]),(2,false)=>Modification::AddSubtypes(vec![Subtype::Villain]),(2,true)=>Modification::RemoveSubtypes(vec![Subtype::Villain]),(3,false)=>Modification::ChangeController(other),(3,true)=>Modification::ChangeController(actor),_=>unreachable!()};d.wanted=vec![Target::Object(host)];let id=cast(g,q,d,actor,vec![Effect::new(ApplyContinuousEffect::with_spec(ChooseSpec::target(ChooseSpec::Object(ObjectFilter::specific(host).in_zone(Zone::Battlefield))),modification,Until::Forever))]);assert_eq!(g.stack.last().unwrap().object_id,id);one(g,q,d);match kind{0=>assert_eq!(g.current_colors(host),Some(ColorSet::from_color(if restore{Color::Red}else{Color::Blue}))),1=>assert_eq!(g.current_supertypes(host).unwrap().contains(&Supertype::Legendary),restore),2=>assert_eq!(g.current_subtypes(host).unwrap().contains(&Subtype::Villain),!restore),3=>assert_eq!(g.current_controller(host),Some(if restore{actor}else{other})),_=>unreachable!()};}
-    fn damage(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,host:ObjectId)->(PlayerId,i32){let controller=g.current_controller(host).unwrap();let victim=PlayerId::from_index(1-controller.0);priority(g,q,d,controller);d.wanted=vec![Target::Player(victim)];let a=ironsmith::compute_legal_actions(g,controller).unwrap().into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index:0}if *source==host)).expect("host current controller activates its own damage ability");cr_audit_complete_priority_action_with_dm(g,controller,a,d,q).unwrap();assert_eq!(g.stack.last().unwrap().object_id,host);assert_eq!(g.stack.last().unwrap().controller,controller);settle(g,q,d);(victim,g.player(victim).unwrap().life)}
     fn host_definition()->ironsmith::cards::CardDefinition {let effects=vec![Effect::deal_damage(2,ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any)))];let choices=effects.iter().filter_map(|e|e.0.get_target_spec().cloned()).collect::<Vec<_>>();let mut a=Ability::activated(ironsmith::cost::TotalCost::free(),effects);if let AbilityKind::Activated(a)=&mut a.kind{a.choices=choices;}CardDefinitionBuilder::new(CardId::new(),"Equipment quality damage witness").card_types(vec![CardType::Creature]).supertypes(vec![Supertype::Legendary]).color_indicator(ColorSet::from_color(Color::Red)).power_toughness(PowerToughness::fixed(4,4)).with_ability(a).build()}
     let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Mjölnir, Hammer of Thor","Mana cost: {3}{R}\nType: Legendary Artifact — Equipment\nFirst printed set: Marvel Super Heroes\nWhen Mjölnir enters, it deals 4 damage to up to one target creature.\nDouble all damage equipped creature would deal.\nEquip worthy {1} (A creature is worthy if it's a legendary non-Villain that's red and/or white.)\n{2}{R}, Discard this card: It deals 2 damage to each creature.",false).expect("complete canonical Mjölnir compiles strictly");
     assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
@@ -92916,14 +92907,13 @@ fn cr_702_6c_equip_rechecks_quality_and_control_when_resolving_and_can_restore_l
 fn cr_702_6c_d_blackblade_equip_variants_remain_independent_choices() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,LegalAction,Phase,Target,Zone,ManaSymbol,PowerToughness,Supertype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
         fn decide_options(&mut self,_:&GameState,c:&SelectOptionsContext)->Vec<usize>{c.options.iter().filter(|o|o.legal).take(c.min).map(|o|o.index).collect()}
     }
-    fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
     let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Blackblade Reforged","Mana cost: {2}\nType: Legendary Artifact — Equipment\nFirst printed set: Dominaria\nEquipped creature gets +1/+1 for each land you control.\nEquip legendary creature {3}\nEquip {7}",false).expect("complete canonical Blackblade Reforged compiles strictly");
@@ -92942,8 +92932,8 @@ fn cr_702_6c_d_blackblade_equip_variants_remain_independent_choices() {
 fn cr_109_5_301_5d_blackblade_bonus_follows_current_equipment_controller() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,PowerToughness};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -92967,14 +92957,13 @@ fn cr_109_5_301_5d_blackblade_bonus_follows_current_equipment_controller() {
 fn cr_702_6e_luxior_planeswalker_and_ordinary_equip_use_independent_target_types() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,LegalAction,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
         fn decide_options(&mut self,_:&GameState,c:&SelectOptionsContext)->Vec<usize>{c.options.iter().filter(|o|o.legal).take(c.min).map(|o|o.index).collect()}
     }
-    fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
     let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Luxior, Giada's Gift","Mana cost: {1}\nType: Legendary Artifact — Equipment\nFirst printed set: Streets of New Capenna Promos\nEquipped creature gets +1/+1 for each counter on it.\nEquipped permanent isn't a planeswalker and is a creature in addition to its other types. (Loyalty abilities can still be activated.)\nEquip planeswalker {1}\nEquip {3}",false).expect("full canonical Luxior compiles strictly");assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
@@ -92992,13 +92981,12 @@ fn cr_702_6e_609_4_equip_planeswalker_native_events_separate_attachment_from_cle
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
     use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Subtype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
         fn decide_options(&mut self,_:&GameState,c:&SelectOptionsContext)->Vec<usize>{c.options.iter().filter(|o|o.legal).take(c.min).map(|o|o.index).collect()}
     }
-    fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
     let canonical=ironsmith_compiler_runtime::compile_to_runtime_definition("Luxior, Giada's Gift","Mana cost: {1}\nType: Legendary Artifact — Equipment\nFirst printed set: Streets of New Capenna Promos\nEquipped creature gets +1/+1 for each counter on it.\nEquipped permanent isn't a planeswalker and is a creature in addition to its other types. (Loyalty abilities can still be activated.)\nEquip planeswalker {1}\nEquip {3}",false).unwrap();assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&canonical));
@@ -93019,8 +93007,8 @@ fn cr_702_6e_609_4_equip_planeswalker_native_events_separate_attachment_from_cle
 fn cr_611_3a_613_4c_equipped_counter_bonus_tracks_real_host_and_source_counter_changes() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,PowerToughness,CounterType,Subtype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -93029,7 +93017,7 @@ fn cr_611_3a_613_4c_equipped_counter_bonus_tracks_real_host_and_source_counter_c
     fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
-    use ironsmith::continuous::Modification;use ironsmith::effects::ApplyContinuousEffect;use ironsmith::Until;
+    
     fn cast(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId,effects:Vec<Effect>)->ObjectId {priority(g,q,d,p);let def=CardDefinitionBuilder::new(CardId::new(),"Native equipment contract instruction").card_types(vec![CardType::Instant]).mana_cost(ManaCost::new()).with_spell_effect(effects).build();let hand=g.create_object_from_definition(&def,p,Zone::Hand);let stable=g.object(hand).unwrap().stable_id;let a=ironsmith::compute_legal_actions(g,p).unwrap().into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==hand)).expect("actual contract instruction cast is legal");cr_audit_complete_priority_action_with_dm(g,p,a,d,q).unwrap();g.find_object_by_stable_id(stable).unwrap()}
     let canonical=ironsmith_compiler_runtime::compile_to_runtime_definition("Luxior, Giada's Gift","Mana cost: {1}\nType: Legendary Artifact — Equipment\nFirst printed set: Streets of New Capenna Promos\nEquipped creature gets +1/+1 for each counter on it.\nEquipped permanent isn't a planeswalker and is a creature in addition to its other types. (Loyalty abilities can still be activated.)\nEquip planeswalker {1}\nEquip {3}",false).unwrap();assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&canonical));
     use ironsmith::static_abilities::{Anthem,AnthemValue,StaticAbility};use ironsmith::effect::Value;use ironsmith::filter::{TaggedObjectConstraint,TaggedOpbjectRelation};
@@ -93056,8 +93044,8 @@ fn cr_611_3a_613_4c_equipped_counter_bonus_tracks_real_host_and_source_counter_c
 fn cr_110_4c_611_3a_privileged_position_keeps_typeless_permanents_hexproof() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,PowerToughness,CounterType,Subtype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -93083,14 +93071,13 @@ fn cr_110_4c_611_3a_privileged_position_keeps_typeless_permanents_hexproof() {
 fn cr_702_67c_multiple_fortify_abilities_offer_and_pay_independent_choices() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,Effect,LegalAction,Phase,Target,Zone,ManaSymbol};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
         fn decide_options(&mut self,_:&GameState,c:&SelectOptionsContext)->Vec<usize>{c.options.iter().filter(|o|o.legal).take(c.min).map(|o|o.index).collect()}
     }
-    fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
     let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Native multiple fortify choice fixture","Type: Artifact — Fortification\nFortify {1}\nFortify {3}",false).expect("complete generic two-fortify fixture compiles strictly");assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
@@ -93107,7 +93094,7 @@ fn cr_110_4c_luxior_conversion_distinguishes_zone_permanents_from_permanent_card
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
     use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Subtype,Supertype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -93135,8 +93122,8 @@ fn cr_110_4c_luxior_conversion_distinguishes_zone_permanents_from_permanent_card
 fn cr_110_4c_601_2c_vindicate_can_target_the_only_typeless_permanent_after_mana_source_sacrifice() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,Subtype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -93164,8 +93151,8 @@ fn cr_110_4c_601_2c_vindicate_can_target_the_only_typeless_permanent_after_mana_
 fn cr_702_67a_full_garrison_fortify_requires_own_main_empty_stack_and_own_land() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,Effect,LegalAction,ManaCost,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -93174,7 +93161,7 @@ fn cr_702_67a_full_garrison_fortify_requires_own_main_empty_stack_and_own_land()
     fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
-    use ironsmith::continuous::Modification;use ironsmith::effects::ApplyContinuousEffect;use ironsmith::Until;
+    
     fn cast(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId,effects:Vec<Effect>)->ObjectId {priority(g,q,d,p);let def=CardDefinitionBuilder::new(CardId::new(),"Native equipment contract instruction").card_types(vec![CardType::Instant]).mana_cost(ManaCost::new()).with_spell_effect(effects).build();let hand=g.create_object_from_definition(&def,p,Zone::Hand);let stable=g.object(hand).unwrap().stable_id;let a=ironsmith::compute_legal_actions(g,p).unwrap().into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==hand)).expect("actual contract instruction cast is legal");cr_audit_complete_priority_action_with_dm(g,p,a,d,q).unwrap();g.find_object_by_stable_id(stable).unwrap()}
     let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Darksteel Garrison","Mana cost: {2}\nType: Artifact — Fortification\nFirst printed set: Future Sight\nFortified land has indestructible.\nWhenever fortified land becomes tapped, target creature gets +1/+1 until end of turn.\nFortify {3} ({3}: Attach to target land you control. Fortify only as a sorcery. This card enters unattached and stays on the battlefield if the land leaves.)",false).unwrap();assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
     let(mut games,mut mana_actions,mut casts,mut activations,mut targets,mut paid,mut denied)=(0,0,0,0,0,0,0);let mut errors=vec![];
@@ -93192,8 +93179,8 @@ fn cr_702_67a_full_garrison_fortify_requires_own_main_empty_stack_and_own_land()
 fn cr_702_67a_608_2b_fortify_rechecks_current_land_type_and_controller_after_responses() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -93218,8 +93205,8 @@ fn cr_702_67a_608_2b_fortify_rechecks_current_land_type_and_controller_after_res
 fn cr_301_6_603_3a_full_garrison_static_and_tap_trigger_follow_attachment_and_source_controller() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -93252,7 +93239,7 @@ fn cr_301_6_701_3b_fortify_source_type_changes_before_during_and_after_paid_acti
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
     use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,CounterType,Subtype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -93282,8 +93269,8 @@ fn cr_301_6_701_3b_fortify_source_type_changes_before_during_and_after_paid_acti
 fn cr_109_5_fortify_you_remains_activating_player_after_source_control_changes() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -93319,8 +93306,8 @@ fn cr_109_5_fortify_you_remains_activating_player_after_source_control_changes()
 fn cr_400_7_608_2b_fortify_keeps_original_source_and_target_incarnations_after_zone_responses() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
-    use ironsmith::triggers::{Trigger,TriggerQueue};
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,PowerToughness,CounterType,Color,ColorSet,Subtype,Supertype};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone,ManaSymbol,Subtype};
     struct Choices{wanted:Vec<Target>,targets:usize}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{let mut chosen=vec![];for r in &c.requirements {let t=self.wanted.iter().find(|t|r.legal_targets.contains(t)).expect("selected real public target is legal for this requirement").clone();chosen.push(t);}self.targets+=chosen.len();chosen}
@@ -93329,7 +93316,7 @@ fn cr_400_7_608_2b_fortify_keeps_original_source_and_target_incarnations_after_z
     fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160 {ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite crime target fixture");}
-    use ironsmith::continuous::Modification;use ironsmith::effects::ApplyContinuousEffect;use ironsmith::Until;
+    
     fn cast(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId,effects:Vec<Effect>)->ObjectId {priority(g,q,d,p);let def=CardDefinitionBuilder::new(CardId::new(),"Native equipment contract instruction").card_types(vec![CardType::Instant]).mana_cost(ManaCost::new()).with_spell_effect(effects).build();let hand=g.create_object_from_definition(&def,p,Zone::Hand);let stable=g.object(hand).unwrap().stable_id;let a=ironsmith::compute_legal_actions(g,p).unwrap().into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==hand)).expect("actual contract instruction cast is legal");cr_audit_complete_priority_action_with_dm(g,p,a,d,q).unwrap();g.find_object_by_stable_id(stable).unwrap()}
     let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Darksteel Garrison","Mana cost: {2}\nType: Artifact — Fortification\nFirst printed set: Future Sight\nFortified land has indestructible.\nWhenever fortified land becomes tapped, target creature gets +1/+1 until end of turn.\nFortify {3} ({3}: Attach to target land you control. Fortify only as a sorcery. This card enters unattached and stays on the battlefield if the land leaves.)",false).unwrap();assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
     fn fund(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId,payer:ObjectId) {
@@ -93537,7 +93524,7 @@ fn cr_702_69a_b_gravestorm_counts_actual_permanent_deaths_and_independent_instan
     use ironsmith::effects::MoveToZoneEffect;
     use ironsmith::object::ObjectKind;
     use ironsmith::triggers::TriggerQueue;
-    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ManaSymbol,ObjectFilter,ObjectId,Phase,PowerToughness,Target,Zone};
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,PowerToughness,Target,Zone};
     struct Choices{actor:PlayerId,wanted:Option<Target>,change:bool,booleans:usize,targets:usize,searches:Vec<(ironsmith::ids::StableId,PlayerId)>}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{assert_eq!(c.player,self.actor);assert_eq!(c.requirements.len(),1);let t=self.wanted.expect("actual selected legal target");assert!(c.requirements[0].legal_targets.contains(&t),"actual chosen target belongs to public legal domain");self.targets+=1;vec![t]}
@@ -93576,7 +93563,7 @@ fn cr_702_69a_bitter_ordeal_pays_cost_and_resolves_independent_library_searches(
     use ironsmith::effects::MoveToZoneEffect;
     use ironsmith::object::ObjectKind;
     use ironsmith::triggers::TriggerQueue;
-    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ManaSymbol,ObjectFilter,ObjectId,Phase,PowerToughness,Target,Zone};
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ManaSymbol,ObjectFilter,ObjectId,Phase,Target,Zone};
     struct Choices{actor:PlayerId,wanted:Option<Target>,change:bool,booleans:usize,targets:usize,searches:Vec<(ironsmith::ids::StableId,PlayerId)>}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{assert_eq!(c.player,self.actor);assert_eq!(c.requirements.len(),1);let t=self.wanted.expect("actual selected legal target");assert!(c.requirements[0].legal_targets.contains(&t),"actual chosen target belongs to public legal domain");self.targets+=1;vec![t]}
@@ -93614,7 +93601,7 @@ fn cr_702_69a_gravestorm_excludes_prior_turn_deaths_after_real_cleanup_and_draw(
     use ironsmith::effects::MoveToZoneEffect;
     use ironsmith::object::ObjectKind;
     use ironsmith::triggers::TriggerQueue;
-    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ManaSymbol,ObjectFilter,ObjectId,Phase,PowerToughness,Target,Zone};
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,PowerToughness,Target,Zone};
     struct Choices{actor:PlayerId,wanted:Option<Target>,change:bool,booleans:usize,targets:usize,searches:Vec<(ironsmith::ids::StableId,PlayerId)>}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{assert_eq!(c.player,self.actor);assert_eq!(c.requirements.len(),1);let t=self.wanted.expect("actual selected legal target");assert!(c.requirements[0].legal_targets.contains(&t),"actual chosen target belongs to public legal domain");self.targets+=1;vec![t]}
@@ -93659,7 +93646,7 @@ fn cr_702_69a_113_7a_gravestorm_copies_countered_original_spell_with_pending_sib
     use ironsmith::effects::MoveToZoneEffect;
     use ironsmith::object::ObjectKind;
     use ironsmith::triggers::TriggerQueue;
-    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ManaSymbol,ObjectFilter,ObjectId,Phase,PowerToughness,Target,Zone};
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ManaSymbol,ObjectFilter,ObjectId,Phase,Target,Zone};
     struct Choices{actor:PlayerId,wanted:Option<Target>,change:bool,booleans:usize,targets:usize,searches:Vec<(ironsmith::ids::StableId,PlayerId)>}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{assert_eq!(c.player,self.actor);if c.requirements.is_empty(){return vec![];}assert_eq!(c.requirements.len(),1);let t=self.wanted.expect("actual selected legal target");assert!(c.requirements[0].legal_targets.contains(&t),"actual chosen target belongs to public legal domain");self.targets+=1;vec![t]}
@@ -93702,7 +93689,7 @@ fn cr_702_69a_gravestorm_instances_recount_deaths_at_their_own_resolutions() {
     use ironsmith::effects::MoveToZoneEffect;
     use ironsmith::object::ObjectKind;
     use ironsmith::triggers::TriggerQueue;
-    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ManaSymbol,ObjectFilter,ObjectId,Phase,PowerToughness,Target,Zone};
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ObjectFilter,ObjectId,Phase,Target,Zone};
     struct Choices{actor:PlayerId,wanted:Option<Target>,change:bool,booleans:usize,targets:usize,searches:Vec<(ironsmith::ids::StableId,PlayerId)>}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{assert_eq!(c.player,self.actor);assert_eq!(c.requirements.len(),1);let t=self.wanted.expect("actual selected legal target");assert!(c.requirements[0].legal_targets.contains(&t),"actual chosen target belongs to public legal domain");self.targets+=1;vec![t]}
@@ -93731,7 +93718,7 @@ fn cr_702_69a_113_7a_gravestorm_copies_bounced_and_exiled_original_spells() {
     use ironsmith::effects::MoveToZoneEffect;
     use ironsmith::object::ObjectKind;
     use ironsmith::triggers::TriggerQueue;
-    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ManaSymbol,ObjectFilter,ObjectId,Phase,PowerToughness,Target,Zone};
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ManaSymbol,ObjectFilter,ObjectId,Phase,Target,Zone};
     struct Choices{actor:PlayerId,wanted:Option<Target>,change:bool,booleans:usize,targets:usize,searches:Vec<(ironsmith::ids::StableId,PlayerId)>}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{assert_eq!(c.player,self.actor);if c.requirements.is_empty(){return vec![];}assert_eq!(c.requirements.len(),1);let t=self.wanted.expect("actual selected legal target");assert!(c.requirements[0].legal_targets.contains(&t),"actual chosen target belongs to public legal domain");self.targets+=1;vec![t]}
@@ -93832,10 +93819,10 @@ fn cr_702_70a_b_poisonous_waits_for_player_combat_damage_and_stacks_with_infect(
 fn cr_702_70a_poisonous_does_not_trigger_on_real_creature_ability_noncombat_damage() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::{TargetsContext,SelectObjectsContext};
-    use ironsmith::effects::MoveToZoneEffect;
-    use ironsmith::object::ObjectKind;
+    
+    
     use ironsmith::triggers::TriggerQueue;
-    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ManaCost,ManaSymbol,ObjectFilter,ObjectId,Phase,PowerToughness,Target,Zone};
+    use ironsmith::{Ability,CardId,CardType,ChooseSpec,Effect,LegalAction,ObjectId,Phase,PowerToughness,Target,Zone};
     struct Choices{actor:PlayerId,wanted:Option<Target>,change:bool,booleans:usize,targets:usize,searches:Vec<(ironsmith::ids::StableId,PlayerId)>}
     impl DecisionMaker for Choices {
         fn decide_targets(&mut self,_:&GameState,c:&TargetsContext)->Vec<Target>{assert_eq!(c.player,self.actor);if c.requirements.is_empty(){return vec![];}assert_eq!(c.requirements.len(),1);let t=self.wanted.expect("actual selected legal target");assert!(c.requirements[0].legal_targets.contains(&t),"actual chosen target belongs to public legal domain");self.targets+=1;vec![t]}
@@ -93846,8 +93833,6 @@ fn cr_702_70a_poisonous_does_not_trigger_on_real_creature_ability_noncombat_dama
     fn priority(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,p:PlayerId){let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){if g.turn.priority_player==Some(p){return;}ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}assert_eq!(g.turn.priority_player,Some(p));}
     fn one(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){assert!(!g.stack.is_empty());let mut s=ironsmith::PriorityLoopState::new(g.players_in_game());for _ in 0..g.players_in_game(){ironsmith::game_loop::apply_priority_response_with_dm(g,q,&mut s,&ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),d).unwrap();}ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();}
     fn settle(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices){for _ in 0..160{ironsmith::game_loop::advance_priority_with_dm(g,q,d).unwrap();if g.stack.is_empty(){return;}one(g,q,d);}panic!("finite actual gravestorm instruction stack");}
-    fn cast_hand(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,hand:ObjectId)->ObjectId{let p=d.actor;priority(g,q,d,p);let stable=g.object(hand).unwrap().stable_id;let a=ironsmith::compute_legal_actions(g,p).unwrap().into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==hand)).expect("actual native/canonical cast with legal cost and targets");cr_audit_complete_priority_action_with_dm(g,p,a,d,q).unwrap();g.find_object_by_stable_id(stable).unwrap()}
-    fn move_by_spell(g:&mut GameState,q:&mut TriggerQueue,d:&mut Choices,id:ObjectId,from:Zone,to:Zone){let background=g.stack.len();let def=CardDefinitionBuilder::new(CardId::new(),"Native actual gravestorm history zone instruction").card_types(vec![CardType::Instant]).mana_cost(ManaCost::new()).with_spell_effect(vec![Effect::new(MoveToZoneEffect::new(ChooseSpec::target(ChooseSpec::Object(ObjectFilter::specific(id).in_zone(from))),to,false))]).build();let hand=g.create_object_from_definition(&def,d.actor,Zone::Hand);d.wanted=Some(Target::Object(id));cast_hand(g,q,d,hand);assert_eq!(g.stack.len(),background+1);one(g,q,d);}
     fn keepers(g:&mut GameState){let def=CardDefinitionBuilder::new(CardId::new(),"Native gravestorm genuine priority keeper").card_types(vec![CardType::Artifact]).with_ability(Ability::activated(ironsmith::cost::TotalCost::free(),vec![Effect::gain_life(0)])).build();for seat in 0u8..2{g.create_object_from_definition(&def,PlayerId::from_index(seat),Zone::Battlefield);}}
     use ironsmith::Subtype;
     use ironsmith::costs::Cost;
@@ -94780,10 +94765,10 @@ fn cr_702_71a_101_2_transfigure_respects_creature_and_nonland_sacrifice_cost_pro
 fn cr_702_71a_118_11_transfigure_sacrifice_cost_is_paid_when_rest_in_peace_exiles_the_source() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::{SelectObjectsContext, TargetsContext};
-    use ironsmith::effects::MoveToZoneEffect;
+    
     use ironsmith::triggers::{Trigger, TriggerQueue};
-    use ironsmith::{Ability, AbilityKind, CardId, CardType, ChooseSpec, Effect, LegalAction,
-        ManaCost, ManaSymbol, ObjectFilter, ObjectId, Phase, PowerToughness, Target, Zone, CounterType, Subtype};
+    use ironsmith::{Ability, AbilityKind, CardId, CardType, Effect, LegalAction,
+        ManaCost, ManaSymbol, ObjectId, Phase, PowerToughness, Target, Zone, CounterType, Subtype};
 
     struct Choices {
         actor: PlayerId,
@@ -95046,7 +95031,7 @@ fn cr_702_72c_unrelated_exile_by_the_same_source_does_not_mean_championed() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::TargetsContext;
     use ironsmith::triggers::TriggerQueue;
-    use ironsmith::{Ability,AbilityKind,CardId,CardType,Effect,LegalAction,ManaCost,ObjectId,Phase,PowerToughness,Subtype,Target,Zone};
+    use ironsmith::{Ability,AbilityKind,CardId,CardType,Effect,LegalAction,ObjectId,Phase,PowerToughness,Subtype,Target,Zone};
     struct Choices {actor:PlayerId,other:PlayerId,victim:ObjectId,object_choices:usize,player_choices:usize}
     impl DecisionMaker for Choices {
         fn decide_options(&mut self,_:&GameState,c:&SelectOptionsContext)->Vec<usize> {assert_eq!(c.player,self.actor);c.options.iter().filter(|o|o.legal).take(c.min).map(|o|o.index).collect()}
@@ -98278,23 +98263,6 @@ fn cr_702_76a_prowl_uses_damage_time_types_after_real_type_change_and_source_dep
         panic!("real priority window completes");
     }
 
-    fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        let mut state = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..g.players_in_game() {
-            if g.turn.priority_player == Some(d.actor) {
-                return;
-            }
-            ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut state,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-        }
-        assert_eq!(g.turn.priority_player, Some(d.actor));
-    }
     fn to_second_main(
         g: &mut GameState,
         q: &mut TriggerQueue,
@@ -98641,7 +98609,7 @@ fn cr_702_76a_prowl_uses_damage_time_controller_not_owner_or_current_controller(
     use ironsmith::alternative_cast::CastingMethod;
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::combat_state::AttackTarget;
-    use ironsmith::decision::{AttackerDeclaration, BlockerDeclaration};
+    use ironsmith::decision::AttackerDeclaration;
     use ironsmith::decisions::context::{DecisionContext, TargetsContext};
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
@@ -99053,7 +99021,7 @@ fn cr_500_7_three_real_time_warps_use_lifo_then_restore_normal_turn_order() {
     use ironsmith::decisions::context::{DecisionContext, TargetsContext};
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, Phase,
         Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     struct Choices {
@@ -99352,7 +99320,7 @@ fn cr_500_7_101_4_multi_player_extra_turn_instruction_uses_apnap_not_caster_orde
     use ironsmith::effects::{ExtraTurnEffect, ForPlayersEffect};
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, Phase,
         Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     use ironsmith::{ManaCost, PlayerFilter, Step};
@@ -99654,11 +99622,11 @@ fn cr_500_7_101_4_multi_player_extra_turn_instruction_uses_apnap_not_caster_orde
 fn cr_702_77a_reinforce_pays_mana_and_discards_before_target_resolution() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::SelectObjectsContext;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::decisions::context::TargetsContext;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, ManaSymbol, ObjectId, Phase,
+        PowerToughness, Target, Zone,
     };
     use ironsmith::{AbilityKind, CounterType};
     struct Choices {
@@ -99726,24 +99694,6 @@ fn cr_702_77a_reinforce_pays_mana_and_discards_before_target_resolution() {
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
@@ -100066,11 +100016,10 @@ fn cr_702_77a_reinforce_pays_mana_and_discards_before_target_resolution() {
 fn cr_702_77b_reinforce_remains_an_ability_for_actual_petroglyphs_layer_consumer() {
     use ironsmith::AbilityKind;
     use ironsmith::cards::builders::CardDefinitionBuilder;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::decisions::context::TargetsContext;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, ManaSymbol, ObjectId, Phase, Target, Zone,
     };
     struct Choices {
         actor: PlayerId,
@@ -100120,42 +100069,7 @@ fn cr_702_77b_reinforce_remains_an_ability_for_actual_petroglyphs_layer_consumer
         }
         panic!("finite real Prowl control stack");
     }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
-    }
 
-    fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        let mut state = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..g.players_in_game() {
-            if g.turn.priority_player == Some(d.actor) {
-                return;
-            }
-            ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut state,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-        }
-        assert_eq!(g.turn.priority_player, Some(d.actor));
-    }
 
     fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, id: ObjectId) -> ObjectId {
         let physical = g.object(id).unwrap().stable_id;
@@ -100391,11 +100305,11 @@ fn cr_702_77b_reinforce_remains_an_ability_for_actual_petroglyphs_layer_consumer
 fn cr_702_77a_107_3a_reinforce_x_and_zero_keep_announced_value_after_actual_discard() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::decisions::context::SelectObjectsContext;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::decisions::context::TargetsContext;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, ManaSymbol, ObjectId, Phase,
+        PowerToughness, Target, Zone,
     };
     use ironsmith::{AbilityKind, CounterType};
     struct Choices {
@@ -100478,42 +100392,7 @@ fn cr_702_77a_107_3a_reinforce_x_and_zero_keep_announced_value_after_actual_disc
         }
         panic!("finite real Prowl control stack");
     }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
-    }
 
-    fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        let mut state = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..g.players_in_game() {
-            if g.turn.priority_player == Some(d.actor) {
-                return;
-            }
-            ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut state,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-        }
-        assert_eq!(g.turn.priority_player, Some(d.actor));
-    }
 
     let hydra=ironsmith_compiler_runtime::compile_to_runtime_definition("Wren's Run Hydra","Mana cost: {X}{G}\nType: Creature — Hydra\nFirst printed set: Modern Horizons 2\nPower/Toughness: 0/0\nReach\nThis creature enters with X +1/+1 counters on it.\nReinforce X—{X}{G}{G} ({X}{G}{G}, Discard this card: Put X +1/+1 counters on target creature.)",false).unwrap();
     let zero = ironsmith_compiler_runtime::compile_to_runtime_definition(
@@ -100757,17 +100636,17 @@ fn cr_702_77a_107_3a_reinforce_x_and_zero_keep_announced_value_after_actual_disc
 
 #[test]
 fn cr_702_78a_conspire_uses_real_fresh_contributors_colors_and_optional_cast_trigger() {
-    use ironsmith::alternative_cast::CastingMethod;
+    
     use ironsmith::cards::builders::CardDefinitionBuilder;
-    use ironsmith::combat_state::AttackTarget;
-    use ironsmith::decision::{AttackerDeclaration, BlockerDeclaration};
+    
+    
     use ironsmith::decisions::context::SelectObjectsContext;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::decisions::context::TargetsContext;
     use ironsmith::static_abilities::StaticAbilityId;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, ManaSymbol, ObjectId, Phase,
+        PowerToughness, Subtype, Target, Zone,
     };
     use ironsmith::{ColorSet, ManaCost, ObjectKind};
 
@@ -100874,24 +100753,6 @@ fn cr_702_78a_conspire_uses_real_fresh_contributors_colors_and_optional_cast_tri
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
@@ -101249,18 +101110,18 @@ fn cr_702_78a_conspire_uses_real_fresh_contributors_colors_and_optional_cast_tri
 
 #[test]
 fn cr_702_78b_printed_and_wort_granted_conspire_pay_and_trigger_independently() {
-    use ironsmith::alternative_cast::CastingMethod;
+    
     use ironsmith::cards::builders::CardDefinitionBuilder;
-    use ironsmith::combat_state::AttackTarget;
+    
     use ironsmith::cost::OptionalCostKind;
-    use ironsmith::decision::{AttackerDeclaration, BlockerDeclaration};
+    
     use ironsmith::decisions::context::SelectObjectsContext;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::decisions::context::TargetsContext;
     use ironsmith::static_abilities::StaticAbilityId;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, ManaSymbol, ObjectId, Phase,
+        PowerToughness, Subtype, Target, Zone,
     };
     use ironsmith::{ColorSet, ManaCost, ObjectKind};
     use std::collections::BTreeSet;
@@ -101384,42 +101245,7 @@ fn cr_702_78b_printed_and_wort_granted_conspire_pay_and_trigger_independently() 
         }
         panic!("finite real Prowl control stack");
     }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
-    }
 
-    fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        let mut state = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..g.players_in_game() {
-            if g.turn.priority_player == Some(d.actor) {
-                return;
-            }
-            ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut state,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-        }
-        assert_eq!(g.turn.priority_player, Some(d.actor));
-    }
 
     fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, id: ObjectId) -> ObjectId {
         let physical = g.object(id).unwrap().stable_id;
@@ -101743,17 +101569,17 @@ fn cr_702_78b_printed_and_wort_granted_conspire_pay_and_trigger_independently() 
 
 #[test]
 fn cr_702_78a_conspire_copy_retargets_after_original_counter_and_target_departure() {
-    use ironsmith::alternative_cast::CastingMethod;
+    
     use ironsmith::cards::builders::CardDefinitionBuilder;
-    use ironsmith::combat_state::AttackTarget;
-    use ironsmith::decision::{AttackerDeclaration, BlockerDeclaration};
+    
+    
     use ironsmith::decisions::context::SelectObjectsContext;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
-    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::decisions::context::TargetsContext;
+    
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, ManaSymbol, ObjectId, Phase,
+        PowerToughness, Target, Zone,
     };
     use ironsmith::{ColorSet, ManaCost, ObjectKind};
 
@@ -101863,24 +101689,6 @@ fn cr_702_78a_conspire_copy_retargets_after_original_counter_and_target_departur
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
@@ -102228,17 +102036,17 @@ fn cr_702_78a_conspire_copy_retargets_after_original_counter_and_target_departur
 
 #[test]
 fn cr_702_78a_conspire_copy_keeps_inactive_caster_controller_after_opponent_responses() {
-    use ironsmith::alternative_cast::CastingMethod;
+    
     use ironsmith::cards::builders::CardDefinitionBuilder;
-    use ironsmith::combat_state::AttackTarget;
-    use ironsmith::decision::{AttackerDeclaration, BlockerDeclaration};
+    
+    
     use ironsmith::decisions::context::SelectObjectsContext;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
-    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::decisions::context::TargetsContext;
+    
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, ManaSymbol, ObjectId, Phase,
+        PowerToughness, Target, Zone,
     };
     use ironsmith::{ColorSet, ManaCost, ObjectKind};
 
@@ -102348,24 +102156,6 @@ fn cr_702_78a_conspire_copy_keeps_inactive_caster_controller_after_opponent_resp
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
@@ -102715,18 +102505,18 @@ fn cr_702_78a_conspire_copy_keeps_inactive_caster_controller_after_opponent_resp
 
 #[test]
 fn cr_702_78a_b_three_printed_conspire_instances_use_separate_paid_subsets_and_color_rules() {
-    use ironsmith::alternative_cast::CastingMethod;
+    
     use ironsmith::cards::builders::CardDefinitionBuilder;
-    use ironsmith::combat_state::AttackTarget;
+    
     use ironsmith::cost::OptionalCostKind;
-    use ironsmith::decision::{AttackerDeclaration, BlockerDeclaration};
+    
     use ironsmith::decisions::context::SelectObjectsContext;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
-    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::decisions::context::TargetsContext;
+    
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, ManaSymbol, ObjectId, Phase,
+        PowerToughness, Target, Zone,
     };
     use ironsmith::{ColorSet, ManaCost, ObjectKind};
     use std::collections::BTreeSet;
@@ -102841,24 +102631,6 @@ fn cr_702_78a_b_three_printed_conspire_instances_use_separate_paid_subsets_and_c
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
@@ -103202,12 +102974,12 @@ fn cr_702_78a_b_three_printed_conspire_instances_use_separate_paid_subsets_and_c
 #[test]
 fn cr_702_80a_c_d_wither_damage_from_real_zone_abilities_and_redundant_instances() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::decisions::context::TargetsContext;
     use ironsmith::static_abilities::StaticAbilityId;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, Phase,
+        PowerToughness, Subtype, Target, Zone,
     };
     use ironsmith::{ChooseSpec, ColorSet, CounterType, ManaCost};
     struct Choices {
@@ -103257,24 +103029,6 @@ fn cr_702_80a_c_d_wither_damage_from_real_zone_abilities_and_redundant_instances
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     let watcher=ironsmith_compiler_runtime::compile_to_runtime_definition("Hapatra, Vizier of Poisons","Mana cost: {B}{G}\nType: Legendary Creature — Human Cleric\nFirst printed set: Amonkhet\nPower/Toughness: 2/2\nWhenever Hapatra deals combat damage to a player, you may put a -1/-1 counter on target creature.\nWhenever you put one or more -1/-1 counters on a creature, create a 1/1 green Snake creature token with deathtouch.",false).unwrap();
@@ -103479,14 +103233,14 @@ fn cr_702_80a_c_d_wither_damage_from_real_zone_abilities_and_redundant_instances
 #[test]
 fn cr_702_80a_c_puncture_blast_spell_damage_places_counters_with_real_hapatra_trigger() {
     use ironsmith::cards::builders::CardDefinitionBuilder;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::decisions::context::TargetsContext;
     use ironsmith::static_abilities::StaticAbilityId;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, ManaSymbol, Phase,
+        PowerToughness, Subtype, Target, Zone,
     };
-    use ironsmith::{ChooseSpec, ColorSet, CounterType, ManaCost};
+    use ironsmith::{ColorSet, CounterType};
     struct Choices {
         actor: PlayerId,
         target: Target,
@@ -103534,24 +103288,6 @@ fn cr_702_80a_c_puncture_blast_spell_damage_places_counters_with_real_hapatra_tr
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     let watcher=ironsmith_compiler_runtime::compile_to_runtime_definition("Hapatra, Vizier of Poisons","Mana cost: {B}{G}\nType: Legendary Creature — Human Cleric\nFirst printed set: Amonkhet\nPower/Toughness: 2/2\nWhenever Hapatra deals combat damage to a player, you may put a -1/-1 counter on target creature.\nWhenever you put one or more -1/-1 counters on a creature, create a 1/1 green Snake creature token with deathtouch.",false).unwrap();
@@ -103725,14 +103461,14 @@ fn cr_702_80a_b_wither_uses_actual_departure_lki_and_current_damage_counter_plac
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::continuous::Modification;
     use ironsmith::decisions::context::SelectObjectsContext;
-    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::decisions::context::TargetsContext;
     use ironsmith::effects::ApplyContinuousEffect;
     use ironsmith::static_abilities::StaticAbility;
     use ironsmith::static_abilities::StaticAbilityId;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        PowerToughness, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, LegalAction, ObjectId, Phase,
+        PowerToughness, Subtype, Target, Zone,
     };
     use ironsmith::{ChooseSpec, ColorSet, CounterType, ManaCost, ObjectFilter, Until};
     struct Choices {
@@ -103797,24 +103533,6 @@ fn cr_702_80a_b_wither_uses_actual_departure_lki_and_current_damage_counter_plac
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
@@ -104158,7 +103876,7 @@ fn cr_702_81a_retrace_uses_own_graveyard_land_additional_cost_mana_and_normal_ti
     use ironsmith::decisions::context::{SelectObjectsContext, TargetsContext};
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
+        Ability, CardId, CardType, Effect, LegalAction, ManaSymbol, ObjectId, Phase,
         Target, Zone,
     };
     struct Choices {
@@ -104222,24 +103940,6 @@ fn cr_702_81a_retrace_uses_own_graveyard_land_additional_cost_mana_and_normal_ti
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
@@ -104514,7 +104214,7 @@ fn cr_702_81a_118_9_retrace_combines_land_discard_with_actual_as_foretold_price(
     use ironsmith::decisions::context::{SelectObjectsContext, TargetsContext};
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, ChooseSpec, CounterType, Effect, GameProgress, LegalAction,
+        Ability, CardId, CardType, ChooseSpec, CounterType, Effect, LegalAction,
         ManaCost, ManaSymbol, ObjectId, Phase, Target, Zone,
     };
     struct Choices {
@@ -104577,24 +104277,6 @@ fn cr_702_81a_118_9_retrace_combines_land_discard_with_actual_as_foretold_price(
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
@@ -104863,7 +104545,7 @@ fn cr_702_81a_retrace_repeats_after_resolution_or_counter_and_counts_discarded_l
     use ironsmith::decisions::context::{SelectObjectsContext, TargetsContext};
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, ColorSet, Effect, GameProgress, LegalAction, ManaSymbol,
+        Ability, CardId, CardType, ColorSet, Effect, LegalAction, ManaSymbol,
         ObjectId, Phase, Subtype, Target, Zone,
     };
     struct Choices {
@@ -104933,24 +104615,6 @@ fn cr_702_81a_retrace_repeats_after_resolution_or_counter_and_counts_discarded_l
             one(g, q, d);
         }
         panic!("finite real Prowl control stack");
-    }
-    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
-        assert!(g.stack.is_empty());
-        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
-        for _ in 0..16 {
-            let p = ironsmith::game_loop::apply_priority_response_with_dm(
-                g,
-                q,
-                &mut s,
-                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
-                d,
-            )
-            .unwrap();
-            if matches!(p, GameProgress::Continue) {
-                return;
-            }
-        }
-        panic!("real priority window completes");
     }
 
     fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
@@ -105222,7 +104886,7 @@ fn cr_702_83a_b_exalted_counts_real_declared_attackers_independent_sources_and_c
     use ironsmith::decisions::context::DecisionContext;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ObjectId, Phase,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, Phase,
         PowerToughness, Step, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut SelectFirstDecisionMaker) {
@@ -105537,7 +105201,7 @@ fn cr_702_83a_b_508_4_exalted_uses_declarations_despite_actual_hero_attacking_to
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
         Ability, CardId, CardType, ChooseSpec, ColorSet, Effect, GameProgress, LegalAction,
-        ManaCost, ObjectFilter, ObjectId, Phase, PowerToughness, Step, Subtype, Target, TurnAction,
+        ManaCost, ObjectFilter, Phase, PowerToughness, Step, Subtype, Target, TurnAction,
         TurnRunner, TurnRunnerState, Until, Zone,
     };
     fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut SelectFirstDecisionMaker) {
@@ -106059,8 +105723,7 @@ fn cr_702_84a_unearth_real_zone_cost_timing_haste_combat_and_next_end_exile() {
     use ironsmith::static_abilities::StaticAbilityId;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaCost, ManaSymbol,
-        ObjectId, Phase, Step, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaCost, ManaSymbol, Phase, Step, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut SelectFirstDecisionMaker) {
         assert!(!g.stack.is_empty());
@@ -106941,7 +106604,7 @@ fn cr_702_10b_permission_haste_must_enable_actual_attacker_choices_without_unrel
     use ironsmith::static_abilities::{StaticAbility, StaticAbilityId};
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, AbilityKind, CardId, CardType, CastingMethod, ChooseSpec, Effect, GameProgress,
+        Ability, AbilityKind, CardId, CardType, ChooseSpec, Effect, GameProgress,
         LegalAction, ManaCost, ObjectFilter, ObjectId, Phase, PlayerFilter, PowerToughness, Step,
         Target, TurnAction, TurnRunner, TurnRunnerState, Until, Zone,
     };
@@ -108711,7 +108374,7 @@ fn cr_702_10d_adding_actual_duplicate_haste_must_not_change_fresh_attack_eligibi
     use ironsmith::static_abilities::{StaticAbility, StaticAbilityId};
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, AbilityKind, CardId, CardType, CastingMethod, ChooseSpec, Effect, GameProgress,
+        Ability, AbilityKind, CardId, CardType, ChooseSpec, Effect, GameProgress,
         LegalAction, ManaCost, ObjectFilter, ObjectId, Phase, PlayerFilter, PowerToughness, Step,
         Target, TurnAction, TurnRunner, TurnRunnerState, Until, Zone,
     };
@@ -109090,7 +108753,7 @@ fn cr_107_6_602_5a_605_3b_pili_pala_real_q_mana_requires_funding_tapped_state_an
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
         Ability, CardId, CardType, ChooseSpec, Effect, GameProgress, LegalAction, ManaCost,
-        ManaSymbol, ObjectFilter, ObjectId, Phase, Step, Target, TurnAction, TurnRunner,
+        ManaSymbol, ObjectFilter, ObjectId, Phase, Target, TurnAction, TurnRunner,
         TurnRunnerState, Until, Zone,
     };
     struct Choices {
@@ -109958,8 +109621,7 @@ fn cr_702_85b_averna_land_action_precedes_cast_or_bottoming_even_without_a_hit()
     use ironsmith::decisions::context::{BooleanContext, DecisionContext};
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
-        Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     struct Choices {
         actor: PlayerId,
@@ -111700,7 +111362,7 @@ fn cr_107_3c_spoils_of_war_text_defines_x_instead_of_offering_a_choice() {
     use ironsmith::snapshot::ObjectSnapshot;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, Phase,
         PowerToughness, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     struct Choices {
@@ -112566,7 +112228,7 @@ fn cr_107_3b_c_cascade_free_cast_must_preserve_text_defined_x() {
     use ironsmith::snapshot::ObjectSnapshot;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, Phase,
         PowerToughness, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     struct Choices {
@@ -113052,7 +112714,7 @@ fn cr_702_85a_608_2d_cascade_may_offer_only_a_legal_resulting_spell_with_defined
     use ironsmith::snapshot::ObjectSnapshot;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, ObjectId, Phase,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaSymbol, Phase,
         PowerToughness, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     struct Choices {
@@ -120366,7 +120028,7 @@ fn cr_702_90a_d_infect_uses_current_source_and_latest_departure_after_actual_aur
     use ironsmith::object::AttachmentTarget;
     use ironsmith::{
         Ability, CardId, CardType, ChooseSpec, CounterType, Effect, GameProgress,
-        LegalAction, ManaCost, ObjectId, Phase, PowerToughness, Target, TurnAction, TurnRunner,
+        LegalAction, ObjectId, Phase, PowerToughness, Target, TurnAction, TurnRunner,
         TurnRunnerState, Zone,
     };
     struct Choices {
@@ -121239,7 +120901,7 @@ fn cr_702_90b_c_e_f_infect_damage_from_real_six_zone_abilities_and_redundant_ins
     use ironsmith::static_abilities::StaticAbilityId;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ObjectId, Phase,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, Phase,
         PowerToughness, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     use ironsmith::{ChooseSpec, CounterType, ManaCost};
@@ -121549,7 +121211,7 @@ fn cr_702_90b_c_e_f_actual_stack_spell_infect_and_duplicate_instances() {
     use ironsmith::static_abilities::StaticAbilityId;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ObjectId, Phase,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, Phase,
         PowerToughness, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     use ironsmith::{ChooseSpec, CounterType, ManaCost};
@@ -121854,7 +121516,7 @@ fn cr_702_90e_actual_spell_makes_the_library_card_deal_infect_damage() {
     use ironsmith::static_abilities::StaticAbilityId;
     use ironsmith::triggers::TriggerQueue;
     use ironsmith::{
-        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ObjectId, Phase,
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, Phase,
         PowerToughness, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
     };
     use ironsmith::{ChooseSpec, CounterType, ManaCost, ObjectFilter};
@@ -124969,7 +124631,7 @@ fn cr_702_95a_d_competing_entry_triggers_cannot_replace_a_real_pair() {
         .power_toughness(PowerToughness::fixed(3, 3))
         .soulbond()
         .build();
-    let native_b = CardDefinitionBuilder::new(CardId::new(), "Native exclusive Soulbond source B")
+    let _native_b = CardDefinitionBuilder::new(CardId::new(), "Native exclusive Soulbond source B")
         .card_types(vec![CardType::Artifact, CardType::Creature])
         .power_toughness(PowerToughness::fixed(4, 4))
         .soulbond()
@@ -125376,7 +125038,7 @@ fn cr_702_95a_d_two_sources_cannot_share_or_steal_one_actual_entrant() {
             .build()
     };
     let ea = entrant("Native exclusive Soulbond entrant A", 1, 5);
-    let eb = entrant("Native exclusive Soulbond entrant B", 2, 6);
+    let _eb = entrant("Native exclusive Soulbond entrant B", 2, 6);
     let idle_def =
         CardDefinitionBuilder::new(CardId::new(), "Native older unpaired Soulbond bystander")
             .card_types(vec![CardType::Creature])

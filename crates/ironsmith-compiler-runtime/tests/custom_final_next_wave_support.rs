@@ -157,7 +157,7 @@ fn compile_model_internal(source: &Value, mut builder: Builder, graph_active: bo
         }
         let supplied=if graph_active {Vec::new()} else {source.get("supplied_card_definitions").and_then(Value::as_array).into_iter().flatten().map(|definition|{
             ironsmith_compiled_artifact::validate_standalone_supplied_definition_metadata(definition["text"].as_str().unwrap_or(""),definition.as_object().ok_or("supplied definition must be an object")?)?;
-            let subtypes=serde_json::from_value(definition.get("customSubtypes").or_else(||definition.get("custom_subtypes")).cloned().unwrap_or(serde_json::json!([]))).map_err(|error|error.to_string())?;
+            let subtypes:Vec<CustomSubtypeDefinition>=serde_json::from_value(definition.get("customSubtypes").or_else(||definition.get("custom_subtypes")).cloned().unwrap_or(serde_json::json!([]))).map_err(|error|error.to_string())?;
             let names=|key:&str|definition.get(key).or_else(||definition.get(match key {"customKeywordIdentities"=>"custom_keyword_identities","customKeywordPayments"=>"custom_keyword_payments",_=>key})).and_then(Value::as_array).map(|array|array.iter().filter_map(Value::as_str).map(str::to_owned).collect::<Vec<_>>()).unwrap_or_default();
             ironsmith_compiler::compile_supplied_card_definition(definition["name"].as_str().unwrap_or(""),definition["text"].as_str().unwrap_or(""),&names("customKeywordIdentities"),&names("customKeywordPayments"),&subtypes)
         }).collect::<Result<Vec<_>,String>>()?};

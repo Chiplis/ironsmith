@@ -83,11 +83,47 @@ function keywordActivationText(line, definitions = []) {
     .join('\n') || null;
 }
 
-export function matchInteractiveActionsToRulesLines(lines = [], actions = [], definitions = []) {
+// The engine names the printed line each current ability reads as, keyed by
+// the same index its legal actions carry. Modal abilities own several lines and
+// bind to their first. Identical lines are claimed in order.
+export function abilityLinePositions(lines = [], abilityLines = []) {
+  const canonical = lines.map(normalizeAbilityMatchText);
+  const byAbility = new Map(), activated = new Set(), claimed = new Set();
+  for (const { ability_index, kind, text } of abilityLines || []) {
+    const parts = String(text || "").split(/\n+/).map(normalizeAbilityMatchText).filter(Boolean);
+    if (!parts.length) continue;
+    const starts = canonical.map((_, i) => i).filter(i => parts.every((part, k) => canonical[i + k] === part));
+    const at = starts.find(i => !claimed.has(i)) ?? starts[0];
+    if (at == null) continue;
+    claimed.add(at);
+    byAbility.set(ability_index, at);
+    if (kind === "activated") activated.add(at);
+  }
+  return { byAbility, activated };
+}
+
+// Only activation actions index the source's ability list. Other payment
+// sources (convoke, Treasures, ...) and casting actions do not.
+function actionAbilityIndex(action) {
+  const ref = action?.action_ref;
+  if (ref?.kind === "activate_ability" || ref?.kind === "activate_mana_ability") return ref.ability_index ?? null;
+  if (action?.kind === "activate_ability" || action?.kind === "activate_mana_ability") return action.ability_index ?? null;
+  if (action?.kind === "plan_payment_source" && action.payment_kind === "mana_ability") return action.ability_index ?? null;
+  return null;
+}
+
+export function matchInteractiveActionsToRulesLines(lines = [], actions = [], definitions = [], abilityLines = null) {
   const matches = new Map();
-  const activatedLineIndices = activatedAbilityLineIndices(lines, definitions);
+  const structured = abilityLines?.length ? abilityLinePositions(lines, abilityLines) : null;
+  const activatedLineIndices = [...new Set([...activatedAbilityLineIndices(lines, definitions), ...(structured?.activated || [])])]
+    .sort((a, b) => a - b);
 
   actions.forEach((action, actionIndex) => {
+    const exact = structured?.byAbility.get(actionAbilityIndex(action));
+    if (exact != null) {
+      matches.set(exact, [...(matches.get(exact) || []), action]);
+      return;
+    }
     const needle = actionAbilityText(action);
     let bestIndex = -1;
     let bestScore = 0;
@@ -146,16 +182,26 @@ const symbolSignature = line => (line.match(/\{[^}]+\}/g) || []).join("").toUppe
 
 // Resolve engine actions only against canonical text. Translations retain
 // ability order even when reminder text introduces or removes paragraphs.
-export function interactiveRulesView(canonicalText, displayedText, actions = [], definitions = []) {
+export function interactiveRulesView(canonicalText, displayedText, actions = [], definitions = [], abilityLines = null) {
   const canonical = rulesLines(canonicalText);
   const displayed = rulesLines(displayedText);
-  const matches = matchInteractiveActionsToRulesLines(canonical, actions, definitions);
-  const original = { lines: canonical, actions: matches, sourceLines: canonical.map(line => [line]) };
+  const matches = matchInteractiveActionsToRulesLines(canonical, actions, definitions, abilityLines);
+  const structured = abilityLines?.length ? abilityLinePositions(canonical, abilityLines).activated : null;
+  const original = { lines: canonical, actions: matches, sourceLines: canonical.map(line => [line]),
+    ...(structured && { activatedLines: structured }) };
   if (canonicalText === displayedText) return original;
+
+  // A translation with the same paragraphs, whose mana symbols agree line by
+  // line, is the canonical text in another language. Pair it by position so
+  // no wording in the interface language has to be recognized.
+  if (structured && canonical.length === displayed.length
+    && canonical.every((line, index) => symbolSignature(line) === symbolSignature(displayed[index]))) {
+    return { ...original, lines: displayed, translated: true };
+  }
 
   const sourceAbilities = activatedAbilityLineIndices(canonical, definitions);
   const targetAbilities = activatedAbilityLineIndices(displayed, definitions);
-  const projection = new Map();
+  const projection = new Map(), targetOf = new Map();
   const sourceLines = displayed.map(() => []);
   for (const index of new Set([...sourceAbilities, ...matches.keys()])) {
     const lineActions = matches.get(index);
@@ -176,6 +222,7 @@ export function interactiveRulesView(canonicalText, displayedText, actions = [],
       continue;
     }
     sourceLines[target] = [canonical[index]];
+    targetOf.set(index, target);
     if (lineActions) projection.set(target, lineActions);
   }
   // Keyword and static lines carry no actions. When both texts have the same
@@ -184,7 +231,8 @@ export function interactiveRulesView(canonicalText, displayedText, actions = [],
   const restSource = canonical.map((_, index) => index).filter(index => !sourceAbilities.includes(index) && !matches.has(index));
   const restTarget = displayed.map((_, index) => index).filter(index => !targetAbilities.includes(index) && !sourceLines[index].length);
   if (restSource.length === restTarget.length) restSource.forEach((index, k) => { sourceLines[restTarget[k]] = [canonical[index]]; });
-  return { lines: displayed, actions: projection, sourceLines, translated: true };
+  const activatedLines = structured && new Set([...structured].map(index => targetOf.get(index)).filter(index => index != null));
+  return { lines: displayed, actions: projection, sourceLines, translated: true, ...(activatedLines && { activatedLines }) };
 }
 
 // Empty live rules mean abilities were removed; only absent data may use

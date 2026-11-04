@@ -170,7 +170,7 @@ fn compound_copy_exceptions_keep_name_legendary_and_own_other_abilities() {
   let mut game=GameState::new(vec!["A".into(),"B".into()],20);
   let donor=ironsmith_compiler_runtime::compile_to_runtime_definition("Copy donor","Type: Creature — Beast\nPower/Toughness: 7/8\nVigilance",false).unwrap();game.create_object_from_definition(&donor,A,Zone::Battlefield);
   let source=game.create_object_from_definition(&definition,A,Zone::Hand);let stable=game.object(source).unwrap().stable_id;
-  game.move_object_with_etb_processing_with_dm(source,Zone::Battlefield,&mut AcceptCopy(copy)).unwrap();let arrived=game.find_object_by_stable_id(stable).unwrap();
+  let _ = game.move_object_with_etb_processing_with_dm(source,Zone::Battlefield,&mut AcceptCopy(copy)).unwrap();let arrived=game.find_object_by_stable_id(stable).unwrap();
   let chars=game.calculated_characteristics_arc(arrived).unwrap();assert_eq!(chars.name.as_ref(),"Ambivalence");assert!(chars.supertypes.contains(&ironsmith::types::Supertype::Legendary));
   assert_eq!(game.current_power(arrived),Some(if copy{7}else{3}));
   assert_eq!(chars.static_abilities.iter().any(|a|a.id()==ironsmith::static_abilities::StaticAbilityId::Vigilance),copy);

@@ -241,7 +241,8 @@ use ironsmith::decision::{DecisionMaker,LegalAction};
 use ironsmith::decisions::context::{DecisionContext,BooleanContext};
 use ironsmith::game_loop::{PriorityLoopState,PriorityResponse,apply_priority_response_with_dm,apply_decision_context_with_dm,resolve_stack_entry_with};
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::{Ability,CardDefinition,CardDefinitionBuilder,CardId,CardType,Subtype};
+use ironsmith::{Ability,CardDefinition,CardId,CardType,Subtype};
+use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::{SelectFirstDecisionMaker,compute_legal_actions};
 use ironsmith::static_abilities::{CompiledStaticAbility,StaticAbility,SpliceSpec,SpliceQuality};
 use ironsmith::game_state::Phase;
@@ -297,8 +298,10 @@ fn finish(game:&mut GameState,queue:&mut TriggerQueue,state:&mut PriorityLoopSta
  }
  panic!("splice continuation did not finish")
 }
-fn completed_offers(game:&GameState)->usize{game.turn_store.turn_history.projected_records().filter(|record|record.event.downcast::<ironsmith::events::NamedActionEvent>().is_some_and(|event|event.label=="revealed splice offer")).count()}
-fn reveal_count(game:&GameState)->usize{game.turn_store.turn_history.projected_records().filter(|record|record.event.downcast::<ironsmith::events::CardRevealedEvent>().is_some()).count()}
+// Committed records followed by the staged simultaneous-action records.
+fn projected_records(game:&GameState)->impl Iterator<Item=&ironsmith::turn_history::TurnEventRecord>{let history=&game.turn_store.turn_history;history.event_records.iter().chain(history.staged_event_records.iter())}
+fn completed_offers(game:&GameState)->usize{projected_records(game).filter(|record|record.event.downcast::<ironsmith::events::NamedActionEvent>().is_some_and(|event|event.label=="revealed splice offer")).count()}
+fn reveal_count(game:&GameState)->usize{projected_records(game).filter(|record|record.event.downcast::<ironsmith::events::CardRevealedEvent>().is_some()).count()}
 #[test]
 fn decline_resumes_original_splice_once_through_real_boolean_channel(){
  for wire in [true]{

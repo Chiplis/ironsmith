@@ -68,7 +68,7 @@ fn sky_scraper_three_independent_choices_allow_repetition_snow_colorless_and_con
   for object in hand.iter().filter(|object|object.name.as_ref()=="Snow-Covered Wastes") {
    assert!(object.supertypes.contains(&ironsmith::types::Supertype::Snow));
    assert!(object.supertypes.contains(&ironsmith::types::Supertype::Basic));
-   assert!(object.colors.is_empty());
+   assert!(object.colors().is_empty());
   }
   assert_eq!(game.battlefield.iter().filter(|id|game.object(**id).unwrap().kind==ironsmith::object::ObjectKind::Token).count(),3,
    "each independent land-conjure action triggers the exact Campfire source once");

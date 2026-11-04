@@ -81,7 +81,7 @@ impl DecisionMaker for Script {
         }
         SelectFirstDecisionMaker.decide_options(g, c)
     }
-    fn decide_targets(&mut self, g: &GameState, c: &TargetsContext) -> Vec<Target> {
+    fn decide_targets(&mut self, _g: &GameState, c: &TargetsContext) -> Vec<Target> {
         let mut out = Vec::new();
         for req in &c.requirements {
             self.seen_targets.push(req.legal_targets.clone());

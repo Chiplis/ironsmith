@@ -191,7 +191,6 @@ fn token_has_internal_exile_producer(token:&crate::cards::CardDefinition)->bool 
             crate::ability::AbilityKind::Activated(ability)=>ability.effects.linked_exile_pair.is_some()||ability.effects.all_effects().into_iter().any(produces),
             crate::ability::AbilityKind::Triggered(ability)=>ability.effects.linked_exile_pair.is_some()||ability.effects.all_effects().into_iter().any(produces),
             crate::ability::AbilityKind::Static(ability)=>ability.source_exiled_inspection_pair().is_some_and(|pair|pair.is_some())||static_produces(ability),
-            _=>false,
         })
 }
 
@@ -241,7 +240,6 @@ fn bind_creation_owned_token_exile_readers(token:&mut crate::cards::CardDefiniti
                 let mut reads=false;ability.effects.for_each_tag_key(&mut |tag|reads|=tag.as_str()==ironsmith_core::SOURCE_EXILED_TAG);
                 if reads{ability.effects.linked_exile_pair=Some(pair);}
             },
-            _=>{},
         }
     }
 }

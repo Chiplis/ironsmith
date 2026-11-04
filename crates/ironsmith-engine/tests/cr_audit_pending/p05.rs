@@ -384,7 +384,7 @@ fn cr_404_1_moved_objects_go_on_top_of_their_owners_graveyard() {
     let dsp = g.create_object_from_definition(&discard, alice(), Zone::Hand);
     struct TargetBob;
     impl DecisionMaker for TargetBob {
-        fn decide_targets(&mut self, _: &GameState, c: &ironsmith::decisions::context::TargetsContext) -> Vec<ironsmith::Target> {
+        fn decide_targets(&mut self, _: &GameState, _c: &ironsmith::decisions::context::TargetsContext) -> Vec<ironsmith::Target> {
             vec![ironsmith::Target::Player(PlayerId::from_index(1))]
         }
         fn decide_objects(&mut self, _: &GameState, c: &ironsmith::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {

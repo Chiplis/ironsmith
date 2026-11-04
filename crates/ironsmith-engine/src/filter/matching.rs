@@ -1903,7 +1903,6 @@ fn is_permanent_card_type_set(card_types: &[crate::types::CardType]) -> bool {
 #[cfg(test)]
 mod graveyard_snapshot_history_tests {
     use super::*;
-    use crate::filter::ObjectFilterExt as _;
     #[test]
     fn retained_graveyard_origin_qualifier_requires_exact_incarnation_evidence() {
         for origin in [Zone::Battlefield, Zone::Library, Zone::Hand] {

@@ -160,7 +160,7 @@ fn actual_swords_dance_adds_only_to_the_original_paid_donor_after_the_primary_ta
                 target,
             };
             announce(&mut g, spell, &mut dm);
-            assert_eq!(g.object(donor).unwrap().tapped, pay);
+            assert_eq!(g.is_tapped(donor), pay);
             let current = if again { reenter(&mut g, donor) } else { donor };
             ironsmith::game_loop::resolve_stack_entry_with(&mut g, &mut dm).unwrap();
             assert_eq!(g.counter_count(target, CounterType::PlusOnePlusOne), 2);

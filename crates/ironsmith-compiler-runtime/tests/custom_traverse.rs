@@ -107,7 +107,7 @@ fn named_tap_policy_is_exact_and_actual_payment_rechecks_a_stale_chosen_set() {
         assert!(offered(&game,source).is_some(),"a different opaque payment name remains legal");
         let mut dm=SelectFirstDecisionMaker;
         let mut ctx=ironsmith::costs::CostContext::new(source,A,&mut dm).with_reason(ironsmith::costs::PaymentReason::ActivateAbility);
-        let tap=ironsmith::costs::Cost::validated_effect(ironsmith::Effect::new(ironsmith::effects::TapEffect::with_spec(ironsmith::target::ChooseSpec::SpecificObject(contributor)).with_named_payment(Some("traverse".into()))));
+        let tap=ironsmith::costs::Cost::try_effect(ironsmith::Effect::new(ironsmith::effects::TapEffect::with_spec(ironsmith::target::ChooseSpec::SpecificObject(contributor)).with_named_payment(Some("traverse".into())))).unwrap();
         assert!(tap.pay(&mut game,&mut ctx).is_err(),"actual cost payment cannot bypass eligibility using a saved object selection");
         assert!(!game.is_tapped(contributor));assert_eq!(game.named_action_count(source,"traverse",true),0);
         drop(ctx);

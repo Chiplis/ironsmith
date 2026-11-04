@@ -29,8 +29,8 @@ fn actual_masked_benefactor_keeps_complete_old_protections_after_donor_reentry()
         game.queue_trigger_event(Default::default(),ironsmith::triggers::TriggerEvent::new_with_provenance(event,Default::default()));
         let mut queue=ironsmith::triggers::TriggerQueue::new();ironsmith::game_loop::drain_pending_trigger_events_with_dm(&mut game,&mut queue,&mut ironsmith::decision::SelectFirstDecisionMaker).unwrap();
         assert_eq!(queue.entries.len(),1);ironsmith::game_loop::put_triggers_on_stack(&mut game,&mut queue).unwrap();
-        let new_donor=if donor_returns{let hand=game.move_object(donor,Zone::Hand,Default::default()).unwrap();game.move_object(hand,Zone::Battlefield,Default::default()).unwrap()}else{donor};
-        *game.object_mut(new_donor).unwrap().abilities_mut()=vec![ironsmith::ability::Ability::static_ability(ironsmith::static_abilities::StaticAbility::trample())];game.mark_continuous_state_dirty();
+        let new_donor=if donor_returns{let hand=game.move_object(donor,Zone::Hand,ironsmith::events::cause::EventCause::effect()).unwrap();game.move_object(hand,Zone::Battlefield,ironsmith::events::cause::EventCause::effect()).unwrap()}else{donor};
+        *game.object_mut(new_donor).unwrap().abilities_mut()=vec![ironsmith::ability::Ability::static_ability(ironsmith::static_abilities::StaticAbility::trample())];game.invalidate_continuous_state_public();
         ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut ironsmith::decision::SelectFirstDecisionMaker).unwrap();
         assert_eq!(static_payloads(&mut game,source,StaticAbilityId::Protection),expected);
         assert_eq!(static_payloads(&mut game,source,StaticAbilityId::FirstStrike).len(),1);

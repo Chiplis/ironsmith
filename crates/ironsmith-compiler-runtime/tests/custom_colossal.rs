@@ -1,8 +1,7 @@
 //! Unregistered source-backed Colossal gameplay candidate; parent runs validation.
-use ironsmith::{CardDefinition, Effect, GameProgress, GameState, ObjectId, PlayerId, Zone};
+use ironsmith::{CardDefinition, GameProgress, GameState, ObjectId, PlayerId, Zone};
 use ironsmith::alternative_cast::CastingMethod;
 use ironsmith::decision::{LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
-use ironsmith::effects::{EffectContext, execute_effect};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_decision_context_with_dm, apply_priority_response_with_dm, resolve_stack_entry_with};
 use ironsmith::mana::ManaSymbol;
 use ironsmith::object::CounterType;

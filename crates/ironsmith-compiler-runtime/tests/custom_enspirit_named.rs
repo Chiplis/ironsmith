@@ -11,7 +11,6 @@ use ironsmith_compiled_artifact::{
     wire_definition_from_serializable,
 };
 const A: PlayerId = PlayerId(0);
-const B: PlayerId = PlayerId(1);
 const RULES: &str = "As an additional cost to cast this spell, you may exile a nonenchantment creature you control until this spell leaves the stack without entering the battlefield or the permanent it becomes leaves the battlefield. Perform the enspirit action with creatures exiled this way.\nThis spell costs {X} less to cast, where X is the total mana value of creatures exiled this way.";
 fn compile(text: &str) -> [CardDefinition; 2] {
     let (result, loss) = ironsmith_compiler::parse_loss::capture(|| {
@@ -68,18 +67,6 @@ fn routes() -> [CardDefinition; 2] {
     compile(&format!(
         "Mana cost: {{4}}{{U}}{{B}}\nType: Artifact\n{RULES}"
     ))
-}
-fn body(game: &mut GameState, owner: PlayerId, mana: u32, enchantment: bool) -> ObjectId {
-    let card = ironsmith_compiler_runtime::compile_to_runtime_definition(
-        "Cost resource",
-        &format!(
-            "Mana cost: {{{mana}}}\nType: {}Creature — Fox\nPower/Toughness: 1/1",
-            if enchantment { "Enchantment " } else { "" }
-        ),
-        false,
-    )
-    .unwrap();
-    game.create_object_from_definition(&card, owner, Zone::Battlefield)
 }
 fn setup() -> GameState {
     let mut game = GameState::new(vec!["A".into(), "B".into()], 20);

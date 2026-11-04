@@ -97,7 +97,7 @@ fn prior_tap_relation_retains_exact_attacker_and_original_observers_after_additi
 #[test]
 fn actual_torch_singer_resolving_body_changes_control_then_taps_and_adds_the_same_permanent_to_combat() {
     use ironsmith::effects::{EffectContext,execute_effect};
-    use ironsmith::target::ResolvedTarget;
+    use ironsmith::effects::ResolvedTarget;
     let a=PlayerId(0);let b=PlayerId(1);
     for definition in source_support::definitions(&card("Torch Singer")).unwrap(){for in_combat in [false,true]{
         let mut game=GameState::new(vec!["A".into(),"B".into()],20);
@@ -129,7 +129,7 @@ impl DecisionMaker for WatchRideScry {
 }
 #[test]
 fn actual_ride_to_nowhere_checks_tapped_or_keyword_before_the_return_not_current_hand_state() {
-    use ironsmith::effects::{EffectContext,execute_effect};use ironsmith::target::ResolvedTarget;
+    use ironsmith::effects::{EffectContext,execute_effect};use ironsmith::effects::ResolvedTarget;
     let a=PlayerId(0);let b=PlayerId(1);
     let rides=source_support::definitions(&card("Ride to Nowhere")).unwrap();
     let donors=source_support::definitions(&card("Dust Smugglers")).unwrap();

@@ -1,5 +1,5 @@
 //! Generic selected characteristic-conversion costs; requires the scratch overwrite and cost patches.
-use ironsmith::{GameState,PlayerId,Zone};
+use ironsmith::{PlayerId,Zone};
 use ironsmith::decision::{compute_legal_actions,LegalAction};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 #[path="cf8_p08/play.rs"] mod play;

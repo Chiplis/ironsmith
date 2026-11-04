@@ -50,7 +50,7 @@ fn plain_card(
 
 fn complete_priority_action_with_dm<D: DecisionMaker>(
     game: &mut GameState,
-    player: PlayerId,
+    _player: PlayerId,
     action: ironsmith::LegalAction,
     dm: &mut D,
     queue: &mut ironsmith::triggers::TriggerQueue,

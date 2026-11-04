@@ -1,6 +1,6 @@
 //! Independent native/runtime-wire graph behavior. Parent executes this target.
 use ironsmith::{CardDefinition, Effect, GameState, PlayerId, Zone};
-use ironsmith::CardDefinitionBuilder;
+use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::effects::{EffectContext, execute_effect};
 use ironsmith_core::{CardCreationLibraryPosition, CardCreationSelection, CreateCardsEffect, CardId, PlayerFilter};
 const A:PlayerId=PlayerId(0);
@@ -17,7 +17,7 @@ fn nodes()->Vec<CardDefinition>{
         .with_spell_effect(vec![creation(a,vec![a,b],vec![],"Graph Alpha")]).build()]
 }
 fn closed(nodes:&[CardDefinition],index:usize)->CardDefinition{
-    ironsmith::artifact_materializer::bind_card_creation_scope_runtime(nodes[index].clone(),nodes[0].card.id,nodes).unwrap()
+    ironsmith_runtime_catalog::artifact_materializer::bind_card_creation_scope_runtime(nodes[index].clone(),nodes[0].card.id,nodes).unwrap()
 }
 fn resolve(game:&mut GameState,definition:&CardDefinition)->ironsmith::ObjectId{
     let source=game.create_object_from_definition(definition,A,Zone::Stack);
@@ -33,14 +33,14 @@ fn mutual_graph_creation_exports_and_survives_restart_without_original_source(){
     let pool=nodes();let alpha=closed(&pool,0);
     for roundtrip in [false,true]{
         let mut game=GameState::new(vec!["A".into(),"B".into()],20);
-        let root=if roundtrip {let wire=ironsmith::artifact_materializer::encode_runtime_definition(alpha.clone()).unwrap();
+        let root=if roundtrip {let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(alpha.clone()).unwrap();
             let bytes=serde_json::to_vec(&wire).unwrap();let wire=serde_json::from_slice(&bytes).unwrap();
-            ironsmith::artifact_materializer::materialize_definition(wire).unwrap()}else{alpha.clone()};
+            ironsmith_runtime_catalog::artifact_materializer::materialize_definition(wire).unwrap()}else{alpha.clone()};
         let beta=resolve(&mut game,&root);
         let generated=game.object(beta).unwrap().physical_card_definition();
-        let wire=ironsmith::artifact_materializer::encode_runtime_definition(generated.clone()).unwrap();
+        let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(generated.clone()).unwrap();
         let bytes=serde_json::to_vec(&wire).unwrap();assert!(bytes.len()<100_000,"catalog must remain shallow");
-        let restored=ironsmith::artifact_materializer::materialize_definition(serde_json::from_slice(&bytes).unwrap()).unwrap();
+        let restored=ironsmith_runtime_catalog::artifact_materializer::materialize_definition(serde_json::from_slice(&bytes).unwrap()).unwrap();
         let mut fresh=GameState::new(vec!["A".into(),"B".into()],20);
         let alpha_id=resolve(&mut fresh,&restored);assert_eq!(fresh.object(alpha_id).unwrap().name.as_str(),"Graph Alpha");
         fresh.restart_game(A,&[]);
@@ -53,12 +53,12 @@ fn graph_admission_rejects_dangling_ids_and_duplicate_catalog_identities(){
     let pool=nodes();let mut root=closed(&pool,0);
     let effect=creation(pool[0].card.id,vec![CardId::new()],pool.clone(),"Graph Alpha");
     root.spell_effect=Some(ironsmith_core::ResolutionProgram::from_effects(vec![effect]));
-    let wire=ironsmith::artifact_materializer::encode_runtime_definition(root).unwrap();
-    assert!(ironsmith::artifact_materializer::materialize_definition(wire).is_err());
+    let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(root).unwrap();
+    assert!(ironsmith_runtime_catalog::artifact_materializer::materialize_definition(wire).is_err());
     let mut bad=pool.clone();bad[1].card.id=bad[0].card.id;
-    let wire=ironsmith::artifact_materializer::encode_runtime_definition(pool[0].clone()).unwrap();
-    let bad=bad.into_iter().map(ironsmith::artifact_materializer::encode_runtime_definition).collect::<Result<Vec<_>,_>>().unwrap();
-    assert!(ironsmith::artifact_materializer::bind_card_creation_scope(wire,pool[0].card.id,&bad).is_err());
+    let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(pool[0].clone()).unwrap();
+    let bad=bad.into_iter().map(ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition).collect::<Result<Vec<_>,_>>().unwrap();
+    assert!(ironsmith_runtime_catalog::artifact_materializer::bind_card_creation_scope(wire,pool[0].card.id,&bad).is_err());
 }
 
 #[test]
@@ -75,8 +75,8 @@ fn duplicate_uses_current_name_within_scope_instead_of_original_definition_or_to
             selection:CardCreationSelection::Duplicate(ironsmith::target::ChooseSpec::SpecificObject(target)),
             count:1.into(),player:PlayerFilter::You,zone:Zone::Hand,library_position:CardCreationLibraryPosition::Top};
         let mut effect=Effect::new(payload);
-        if roundtrip {let wire=ironsmith::artifact_materializer::encode_runtime_effect(effect).unwrap();
-            effect=ironsmith::artifact_materializer::materialize_effect(serde_json::from_slice(&serde_json::to_vec(&wire).unwrap()).unwrap()).unwrap();}
+        if roundtrip {let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_effect(effect).unwrap();
+            effect=ironsmith_runtime_catalog::artifact_materializer::materialize_effect(serde_json::from_slice(&serde_json::to_vec(&wire).unwrap()).unwrap()).unwrap();}
         let mut ctx=EffectContext::new_default(target,A);
         let made=execute_effect(&mut game,&effect,&mut ctx).unwrap();
         assert_eq!(made.output_objects().len(),1);
@@ -96,15 +96,15 @@ fn repeated_self_creation_keeps_one_finite_immutable_definition_graph(){
         .with_spell_effect(vec![creation(id,vec![id],vec![],"Graph Self")]).build();
     let mut current=closed(&[node],0);
     let mut game=GameState::new(vec!["A".into(),"B".into()],20);
-    let initial=serde_json::to_vec(&ironsmith::artifact_materializer::encode_runtime_definition(current.clone()).unwrap()).unwrap().len();
+    let initial=serde_json::to_vec(&ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(current.clone()).unwrap()).unwrap().len();
     for _ in 0..5 {
         let made=resolve(&mut game,&current);
         assert_eq!(game.object(made).unwrap().kind,ironsmith::object::ObjectKind::Card);
         current=game.object(made).unwrap().physical_card_definition();
-        let wire=ironsmith::artifact_materializer::encode_runtime_definition(current.clone()).unwrap();
+        let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(current.clone()).unwrap();
         let bytes=serde_json::to_vec(&wire).unwrap();
         assert_eq!(bytes.len(),initial,"self creation must not recursively embed the catalog");
-        current=ironsmith::artifact_materializer::materialize_definition(serde_json::from_slice(&bytes).unwrap()).unwrap();
+        current=ironsmith_runtime_catalog::artifact_materializer::materialize_definition(serde_json::from_slice(&bytes).unwrap()).unwrap();
     }
 }
 
@@ -118,7 +118,7 @@ fn delayed_program_retains_lexical_catalog_after_enclosing_context_ends(){
     pool[0].spell_effect=Some(ironsmith_core::ResolutionProgram::from_effects(vec![Effect::new(delayed)]));
     for roundtrip in [false,true]{
         let mut root=closed(&pool,0);
-        if roundtrip{let wire=ironsmith::artifact_materializer::encode_runtime_definition(root).unwrap();root=ironsmith::artifact_materializer::materialize_definition(wire).unwrap();}
+        if roundtrip{let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(root).unwrap();root=ironsmith_runtime_catalog::artifact_materializer::materialize_definition(wire).unwrap();}
         let mut game=GameState::new(vec!["A".into(),"B".into()],20);
         let source=game.create_object_from_definition(&root,A,Zone::Stack);
         {
@@ -147,7 +147,7 @@ fn independent_lexical_catalogs_can_shadow_equal_local_scope_numbers(){
     let sequence=Effect::new(ironsmith::effects::SequenceEffect::new(vec![inner,creation(scope,vec![scope],Vec::new(),"Lexical Alpha")]));
     let outer=Effect::new(ironsmith_core::card_creation::CardDefinitionScopeEffect{scope,definitions:vec![alpha],effect:Box::new(sequence)});
     for roundtrip in [false,true]{
-        let effect=if roundtrip{let wire=ironsmith::artifact_materializer::encode_runtime_effect(outer.clone()).unwrap();ironsmith::artifact_materializer::materialize_effect(wire).unwrap()}else{outer.clone()};
+        let effect=if roundtrip{let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_effect(outer.clone()).unwrap();ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire).unwrap()}else{outer.clone()};
         let mut game=GameState::new(vec!["A".into(),"B".into()],20);let source=game.new_object_id();
         execute_effect(&mut game,&effect,&mut EffectContext::new_default(source,A)).unwrap();
         let names=game.player(A).unwrap().hand.iter().map(|id|game.object(*id).unwrap().name.to_string()).collect::<Vec<_>>();
@@ -167,14 +167,14 @@ fn duplicate_admits_an_exact_retained_real_card_outside_seed_catalog(){
             definition_refs:Vec::new(),operation_label:None,
             selection:CardCreationSelection::Duplicate(ironsmith::target::ChooseSpec::SpecificObject(target)),
             count:1.into(),player:PlayerFilter::You,zone:Zone::Hand,library_position:CardCreationLibraryPosition::Top});
-        if roundtrip{let wire=ironsmith::artifact_materializer::encode_runtime_effect(effect).unwrap();effect=ironsmith::artifact_materializer::materialize_effect(wire).unwrap();}
+        if roundtrip{let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_effect(effect).unwrap();effect=ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire).unwrap();}
         let source=game.new_object_id();let result=execute_effect(&mut game,&effect,&mut EffectContext::new_default(source,A)).unwrap();
         let created=game.object(result.output_objects()[0]).unwrap();
         assert_eq!(created.card,Some(external.card.id));assert_eq!(created.owner,A);
         assert_eq!(created.kind,ironsmith::object::ObjectKind::Card);
         let definition=created.physical_card_definition();
-        let wire=ironsmith::artifact_materializer::encode_runtime_definition(definition).unwrap();
-        let definition=ironsmith::artifact_materializer::materialize_definition(wire).unwrap();
+        let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(definition).unwrap();
+        let definition=ironsmith_runtime_catalog::artifact_materializer::materialize_definition(wire).unwrap();
         let mut fresh=GameState::new(vec!["A".into(),"B".into()],20);let source=fresh.new_object_id();
         for effect in definition.spell_effect.as_ref().unwrap().flattened_default_effects(){execute_effect(&mut fresh,effect,&mut EffectContext::new_default(source,A)).unwrap();}
         assert_eq!(fresh.player(A).unwrap().life,27);

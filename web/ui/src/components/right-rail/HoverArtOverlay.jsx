@@ -1078,12 +1078,14 @@ export default function HoverArtOverlay({
     && oracleRulesLines.length > 0 ? oracleRulesLines.join("\n") : baseDisplayRulesText;
   const scopedMechanics = useMemo(() => customCardAssets(baseDisplayObjectName)?.customMechanics || [], [baseDisplayObjectName, details?.id]);
   const faceUpRules = useMemo(() => turnFaceUpRulesLines(paymentActions), [paymentActions]);
+  const abilityLines = Array.isArray(details?.ability_lines) ? details.ability_lines : null;
   const ungroupedRulesView = useMemo(() => {
     const withFaceUp = text => [text, ...faceUpRules.lines].filter(Boolean).join("\n");
     return interactiveRulesView(
-      withFaceUp(canonicalRulesText), withFaceUp(translatedRulesText || canonicalRulesText), faceUpRules.actions, scopedMechanics
+      withFaceUp(canonicalRulesText), withFaceUp(translatedRulesText || canonicalRulesText), faceUpRules.actions, scopedMechanics,
+      abilityLines
     );
-  }, [canonicalRulesText, translatedRulesText, faceUpRules, scopedMechanics]);
+  }, [canonicalRulesText, translatedRulesText, faceUpRules, scopedMechanics, abilityLines]);
   const rulesView = useMemo(() => groupManaAbilities(ungroupedRulesView, locale), [ungroupedRulesView, locale]);
   // Missing legal actions still need a discoverable, non-dispatching surface
   // on our battlefield cards (targets, timing, loyalty limits, other costs).
@@ -1093,7 +1095,7 @@ export default function HoverArtOverlay({
       || controller == null || Number(controller) !== Number(state?.perspective)
       || state?.decision?.kind !== "priority") return rulesView;
     const actions = new Map(rulesView.actions);
-    for (const index of activatedAbilityLineIndices(rulesView.lines, scopedMechanics)) {
+    for (const index of new Set([...activatedAbilityLineIndices(rulesView.lines, scopedMechanics), ...(rulesView.activatedLines || [])])) {
       if (!actions.get(index)?.length) actions.set(index, [{
         available: false, legal: false,
         unavailable_reason: "This ability cannot be activated right now.",
@@ -1105,8 +1107,8 @@ export default function HoverArtOverlay({
   const displayRulesText = displayRulesLines.join("\n");
   const interactiveRuleLineActions = rulesView.actions;
   const activatedRuleLineIndices = useMemo(
-    () => new Set(activatedAbilityLineIndices(displayRulesLines, scopedMechanics)),
-    [displayRulesLines, scopedMechanics]
+    () => new Set([...activatedAbilityLineIndices(displayRulesLines, scopedMechanics), ...(rulesView.activatedLines || [])]),
+    [displayRulesLines, scopedMechanics, rulesView.activatedLines]
   );
   const displayObjectName = activeCardTranslation?.name || baseDisplayObjectName;
   const displayTypeLine = activeCardTranslation?.typeLine || baseDisplayTypeLine;

@@ -1,4 +1,4 @@
-use crate::ids::{ObjectId, PlayerId, StableId};
+use crate::ids::{ObjectId, PlayerId};
 
 use super::GameState;
 

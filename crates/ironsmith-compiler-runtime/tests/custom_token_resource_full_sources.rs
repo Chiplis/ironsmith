@@ -111,7 +111,7 @@ fn actual_under_pressure_forebodes_for_discarding_opponent_and_profit_for_exiled
   spell(&mut game,&definition,vec![ResolvedTarget::Player(B)],&mut Choices(accepted));
   let omens=game.battlefield.iter().filter_map(|id|game.object(*id)).filter(|object|object.subtypes.iter().any(|subtype|subtype.to_string()=="Omen")).collect::<Vec<_>>();
   assert_eq!(omens.len(),usize::from(accepted));
-  if accepted {assert_eq!(omens[0].controller,B,"elided then forebodes retains the discarding actor");assert!(game.is_tapped(omens[0].id));}
+  if accepted {assert_eq!(game.controller_of(omens[0]),B,"elided then forebodes retains the discarding actor");assert!(game.is_tapped(omens[0].id));}
   assert_eq!(game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone,if accepted{Zone::Graveyard}else{Zone::Hand});assert_eq!(game.player(A).unwrap().life,19);
  }}
  for definition in definitions("Turn to Gold_MS2") {
@@ -121,7 +121,7 @@ fn actual_under_pressure_forebodes_for_discarding_opponent_and_profit_for_exiled
   assert_eq!(game.current_controller(target),Some(B));assert_eq!(game.object(target).unwrap().owner,A);
   spell(&mut game,&definition,vec![ResolvedTarget::Object(target)],&mut Choices(true));
   let gold=game.battlefield.iter().filter_map(|id|game.object(*id)).filter(|object|object.subtypes.iter().any(|subtype|subtype.to_string()=="Gold")).collect::<Vec<_>>();
-  assert_eq!(gold.len(),1);assert_eq!(gold[0].controller,B);assert!(!gold[0].abilities.is_empty());assert_eq!(game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone,Zone::Exile);
+  assert_eq!(gold.len(),1);assert_eq!(game.controller_of(gold[0]),B);assert!(!gold[0].abilities.is_empty());assert_eq!(game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone,Zone::Exile);
  }
 }
 #[test]
@@ -141,7 +141,7 @@ fn actual_affluent_knight_repeats_complete_muster_and_keeps_enemy_armies_unchang
   let army=ironsmith_compiler_runtime::compile_to_runtime_definition("Other Army","Type: Creature — Army\nPower/Toughness: 2/2",false).unwrap();
   let enemy=game.create_object_from_definition(&army,B,Zone::Battlefield);
   enter(&mut game,&definition,&mut Choices(true));
-  let mut allied=game.battlefield.iter().filter_map(|id|game.object(*id)).filter(|object|object.kind==ironsmith::object::ObjectKind::Token&&object.controller==A&&object.subtypes.contains(&ironsmith::Subtype::Army)).map(|object|game.counter_count(object.id,ironsmith::object::CounterType::PlusOnePlusOne)).collect::<Vec<_>>();
+  let mut allied=game.battlefield.iter().filter_map(|id|game.object(*id)).filter(|object|object.kind==ironsmith::object::ObjectKind::Token&&game.controller_of(object)==A&&object.subtypes.contains(&ironsmith::Subtype::Army)).map(|object|game.counter_count(object.id,ironsmith::object::CounterType::PlusOnePlusOne)).collect::<Vec<_>>();
   allied.sort();assert_eq!(allied,vec![1,2]);assert_eq!(game.counter_count(enemy,ironsmith::object::CounterType::PlusOnePlusOne),0);
  }
 }
@@ -154,7 +154,7 @@ fn actual_vagabond_replaces_germination_instead_of_also_running_original_body() 
   let enemy=game.create_object_from_definition(&body(),B,Zone::Battlefield);
   enter(&mut game,&entrant,&mut Choices(true));
   let saprolings=game.battlefield.iter().filter_map(|id|game.object(*id)).filter(|object|object.kind==ironsmith::object::ObjectKind::Token&&object.subtypes.contains(&ironsmith::Subtype::Saproling)).count();
-  let allied_counters=game.battlefield.iter().copied().filter(|id|game.object(*id).unwrap().controller==A).map(|id|game.counter_count(id,ironsmith::object::CounterType::PlusOnePlusOne)).sum::<u32>();
+  let allied_counters=game.battlefield.iter().copied().filter(|id|game.controller_of(game.object(*id).unwrap())==A).map(|id|game.counter_count(id,ironsmith::object::CounterType::PlusOnePlusOne)).sum::<u32>();
   assert_eq!(saprolings,1);assert_eq!(allied_counters,1,"replacement creates once then counters once; original germination must not also run");
   assert_eq!(game.counter_count(enemy,ironsmith::object::CounterType::PlusOnePlusOne),0,"replacement says a creature you control");
  }

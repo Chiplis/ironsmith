@@ -1,5 +1,4 @@
 use ironsmith_compiler_runtime::{compile_to_artifact,compile_to_runtime_definition};
-use ironsmith_runtime_catalog::artifact_materializer::materialize_artifact;
 #[path="custom_final_next_wave_support.rs"] mod source_routes;
 fn definitions(name:&str,text:&str)->[ironsmith::cards::CardDefinition;2] {
     definitions_with_token(name,text,false)

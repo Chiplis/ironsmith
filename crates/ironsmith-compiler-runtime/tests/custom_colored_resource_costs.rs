@@ -1,7 +1,7 @@
 //! Generic matching constraint composes with ordinary tap/exile payment owners.
 use ironsmith::{Effect,GameState,PlayerId,Zone};
 use ironsmith::decision::SelectFirstDecisionMaker;
-use ironsmith::costs::{Cost,CostContext,CostPayer};
+use ironsmith::costs::{Cost,CostContext};
 use ironsmith::target::{ObjectFilter,ChooseSpec,PlayerFilter};
 const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);
 fn body(mana:&str)->ironsmith::CardDefinition{ironsmith_compiler_runtime::compile_to_runtime_definition("Contribution",&format!("Mana cost: {mana}\nType: Creature\nPower/Toughness: 2/2"),false).unwrap()}

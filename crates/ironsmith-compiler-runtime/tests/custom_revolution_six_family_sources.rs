@@ -2,7 +2,6 @@
 #[path="custom_final_next_wave_support.rs"]mod support;
 use serde_json::Value;use std::collections::BTreeSet;
 use ironsmith::{CardDefinition,GameState,ObjectId,PlayerId,Zone};
-use ironsmith::decision::DecisionMaker;
 const A:PlayerId=PlayerId(0);
 fn fixture()->Value{serde_json::from_str(include_str!("../../../fixtures/custom_mechanics/revolution-six-family-whole.json")).unwrap()}
 fn cards<'a>(data:&'a Value,family:&str)->Vec<&'a Value>{data["mechanics"].as_array().unwrap().iter().filter(|r|r["keyword"].as_str()==Some(family)).flat_map(|r|r["representative_cards"].as_array().unwrap()).collect()}

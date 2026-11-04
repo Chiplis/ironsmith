@@ -2,7 +2,6 @@
 use ironsmith::{CardDefinition, Effect, GameState, ObjectId, PlayerId, Zone};
 use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
 use ironsmith::effects::{EffectContext, execute_effect};
-use ironsmith::object::CounterType;
 const A: PlayerId = PlayerId(0);
 const B: PlayerId = PlayerId(1);
 #[path="custom_final_next_wave_support.rs"] mod source_routes;

@@ -46,8 +46,8 @@ fn permission_obeys_timing_control_and_live_ability_loss() {
   for p in [A,B]{g.player_mut(p).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Blue,10);g.player_mut(p).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless,10);}
   assert_eq!(offered(&g,source,A).len(),1,"controller may cast an opponent-owned permanent");assert!(offered(&g,source,B).is_empty());
   g.turn.phase=ironsmith::game_state::Phase::Combat;assert!(offered(&g,source,A).is_empty());g.turn.phase=ironsmith::game_state::Phase::FirstMain;
-  let abilities=g.object(source).unwrap().abilities.clone();g.object_mut(source).unwrap().abilities=Default::default();g.refresh_continuous_state();assert!(offered(&g,source,A).is_empty(),"printed alternative price does not survive losing its live permission ability");
-  g.object_mut(source).unwrap().abilities=abilities;g.refresh_continuous_state();assert_eq!(offered(&g,source,A).len(),1);
+  let abilities=g.object(source).unwrap().abilities.clone();g.object_mut(source).unwrap().abilities=Default::default();g.refresh_continuous_state().unwrap();assert!(offered(&g,source,A).is_empty(),"printed alternative price does not survive losing its live permission ability");
+  g.object_mut(source).unwrap().abilities=abilities;g.refresh_continuous_state().unwrap();assert_eq!(offered(&g,source,A).len(),1);
   let hand=g.create_object_from_definition(&definition,A,Zone::Hand);assert!(offered(&g,hand,A).is_empty());
  }
 }

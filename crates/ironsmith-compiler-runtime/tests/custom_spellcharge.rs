@@ -1,5 +1,5 @@
 //! Actual spell-payment history predicate used by combat animation.
-use ironsmith::{CardDefinition, GameState, ObjectId, PlayerId, Zone};
+use ironsmith::{CardDefinition, GameState, PlayerId, Zone};
 use ironsmith::decision::{LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
 const A: PlayerId = PlayerId(0);
 fn compile(text: &str) -> CardDefinition {
@@ -30,7 +30,7 @@ fn combat_animation_counts_actual_spell_payments_and_preserves_types_until_clean
         game.turn.active_player = A; game.turn.priority_player = Some(A);
         game.turn.phase = ironsmith::game_state::Phase::FirstMain; game.turn.step = None;
         let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
-        let mut combat_count = |game: &GameState| ironsmith::triggers::check_triggers(game, &ironsmith::triggers::TriggerEvent::new(ironsmith::events::BeginningOfCombatEvent::new(A), Default::default())).len();
+        let combat_count = |game: &GameState| ironsmith::triggers::check_triggers(game, &ironsmith::triggers::TriggerEvent::new(ironsmith::events::BeginningOfCombatEvent::new(A), Default::default())).len();
         assert_eq!(combat_count(&game), 0);
         for price in [0, 2, 2] {
             let spell = compile(&format!("Mana cost: {{{price}}}\nType: Sorcery\nYou gain 1 life."));

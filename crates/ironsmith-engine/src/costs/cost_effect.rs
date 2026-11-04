@@ -1688,7 +1688,7 @@ mod energy_cost_error_contract_tests {
     fn ordinary_energy_inability_is_distinct_from_execution_failure() {
         let (game, source, alice) = setup();
         let mut dm = crate::decision::SelectFirstDecisionMaker;
-        let mut ctx = CostContext::new(source, alice, &mut dm);
+        let ctx = CostContext::new(source, alice, &mut dm);
         assert!(
             cost(
                 crate::effect::Value::Fixed(1),
@@ -1724,7 +1724,7 @@ mod energy_cost_error_contract_tests {
     fn unresolvable_energy_value_retains_its_typed_execution_error() {
         let (game, source, alice) = setup();
         let mut dm = crate::decision::SelectFirstDecisionMaker;
-        let mut ctx = CostContext::new(source, alice, &mut dm);
+        let ctx = CostContext::new(source, alice, &mut dm);
         let invalid =
             crate::effect::Value::DividedRoundedDown(Box::new(crate::effect::Value::Fixed(1)), 0);
         assert!(
@@ -1738,7 +1738,7 @@ mod energy_cost_error_contract_tests {
     fn missing_energy_payer_is_a_structural_error() {
         let (game, source, alice) = setup();
         let mut dm = crate::decision::SelectFirstDecisionMaker;
-        let mut ctx = CostContext::new(source, alice, &mut dm);
+        let ctx = CostContext::new(source, alice, &mut dm);
         assert_eq!(
             cost(
                 crate::effect::Value::Fixed(1),

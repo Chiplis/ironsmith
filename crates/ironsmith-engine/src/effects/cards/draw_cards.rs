@@ -505,7 +505,7 @@ impl crate::effects::CostExecutableEffect for DrawCardsEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        let mut ctx = ExecutionContext::new_default(source, controller);
+        let ctx = ExecutionContext::new_default(source, controller);
         let player = resolve_player_filter(game, &self.player, &ctx)
             .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))?;
         let count = resolve_value(game, &self.count, &ctx)

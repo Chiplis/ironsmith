@@ -3,7 +3,9 @@ use crate::ability::AbilityKind;
 use crate::effects::ExecutionError;
 use crate::filter::{ObjectFilterExt as _,ObjectFilter};
 use crate::game_state::GameState;
-use crate::ids::{ObjectId,PlayerId};
+use crate::ids::PlayerId;
+#[cfg(test)]
+use crate::ids::ObjectId;
 use crate::snapshot::ObjectSnapshot;
 use crate::zone::Zone;
 use super::{TriggerContext,TriggerEvent,TriggeredAbilityEntry,TriggeredAbilitySourceKind};

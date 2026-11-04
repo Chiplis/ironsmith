@@ -11,7 +11,6 @@ use ironsmith_compiled_artifact::{
     wire_definition_from_serializable,
 };
 const A: PlayerId = PlayerId(0);
-const B: PlayerId = PlayerId(1);
 const RULES: &str = "As an additional cost to cast this spell, you may exile a nonenchantment creature you control until this spell leaves the stack without entering the battlefield or the permanent it becomes leaves the battlefield.\nThis spell costs {X} less to cast, where X is the total mana value of creatures exiled this way.";
 
 // Resolve through the production stack owner, which publishes completed
@@ -69,11 +68,6 @@ fn compile(text: &str) -> [CardDefinition; 2] {
         direct,
         ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&restored).unwrap(),
     ]
-}
-fn routes() -> [CardDefinition; 2] {
-    compile(&format!(
-        "Mana cost: {{4}}{{U}}{{B}}\nType: Artifact\n{RULES}"
-    ))
 }
 fn body(game: &mut GameState, owner: PlayerId, mana: u32, enchantment: bool) -> ObjectId {
     let card = ironsmith_compiler_runtime::compile_to_runtime_definition(

@@ -1,5 +1,4 @@
 //! Casting abilities are copiable abilities even when held outside AbilityKind.
-use super::*;
 use crate::{CardDefinition,CardDefinitionBuilder,CardId,CardType,GameState,ObjectId,PlayerId,PowerToughness,Zone};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::mana::ManaCost;

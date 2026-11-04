@@ -1,5 +1,6 @@
 import { handManaCostPresentation } from "@/lib/hand-mana-cost";
-import { customCardAssets } from "@/lib/custom-card-assets";
+import { customCardAssets, customCardImageUrl } from "@/lib/custom-card-assets";
+import { withOfficialOracleText } from "@/lib/hand-oracle-text";
 import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 import { arenaPermanentKind } from '@/lib/mobile-arena';
 import './battlefield-appearance.css';
@@ -42,6 +43,7 @@ import {
 } from "./counter-badges";
 
 const semanticScoreCache = new Map();
+const officialOracleSources = new Map();
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -789,11 +791,30 @@ export default function GameCard({
   const knownFaceDownName = faceDownPermanent
     ? knownFaceDownNames(state).get(String(card.id)) || null : null;
   const artUrl = sourceImageUrl || resolvedArtUrl;
-  // Render hand text and frames locally; only custom supplied prints retain
-  // their complete image. The selected printing still supplies art/metadata.
-  const compiledCustomCard = isCompiledCardName(name);
-  const hasCustomPrint = compiledCustomCard && Boolean(customCardAssets(name));
-  const useHandFrame = variant === "hand" && !hasCustomPrint;
+  // Render hand text and frames locally. The selected printing still supplies
+  // art/metadata; a custom card's complete print is swapped for its art crop.
+  const customPrint = isCompiledCardName(name) ? customCardAssets(name) : null;
+  const useHandFrame = variant === "hand";
+  const frameArtUrl = customPrint?.art ? customCardImageUrl(name, "art_crop") : artUrl;
+  const [officialSource, setOfficialSource] = useState(() => officialOracleSources.get(name) || null);
+  useEffect(() => {
+    if (!useHandFrame || !name || customPrint) return undefined;
+    const cached = officialOracleSources.get(name);
+    if (cached) { setOfficialSource(cached); return undefined; }
+    let cancelled = false;
+    fetchCardFaceSource(name).then(source => {
+      if (!source) return;
+      officialOracleSources.set(name, source);
+      if (!cancelled) setOfficialSource(source);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [useHandFrame, name, customPrint]);
+  const handOracleSource = customPrint
+    ? (presentationCard.card_faces?.length
+      ? {card_faces: presentationCard.card_faces.map(face => ({name: face.name, oracle_text: customCardAssets(face.name)?.displayOracleText}))}
+      : {oracle_text: customPrint.displayOracleText})
+    : officialSource?.name === name || officialSource?.card_faces?.some(face => face.name === name) ? officialSource : null;
+  const frameCard = useHandFrame ? withOfficialOracleText(presentationCard, handOracleSource) : presentationCard;
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
   const [repairedHandArt, setRepairedHandArt] = useState(null);
@@ -1588,7 +1609,7 @@ export default function GameCard({
           </span>
         )}
         {(usePortraitBattlefield || useHandFrame) && (
-          <MiniatureCardFrame card={presentationCard} imageUrl={artUrl} deferUpgrade={isHovered || isCastTargetHovered || isDragging}
+          <MiniatureCardFrame card={frameCard} imageUrl={frameArtUrl} deferUpgrade={isHovered || isCastTargetHovered || isDragging}
             keywordHelpers={variant === "hand" && isHovered && !isDragging} />
         )}
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (

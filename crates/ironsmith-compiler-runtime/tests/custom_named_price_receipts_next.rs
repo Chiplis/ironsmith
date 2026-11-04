@@ -1,6 +1,6 @@
 //! Price decorators publish one semantic completion after the complete native cost.
 use ironsmith::{Effect,GameState,PlayerId,Zone};
-use ironsmith::costs::{CostContext,CostPayer};
+use ironsmith::costs::CostContext;
 use ironsmith::decision::SelectFirstDecisionMaker;
 const A:PlayerId=PlayerId(0);
 fn body(mana:&str)->ironsmith::CardDefinition{ironsmith_compiler_runtime::compile_to_runtime_definition("Resource",&format!("Mana cost: {mana}\nType: Creature\nPower/Toughness: 2/2"),false).unwrap()}
@@ -30,8 +30,8 @@ fn actual_activation_price_records_once_for_mixed_or_zero_resources_and_never_on
 fn named_price_effect_is_an_acknowledged_payment_not_an_optional_offer(){
  use ironsmith::effects::{EffectContext,execute_effect};
  let mut game=GameState::new(vec!["A".into(),"B".into()],20);let source=game.create_object_from_definition(&body("{0}"),A,Zone::Battlefield);
- let choose=ironsmith::effects::ChooseObjectsEffect::new(ironsmith::target::ObjectFilter::creature().you_control(),ironsmith::ChoiceCount::exactly(0),ironsmith::target::PlayerFilter::You,"selected".into());
- let price=Effect::new(ironsmith::effects::NamedActionProgramEffect{label:"support".into(),player:ironsmith::target::PlayerFilter::You,effects:vec![Effect::new(choose)],completion:ironsmith_core::effect::NamedActionProgramCompletion::PaidCost,objects:Some(ironsmith::target::ChooseSpec::Tagged("selected".into()))});
+ let choose=ironsmith::effects::ChooseObjectsEffect::new(ironsmith::target::ObjectFilter::creature().you_control(),ironsmith::ChoiceCount::exactly(0),ironsmith::target::PlayerFilter::You,"selected");
+ let price=Effect::new(ironsmith::effects::NamedActionProgramEffect{label:"support".into(),player:ironsmith::target::PlayerFilter::You,effects:vec![Effect::new(choose)],completion:ironsmith_core::effect::NamedActionProgramCompletion::AcceptedPayment,objects:Some(ironsmith::target::ChooseSpec::Tagged("selected".into()))});
  let mut ctx=EffectContext::new_default(source,A);let outcome=execute_effect(&mut game,&price,&mut ctx).unwrap();
  assert!(outcome.instruction_result().execution_facts().contains(&ironsmith::effect::ExecutionFact::Accepted));
  let events=outcome.events.iter().filter_map(|event|event.downcast::<ironsmith::events::NamedActionEvent>()).collect::<Vec<_>>();assert_eq!(events.len(),1);assert_eq!(events[0].amount,0);assert!(events[0].objects.is_empty());

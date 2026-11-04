@@ -5,7 +5,6 @@ use ironsmith::effects::{EffectContext, execute_effect};
 use ironsmith::object::CounterType;
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 const A: PlayerId = PlayerId(0);
-const B: PlayerId = PlayerId(1);
 fn definitions(text: &str) -> [CardDefinition; 2] {
     let (result, loss) = ironsmith_compiler::parse_loss::capture(|| ironsmith_compiler::word_claims::with_enforcement_options(true, true, || ironsmith_compiler_runtime::compile_to_artifact("Composed action", text, false)));
     assert!(!loss.is_lossy(), "{}", loss.reasons_text());

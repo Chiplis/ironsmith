@@ -50,7 +50,7 @@ fn leave_and_return(g:&mut GameState,id:ObjectId)->ObjectId{let stable=g.object(
   let mut g=game();let witness=ordinary("Entry creature before change","Type: Creature\nPower/Toughness: 2/2");
   let(s,linked)=enter(&mut g,&d,&witness);
   // Arrange the current comparison operand independently of the historical receipt.
-  g.object_mut(linked).unwrap().card_types=vec![ironsmith::CardType::Artifact];
+  g.object_mut(linked).unwrap().card_types=vec![ironsmith::CardType::Artifact].into();
   g.move_object_by_game_rule(s,Zone::Graveyard).unwrap();settle(&mut g,&mut Answer{yes:true,mode:None});
   assert_eq!(g.object(linked).unwrap().zone,Zone::Exile);
  }
@@ -120,7 +120,7 @@ fn leave_and_return(g:&mut GameState,id:ObjectId)->ObjectId{let stable=g.object(
   let mut g=game();let witness=ordinary("Entry capture witness","Type: Creature\nPower/Toughness: 3/5");let(s,linked)=enter(&mut g,&d,&witness);
   let anthem=ordinary("Checked capture pressure","Type: Enchantment\nCreatures you control get +1/+1.");g.create_object_from_definition(&anthem,A,Zone::Battlefield);
   g.set_static_effect_discovery_limits(ironsmith::static_ability_processor::StaticEffectDiscoveryLimits{max_rounds:128,max_generated_effects:0});
-  let mut context=ironsmith::effects::ExecutionContext::new_default(s,A);
+  let mut context=ironsmith::effects::EffectContext::new_default(s,A);
   let effect=ironsmith::Effect::new(ironsmith::effects::GainLifeEffect::you(1));
   let result=ironsmith::effects::execute_effect(&mut g,&effect,&mut context);
   assert!(matches!(result,Err(ironsmith::effects::ExecutionError::ContinuousDiscovery(_))),"{result:?}");
@@ -186,7 +186,7 @@ fn enter_with_independent_producer(g:&mut GameState,d:&CardDefinition,own_kind:&
 #[test]fn anonymous_entry_tags_and_another_sources_snapshot_cannot_authorize_named_entry_references(){for d in definitions(KEYS[2]){
  let mut g=game();let witness=ordinary("Owned reference witness","Type: Creature\nPower/Toughness: 3/5");let(owner,card)=enter(&mut g,&d,&witness);
  let snapshot=ironsmith::snapshot::ObjectSnapshot::from_object(g.object(owner).unwrap(),&g);let receipt=snapshot.entry_action_objects[&ironsmith::tag::TagKey::from("__entry_action_exiled_by__:engorge")].clone();
- let stranger=g.create_object_from_definition(&d,A,Zone::Battlefield);let mut ctx=ironsmith::effects::ExecutionContext::new_default(stranger,A);
+ let stranger=g.create_object_from_definition(&d,A,Zone::Battlefield);let mut ctx=ironsmith::effects::EffectContext::new_default(stranger,A);
  ctx.source_snapshot=Some(snapshot);ctx.set_tagged_objects("__entry_action_exiled_by__:engorge",receipt.clone());ctx.set_tagged_objects("__entry_reference_exiled_by__:engorge",receipt);
  let count=ironsmith::effect::Value::TaggedSnapshotCount{tag:"__entry_action_exiled_by__:engorge".into(),filter:Default::default()};
  assert_eq!(ironsmith::effects::helpers::resolve_value(&g,&count,&ctx).unwrap(),0);

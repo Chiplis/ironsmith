@@ -1,5 +1,5 @@
 //! Full-source Living ritual composes a real token choice and attachment transaction.
-use ironsmith::{CardDefinition,GameState,ObjectId,PlayerId,Zone,Effect};
+use ironsmith::{CardDefinition,GameState,PlayerId,Zone,Effect};
 use ironsmith::effects::{execute_effect,EffectContext};
 use ironsmith::target::ChooseSpec;
 use ironsmith::decision::DecisionMaker;

@@ -2265,7 +2265,7 @@ mod retained_entry_proposal_owner_tests {
     fn proposal_prepares_every_exact_entry_before_any_original_and_commit_does_not_prompt() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = crate::ids::PlayerId::from_index(0); let bob = crate::ids::PlayerId::from_index(1);
-        let (source, creation) = source_and_creation(&mut game, alice);
+        let (source, _creation) = source_and_creation(&mut game, alice);
         let (root, meter) = game.begin_token_resource_scope();
         let guard = super::super::resources::TokenInstructionGuard::enter(meter.clone()).unwrap();
         let mut decisions = HostChoices { calls: 0, pending: false, suspend: false };

@@ -4860,7 +4860,6 @@ impl GameState {
             // add triggered programs or their event-selection policy.
             Modification::RemoveStaticAbilityFamily(_)
             | Modification::CopyActivatedAbilities { .. }
-            | Modification::CopyStaticAbilityVariants { .. }
             | Modification::ChangeController(_)
             | Modification::ChangeControllerToEffectController
             | Modification::SetName(_)

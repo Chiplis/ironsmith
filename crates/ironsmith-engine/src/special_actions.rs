@@ -995,7 +995,7 @@ pub(super) fn perform_with_payment_completion(
             if max_x < min_x {
                 return Err(ActionError::CantPayCost);
             }
-            let mut ctx = crate::decisions::context::NumberContext::x_value_with_min(
+            let ctx = crate::decisions::context::NumberContext::x_value_with_min(
                 player,
                 payment.source,
                 min_x,
@@ -3612,7 +3612,7 @@ pub(crate) fn prepare_mana_activation_cost(
         if maximum < minimum {
             return Err(ActionError::CantPayCost);
         }
-        let mut context = crate::decisions::context::NumberContext::x_value_with_min(
+        let context = crate::decisions::context::NumberContext::x_value_with_min(
             player, source, minimum, maximum,
         );
         let chosen = decision_maker.decide_number(game, &context);
@@ -4096,7 +4096,7 @@ pub(crate) fn pay_total_cost_without_preflight_with_outputs(
     cost_ctx: &mut CostContext<'_>,
 ) -> Result<CompletedCostPayment, CostPaymentError> {
     let checkpoint = game.clone();
-    let mut context = cost_ctx.checkpoint();
+    let context = cost_ctx.checkpoint();
     let result = pay_total_cost_branch_without_execution_context(game, cost, cost_ctx);
     let pending = cost_ctx.decision_maker.awaiting_choice()
         && !matches!(&result, Err(CostPaymentError::ExecutionFailed(_)));
@@ -5057,7 +5057,7 @@ fn hand_cost_placeholders(
     filter: &ObjectFilter,
     ids: &[ObjectId],
 ) -> Vec<ObjectId> {
-    let mut ctx = game.filter_context_for(payer, Some(source));
+    let ctx = game.filter_context_for(payer, Some(source));
     game.hidden_hand_payable_placeholders(filter, &ctx, ids.iter().copied())
         .into_iter()
         .filter(|id| *id != source)
@@ -5483,7 +5483,7 @@ pub(crate) fn resolve_dynamic_mana_cost(
         }
         let objects = match spec.base() {
             crate::target::ChooseSpec::Object(filter) | crate::target::ChooseSpec::All(filter) => {
-                let mut context = execution_ctx.filter_context(game);
+                let context = execution_ctx.filter_context(game);
                 let zone = filter.zone.unwrap_or(Zone::Battlefield);
                 game.objects_in_zone(zone)
                     .into_iter()
@@ -6165,7 +6165,7 @@ fn legal_sacrifice_targets(
     reason: crate::costs::PaymentReason,
     cause: &crate::events::cause::EventCause,
 ) -> Vec<ObjectId> {
-    let mut ctx = FilterContext {
+    let ctx = FilterContext {
         you: Some(payer),
         source: Some(source),
         ..Default::default()
@@ -6281,7 +6281,7 @@ fn legal_exile_objects(
         Zone::Exile => game.exile.to_vec(),
         _ => Vec::new(),
     };
-    let mut ctx = game.filter_context_for(payer, Some(source));
+    let ctx = game.filter_context_for(payer, Some(source));
     let placeholders = if zone == Zone::Hand {
         hand_cost_placeholders(game, payer, source, filter, &ids)
     } else {
@@ -6330,7 +6330,7 @@ fn legal_return_targets(
     source: ObjectId,
     filter: &ObjectFilter,
 ) -> Vec<ObjectId> {
-    let mut ctx = FilterContext {
+    let ctx = FilterContext {
         you: Some(payer),
         source: Some(source),
         ..Default::default()
@@ -6353,7 +6353,7 @@ fn legal_cost_choice_objects(
     zone: Zone,
     top_only: bool,
 ) -> Vec<ObjectId> {
-    let mut ctx = game.filter_context_for(payer, Some(source));
+    let ctx = game.filter_context_for(payer, Some(source));
 
     let ids: Vec<ObjectId> = match zone {
         Zone::Battlefield => game.battlefield.to_vec(),

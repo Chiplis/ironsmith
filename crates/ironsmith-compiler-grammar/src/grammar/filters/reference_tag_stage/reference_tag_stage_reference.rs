@@ -1610,7 +1610,7 @@ fn parse_object_filter_inner_unchecked(
         let is_base_reference = idx > 0 && all_words[idx - 1] == BASE_WORD;
 
         let axis_word_count =
-            usize::from((parse_phrase_at_head(&all_words[idx..], MANA_VALUE_PREFIX).is_some() || parse_phrase_at_head(&all_words[idx..], &["mana", "values"]).is_some())) + 1;
+            usize::from(parse_phrase_at_head(&all_words[idx..], MANA_VALUE_PREFIX).is_some() || parse_phrase_at_head(&all_words[idx..], &["mana", "values"]).is_some()) + 1;
         let value_tokens = if idx + axis_word_count < all_words.len() {
             &all_words[idx + axis_word_count..]
         } else {

@@ -6,6 +6,7 @@ use crate::effects::{CompletedEffectOutputs, ExecutionContext, ExecutionError};
 use crate::events::{CreateCardsEvent, EnterBattlefieldEvent};
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
+#[cfg(test)]
 use crate::ids::ObjectId;
 use crate::object::AttachmentTarget;
 use crate::snapshot::ObjectSnapshot;

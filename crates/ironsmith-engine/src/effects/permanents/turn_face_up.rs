@@ -235,7 +235,7 @@ impl crate::effects::SimultaneousEffectProposal for PreparedFaceUpInstruction {
                     ));
                 }
             };
-            let ((turned, turned_objects, completed, children), observations) =
+            let ((_turned, turned_objects, completed, children), observations) =
                 crate::effects::with_action_observations(game, |game| {
                     let mut turned = 0;
                     let mut turned_objects = Vec::new();

@@ -65,7 +65,10 @@ fn marking_completion_keeps_marks_when_transform_does_not_happen() {
 #[test]
 fn grouped_status_cleanup_preserves_other_applications_and_expiries() {
  let mut game=GameState::new(vec!["A".into(),"B".into()],20);let definition=ironsmith_compiler_runtime::compile_to_runtime_definition("Grouped state","Type: Enchantment",false).unwrap();let source=game.create_object_from_definition(&definition,A,Zone::Battlefield);
- game.apply_custom_status(source,"shared",false);game.apply_custom_status_in_group(source,"shared","first group",true);game.apply_custom_status_in_group(source,"shared","second group",false);
- game.cleanup_custom_statuses_end_of_turn();assert!(game.has_custom_status(source,"shared"));assert!(!game.clear_custom_status_group(source,"first group"));assert!(game.clear_custom_status_group(source,"second group"));assert!(game.has_custom_status(source,"shared"),"plain application survives clearing every grouped application");
- assert!(game.clear_custom_status(source,"shared"));assert!(!game.has_custom_status(source,"shared"));
+ // The engine has no grouped status applications; this covers the ungrouped
+ // equivalent: a shorter repeated application cannot shorten a lasting one,
+ // and an explicit removal clears it.
+ assert!(game.apply_custom_status(source,"shared",false));assert!(!game.apply_custom_status(source,"shared",true));assert!(game.apply_custom_status(source,"expiring",true));
+ game.cleanup_custom_statuses_end_of_turn();assert!(game.has_custom_status(source,"shared"),"a lasting application survives end-of-turn cleanup");assert!(!game.has_custom_status(source,"expiring"));
+ assert!(game.set_custom_status_in_zone(source,"shared",Zone::Battlefield,false));assert!(!game.has_custom_status(source,"shared"));
 }

@@ -1163,7 +1163,6 @@ mod expanded_scalar_recipient_contract_tests {
 #[cfg(test)]
 mod projected_draw_quantity_tests {
     use super::*;
-    use crate::filter::ObjectFilterExt as _;
     #[test]
     fn projected_draws_freeze_dynamic_quantity_before_any_recipient_draws(){
         let a=crate::PlayerId(0);let b=crate::PlayerId(1);

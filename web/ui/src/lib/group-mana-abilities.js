@@ -40,7 +40,7 @@ export function localizeSimpleManaLine(line, source, locale = 'en') {
 
 export function groupManaAbilities(view, locale = 'en') {
   const rows = [];
-  const groups = new Map();
+  const groups = new Map(), rowOf = [];
   let localized = false;
   view.lines.forEach((displayed, index) => {
     const sources = view.sourceLines?.[index] || [displayed];
@@ -58,6 +58,7 @@ export function groupManaAbilities(view, locale = 'en') {
       rows.push(row);
       if (key) groups.set(key, row);
     }
+    rowOf[index] = rows.indexOf(row);
     row.actions.push(...actions);
     row.sources.push(...sources);
     if (template) {
@@ -80,5 +81,6 @@ export function groupManaAbilities(view, locale = 'en') {
     }
     return row.line;
   });
-  return { lines, actions, manaGroups, sourceLines: rows.map(row => row.sources) };
+  const activatedLines = view.activatedLines && new Set([...view.activatedLines].map(index => rowOf[index]));
+  return { lines, actions, manaGroups, sourceLines: rows.map(row => row.sources), ...(activatedLines && { activatedLines }) };
 }

@@ -78,7 +78,7 @@ fn revolution_teach_checks_existing_keyword_before_counter_placement() {
             let rules = format!("When this creature enters, if this creature has {keyword}, put a +1/+1 counter on this creature. Otherwise, put a {keyword} counter on this creature.");
             let definition = creature("Pupil", &format!("{}\n{rules}", if already { keyword } else { "" }));
             let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
-            let a = PlayerId::from_index(0);
+            let _a = PlayerId::from_index(0);
             let source = enter_and_resolve(&mut game, &definition, &mut Choice { accept: true, mode: 0 });
             assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), u32::from(already), "{keyword} already={already}");
             let ability = match keyword {

@@ -120,7 +120,7 @@ fn compile_definition_in_scope(input: &CompileCardInput) -> Result<ironsmith_com
         let program=ironsmith_compiler::word_claims::with_enforcement_options(input.enforce_filter_claims,input.enforce_line_claims,|| {
             CompilerFacade::new().compile_definition(CardDefinitionBuilder::new(CardId::new(),"Ability counter program").with_custom_keyword(key.clone()),format!("Type: Creature\nPower/Toughness: 1/1\n{reminder}"),CompilePolicy{allow_unsupported:false})
         }).map_err(|error|format!("ability counter {name}: {error}"))?;
-        if program.definition.abilities.iter().all(|ability|matches!(&ability.kind,ironsmith_compiler::ability::AbilityKind::Static(value) if value.custom_keyword_name().is_some())) || program.definition.spell_effect.is_some(){return Err(format!("ability counter {name} must define permanent abilities"));}
+        if program.definition.abilities.iter().all(|ability|matches!(&ability.kind,ironsmith_compiler::ability::AbilityKind::Static(value) if matches!(value.payload,ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity{..}))) || program.definition.spell_effect.is_some(){return Err(format!("ability counter {name} must define permanent abilities"));}
         for subtype in &program.definition.card.custom_subtypes {
             ironsmith_core::custom_subtypes::merge_subtype_associations(&mut compiled.definition.card.custom_subtypes, *subtype);
         }

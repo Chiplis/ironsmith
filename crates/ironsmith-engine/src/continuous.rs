@@ -18,7 +18,6 @@ use crate::filter::{ComparisonRuntimeExt, LayeredSubject, PlayerFilterExt};
 use crate::game_state::ObjectMap;
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaCost;
-use crate::marker::CounterTypeExt;
 use crate::object::{CounterType, Object, SharedStr, SharedVec};
 use crate::object_query::candidate_ids_for_filter;
 use crate::snapshot::{CopiableValues, ObjectSnapshot};

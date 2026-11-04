@@ -620,7 +620,7 @@ fn collect_candidates_in_zone(
         hidden_zone_filter.owner = None;
     }
 
-    let hidden_library_pool = hidden_library_pool_choice(effect, game, ctx, chooser_id)?;
+    let _hidden_library_pool = hidden_library_pool_choice(effect, game, ctx, chooser_id)?;
     let pool_filter = hidden_library_pool_filter(effect);
     let candidates = match search_zone {
         Zone::Battlefield => game

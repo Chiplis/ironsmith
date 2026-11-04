@@ -1,5 +1,5 @@
 use ironsmith::{CardId, CardType, GameState, PlayerId, Zone};
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::alternative_cast::CastingMethod;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};

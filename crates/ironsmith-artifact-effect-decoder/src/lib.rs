@@ -635,7 +635,7 @@ fn remap_effect_payload(
 }
 
 mod card_graph {
-    use serde::ser::{self, Serialize, SerializeMap as _, Serializer as _};
+    use serde::ser::{self, Serialize};
     use serde_json::{Value, value};
     use std::cell::RefCell;
 

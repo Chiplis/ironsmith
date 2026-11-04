@@ -230,7 +230,7 @@ fn filter_comparison_rhs_ranges(
     let mut idx = 0usize;
     while idx < words.len() {
         let (axis, axis_word_count) =
-            if (parse_phrase_at_head(&words[idx..], MANA_VALUE_PREFIX).is_some() || parse_phrase_at_head(&words[idx..], &["mana", "values"]).is_some()) {
+            if parse_phrase_at_head(&words[idx..], MANA_VALUE_PREFIX).is_some() || parse_phrase_at_head(&words[idx..], &["mana", "values"]).is_some() {
                 ("mana value", MANA_VALUE_PREFIX.len())
             } else if words[idx] == POWER_WORD {
                 // In "total power and toughness N or less", `power` is

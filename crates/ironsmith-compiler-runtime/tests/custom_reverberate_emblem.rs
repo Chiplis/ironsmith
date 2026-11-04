@@ -17,12 +17,12 @@ fn recipient_optional_mana_value_recipe_has_exact_local_name_and_actual_cast_tim
  let text="Type: Enchantment\nCreatures you control have custom keyword \"stellar weaving\", and \"As an additional cost to cast this spell, you may pay mana equal to this spell's mana value. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy. This optional additional cost is named stellar weaving.\".";
  let (result,loss)=ironsmith_compiler::parse_loss::capture(||ironsmith_compiler::word_claims::with_enforcement_options(true,true,||ironsmith_compiler_runtime::compile_to_artifact("Arbitrary recipe grant",text,false)));
  assert!(!loss.is_lossy(),"{}",loss.reasons_text());let (artifact,direct)=result.unwrap();assert!(direct.spell_effect.is_none());assert!(!direct.abilities.is_empty());
- let serialized=artifact.to_json().unwrap();assert!(serialized.contains("GenericManaValue"));assert!(serialized.contains("CastTrigger"));assert!(serialized.contains("stellar weaving"));
- let restored=CompiledCardArtifact::from_json(&serialized).unwrap();assert_eq!(artifact,restored);
+ let serialized=String::from_utf8(artifact.to_json().unwrap()).unwrap();assert!(serialized.contains("GenericManaValue"));assert!(serialized.contains("CastTrigger"));assert!(serialized.contains("stellar weaving"));
+ let restored=CompiledCardArtifact::from_json(serialized.as_bytes()).unwrap();assert_eq!(artifact,restored);
 }
 
 mod gameplay {
- use ironsmith::{GameState,PlayerId,Zone,ObjectId,GameProgress};
+ use ironsmith::{GameState,PlayerId,Zone,GameProgress};
  use ironsmith::decision::{DecisionMaker,SelectFirstDecisionMaker,LegalAction,compute_legal_actions};
  use ironsmith::decisions::context::SelectOptionsContext;
  use ironsmith::game_loop::{PriorityLoopState,PriorityResponse,apply_priority_response_with_dm,apply_decision_context_with_dm,resolve_stack_entry_with};

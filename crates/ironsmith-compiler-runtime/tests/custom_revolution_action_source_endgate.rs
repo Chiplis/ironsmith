@@ -1,9 +1,9 @@
 //! Exact physical scope, independent strict native/artifact routes and actual source programs.
 #[path="custom_final_next_wave_support.rs"] mod source_support;
 #[path="cf8_p08/play.rs"] mod play;
-use ironsmith::{CardDefinition,GameState,PlayerId,Zone};
+use ironsmith::{CardDefinition,PlayerId,Zone};
 use ironsmith::effects::{EffectContext,execute_effect};
-use ironsmith::decision::{compute_legal_actions,LegalAction,SelectFirstDecisionMaker};
+use ironsmith::decision::{compute_legal_actions,LegalAction};
 const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);
 fn fixture()->serde_json::Value {serde_json::from_str(include_str!("../../../fixtures/custom_mechanics/revolution-actions-source-endgate.json")).unwrap()}
 fn routes(name:&str)->[CardDefinition;2] {

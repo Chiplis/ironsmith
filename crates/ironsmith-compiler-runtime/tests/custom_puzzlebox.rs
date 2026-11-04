@@ -1,11 +1,9 @@
 //! Per-source command-zone setup and exact persistent chosen-card consumption.
 use ironsmith::decision::{LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
 use ironsmith::effects::{EffectContext, execute_effect};
-use ironsmith::object::CounterType;
 use ironsmith::target::ChooseSpec;
 use ironsmith::{CardDefinition, Effect, GameState, ObjectId, PlayerId, Zone};
 const A: PlayerId = PlayerId(0);
-const SPIRITED: &str = "When this permanent enters, you may activate one of its activated abilities without paying that ability's cost.";
 #[path="custom_final_next_wave_support.rs"] mod source_routes;
 fn routes(text: &str) -> [CardDefinition; 2] {
     source_routes::definitions(&serde_json::json!({"name":"Ancient Maze","executable_text":text})).unwrap()

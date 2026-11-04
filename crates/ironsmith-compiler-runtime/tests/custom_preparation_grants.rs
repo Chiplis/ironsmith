@@ -19,7 +19,7 @@ fn granted_action(game:&GameState,card:ObjectId,provider:ObjectId)->SpecialActio
 fn own_resolution(game:&mut GameState)->ironsmith::triggers::TriggerEvent{
  let def=support::definitions("Successful spell","Type: Instant\nYou gain 1 life.")[0].clone();let id=game.create_object_from_definition(&def,play::A,Zone::Stack);
  let snapshot=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(id).unwrap(),game);
- ironsmith::triggers::TriggerEvent::new(ironsmith::events::spells::SpellResolvedEvent::new(id,play::A,snapshot))
+ ironsmith::triggers::TriggerEvent::new_with_provenance(ironsmith::events::spells::SpellResolvedEvent::new(id,play::A,snapshot),Default::default())
 }
 #[test]
 fn actual_reytali_grants_only_eligible_owned_hand_cards_and_keeps_two_acquisitions_distinct(){

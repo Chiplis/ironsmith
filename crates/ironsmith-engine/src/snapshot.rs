@@ -1063,7 +1063,7 @@ impl ObjectSnapshot {
             named_payment_outcomes:obj.named_payment_outcomes.clone(),
             snow_mana_spent_to_cast: obj.snow_mana_spent_to_cast.clone(),
             paid_optional_cost_objects: obj.cast_tagged_objects.iter()
-                .filter(|(tag,_)|(tag.as_str().starts_with("__additional_cost_tap:")||tag.as_str().starts_with("__additional_cost_tap_instance:")))
+                .filter(|(tag,_)|tag.as_str().starts_with("__additional_cost_tap:")||tag.as_str().starts_with("__additional_cost_tap_instance:"))
                 .map(|(tag,objects)|(tag.clone(),objects.clone())).collect(),
             mana_sources_spent_to_cast: obj
                 .cast_tagged_objects

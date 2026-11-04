@@ -2410,7 +2410,6 @@ fn reminder_identity_destruction_recovery_is_one_shot_and_has_no_regeneration_id
 #[test]
 fn reminder_identity_entry_x_counters_and_conditional_draw_share_cast_value() {
     use ironsmith::object::CounterType;
-    use ironsmith::triggers::TriggerContext;
     for native in [false, true] {
         for x in [0, 4, 5, 8] {
             let rules = if native { "Ravenous" } else { "This creature enters with X +1/+1 counters on it. If X is 5 or more, draw a card when it enters." };

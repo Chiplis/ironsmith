@@ -1,3 +1,4 @@
+// native-test-suite: helper-only
 //! Drive a real activation to cancellation/rejection, retaining native rollback.
 use ironsmith::{GameProgress,GameState};
 use ironsmith::decision::{DecisionMaker,LegalAction};

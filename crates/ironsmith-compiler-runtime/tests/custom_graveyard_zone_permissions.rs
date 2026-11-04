@@ -2,7 +2,7 @@
 //! Requires source95's complete fixture materialized by the parent frontend.
 #[path = "custom_final_next_wave_support.rs"] mod source_support;
 use ironsmith::{CardDefinition, Effect, GameState, ObjectId, PlayerId, Zone};
-use ironsmith::costs::{Cost, CostContext, CostPayer};
+use ironsmith::costs::{Cost,CostContext};
 use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
 use ironsmith::effects::{EffectContext, execute_effect};
 use ironsmith::target::{ChooseSpec, ObjectFilter, PlayerFilter};

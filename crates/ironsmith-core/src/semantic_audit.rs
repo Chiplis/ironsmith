@@ -293,6 +293,7 @@ mod tests {
     use super::*;
 
     #[derive(Debug)]
+    #[allow(dead_code)] // fields are read through Debug
     struct Model {
         amount: i32,
         display: String,
@@ -330,6 +331,7 @@ mod tests {
     }
 
     #[derive(Debug)]
+    #[allow(dead_code)] // fields are read through Debug
     struct Sparse {
         flag: bool,
         maybe: Option<u32>,
@@ -349,6 +351,7 @@ mod tests {
     }
 
     #[derive(Debug)]
+    #[allow(dead_code)] // fields are read through Debug
     enum Modifier {
         SetTo(u32),
     }
@@ -368,6 +371,7 @@ mod tests {
     }
 
     #[derive(Debug)]
+    #[allow(dead_code)] // fields are read through Debug
     enum Timing {
         DuringCombatBeforeBlockers,
         NameWord { count: u32 },
@@ -380,6 +384,7 @@ mod tests {
     }
 
     #[derive(Debug)]
+    #[allow(dead_code)] // fields are read through Debug
     struct Nested {
         inner: Option<Model>,
         label: String,

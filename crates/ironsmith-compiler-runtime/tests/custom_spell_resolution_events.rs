@@ -96,7 +96,7 @@ fn countered_illegal_target_and_ability_resolution_do_not_notify() {
         )
         .unwrap();
         let target = game.create_object_from_definition(&target_definition, B, Zone::Battlefield);
-        let source = spell(&mut game, &definition, A);
+        spell(&mut game, &definition, A);
         game.stack.last_mut().unwrap().targets = vec![Target::Object(target)];
         game.move_object_by_effect(target, Zone::Graveyard).unwrap();
         settle(&mut game);
@@ -150,7 +150,7 @@ fn real_spell_copies_each_resolve_and_current_spell_controller_is_the_actor() {
             "two copies of instructions and two completion events"
         );
         let mut game = setup_game();
-        let source = spell(&mut game, &definition, B);
+        spell(&mut game, &definition, B);
         game.stack.last_mut().unwrap().controller = A;
         settle(&mut game);
         assert_eq!(game.player(A).unwrap().life, 20);

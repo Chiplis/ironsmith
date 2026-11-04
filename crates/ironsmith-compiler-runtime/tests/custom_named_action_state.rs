@@ -9,7 +9,7 @@ use ironsmith::game_loop::{
 };
 use ironsmith::mana::ManaSymbol;
 use ironsmith::target::ChooseSpec;
-use ironsmith::{CardDefinition, Effect, GameState, ObjectId, PlayerId, Zone};
+use ironsmith::{CardDefinition, Effect, GameState, PlayerId, Zone};
 use ironsmith_compiled_artifact::{
     ArtifactCardId, ArtifactCardIdentity, CompiledCardArtifact, CompiledCardPayload,
     wire_definition_from_serializable,

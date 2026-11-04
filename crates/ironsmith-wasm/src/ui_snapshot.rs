@@ -2646,6 +2646,42 @@ fn zone_transition_snapshots(
         .collect()
 }
 
+/// One current ability and the printed line it reads as.
+///
+/// `ability_index` is the index legal actions use (`ActivateAbility` and
+/// `ActivateManaAbility`), so the UI binds actions to rules lines exactly
+/// instead of matching their wording.
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct AbilityLineSnapshot {
+    pub(super) ability_index: usize,
+    pub(super) kind: &'static str,
+    pub(super) text: String,
+}
+
+// Kept out of line: the details builder is already near the wasm local limit.
+#[inline(never)]
+fn object_ability_lines(
+    game: &GameState,
+    obj: &ironsmith::object::Object,
+    current: Option<&ironsmith::continuous::CalculatedCharacteristics>,
+    abilities: &[ironsmith::ability::Ability],
+) -> Vec<AbilityLineSnapshot> {
+    use ironsmith::ability::AbilityKind;
+    abilities.iter().enumerate().map(|(index, ability)| AbilityLineSnapshot {
+        ability_index: index,
+        kind: match &ability.kind {
+            AbilityKind::Static(_) => "static",
+            AbilityKind::Triggered(_) => "triggered",
+            AbilityKind::Activated(_) => "activated",
+        },
+        text: match current {
+            Some(current) => current_indexed_ability_surface_text(game, obj, current, index),
+            None => obj.ability_label(index)
+                .unwrap_or_else(|| ironsmith::runtime_display::ability_surface_text(ability)),
+        },
+    }).collect()
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct ObjectDetailsSnapshot {
     pub(super) id: u64,
@@ -2670,6 +2706,7 @@ pub(super) struct ObjectDetailsSnapshot {
     pub(super) counters: Vec<CounterSnapshot>,
     pub(super) compiled_text: Vec<String>,
     pub(super) abilities: Vec<String>,
+    pub(super) ability_lines: Vec<AbilityLineSnapshot>,
     pub(super) ability_preferences: Vec<serde_json::Value>,
     pub(super) chosen_color: Option<String>,
     pub(super) chosen_values: Vec<String>,
@@ -3871,6 +3908,7 @@ pub(super) fn build_object_details_snapshot(
     // definition so preferences survive payment, modal selection and copying.
     let live_abilities = current.as_ref().map(|chars| chars.abilities.to_vec())
         .unwrap_or_else(|| obj.abilities_vec());
+    let ability_lines = object_ability_lines(game, obj, current.as_ref(), &live_abilities);
     let ability_preferences = live_abilities.iter().enumerate().filter_map(|(index, ability)| {
         use ironsmith::ability::{AbilityKind, ActivatedAbilityRuntimeExt};
         let (kind, identity) = match &ability.kind {
@@ -3919,6 +3957,7 @@ pub(super) fn build_object_details_snapshot(
         counters,
         compiled_text,
         abilities,
+        ability_lines,
         ability_preferences,
         chosen_values: public_chosen_values(game, obj.id),
         chosen_color: game
@@ -4376,6 +4415,30 @@ mod tests {
         let events = zone_transition_snapshots(&game, bob, None);
         assert_eq!(events.len(), 1);
         assert_anonymous_zone_transition(&events[0]);
+    }
+
+    #[test]
+    fn inspector_ability_lines_name_each_ability_by_its_action_index() {
+        let _guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = ironsmith_registry_test::compile_to_runtime_definition(
+            "The Eternity Elevator",
+            "Mana cost: {5}\nType: Legendary Artifact — Spacecraft\n{T}: Add {C}{C}{C}.\nStation (Tap another creature you control: Put charge counters equal to its power on this Spacecraft. Station only as a sorcery.)\n20+ | {T}: Add X mana of any one color, where X is the number of charge counters on The Eternity Elevator.",
+            false,
+        ).unwrap();
+        let id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let details = build_object_details_snapshot(&game, id, Some(&definition)).unwrap();
+        let abilities = game.current_characteristics(id).unwrap().abilities.to_vec();
+        assert_eq!(details.ability_lines.len(), abilities.len());
+        for line in &details.ability_lines {
+            let activated = matches!(abilities[line.ability_index].kind, ironsmith::ability::AbilityKind::Activated(_));
+            assert_eq!(line.kind == "activated", activated, "{line:?}");
+        }
+        let station = details.ability_lines.iter().find(|line| line.text == "Station")
+            .unwrap_or_else(|| panic!("Station names its own line: {:?}", details.ability_lines));
+        assert_eq!(station.kind, "activated");
+        assert!(details.compiled_text.iter().any(|line| line == "Station"), "{:?}", details.compiled_text);
     }
 
     #[test]

@@ -1978,6 +1978,7 @@ impl WasmGame {
         result
     }
 
+    #[cfg(test)]
     fn apply_match_setup_with_companions(
         &mut self,
         config: MatchSetupInput,
@@ -4754,22 +4755,40 @@ impl WasmGame {
                 allow_partial_decks: bool,
                 #[serde(default, alias = "stickerSheets")]
                 sticker_sheets: Vec<Vec<String>>,
+                /// Fresh shuffle seed chosen by the browser before the command
+                /// is journaled. Absent only in replay journals that predate it.
+                #[serde(default)]
+                seed: Option<u32>,
             },
         }
 
         let payload: DeckLoadPayload = serde_wasm_bindgen::from_value(decks_js)
             .map_err(|e| JsValue::from_str(&format!("invalid decks payload: {e}")))?;
-        let (mut decks, sideboards, preserve_missing_decks, allow_partial_decks, sticker_sheets) =
-            match payload {
-                DeckLoadPayload::Decks(decks) => (decks, Vec::new(), false, false, Vec::new()),
-                DeckLoadPayload::Structured {
-                    decks,
-                    sideboards,
-                    preserve_missing_decks,
-                    allow_partial_decks,
-                    sticker_sheets,
-                } => (decks, sideboards, preserve_missing_decks, allow_partial_decks, sticker_sheets),
-            };
+        let (
+            mut decks,
+            sideboards,
+            preserve_missing_decks,
+            allow_partial_decks,
+            sticker_sheets,
+            explicit_seed,
+        ) = match payload {
+            DeckLoadPayload::Decks(decks) => (decks, Vec::new(), false, false, Vec::new(), None),
+            DeckLoadPayload::Structured {
+                decks,
+                sideboards,
+                preserve_missing_decks,
+                allow_partial_decks,
+                sticker_sheets,
+                seed,
+            } => (
+                decks,
+                sideboards,
+                preserve_missing_decks,
+                allow_partial_decks,
+                sticker_sheets,
+                seed,
+            ),
+        };
 
         if decks.len() != self.game.players.len() {
             return Err(JsValue::from_str(
@@ -4792,14 +4811,19 @@ impl WasmGame {
 
         let names: Vec<String> = self.game.players.iter().map(|p| p.name.clone()).collect();
         let starting_life = self.game.players.first().map_or(20, |p| p.life);
-        let seed = deterministic_match_seed(
-            &names,
-            starting_life,
-            MatchFormatInput::Normal,
-            Some(&decks),
-            None,
-            7,
-        );
+        // A seed derived only from names, life and deck lists deals the same
+        // opening hand every time the same deck is loaded, so browser loads
+        // supply a fresh one. The derived seed only serves older journals.
+        let seed = explicit_seed.map(u64::from).unwrap_or_else(|| {
+            deterministic_match_seed(
+                &names,
+                starting_life,
+                MatchFormatInput::Normal,
+                Some(&decks),
+                None,
+                7,
+            )
+        });
 
         let mut loaded: u32 = 0;
         let mut failed: Vec<String> = Vec::new();

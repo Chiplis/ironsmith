@@ -127,8 +127,6 @@ pub(crate) use definition_scope::CardDefinitionScope;
 
 pub(crate) use create_cards::CardCreationDefinitionGraphExt;
 
-pub(crate) use definition_scope::scoped_creation_template;
-
 pub(crate) use definition_scope::replacement_template_definition;
 
 mod note_object_names;

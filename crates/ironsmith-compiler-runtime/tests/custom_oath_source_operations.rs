@@ -4,7 +4,7 @@ use ironsmith::{CardDefinition,Effect,GameState,ObjectId,PlayerId,Zone};
 use ironsmith::ability::AbilityKind;
 use ironsmith::decision::{DecisionMaker,SelectFirstDecisionMaker};
 use ironsmith::effects::{EffectContext,execute_effect};
-use ironsmith::target::ResolvedTarget;
+use ironsmith::effects::ResolvedTarget;
 const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);
 fn fixture()->serde_json::Value{serde_json::from_str(include_str!("../../../fixtures/custom_mechanics/msem-oaths-source-complete.json")).unwrap()}
 fn routes(name:&str)->[CardDefinition;2]{let f=fixture();let c=f["mechanics"][0]["representative_cards"].as_array().unwrap().iter().find(|c|c["name"]==name).unwrap();source_support::definitions(c).unwrap_or_else(|error|panic!("{name}: {error}"))}
@@ -26,7 +26,7 @@ fn every_actual_operative_source_is_strict_on_independent_native_and_artifact_ro
 #[test]
 fn opposing_recipient_controls_each_real_aura_and_multiple_oaths_are_not_roles(){for definition in routes("Pactwhisper Demon"){
  let mut game=game();let host=game.create_object_from_definition(&body(),B,Zone::Battlefield);
- for _ in 0..3{let aura=create_oath(&mut game,&definition,host);let object=game.object(aura).unwrap();assert_eq!(object.controller,B);assert_eq!(object.owner,B);assert_eq!(object.attached_to,Some(ironsmith::object::AttachmentTarget::Object(host)));assert!(!object.has_subtype(ironsmith::Subtype::Role));assert!(object.subtypes.iter().any(|s|s.to_string().eq_ignore_ascii_case("oath")));}
+ for _ in 0..3{let aura=create_oath(&mut game,&definition,host);let object=game.object(aura).unwrap();assert_eq!(game.controller_of(object),B);assert_eq!(object.owner,B);assert_eq!(object.attached_to,Some(ironsmith::object::AttachmentTarget::Object(host)));assert!(!object.has_subtype(ironsmith::Subtype::Role));assert!(object.subtypes.iter().any(|s|s.to_string().eq_ignore_ascii_case("oath")));}
  assert_eq!(auras(&game).len(),3);
 }}
 #[test]
@@ -64,9 +64,9 @@ fn actual_hulking_fleshdebter_gives_haste_to_the_zombie_not_the_new_aura(){for d
 #[test]
 fn real_general_and_knight_observers_consume_one_completed_oath_receipt(){
  let secret=routes("Pactwhisper Demon");let blood=routes("Bloodstained Crusade");let rhysta=routes("Rhysta, Bladebound");
- for route in 0..2{for knight in [false,true]{let mut game=game();let host=game.create_object_from_definition(&body(),B,Zone::Battlefield);if !knight{game.object_mut(host).unwrap().subtypes=vec![ironsmith::Subtype::Goblin];}game.create_object_from_definition(&body(),B,Zone::Library);let aura=create_oath(&mut game,&secret[route],host);let blood_source=game.create_object_from_definition(&blood[route],B,Zone::Battlefield);let wrong_player=game.create_object_from_definition(&blood[route],A,Zone::Battlefield);let general_source=game.create_object_from_definition(&rhysta[route],B,Zone::Battlefield);let effects=trigger(&game,aura,0);
+ for route in 0..2{for knight in [false,true]{let mut game=game();let host=game.create_object_from_definition(&body(),B,Zone::Battlefield);if !knight{game.object_mut(host).unwrap().subtypes=vec![ironsmith::Subtype::Goblin].into();}game.create_object_from_definition(&body(),B,Zone::Library);let aura=create_oath(&mut game,&secret[route],host);let blood_source=game.create_object_from_definition(&blood[route],B,Zone::Battlefield);let wrong_player=game.create_object_from_definition(&blood[route],A,Zone::Battlefield);let general_source=game.create_object_from_definition(&rhysta[route],B,Zone::Battlefield);let effects=trigger(&game,aura,0);
  // The queued ability still belongs to B if the Aura subsequently changes controller.
- game.object_mut(aura).unwrap().controller=A;let events=run(&mut game,aura,B,effects,None);
+ game.set_current_controller(aura,A).unwrap();let events=run(&mut game,aura,B,effects,None);
  let receipt=events.iter().find(|event|event.downcast::<ironsmith::events::NamedActionEvent>().is_some()).unwrap();let matches=ironsmith::triggers::check_triggers(&game,receipt);assert_eq!(matches.iter().filter(|entry|entry.source==blood_source).count(),usize::from(knight));assert_eq!(matches.iter().filter(|entry|entry.source==wrong_player).count(),0);assert_eq!(matches.iter().filter(|entry|entry.source==general_source).count(),1);
  }}
 }
@@ -77,7 +77,7 @@ fn attachment_prelude_uses_exact_latest_host_lki_and_never_old_host_or_reentered
  for definition in routes("Pactwhisper Demon"){for reattach in [false,true]{
  let mut game=game();let old=game.create_object_from_definition(&body(),B,Zone::Battlefield);let aura=create_oath(&mut game,&definition,old);let old_snapshot=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(old).unwrap(),&game);
  let host=if reattach{let id=game.create_object_from_definition(&body(),B,Zone::Battlefield);assert!(game.attach_object_to_target(aura,ironsmith::object::AttachmentTarget::Object(id)));id}else{old};
- game.object_mut(host).unwrap().subtypes=vec![ironsmith::Subtype::Goblin];
+ game.object_mut(host).unwrap().subtypes=vec![ironsmith::Subtype::Goblin].into();
  let aura_snapshot=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(aura).unwrap(),&game);let stable=game.object(host).unwrap().stable_id;
  move_to(&mut game,aura,Zone::Graveyard);move_to(&mut game,host,Zone::Graveyard);let grave=game.find_object_by_stable_id(stable).unwrap();move_to(&mut game,grave,Zone::Battlefield);let reentered=game.find_object_by_stable_id(stable).unwrap();assert_ne!(host,reentered);
  let mut ctx=EffectContext::new_default(aura,B).with_source_snapshot(aura_snapshot);ctx.set_tagged_objects("enchanted",vec![old_snapshot]);execute_effect(&mut game,&Effect::tag_attached_to_source("enchanted"),&mut ctx).unwrap();
@@ -95,12 +95,12 @@ fn an_opposing_recipient_chooses_the_mode_and_owns_the_chosen_aura(){
  let f=fixture();let catalog=f["mechanics"][0]["representative_cards"].as_array().unwrap().iter().find(|c|c["name"]=="Llech Crann Knight").unwrap();
  let input=serde_json::json!({"name":"Recipient choice","executable_text":"Type: Sorcery\nChoose target creature. Its controller chooses one of the following: [Its controller creates a colorless artifact token named Oath of Secrets attached to that creature] or [Its controller creates a colorless artifact token named Oath of Valor attached to that creature].","custom_token_definitions":catalog["custom_token_definitions"],"custom_subtypes":catalog["custom_subtypes"]});
  struct Valor;impl DecisionMaker for Valor{fn decide_options(&mut self,_:&GameState,ctx:&ironsmith::decisions::context::SelectOptionsContext)->Vec<usize>{assert_eq!(ctx.player,B);assert_eq!(ctx.options.len(),2);vec![ctx.options[1].index]}}
- for definition in source_support::definitions(&input).unwrap(){let mut game=game();let host=game.create_object_from_definition(&body(),B,Zone::Battlefield);let source=game.create_object_from_definition(&definition,A,Zone::Stack);let mut dm=Valor;let mut ctx=EffectContext::new_default(source,A).with_targets(vec![ResolvedTarget::Object(host)]).with_decision_maker(&mut dm);execute_effect(&mut game,&Effect::new(ironsmith::effects::SequenceEffect::new(definition.spell_effect.as_ref().unwrap().all_effects_owned())),&mut ctx).unwrap();let aura=auras(&game);assert_eq!(aura.len(),1);let aura=game.object(aura[0]).unwrap();assert_eq!(aura.name,"Oath of Valor");assert_eq!(aura.owner,B);assert_eq!(aura.controller,B);assert_eq!(aura.attached_to,Some(ironsmith::object::AttachmentTarget::Object(host)));}
+ for definition in source_support::definitions(&input).unwrap(){let mut game=game();let host=game.create_object_from_definition(&body(),B,Zone::Battlefield);let source=game.create_object_from_definition(&definition,A,Zone::Stack);let mut dm=Valor;let mut ctx=EffectContext::new_default(source,A).with_targets(vec![ResolvedTarget::Object(host)]).with_decision_maker(&mut dm);execute_effect(&mut game,&Effect::new(ironsmith::effects::SequenceEffect::new(definition.spell_effect.as_ref().unwrap().all_effects_owned())),&mut ctx).unwrap();let aura=auras(&game);assert_eq!(aura.len(),1);let aura=game.object(aura[0]).unwrap();assert_eq!(aura.name,"Oath of Valor");assert_eq!(aura.owner,B);assert_eq!(game.controller_of(aura),B);assert_eq!(aura.attached_to,Some(ironsmith::object::AttachmentTarget::Object(host)));}
 }
 
 #[test]
 fn qualified_named_reference_reads_the_retained_packet_not_later_live_characteristics(){
- let mut game=game();let source=game.create_object_from_definition(&body(),A,Zone::Battlefield);let host=game.create_object_from_definition(&body(),A,Zone::Battlefield);let captured=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(host).unwrap(),&game);game.object_mut(host).unwrap().subtypes=vec![ironsmith::Subtype::Goblin];
+ let mut game=game();let source=game.create_object_from_definition(&body(),A,Zone::Battlefield);let host=game.create_object_from_definition(&body(),A,Zone::Battlefield);let captured=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(host).unwrap(),&game);game.object_mut(host).unwrap().subtypes=vec![ironsmith::Subtype::Goblin].into();
  let filter=ironsmith::target::ObjectFilter::creature().match_tagged("enchanted",ironsmith::target::TaggedOpbjectRelation::IsTaggedObject);
  let effect=Effect::new(ironsmith_core::PerformNamedActionEffect{label:"qualified completion".into(),performer:None,objects:Some(ironsmith::target::ChooseSpec::Object(filter)),prior_objects:None});let mut ctx=EffectContext::new_default(source,A);ctx.set_tagged_objects("enchanted",vec![captured]);let result=execute_effect(&mut game,&effect,&mut ctx).unwrap();let event=result.events.iter().find_map(|event|event.downcast::<ironsmith::events::NamedActionEvent>()).unwrap();assert_eq!(event.objects.len(),1);assert!(event.objects[0].subtypes.contains(&ironsmith::Subtype::Knight));assert!(!event.objects[0].subtypes.contains(&ironsmith::Subtype::Goblin));
 }
@@ -112,7 +112,7 @@ fn live_attachment_prelude_replaces_seeded_old_and_duplicate_packets_after_reatt
   let old_snapshot=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(old).unwrap(),&game);
   let trigger_source=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(aura).unwrap(),&game);
   let host=if reattach{let current=game.create_object_from_definition(&body(),B,Zone::Battlefield);assert!(game.attach_object_to_target(aura,ironsmith::object::AttachmentTarget::Object(current)));current}else{old};
-  game.object_mut(host).unwrap().subtypes=vec![ironsmith::Subtype::Goblin];
+  game.object_mut(host).unwrap().subtypes=vec![ironsmith::Subtype::Goblin].into();
   let mut ctx=EffectContext::new_default(aura,B).with_source_snapshot(trigger_source);
   ctx.set_tagged_objects("enchanted",vec![old_snapshot.clone(),old_snapshot]);
   for _ in 0..2 {

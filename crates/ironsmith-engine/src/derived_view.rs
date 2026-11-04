@@ -1,5 +1,4 @@
 use crate::filter::ObjectFilterExt as _;
-use crate::marker::CounterTypeExt as _;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashSet;
 

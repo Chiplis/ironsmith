@@ -172,7 +172,7 @@ fn conditional_owner_library_choice_replaces_the_bounce_and_uses_the_owners_libr
    assert_eq!(game.player(B).unwrap().library.contains(&moved),designated);
    // Native zone commits publish their canonical events through the game
    // queue; effect-local outputs need not repeat those physical events.
-   let bounced=outcome.events.iter().chain(game.pending_trigger_events.iter()).any(|event|event.downcast::<ironsmith::events::ZoneChangeEvent>().is_some_and(|change|
+   let bounced=outcome.events.iter().chain(game.effect_store.pending_trigger_events.iter()).any(|event|event.downcast::<ironsmith::events::ZoneChangeEvent>().is_some_and(|change|
     change.to==Zone::Hand && change.snapshot.as_ref().is_some_and(|snapshot|snapshot.stable_id==stable)));
    assert_eq!(bounced,!designated,"instead must not perform the original hand move before the library choice");
   }

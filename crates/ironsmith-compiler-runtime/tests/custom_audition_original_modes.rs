@@ -45,7 +45,7 @@ impl DecisionMaker for Choices{
  }
  fn decide_objects(&mut self,game:&GameState,ctx:&ironsmith::decisions::context::SelectObjectsContext)->Vec<ObjectId>{ctx.candidates.iter().find(|candidate|candidate.legal&&game.object(candidate.id).is_some_and(|object|object.kind==ironsmith::object::ObjectKind::Token&&!object.subtypes.contains(&ironsmith::Subtype::Role))).map(|candidate|vec![candidate.id]).unwrap_or_else(||SelectFirstDecisionMaker.decide_objects(game,ctx))}
 }
-fn tokens(game:&GameState,player:PlayerId)->Vec<ObjectId>{game.battlefield.iter().copied().filter(|id|game.object(*id).is_some_and(|object|object.controller==player&&object.kind==ironsmith::object::ObjectKind::Token)).collect()}
+fn tokens(game:&GameState,player:PlayerId)->Vec<ObjectId>{game.battlefield.iter().copied().filter(|id|game.object(*id).is_some_and(|object|game.controller_of(object)==player&&object.kind==ironsmith::object::ObjectKind::Token)).collect()}
 #[test]
 fn actual_modifier_preserves_all_six_original_role_menus_and_does_not_repeat_with_two_providers(){
  let cases=[("Hope Spot",vec!["Cleric","Scout"]),("Newswright",vec!["Warlock","Wizard"]),("Backdrop Artisan",vec!["Warrior","Wizard"]),("Prop Work",vec!["Scout","Warrior"]),("Sculpt the Scene",vec!["Cleric","Warlock"]),("Theatric Tandem",vec!["Warlock","Warrior","Wizard"])];

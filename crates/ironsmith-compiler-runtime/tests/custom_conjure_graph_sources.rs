@@ -56,9 +56,9 @@ fn generated_self_references_survive_standalone_export_and_fresh_game() {
     let created=*game.player(actor).unwrap().hand.first().unwrap();
     let definition_id=game.object(created).unwrap().card.unwrap();
     let generated=game.retained_card_definition(definition_id).unwrap().clone();
-    let wire=ironsmith::artifact_materializer::encode_runtime_definition(generated).unwrap();
+    let wire=ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(generated).unwrap();
     let json=serde_json::to_string(&wire).unwrap();
-    let restored=ironsmith::artifact_materializer::materialize_definition(serde_json::from_str(&json).unwrap()).unwrap();
+    let restored=ironsmith_runtime_catalog::artifact_materializer::materialize_definition(serde_json::from_str(&json).unwrap()).unwrap();
     // No old GameState, compiler scope, or process registry supplies this generation.
     let mut fresh=GameState::new(vec!["A".into(),"B".into()],20);
     run(&mut fresh,actor,&restored);

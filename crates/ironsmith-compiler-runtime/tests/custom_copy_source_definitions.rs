@@ -31,7 +31,7 @@ fn exact_repository_warden_replaces_definition_not_copy_actor_count_or_original_
   let mut copy=ironsmith::effects::CopySpellEffect::new(ChooseSpec::SpecificObject(original),2);copy.copier=ironsmith::target::PlayerFilter::Specific(B);
   let result=execute_effect(&mut game,&ironsmith::Effect::new(copy),&mut EffectContext::new_default(source,A)).unwrap();
   let copies=result.output_objects();assert_eq!(copies.len(),2);assert_eq!(game.stack.len(),3);
-  for id in copies{let object=game.object(*id).unwrap();assert_eq!(object.name.as_str(),"Data-Point");assert_eq!(object.kind,ironsmith::object::ObjectKind::SpellCopy);assert_eq!(object.controller,B);assert_eq!(object.mana_cost.as_deref().unwrap().mana_value(),2);}
+  for id in copies{let object=game.object(*id).unwrap();assert_eq!(object.name.as_str(),"Data-Point");assert_eq!(object.kind,ironsmith::object::ObjectKind::SpellCopy);assert_eq!(game.controller_of(object),B);assert_eq!(object.mana_cost.as_deref().unwrap().mana_value(),2);}
   for _ in 0..2{ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut SelectFirstDecisionMaker).unwrap();}
   assert_eq!(game.player(B).unwrap().hand.len(),2,"each supplied copy executes Data-Point's one-card program");assert!(game.player(A).unwrap().hand.is_empty());assert_eq!(game.stack.len(),1);assert_eq!(game.stack[0].object_id,original);assert_eq!(game.object(original).unwrap().name.as_str(),"Independent original");
  }
@@ -106,7 +106,7 @@ fn effect_created_card_copy_uses_normal_cast_owner_and_preserves_free_price(){
  for (route,warden) in definitions(&actual_source()).into_iter().enumerate(){
   let mut game=GameState::new(vec!["A".into(),"B".into()],20);let source=game.create_object_from_definition(&warden,B,Zone::Battlefield);let donor=game.create_object_from_definition(&donors[route],A,Zone::Graveyard);library(&mut game,A,2);
   let snapshot=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(donor).unwrap(),&game);
-  let mut ctx=EffectContext::new_default(source,A);ctx.set_tagged_objects("saved".into(),vec![snapshot]);
+  let mut ctx=EffectContext::new_default(source,A);ctx.set_tagged_objects("saved",vec![snapshot]);
   let effect=ironsmith::effects::CastTaggedEffect::new("saved",ironsmith::target::PlayerFilter::You).as_copy().without_paying_mana_cost();
   let outcome=execute_effect(&mut game,&ironsmith::Effect::new(effect),&mut ctx).unwrap();assert_eq!(outcome.output_objects().len(),1);
   let copy=outcome.output_objects()[0];assert_eq!(game.object(copy).unwrap().name.as_str(),"Data-Point");assert_eq!(game.object(copy).unwrap().kind,ironsmith::object::ObjectKind::SpellCopy);assert_eq!(game.object(donor).unwrap().zone,Zone::Graveyard);assert_eq!(game.player(A).unwrap().mana_pool.total(),0);

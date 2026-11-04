@@ -1,6 +1,7 @@
 //! Exact actor and completed-program receipts; parent owns execution.
 #[path="custom_final_next_wave_support.rs"]mod source_support;
-use ironsmith::{CardDefinition,CardDefinitionBuilder,Effect,GameState,ObjectId,PlayerId,Zone};
+use ironsmith::{CardDefinition,Effect,GameState,ObjectId,PlayerId,Zone};
+use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::{DecisionMaker,SelectFirstDecisionMaker};
 use ironsmith::effects::{EffectContext,ResolvedTarget,execute_effect};
 const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);

@@ -1,9 +1,9 @@
 //! Initial resource routes remain disjoint when the first payment is replaced.
 use ironsmith::{Effect,GameState,PlayerId,Zone};
-use ironsmith::costs::{Cost,CostContext,CostPayer};
+use ironsmith::costs::{Cost,CostContext};
 use ironsmith::decision::SelectFirstDecisionMaker;
 use ironsmith::target::{ChooseSpec,ObjectFilter,PlayerFilter};
-const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);
+const A:PlayerId=PlayerId(0);
 fn body(mana:&str)->ironsmith::CardDefinition {ironsmith_compiler_runtime::compile_to_runtime_definition("Resource",&format!("Mana cost: {mana}\nType: Creature\nPower/Toughness: 1/1"),false).unwrap()}
 #[test]
 fn replaced_tap_cannot_route_the_same_selected_resource_into_the_exile_payment() {

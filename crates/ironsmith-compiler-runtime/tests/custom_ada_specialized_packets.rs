@@ -1,7 +1,7 @@
 //! Retained Ada target groups are native atomic recipients, never sibling copies.
 #[path="custom_final_next_wave_support.rs"] mod source_routes;
 #[path="cf8_p08/play.rs"] mod play;
-use ironsmith::{CardDefinition, CardId, GameState, ObjectId, PlayerId, Target, Zone};
+use ironsmith::{CardDefinition, CardId, GameState, Target, Zone};
 
 fn providers()->[CardDefinition;2] {
     let fixture:serde_json::Value=serde_json::from_str(include_str!("../../../fixtures/custom_mechanics/msem-abilities-tail.json")).unwrap();

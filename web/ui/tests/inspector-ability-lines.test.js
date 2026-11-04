@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { interactiveRulesView, activatedAbilityLineIndices } from '../src/lib/inspector-ability-lines.js';
+import { interactiveRulesView, activatedAbilityLineIndices, abilityLinePositions } from '../src/lib/inspector-ability-lines.js';
+import { groupManaAbilities } from '../src/lib/group-mana-abilities.js';
 import { intrinsicManaColors, withoutIntrinsicManaLines } from '../src/lib/land-mana-choices.js';
 
 test('a fetch land made a Forest never binds hidden green mana to its fetch line', () => {
@@ -174,4 +175,45 @@ test('a bare Station declaration is an actionable row, not only a tooltip', () =
   assert.deepEqual(activatedAbilityLineIndices(text.split('\n')), [0, 1]);
   const station = { kind: 'activate_ability', label: 'Activate The Eternity Elevator: Station' };
   assert.deepEqual(interactiveRulesView(text, text, [station]).actions.get(0), [station]);
+});
+
+const elevator = 'Station\n20+ | {T}: Add X mana of any one color, where X is the number of charge counters on The Eternity Elevator.';
+const elevatorAbilities = [
+  { ability_index: 0, kind: 'activated', text: 'Station' },
+  { ability_index: 1, kind: 'activated', text: '20+ | {T}: Add X mana of any one color, where X is the number of charge counters on The Eternity Elevator.' },
+];
+
+test('engine ability indices bind actions exactly, whatever their wording', () => {
+  const station = { kind: 'activate_ability', ability_index: 0, label: 'Activate: put counters' };
+  const mana = { kind: 'activate_mana_ability', ability_index: 1, label: 'Add mana' };
+  const view = interactiveRulesView(elevator, elevator, [mana, station], [], elevatorAbilities);
+  assert.deepEqual(view.actions.get(0), [station]);
+  assert.deepEqual(view.actions.get(1), [mana]);
+  assert.deepEqual([...view.activatedLines], [0, 1]);
+});
+
+test('a translation with the same paragraphs keeps exact bindings without recognizing its wording', () => {
+  const station = { kind: 'activate_ability', ability_index: 0, label: 'Station' };
+  const spanish = 'Estación\n20+ | {T}: Agrega X maná de un color cualquiera.';
+  const view = groupManaAbilities(interactiveRulesView(elevator, spanish, [station], [], elevatorAbilities), 'es');
+  assert.equal(view.lines[0], 'Estación');
+  assert.deepEqual(view.actions.get(0), [station]);
+  assert.deepEqual([...view.activatedLines], [0, 1]);
+});
+
+test('modal abilities bind to their first line and identical lines are claimed in order', () => {
+  const lines = ['{T}: Add {C}.', '{T}: Add {C}.', '{1}: Choose one —', '• Draw a card.', '• Gain 2 life.'];
+  const { byAbility, activated } = abilityLinePositions(lines, [
+    { ability_index: 0, kind: 'activated', text: '{T}: Add {C}.' },
+    { ability_index: 1, kind: 'activated', text: '{T}: Add {C}.' },
+    { ability_index: 2, kind: 'activated', text: '{1}: Choose one —\n• Draw a card.\n• Gain 2 life.' },
+  ]);
+  assert.deepEqual([...byAbility], [[0, 0], [1, 1], [2, 2]]);
+  assert.deepEqual([...activated], [0, 1, 2]);
+});
+
+test('non-ability payment sources never bind by ability index', () => {
+  const convoke = { kind: 'plan_payment_source', payment_kind: 'convoke', ability_index: 0, label: 'Tap Llanowar Elves' };
+  const view = interactiveRulesView(elevator, elevator, [convoke], [], elevatorAbilities);
+  assert.equal(view.actions.get(0), undefined);
 });

@@ -2,7 +2,7 @@
 //! frontend reader integration before registering this candidate target.
 use ironsmith::{CardDefinition,GameState,ObjectId,PlayerId,Zone};
 use ironsmith::decision::{DecisionMaker,LegalAction,SelectFirstDecisionMaker,compute_legal_actions};
-const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);
+const A:PlayerId=PlayerId(0);
 fn definitions(id:&str)->[CardDefinition;2]{
     let fixture=read_source_fixture();
     let row=fixture["mechanics"].as_array().unwrap().iter().find(|row|row["id"]==id).unwrap();let source=&row["representative_cards"][0];
@@ -23,18 +23,8 @@ fn activate(game:&mut GameState,source:ObjectId,dm:&mut Choices){
     for _ in 0..64{if !state.has_pending_action(){break;}let ironsmith::GameProgress::NeedsDecisionCtx(ctx)=progress else{panic!("{progress:?}")};progress=apply_decision_context_with_dm(game,&mut queue,&mut state,&ctx,dm).unwrap();}
     assert!(!state.has_pending_action());ironsmith::game_loop::resolve_stack_entry_with(game,dm).unwrap();
 }
-fn attack(game:&mut GameState,host:ObjectId,dm:&mut Choices)->usize{
-    game.queue_trigger_event(Default::default(),ironsmith::triggers::TriggerEvent::new(ironsmith::events::CreatureAttackedEvent::new(host,ironsmith::events::AttackEventTarget::Player(B)),Default::default()));
-    let mut queue=ironsmith::triggers::TriggerQueue::new();ironsmith::game_loop::drain_pending_trigger_events_with_dm(game,&mut queue,dm).unwrap();ironsmith::game_loop::put_triggers_on_stack_with_dm(game,&mut queue,dm).unwrap();game.stack.len()
-}
 fn move_to(game:&mut GameState,object:ObjectId,zone:Zone)->ObjectId{
     let stable=game.object(object).unwrap().stable_id;let effect=ironsmith::Effect::new(ironsmith::effects::MoveToZoneEffect::new(ironsmith::target::ChooseSpec::SpecificObject(object),zone,false));ironsmith::effects::execute_effect(game,&effect,&mut ironsmith::effects::EffectContext::new_default(object,A)).unwrap();game.find_object_by_stable_id(stable).unwrap()
-}
-fn setup(grantor:&CardDefinition)->(GameState,ObjectId,ObjectId,ObjectId,Choices){
-    let mut game=GameState::new(vec!["A".into(),"B".into()],20);game.turn.active_player=A;game.turn.priority_player=Some(A);game.turn.phase=ironsmith::Phase::FirstMain;game.turn.step=None;
-    let body=ironsmith_compiler_runtime::compile_to_runtime_definition("Static grant host","Type: Creature\nPower/Toughness: 2/2",false).unwrap();let host=game.create_object_from_definition(&body,A,Zone::Battlefield);
-    let spell=ironsmith_compiler_runtime::compile_to_runtime_definition("Source-price spell","Mana cost: {U}\nType: Sorcery\nYou gain 1 life.",false).unwrap();let source=game.create_object_from_definition(&spell,A,Zone::Hand);
-    let grantor=game.create_object_from_definition(grantor,A,Zone::Battlefield);(game,grantor,source,host,Choices{host})
 }
 fn read_source_fixture()->serde_json::Value{
     let path=std::env::var("IRONSMITH_INSCRIBE_SOURCE_FIXTURE").unwrap_or_else(|_|format!("{}/../../fixtures/custom_mechanics/msem-inscribe-all-sources-candidate.json",env!("CARGO_MANIFEST_DIR")));

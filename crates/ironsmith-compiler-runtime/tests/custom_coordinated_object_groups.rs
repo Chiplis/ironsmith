@@ -124,7 +124,7 @@ fn actual_djinn_adds_once_to_first_matching_creation_and_preserves_retinue_membe
             game.create_object_from_definition(&definition, A, Zone::Battlefield);
             let owner = game.create_object_from_definition(&producer, recipient, Zone::Battlefield);
             if prior_noncreature {
-                let food = ironsmith::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Unrelated token")
+                let food = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Unrelated token")
                     .token().card_types(vec![ironsmith::CardType::Artifact]).build();
                 execute_effect(&mut game, &Effect::new(ironsmith::effects::CreateTokenEffect::you(food, 1)),
                     &mut EffectContext::new_default(owner, recipient)).unwrap();

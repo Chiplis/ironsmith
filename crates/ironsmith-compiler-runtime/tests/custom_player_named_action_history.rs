@@ -1,7 +1,7 @@
 //! Completed player-operation history and amount qualifiers.
 #[path="custom_player_named_action_history_support.rs"] mod history;
 use history::*;
-use ironsmith::{Effect,GameState,PlayerId,Zone};
+use ironsmith::{GameState,Zone};
 use ironsmith::effects::{EffectContext,execute_effect};
 use ironsmith::target::PlayerFilter;
 use ironsmith_core::value_model::PlayerActionWindow;
