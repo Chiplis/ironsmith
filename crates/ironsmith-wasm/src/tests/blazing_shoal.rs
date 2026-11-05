@@ -68,7 +68,7 @@ fn blazing_shoal_casts_with_red_card_mana_value_or_normal_mana() {
                     )
                 }
                 DecisionContext::Number(ctx) => {
-                    assert_eq!(ctx.max, 1, "X must reflect the red resource, not zero");
+                    assert_eq!(ctx.max, 1, "X must reflect the red resource, not zero (alternative={alternative})");
                     announced_x = true;
                     (PriorityResponse::XValue(1), ReplayDecisionAnswer::Number(1))
                 }

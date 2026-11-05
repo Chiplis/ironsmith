@@ -176,6 +176,19 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         });
         return Ok(filter);
     }
+    // "cards in exile with the journeyed status": an explicit named status is
+    // an independent constraint; the remaining words keep their own reader.
+    if let Some((base, name, negative)) = crate::custom_status::filter_clause(tokens)
+        && !base.is_empty()
+    {
+        let mut filter = parse_object_filter_with_grammar_entrypoint(&base, other)?;
+        if negative {
+            filter.excluded_custom_statuses.push(name);
+        } else {
+            filter.custom_statuses.push(name);
+        }
+        return Ok(filter);
+    }
     if tokens.first().is_some_and(|token| token.is_word("all")) {
         let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[1..], other)?;
         crate::word_claims::claim_tokens(&tokens[..1]);
@@ -428,7 +441,45 @@ fn split_trailing_color_count_phrase_tokens(
     None
 }
 
+/// "[spells] that share a type with the card exiled as this creature entered
+/// [by its ability with designation "X"]": the spell relation names the
+/// source's exact entry-exiled card. An empty prefix leaves the spell subject
+/// to the enclosing reader (cost modifiers strip their own actor phrase).
+fn entry_shared_type_spell_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let (base, label) = crate::util::split_entry_exile_designation(tokens)?;
+    let view = crate::lexer::TokenWordView::new(base);
+    let words = view.word_refs();
+    for relation in [
+        &["that", "share", "a", "type", "with"][..],
+        &["that", "shares", "a", "type", "with"],
+        &["that", "share", "a", "card", "type", "with"],
+        &["that", "shares", "a", "card", "type", "with"],
+    ] {
+        let Some(index) = words.windows(relation.len()).position(|part| part == relation) else {
+            continue;
+        };
+        if !crate::util::is_entry_exiled_reference_words(&words[index + relation.len()..]) {
+            continue;
+        }
+        let boundary = *view.token_start_indices().get(index)?;
+        let mut filter = if boundary == 0 {
+            ObjectFilter::default()
+        } else {
+            parse_spell_filter_with_grammar_entrypoint(&base[..boundary])
+        };
+        crate::word_claims::claim_tokens(&base[boundary..]);
+        crate::word_claims::claim_tokens(&tokens[base.len()..]);
+        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag: crate::util::entry_exiled_tag(label.as_deref(), false),
+            relation: crate::target::TaggedOpbjectRelation::SharesCardType,
+        });
+        return Some(filter);
+    }
+    None
+}
+
 pub fn parse_spell_filter_with_grammar_entrypoint_lexed(tokens: &[OwnedLexToken]) -> ObjectFilter {
+    if let Some(filter) = entry_shared_type_spell_filter(tokens) { return filter; }
     if let Some((base,owner))=crate::object_filters::source_noted_names::split_clause(tokens){
         let mut filter=parse_spell_filter_with_grammar_entrypoint_lexed(&base);filter.name_noted_for=Some(Box::new(owner));return filter;
     }
@@ -443,6 +494,7 @@ pub fn parse_spell_filter_with_grammar_entrypoint_lexed(tokens: &[OwnedLexToken]
 }
 
 pub fn parse_spell_filter_with_grammar_entrypoint(tokens: &[OwnedLexToken]) -> ObjectFilter {
+    if let Some(filter) = entry_shared_type_spell_filter(tokens) { return filter; }
     if let Some((base,owner))=crate::object_filters::source_noted_names::split_clause(tokens){
         let mut filter=parse_spell_filter_with_grammar_entrypoint(&base);filter.name_noted_for=Some(Box::new(owner));return filter;
     }

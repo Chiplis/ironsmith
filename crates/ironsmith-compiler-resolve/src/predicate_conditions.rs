@@ -807,6 +807,9 @@ pub fn resolve_condition_from_predicate(
             count: *count,
             directly_above: *directly_above,
         },
+        PredicateAst::Source(SourcePredicateAst::SourceIsInExactZone(zone)) => {
+            Condition::SourceIsInExactZone(*zone)
+        }
         PredicateAst::Source(SourcePredicateAst::SourceIsInZone(zone)) => {
             Condition::SourceIsInZone(*zone)
         }

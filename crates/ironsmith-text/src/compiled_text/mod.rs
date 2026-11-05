@@ -3515,13 +3515,7 @@ fn audit_merge_conditional_keyword_lines(lines: Vec<String>) -> Vec<String> {
 pub(crate) fn echoed_choice_decision_labels(
     choose: &crate::effects::ChooseModeEffect,
 ) -> Vec<String> {
-    let echoes = choose.decision_labels.len() == choose.modes.len()
-        && choose
-            .decision_labels
-            .iter()
-            .zip(&choose.modes)
-            .all(|(label, mode)| label.trim() == mode.source_text.trim());
-    if echoes { choose.decision_labels.clone() } else { Vec::new() }
+    choose.echoed_decision_labels()
 }
 
 /// A mode choice among losing one keyword each reads as the choice of

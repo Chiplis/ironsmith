@@ -510,6 +510,8 @@ mod cycling {
         let stable = game.object(card).unwrap().stable_id;
         let queue = cycle(&mut game, card);
         assert_eq!(zone_of(&game, stable), Zone::Exile);
+        eprintln!("P3DBG queue={:?}", queue.entries.iter().map(|e| (e.source_name.clone(), e.source, format!("{:?}", e.triggering_event.kind()))).collect::<Vec<_>>());
+        eprintln!("P3DBG stack={:?}", game.stack.iter().map(|e| (e.source_name.clone(), e.is_ability, e.object_id)).collect::<Vec<_>>());
         assert_eq!(triggers_from(&game, &queue, "Renewed Faith"), 1, "when you cycle this card");
     }
 }

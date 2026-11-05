@@ -55,6 +55,12 @@ impl DecisionMaker for Choices {
         self.booleans.push(ctx.player); self.pending = self.pause_boolean; self.accept
     }
     fn decide_objects(&mut self, game: &GameState, ctx: &SelectObjectsContext) -> Vec<ObjectId> {
+        // Zone events offer each owner of private hand cards an optional
+        // disclosure window for event-linked casting permissions. It is not
+        // the unless payment; declining it discloses nothing.
+        if ctx.description == "You may reveal cards with a casting permission for this event" {
+            return Vec::new();
+        }
         self.objects.push(ctx.clone()); self.pending = self.pause_objects;
         self.selected.clone().unwrap_or_else(|| SelectFirstDecisionMaker.decide_objects(game, ctx))
     }

@@ -12,16 +12,26 @@ use crate::triggers::{TriggerEvent, describe_player_filter_subject};
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerDrawsCardExceptFirstInDrawStepTrigger {
     pub player: PlayerFilter,
+    /// "except during their draw step": every card drawn in the drawer's own
+    /// draw step is excluded, not only the first.
+    pub whole_draw_step: bool,
 }
 
 impl PlayerDrawsCardExceptFirstInDrawStepTrigger {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self { player, whole_draw_step: false }
+    }
+
+    pub fn outside_own_draw_step(player: PlayerFilter) -> Self {
+        Self { player, whole_draw_step: true }
     }
 
     fn matching_cards_drawn(&self, event: &CardsDrawnEvent) -> u32 {
         if !event.is_during_players_draw_step {
             return event.amount();
+        }
+        if self.whole_draw_step {
+            return 0;
         }
 
         let skipped = if event.cards_previously_drawn_this_draw_step == 0 {
@@ -58,6 +68,17 @@ impl TriggerMatcher for PlayerDrawsCardExceptFirstInDrawStepTrigger {
     }
 
     fn display(&self) -> String {
+        if self.whole_draw_step {
+            return match &self.player {
+                PlayerFilter::You => "Whenever you draw a card except during your draw step".to_string(),
+                PlayerFilter::Opponent => "Whenever an opponent draws a card except during their draw step".to_string(),
+                PlayerFilter::Any => "Whenever a player draws a card except during their draw step".to_string(),
+                _ => format!(
+                    "Whenever {} draws a card except during their draw step",
+                    describe_player_filter_subject(&self.player)
+                ),
+            };
+        }
         match &self.player {
             PlayerFilter::You => {
                 "Whenever you draw a card except the first one you draw in each of your draw steps"

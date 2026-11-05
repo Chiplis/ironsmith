@@ -47,6 +47,7 @@ pub fn parse_pay_segment_tokens(
             crate::target::ChooseSpec::tagged(crate::tag::CompilerReferenceTag::It.key()),
         );
         cost.generic_reduction = reduction.generic_mana_total();
+        crate::word_claims::claim_tokens(tokens);
         return Ok(ActivationCostSegmentCst::DynamicMana(cost));
     }
     let reference = match words.as_slice() {
@@ -72,6 +73,8 @@ pub fn parse_pay_segment_tokens(
         if words.get(1) == Some(&"enchanted") {
             cost.display_hint = ironsmith_core::DynamicManaDisplayHint::EnchantedCreatureManaCost;
         }
+        // The whole segment is one exact shape read above.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(ActivationCostSegmentCst::DynamicMana(cost));
     }
     parse_simple_segment(tokens, parse_pay_segment_lexed, "pay-cost")

@@ -1162,6 +1162,7 @@ fn repeatable_mana_payment_action(
         .repeatable_mana_payment_actions
         .get(action_index)
         .ok_or(ActionError::InvalidTarget)?;
+    eprintln!("P1DBG rmpa n={} expired={} live={} acting={:?} player={:?}", game.effect_store.repeatable_mana_payment_actions.len(), action.is_expired(game.turn.turn_number), action.end_effect_offer_is_live(game), if action.restrictions.source_controller_acts { game.controller_of_id(action.source) } else { Some(action.player) }, player);
     let acting_player = if action.restrictions.source_controller_acts {
         game.controller_of_id(action.source)
     } else { Some(action.player) };

@@ -182,8 +182,13 @@ fn compile_definition_for_job(job: &CompileJob) -> Result<CardDefinition, String
         return Ok(definition.clone());
     }
     let _scope = card_parse_trace::scope("display definition");
-    parse_card_definition_with_runtime_builder(&job.name, job.parse_input.clone(), false)
-        .map_err(|err| format!("parse failed for {}: {err:?}", job.name))
+    // IRONSMITH_ENFORCE_WORD_CLAIMS=1 compiles with the strict word-claim
+    // enforcement the custom-card routes use ("no reader reads ...").
+    let enforce = std::env::var_os("IRONSMITH_ENFORCE_WORD_CLAIMS").is_some();
+    ironsmith_compiler::word_claims::with_enforcement_options(enforce, enforce, || {
+        parse_card_definition_with_runtime_builder(&job.name, job.parse_input.clone(), false)
+    })
+    .map_err(|err| format!("parse failed for {}: {err:?}", job.name))
 }
 
 fn compile_job_for_name(

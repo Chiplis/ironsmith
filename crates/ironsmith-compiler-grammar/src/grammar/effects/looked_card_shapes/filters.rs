@@ -363,6 +363,12 @@ fn parse_filter_disjunction(tokens: &[OwnedLexToken], words: &[&str]) -> Option<
             crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&segment, false))
         }
         .filter(|filter| *filter != ObjectFilter::default())
+        // The lexed fast path reads simple atom lists only; a qualified arm
+        // ("legendary permanent card") still has a complete full-grammar read.
+        .or_else(|| {
+            crate::grammar::primitives::probe_shape(parse_object_filter(&segment, false))
+                .filter(|filter| *filter != ObjectFilter::default())
+        })
         .or_else(|| parse_named_card_filter_segment(&segment))?;
         branches.push(parsed);
     }
@@ -389,19 +395,24 @@ fn parse_generic_disjunction_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFi
     if !tokens.iter().enumerate().any(|(index, _)| is_disjunction_token(tokens, index)) {
         return None;
     }
-    let segments = primitives::split_lexed_slices_on_or(tokens);
+    // The local splitter treats "and/or" as the same branch delimiter as a
+    // non-comparison "or" ("a land and/or legendary permanent card").
+    let segments = split_filter_segments(tokens);
     if segments.len() < 2 {
         return None;
     }
     let mut branches = Vec::new();
-    for segment in segments {
+    for segment in &segments {
         let segment = trim_lexed_commas(segment);
         if segment.is_empty() {
             return None;
         }
-        branches.push(crate::grammar::primitives::probe_shape(
-            parse_object_filter_lexed(segment, false),
-        )?);
+        branches.push(
+            crate::grammar::primitives::probe_shape(parse_object_filter_lexed(segment, false))
+                .or_else(|| {
+                    crate::grammar::primitives::probe_shape(parse_object_filter(segment, false))
+                })?,
+        );
     }
     if branches.len() < 2 {
         return None;

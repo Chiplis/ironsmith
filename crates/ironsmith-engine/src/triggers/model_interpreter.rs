@@ -685,6 +685,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerDrawsCardExceptFirstInDrawStep { player } => {
             crate::triggers::Trigger::player_draws_card_except_first_in_draw_step(player)
         }
+        TriggerKind::PlayerDrawsCardOutsideOwnDrawStep { player } => {
+            crate::triggers::Trigger::player_draws_card_outside_own_draw_step(player)
+        }
         TriggerKind::PlayerDrawsNthCardEachTurn {
             player,
             card_number,

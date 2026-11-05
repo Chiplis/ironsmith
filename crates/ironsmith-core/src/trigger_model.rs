@@ -546,6 +546,11 @@ pub enum TriggerKind {
     PlayerDrawsCardExceptFirstInDrawStep {
         player: PlayerFilter,
     },
+    /// "Whenever [player] draws a card except during their draw step": every
+    /// card the player draws outside their own draw step.
+    PlayerDrawsCardOutsideOwnDrawStep {
+        player: PlayerFilter,
+    },
     PlayerDrawsNthCardEachTurn {
         player: PlayerFilter,
         card_number: u32,
@@ -2200,6 +2205,12 @@ impl Trigger {
         Self::typed(
             "player_draws_card_except_first_in_draw_step",
             TriggerKind::PlayerDrawsCardExceptFirstInDrawStep { player },
+        )
+    }
+    pub fn player_draws_card_outside_own_draw_step(player: PlayerFilter) -> Self {
+        Self::typed(
+            "player_draws_card_outside_own_draw_step",
+            TriggerKind::PlayerDrawsCardOutsideOwnDrawStep { player },
         )
     }
     pub fn player_draws_nth_card_each_turn(player: PlayerFilter, card_number: u32) -> Self {

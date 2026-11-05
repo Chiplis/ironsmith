@@ -648,6 +648,26 @@ fn read_foreach_following_program(document: &Document<'_>) -> Result<Option<Vec<
         && counter_subject.last().is_some_and(|word|matches!(*word,"counter"|"counters"))
         && crate::grammar::filters::parse_counter_type_words(counter_subject).is_some()
     { return Ok(None); }
+    // "For each player/opponent, do the following: [...]": every such
+    // player in turn is "that player" in the bounded body.
+    if matches!(subject_words.as_slice(), ["for","each","player"] | ["for","each","opponent"]) {
+        let (body, tail) = bounded_program_payload(document, colon)?;
+        let effects = parse_bounded_program(body)?;
+        if effects.is_empty() { return Err(CardTextError::ParseError("bounded foreach program has an empty body".into())); }
+        crate::word_claims::claim_tokens(header);
+        let effects = if optional {
+            vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                player: crate::cards::builders::PlayerAst::That, effects,
+            })]
+        } else { effects };
+        let mut output = vec![EffectAst::ForEach(if subject_words[2] == "player" {
+            ForEachEffectAst::ForEachPlayer { effects }
+        } else {
+            ForEachEffectAst::ForEachOpponent { effects }
+        })];
+        bounded_program_followups(&mut output, tail)?;
+        return Ok(Some(output));
+    }
     let player_target=super::for_each_helpers::parse_for_each_targeted_player_subject(subject)?;
     let target = if player_target.is_none() {super::for_each_helpers::parse_for_each_targeted_object_subject(subject)?}else{None};
     let filter = if player_target.is_none() && target.is_none() { super::for_each_helpers::parse_for_each_object_subject(subject)? } else { None };
@@ -1688,6 +1708,20 @@ mod explicit_status_program_boundary_tests {
 /// not divert its header into a different, partial legacy choice reading.
 pub(crate) fn parse_bounded_inline_modal_tokens(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,CardTextError>{
     read_bounded_inline_modal(&Document::new(tokens))
+}
+
+/// A sentence after an earlier statement ("..., you get a research counter.
+/// If you have eight or more, do the following: [A; B]") reaches nested
+/// sentence dispatch; it keeps the same complete bracketed-program owner as a
+/// document that starts with it.
+pub(crate) fn parse_bounded_instruction_program_tokens(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,CardTextError>{
+    if !tokens.iter().any(|token| token.kind == TokenKind::LBracket) { return Ok(None); }
+    // Only a complete bracketed program is owned here; any other bracketed
+    // sentence keeps its ordinary nested readers.
+    Ok(crate::word_claims::speculative_keep_if(
+        || read_bounded_instruction_program(&Document::new(tokens)),
+        |result| matches!(result, Ok(Some(_))),
+    ).ok().flatten())
 }
 
 /// Explicit lexical boundaries compose existing resolution-time instructions.

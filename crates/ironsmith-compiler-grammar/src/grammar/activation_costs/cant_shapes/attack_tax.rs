@@ -112,6 +112,8 @@ fn parse_general_attack_tax_lexed(input: &mut LexStream<'_>) -> WResult<GeneralA
     let defenders = alt((
         primitives::phrase(&["you", "or", "planeswalkers", "you", "control"])
             .map(|_| AttackTaxDefenders::ControllerOrPlaneswalkers),
+        primitives::phrase(&["you", "or", "a", "planeswalker", "you", "control"])
+            .map(|_| AttackTaxDefenders::ControllerOrPlaneswalkers),
         primitives::phrase(&["planeswalkers", "you", "control"])
             .map(|_| AttackTaxDefenders::ControllerPlaneswalkers),
         primitives::kw("you").map(|_| AttackTaxDefenders::Controller),

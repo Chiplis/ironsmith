@@ -117,7 +117,7 @@ fn graveyard_threshold_discount_renders_its_condition() {
         .unwrap();
     let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
     assert!(
-        rendered.contains("As long as there are three or more lesson cards in your graveyard"),
+        rendered.contains("As long as there are three or more Lesson cards in your graveyard"),
         "{rendered}"
     );
 }

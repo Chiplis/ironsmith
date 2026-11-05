@@ -3017,10 +3017,13 @@ fn refresh_active_static_abilities(
     // not asked. Asking it was the cost multiplier: a graveyard Dragon's Rage
     // Channeler's delirium counts graveyard card types, which computes every
     // other graveyard card, each of which asked its own delirium again.
+    // A permanent's conditional static on the stack is equally dormant unless
+    // it is one of the abilities that functions there (CR 113.6, 721.2: a
+    // Spacecraft spell's station rows grant nothing).
     let dormant_zone = game
         .object(source)
         .map(|object| object.zone)
-        .filter(|zone| !matches!(zone, Zone::Battlefield | Zone::Stack));
+        .filter(|zone| !matches!(zone, Zone::Battlefield));
     chars.static_abilities = chars
         .abilities
         .iter()

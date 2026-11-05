@@ -122,6 +122,12 @@ impl DecisionMaker for Pick {
         vec![Target::Player(self.opponent)]
     }
     fn decide_objects(&mut self, _: &GameState, ctx: &SelectObjectsContext) -> Vec<ObjectId> {
+        // Each zone event offers every owner of private hand cards an
+        // optional disclosure window for event-linked casting permissions.
+        // Declining it discloses nothing; it is not the printed choice.
+        if ctx.description == "You may reveal cards with a casting permission for this event" {
+            return Vec::new();
+        }
         assert_eq!(ctx.player, self.opponent, "target opponent chooses, not source owner/controller");
         assert_eq!((ctx.min, ctx.max), (1, Some(1)));
         assert_ne!(ctx.reveal_policy, SelectionRevealPolicy::Public, "hand-to-library does not reveal");

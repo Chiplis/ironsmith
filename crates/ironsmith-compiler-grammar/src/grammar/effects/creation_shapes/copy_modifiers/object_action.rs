@@ -113,7 +113,23 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     }
     if let Some(index) = kept_words.word_windows(5).position(|words| matches!(words, ["it" | "they", "has" | "have", "no", "mana", "cost"])) {
         spec.without_mana_cost = true;
+        crate::word_claims::claim_words(&kept_words[index..index + 5]);
         kept_words.drain(index..index + 5);
+    } else if let Some(index) = kept_words.word_windows(4).position(|words| matches!(words, ["has" | "have", "no", "mana", "cost"])) {
+        // "except it's 1/1 and has no mana cost": the subject is shared with
+        // an earlier conjunct of the same exception.
+        spec.without_mana_cost = true;
+        crate::word_claims::claim_words(&kept_words[index..index + 4]);
+        kept_words.drain(index..index + 4);
+    }
+    // "[it has] base power and toughness 1/1": the characteristic phrase
+    // whose P/T word is read below as the copy's base power and toughness.
+    if let Some(index) = kept_words.word_windows(5).position(|words| matches!(words,
+        ["base", "power", "and", "toughness", pt] if parse_unsigned_pt_word(pt).is_some())) {
+        let start = if index > 0 && matches!(kept_words[index - 1], "has" | "have" | "with") {
+            if index > 1 && matches!(kept_words[index - 2], "it" | "they") { index - 2 } else { index - 1 }
+        } else { index };
+        crate::word_claims::claim_words(&kept_words[start..index + 5]);
     }
     // This bounded suffix specifies the replacement subtype family; it is
     // independent of the identity descriptor before it.

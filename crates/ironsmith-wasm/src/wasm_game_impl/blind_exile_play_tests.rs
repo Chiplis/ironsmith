@@ -347,7 +347,9 @@ fn blind_exile_face_down_intent_and_declaration_never_request_or_commit_an_ident
         disclosure_command(&mut wasm, command).unwrap();
         let Some(DecisionContext::SelectOptions(options)) = wasm.pending_decision.as_ref() else { panic!("public declaration"); };
         assert!(options.exile_face_down_choice); assert!(!options.exile_play_choice);
-        assert_eq!(options.options.len(), 4);
+        // Morph, megamorph, disguise, the two reminder-defined face-down
+        // rules (cec9897a8) and Cancel.
+        assert_eq!(options.options.len(), 6);
         assert_eq!(options.options[0].description, "Declare morph");
         assert_eq!(wasm.priority_state.pending_exile_face_down.as_ref().unwrap().incarnation, Some(0));
         let choice = UiCommand::SelectOptions { option_indices: vec![0] };

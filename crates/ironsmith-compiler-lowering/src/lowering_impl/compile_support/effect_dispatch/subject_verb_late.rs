@@ -479,10 +479,16 @@ pub(super) fn compile_put_counters_action(
                 true,
             )?;
             let chooser = subject.clone_player_filter();
-            if !is_you_player_filter(&chooser)
-                || (filter.tagged_constraints.is_empty()
-                    && !filter.source
-                    && filter.specific.is_none())
+            // "Blight N" (you): the counter executor chooses the recipient
+            // itself, so an optional blight offers only creatures that can
+            // have -1/-1 counters put on them, exactly like the blight cost.
+            let own_blight = is_you_player_filter(&chooser)
+                && count.has_surface_hint(ironsmith_core::ValueSurfaceHint::BlightKeywordAction);
+            if !own_blight
+                && (!is_you_player_filter(&chooser)
+                    || (filter.tagged_constraints.is_empty()
+                        && !filter.source
+                        && filter.specific.is_none()))
             {
                 subject.apply_player_refs_to_filter(&mut filter, ctx);
                 let tag = ctx.next_tag("counters");

@@ -24,5 +24,6 @@ pub(super) fn read(
     optional.reference.custom_keyword_attributable = true;
     let effects = parse_effect_sentences_lexed(shape.followup_effect_tokens)?;
     crate::word_claims::claim_tokens(shape.label_tokens);
+    crate::word_claims::claim_tokens(shape.trigger_frame_tokens);
     Ok(Some(LineAst::OptionalCostWithCastTrigger { cost: optional, effects }))
 }

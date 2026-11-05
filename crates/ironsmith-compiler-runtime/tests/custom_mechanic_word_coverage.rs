@@ -25,8 +25,11 @@ fn ambush_does_not_silently_discard_casting_and_entry_rules() {
     match result {
         Err(error) => {
             let diagnostic = error.to_string();
+            // Either coverage check may be the first to reject the
+            // unmodeled casting window, discount and attacking entry.
             assert!(
-                diagnostic.contains("object filter does not read 'enters'"),
+                diagnostic.contains("object filter does not read 'enters'")
+                    || diagnostic.contains("no reader reads 'declare attackers step"),
                 "Unexpected rejection: {diagnostic}"
             );
             println!("Original Ambush with both coverage checks: {diagnostic}");

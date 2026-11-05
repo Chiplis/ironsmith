@@ -32,12 +32,58 @@ pub(super) fn parse_have_performer(tokens: &[OwnedLexToken]) -> Result<Option<Ef
     )))
 }
 
+/// "Perform the <label> action [with <objects>]": the bare named-action
+/// instruction, read the same way as a whole sentence and as a nested clause
+/// ("If you do, perform the motivate action with creatures given counters
+/// this way.").
+pub(crate) fn parse_perform(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if !tokens.first().is_some_and(|token| token.is_word("perform")) || !words.starts_with(&["perform", "the"]) {
+        return None;
+    }
+    let action = words.iter().position(|word| *word == "action")?;
+    if action <= 2 { return None; }
+    let label = words[2..action].join(" ");
+    let prior_action = match words.get(action + 1..) {
+        Some(["with", "cards" | "creatures" | "permanents" | "objects" | "lands", "affected", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Affected),
+        Some(["with", "creatures" | "permanents" | "objects", "tapped", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Tapped),
+        Some(["with", "cards" | "objects", "revealed", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Revealed),
+        Some(["with", "cards" | "creatures" | "permanents" | "objects", "exiled", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Exiled),
+        Some(["with", "cards" | "creatures" | "permanents" | "objects", "sacrificed", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Sacrificed),
+        Some(["with", "creatures" | "permanents" | "objects", "given", "counters", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::CountersPut),
+        _ => None,
+    };
+    let objects = if prior_action.is_some() || action + 1 == words.len() { None }
+        else if words.get(action + 1) == Some(&"with") {
+            let start = *view.token_start_indices().get(action + 2)?;
+            Some(crate::util::parse_target_phrase(&tokens[start..]).ok()?)
+        } else { return None; };
+    if prior_action.is_some() { crate::word_claims::claim_tokens(tokens); }
+    crate::word_claims::claim_tokens(&tokens[..view.token_start_indices()[action] + 1]);
+    if let Some(with) = view.token_start_indices().get(action + 1) {
+        crate::word_claims::claim_tokens(&tokens[*with..*with + 1]);
+    }
+    Some(EffectAst::subject_verb(
+        crate::model::ast::SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+        SubjectVerbActionAst::KeywordActions(crate::cards::builders::KeywordActionAst::PerformNamedAction {
+            program_completion: ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted,
+            label, performer: None, objects,
+            prior_objects: prior_action.map(|action| (crate::effect::EffectId::PENDING_PRIOR_ACTION, action)),
+            program: None,
+        }),
+    ))
+}
+
+pub(super) fn parse_perform_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    Ok(parse_perform(tokens))
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn performer_atom_is_shared_by_nested_clause_owners() {
-        let probe = crate::lexer::lex_line("If you control a creature, draw a card.", 0).unwrap();
-        eprintln!("P2PROBE ifclause {:?}", crate::effect_sentences::clause_dispatch::parse_effect_clause(&probe).map(|e| format!("{e:?}").chars().take(400).collect::<String>()));
         for text in [
             "Have this permanent perform the cadence action.",
             "If you control a creature, have this permanent perform the cadence action.",

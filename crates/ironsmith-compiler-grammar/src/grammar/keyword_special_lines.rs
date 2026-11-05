@@ -11,6 +11,8 @@ use super::primitives;
 pub struct OptionalCostWithCastTriggerShape<'a> {
     pub label_tokens: &'a [OwnedLexToken],
     pub optional_cost_effect_tokens: &'a [OwnedLexToken],
+    /// The payment-gated cast-trigger frame ("when you do,").
+    pub trigger_frame_tokens: &'a [OwnedLexToken],
     pub followup_effect_tokens: &'a [OwnedLexToken],
 }
 

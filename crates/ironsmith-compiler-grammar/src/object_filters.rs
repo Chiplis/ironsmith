@@ -443,6 +443,8 @@ fn denies_spell_was_cast(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
     crate::word_primitives::parse_sequence_suffix(&words, &["that", "wasnt", "cast"])
         || crate::word_primitives::parse_sequence_suffix(&words, &["that", "was", "not", "cast"])
+        || crate::word_primitives::parse_sequence_suffix(&words, &["that", "werent", "cast"])
+        || crate::word_primitives::parse_sequence_suffix(&words, &["that", "were", "not", "cast"])
 }
 
 fn positive_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
@@ -2108,15 +2110,9 @@ fn parse_text_addition_source_filter(words:&[&str],other:bool)->Option<Result<Ob
 }
 
 pub(crate) fn parse_custom_identity_filter(tokens:&[OwnedLexToken],other:bool)->Option<Result<ObjectFilter,CardTextError>> {
-    static FILTER_TRACE:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
-    if tokens.iter().any(|token|token.is_word("custom")) && FILTER_TRACE.fetch_add(1,std::sync::atomic::Ordering::Relaxed)<40 {
-        eprintln!("IDENTITY_FILTER_TRACE text={:?} tokens={:?}",crate::lexer::render_token_slice(tokens),tokens.iter().map(|token|(&token.kind,token.as_word())).collect::<Vec<_>>());
-    }
     let (base,name,negative)=crate::custom_identity_filters::filter_clause(tokens)?;
-    eprintln!("IDENTITY_FILTER_TRACE matched name={name:?} negative={negative}");
     if crate::custom_identity_filters::has_unquoted_union(tokens)
         && let Some(filter)=parse_branch_scoped_object_filter_union_lexed(tokens,other) {
-        eprintln!("IDENTITY_FILTER_TRACE union markers={:?} branches={:?}",filter.ability_markers,filter.any_of.iter().map(|branch|(&branch.card_types,&branch.subtypes,&branch.ability_markers)).collect::<Vec<_>>());
         return Some(Ok(filter));
     }
     Some(parse_object_filter(&base,other).map(|filter|
@@ -2217,6 +2213,22 @@ fn split_it_can_enchant_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexTok
     (head_end > 0).then(|| &tokens[..head_end])
 }
 
+/// "two cards that share a card type from graveyards" (Purge): a selection-set
+/// relation among the chosen objects, independent of each object's own
+/// filter. A comparison ("... with <object>") has its own reader.
+fn parse_shared_card_type_selection_filter(tokens:&[OwnedLexToken],other:bool)->Option<Result<ObjectFilter,CardTextError>>{
+    let at=tokens.windows(5).position(|part|part[0].is_word("that")&&part[1].is_any_word(&["share","shares"])
+        &&part[2].is_word("a")&&part[3].is_word("card")&&part[4].is_word("type"))?;
+    if at==0 || tokens.get(at+5).is_some_and(|token|token.is_word("with")) {return None;}
+    let mut base=tokens[..at].to_vec();
+    base.extend_from_slice(&tokens[at+5..]);
+    Some(parse_object_filter_lexed(&base,other).map(|mut filter|{
+        filter.shares_card_type=true;
+        crate::word_claims::claim_tokens(&tokens[at..at+5]);
+        filter
+    }))
+}
+
 fn parse_object_filter_unaudited(
     tokens: &[OwnedLexToken],
     other: bool,
@@ -2235,6 +2247,7 @@ fn parse_object_filter_unaudited(
     if let Some(filter)=related_exile::read(tokens,other)? {return Ok(filter);}
     if let Some(result)=parse_custom_identity_filter(tokens,other){return result;}
     if let Some(result) = parse_entry_reference_filter(tokens, other) { return result; }
+    if let Some(result)=parse_shared_card_type_selection_filter(tokens,other){return result;}
     if let Some((base, name, negative)) = crate::custom_status::filter_clause(tokens) {
         let mut filter = parse_object_filter(&base, other)?;
         if negative {
@@ -2863,6 +2876,7 @@ fn parse_object_filter_lexed_unaudited(
     if let Some(filter)=related_exile::read(tokens,other)? {return Ok(filter);}
     if let Some(result)=parse_custom_identity_filter(tokens,other){return result;}
     if let Some(result) = parse_entry_reference_filter(tokens, other) { return result; }
+    if let Some(result)=parse_shared_card_type_selection_filter(tokens,other){return result;}
     if let Some(group)=tokens.windows(2).rposition(|pair|pair[0].is_word("in")&&pair[1].is_word("group")) {
         let tail=&tokens[group+2..];
         if let Some((_,owner))=crate::grammar::primitives::parse_prefix(tail,crate::grammar::primitives::phrase(&["owned","by"])) {
@@ -3157,6 +3171,11 @@ pub fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
 }
 
 pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
+    for constraint in &extra.tagged_constraints {
+        if !base.tagged_constraints.contains(constraint) {
+            base.tagged_constraints.push(constraint.clone());
+        }
+    }
     if base.shares_name_with_named_action_objects.is_none(){base.shares_name_with_named_action_objects=extra.shares_name_with_named_action_objects.clone();}
 
     for card_type in extra.card_types {

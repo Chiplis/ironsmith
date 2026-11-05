@@ -388,6 +388,7 @@ impl PredicateAst {
                 ..
             })
             | PredicateAst::Source(SourcePredicateAst::SourceIsInZone(_))
+            | PredicateAst::Source(SourcePredicateAst::SourceIsInExactZone(_))
             | PredicateAst::Source(SourcePredicateAst::SourceWasCast)
             | PredicateAst::ThisSpellWasCastAtSorceryTiming
             | PredicateAst::ThisSpellEscaped

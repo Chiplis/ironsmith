@@ -5143,11 +5143,18 @@ fn evaluate_condition_in_context(
         Condition::YouHaveFullParty => Ok(player_has_full_party(game, shared.controller)),
         Condition::ThisSpellCastOrderThisGame(order) => {
             let Some(index) = order.checked_sub(1) else { return Ok(false); };
-            Ok(game.action_history_for_player(shared.controller)
+            let casts = game.action_history_for_player(shared.controller)
                 .filter_map(|record| record.event.downcast::<crate::events::SpellCastEvent>())
                 .filter(|cast| cast.caster == shared.controller)
-                .nth(index as usize)
-                .is_some_and(|cast| cast.spell == shared.source))
+                .map(|cast| cast.spell)
+                .collect::<Vec<_>>();
+            Ok(match casts.get(index as usize) {
+                Some(spell) => *spell == shared.source,
+                // CR 601.2f: an alternative cost conditioned on this spell's
+                // cast order is chosen while the spell is being cast, before
+                // its own cast is recorded. It is the next spell cast.
+                None => casts.len() == index as usize,
+            })
         }
         Condition::TargetSpellCastOrderThisTurn(order) => {
             let Some(ctx) = ctx.execution() else {
@@ -6892,6 +6899,9 @@ fn evaluate_condition_in_context(
             .object(shared.source)
             .map(|obj| obj.zone == *zone && !game.is_phased_out(obj.id))
             .unwrap_or(false)),
+        Condition::SourceIsInExactZone(zone) => Ok(game
+            .object(shared.source)
+            .is_some_and(|obj| obj.zone == *zone)),
         Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
             let Some(source_obj) = game.object(shared.source) else {
                 return Ok(false);

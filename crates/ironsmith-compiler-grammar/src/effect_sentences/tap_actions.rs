@@ -39,6 +39,23 @@ pub fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
             "tap clause missing target".to_string(),
         ));
     }
+    // "taps an untapped artifact, creature, or land they control for each
+    // fade counter on this artifact" (Tangle Wire): one resolution-time
+    // selection repeated once per counted unit, like "sacrifices a creature
+    // for each ...".
+    if let Some((index, _, _)) = grammar::find_prefix(tokens, || grammar::phrase(&["for", "each"]))
+        && index > 0
+        && let Some(count) = parse_get_for_each_count_value(&tokens[index..])?
+    {
+        let per_unit = parse_tap(&tokens[..index])?;
+        let count = count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+        return Ok(EffectAst::ForEach(
+            crate::cards::builders::ForEachEffectAst::RepeatEffects {
+                count,
+                effects: vec![per_unit],
+            },
+        ));
+    }
     // A bare exact count is a non-targeted resolution-time choice. It must
     // not be mistaken for a target declaration or a total-power payment.
     if let Some(count)=tokens.first().and_then(|token| crate::util::parse_number_word_u32(token.parser_text()))

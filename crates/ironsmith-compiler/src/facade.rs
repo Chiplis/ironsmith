@@ -48,6 +48,9 @@ fn fallback_static_ability_issue(
         // A spell's terminal destination replacement carries a complete typed
         // continuation program (spell_resolution_destination).
         | crate::static_abilities::StaticAbilityPayload::SpellResolutionDestinationProgram { .. }
+        // A phase-boundary player action is a typed engine program
+        // (game_loop::targeting reads its boundary, label and condition).
+        | crate::static_abilities::StaticAbilityPayload::PhaseBoundaryPlayerAction { .. }
         | crate::static_abilities::StaticAbilityPayload::ActivateAbilitiesAsThoughZone { .. }) {
         return Some(format!(
             "{context} compiled to an unsupported static ability without a semantic id: {}",

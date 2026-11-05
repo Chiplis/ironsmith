@@ -2816,6 +2816,7 @@ impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
         }
         let origin = ObjectSnapshot::try_from_object_id(game, self.object)?;
+        eprintln!("P1DBG terminal start suppressed={:?} additional={}", ctx.replacement.suppressed_replacement_effects, ctx.replacement.additional_replacement_effects.len());
         // This exact source is still on the stack. Start a new native movement
         // receipt scope so a previous instruction cannot supply an arrival.
         game.take_zone_change_results(self.object);
@@ -2832,6 +2833,7 @@ impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
         if ctx.decision_maker.awaiting_choice() { return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0))); }
         proposal.seal_original(game, ctx)?;
         let committed = proposal.commit_original_with_outputs(game, ctx)?;
+        eprintln!("P1DBG terminal commit completion={} status={:?} stopped={} awaiting={}", committed.completion.is_some(), committed.completion.as_ref().map(|c| c.original_phase_status()), ctx.resolution_stopped(), ctx.decision_maker.awaiting_choice());
         if committed.completion.as_ref().is_some_and(|completion|
             completion.original_phase_status() == crate::effects::OriginalPhaseStatus::Combined)
         {
@@ -2843,6 +2845,7 @@ impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
         let Some(mut committed) = crate::effects::composition::prepare_standalone_completion_with_outputs(game, ctx, committed)? else {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
         };
+        eprintln!("P1DBG after prepare completion={}", committed.completion.is_some());
         let completed = &mut committed.outcome;
         let mut arrivals = Vec::new();
         for fact in &completed.outcome.instruction_result().execution_facts {
@@ -2882,10 +2885,19 @@ impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
                 |ctx| {
                     ctx.exact_object_reference_tags.insert(crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG.into());
                     let controller = ctx.controller;
-                    let source = ctx.source;
-                    execute_resolution_program_with_trigger_matching_outputs_typed(
+                    // CR 400.7: the continuation of this disposition refers to
+                    // the card in its new zone (rebound's "cast it from
+                    // exile"), never to the departed stack object.
+                    let source = match arrivals.as_slice() {
+                        [arrival] => arrival.object_id,
+                        _ => ctx.source,
+                    };
+                    let previous_source = std::mem::replace(&mut ctx.source, source);
+                    let result = execute_resolution_program_with_trigger_matching_outputs_typed(
                         game, ctx, controller, source, program, None, &[], true,
-                    )
+                    );
+                    ctx.source = previous_source;
+                    result
                 },
             )?;
             for event in children.events { game.queue_trigger_event(event.provenance(), event); }

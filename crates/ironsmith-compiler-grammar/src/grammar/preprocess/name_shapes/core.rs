@@ -23,6 +23,9 @@ pub(super) fn is_reserved_short_alias(alias: &str, alias_tokens: &[OwnedLexToken
             // Game nouns ("is dealt damage", "add one mana", "gain life")
             // are never a card's short alias (Damage Control Crew, Mana Vault).
             | "damage" | "mana" | "life"
+            // "this object's zone is the battlefield": the zone game noun
+            // (CR 400.1) is never the source's alias.
+            | "zone" | "zones"
             // "permanents of their choice" (Choice of Damnations): the
             // chooser's choice, never the source.
             | "choice"

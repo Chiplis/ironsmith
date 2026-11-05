@@ -3040,12 +3040,19 @@ pub fn resolve_single_object_from_spec(
 
 /// Resolve a [`ChooseSpec`] to a single object or player target.
 fn reject_unprojected_scalar_target(spec: &ChooseSpec, ctx: &ExecutionContext) -> Result<(), ExecutionError> {
-    if spec.count_value().is_none() && spec.count().max == Some(1)
-        && ctx.target_assignments.iter().any(|assignment| {
-            (assignment.spec == *spec || assignment.spec.base() == spec.base())
+    if spec.count_value().is_none() && spec.count().max == Some(1) {
+        // A scalar spec with its own exact assignment is judged by that
+        // assignment only. A sibling instruction with the same base filter
+        // ("destroy target artifact ... instead destroy two target
+        // artifacts") is a different target role, not an expansion of it.
+        let has_exact = ctx.target_assignments.iter().any(|assignment| assignment.spec == *spec);
+        let expanded = ctx.target_assignments.iter().any(|assignment| {
+            (if has_exact { assignment.spec == *spec } else { assignment.spec.base() == spec.base() })
                 && assignment.range.len() > 1
-        })
-    {
+        });
+        if !expanded {
+            return Ok(());
+        }
         return Err(ExecutionError::IncompleteEvidence(
             "expanded scalar target requires an explicit recipient projection policy".into()));
     }

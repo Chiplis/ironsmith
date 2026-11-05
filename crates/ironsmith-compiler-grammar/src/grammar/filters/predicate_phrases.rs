@@ -446,6 +446,30 @@ fn is_source_card_reference_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    // "this object's zone is the battlefield": the source's exact zone,
+    // which (unlike "is on the battlefield") includes a phased-out source.
+    if let ["this" | "its", rest @ ..] = crate::lexer::token_word_refs(tokens).as_slice()
+        && let Some(zone_words) = match rest {
+            ["object's" | "objects" | "permanent's" | "permanents" | "card's" | "cards" | "creature's" | "creatures", "zone", "is", zone @ ..] => Some(zone),
+            ["zone", "is", zone @ ..] if tokens.first().is_some_and(|token| token.is_word("its")) => Some(zone),
+            _ => None,
+        }
+    {
+        let zone = match zone_words {
+            ["the", "battlefield"] | ["battlefield"] => Some(Zone::Battlefield),
+            ["exile"] => Some(Zone::Exile),
+            ["the", "stack"] | ["stack"] => Some(Zone::Stack),
+            ["the", "command", "zone"] => Some(Zone::Command),
+            ["its", "owner's" | "owners", "graveyard"] | ["a", "graveyard"] => Some(Zone::Graveyard),
+            ["its", "owner's" | "owners", "hand"] | ["a", "hand"] => Some(Zone::Hand),
+            ["its", "owner's" | "owners", "library"] | ["a", "library"] => Some(Zone::Library),
+            _ => None,
+        };
+        if let Some(zone) = zone {
+            crate::word_claims::claim_tokens(tokens);
+            return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInExactZone(zone)));
+        }
+    }
     if let Some(relation) = parse_copula_relation_clauses(tokens)
         && is_source_reference_clause(relation.subject_clause)
         && let Some(or) = relation.tail_clause.tokens().iter().position(|token| token.is_word("or"))

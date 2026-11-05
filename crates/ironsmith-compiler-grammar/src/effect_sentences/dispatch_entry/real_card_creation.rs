@@ -20,11 +20,15 @@ pub(crate) fn read(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardTextEr
    if at+5>=end-1{return Ok(None);}operation_label=Some(words[at+5..end-1].join(" "));end=at;
   }
  }
- let owners:[(&[&str],PlayerAst);7]=[
+ // Word views spell possessives without the apostrophe ("players").
+ let owners:[(&[&str],PlayerAst);12]=[
   (&["your"],PlayerAst::You),(&["target","player's"],PlayerAst::Target),
   (&["target","opponent's"],PlayerAst::TargetOpponent),(&["their"],PlayerAst::That),
   (&["that","player's"],PlayerAst::That),(&["its","controller's"],PlayerAst::ItsController),
   (&["its","owner's"],PlayerAst::ItsOwner),
+  (&["target","players"],PlayerAst::Target),(&["target","opponents"],PlayerAst::TargetOpponent),
+  (&["that","players"],PlayerAst::That),(&["its","controllers"],PlayerAst::ItsController),
+  (&["its","owners"],PlayerAst::ItsOwner),
  ];
  let mut destinations=Vec::new();
  for (owner,player) in owners {

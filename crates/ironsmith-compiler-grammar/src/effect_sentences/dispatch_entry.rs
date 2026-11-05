@@ -115,6 +115,17 @@ pub fn parse_quantified_token_creation_with_embedded_rules(
     if outer_tokens == full_tokens {
         return Ok(None);
     }
+    // The player quantifier governs only its own sentence. "Each opponent
+    // discards a card. You create a ... token with ..." is two instructions,
+    // never one quantified creation.
+    if split_lexed_sentences(&outer_tokens)
+        .iter()
+        .filter(|sentence| !crate::lexer::token_word_refs(sentence).is_empty())
+        .count()
+        > 1
+    {
+        return Ok(None);
+    }
     let words = crate::lexer::token_word_refs(&full_tokens);
     let has_quantified_player = crate::word_primitives::parse_any_sequence_prefix(
         &words,
@@ -3928,43 +3939,10 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
-        {
-            let view = crate::lexer::TokenWordView::new(&sentence_tokens);
-            let words = view.word_refs();
-            if sentence_tokens.first().is_some_and(|token| token.is_word("perform"))
-                && words.starts_with(&["perform", "the"])
-                && let Some(action) = words.iter().position(|word| *word == "action")
-                && action > 2
-            {
-                let label = words[2..action].join(" ");
-                let prior_action = match words.get(action + 1..) {
-                    Some(["with", "cards" | "creatures" | "permanents" | "objects" | "lands", "affected", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Affected),
-                    Some(["with", "creatures" | "permanents" | "objects", "tapped", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Tapped),
-                    Some(["with", "cards" | "objects", "revealed", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Revealed),
-                    Some(["with", "cards" | "creatures" | "permanents" | "objects", "exiled", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Exiled),
-                    Some(["with", "cards" | "creatures" | "permanents" | "objects", "sacrificed", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Sacrificed),
-                    Some(["with", "creatures" | "permanents" | "objects", "given", "counters", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::CountersPut),
-                    _ => None,
-                };
-                let objects = if prior_action.is_some() { Some(None) }
-                    else if action + 1 == words.len() { Some(None) }
-                    else if words.get(action + 1) == Some(&"with") {
-                        view.token_start_indices().get(action + 2).copied()
-                            .and_then(|start| parse_target_phrase(&sentence_tokens[start..]).ok()).map(Some)
-                    } else { None };
-                if let Some(objects) = objects {
-                    if prior_action.is_some() { crate::word_claims::claim_tokens(&sentence_tokens); }
-                    crate::word_claims::claim_tokens(&sentence_tokens[..view.token_start_indices()[action] + 1]);
-                    if let Some(with) = view.token_start_indices().get(action + 1) {
-                        crate::word_claims::claim_tokens(&sentence_tokens[*with..*with + 1]);
-                    }
-                    effects.push(EffectAst::subject_verb(
-                        crate::model::ast::SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
-                        SubjectVerbActionAst::KeywordActions(crate::cards::builders::KeywordActionAst::PerformNamedAction { program_completion: ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted,label, performer:None, objects, prior_objects: prior_action.map(|action| (crate::effect::EffectId::PENDING_PRIOR_ACTION, action)), program: None})));
-                    sentence_idx += 1;
-                    continue;
-                }
-            }
+        if let Some(effect) = super::named_action_atom::parse_perform(&sentence_tokens) {
+            effects.push(effect);
+            sentence_idx += 1;
+            continue;
         }
         {
             let view = crate::lexer::TokenWordView::new(&sentence_tokens);

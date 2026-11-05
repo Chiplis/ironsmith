@@ -1931,7 +1931,10 @@ pub fn parse_create(
                 matches!(&words[of + 1..], ["it"] | ["them"] | ["that", _] | ["those", _] | ["each", "of", "them"])
             })
         });
+    // A copy source is "a copy of ..."; an "of" inside an unquoted token
+    // name ("named Oath of Secrets attached to that creature") is not one.
     let copy_source_owns_tail = !anaphoric_copy_attachment
+        && token_word_refs(&tail_tokens).iter().any(|word| matches!(*word, "copy" | "copies"))
         && creation_grammar::parse_copy_source_clause_tokens(&tail_tokens).is_some();
     let value_binding_owns_tail = crate::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(&tail_tokens).is_some();
     if !copy_source_owns_tail && !value_binding_owns_tail
@@ -2461,7 +2464,7 @@ pub fn parse_create(
             };
             if !preserve_rules_tail
                 && let Some(with_tokens) = creation_grammar::CreationTokens::new(&tail_tokens)
-                    .word_range(with_idx..with_idx + 1 + definition_with_words)
+                    .word_range_closing_quotes(with_idx..with_idx + 1 + definition_with_words)
             {
                 definition_tokens.extend_from_slice(with_tokens);
             }

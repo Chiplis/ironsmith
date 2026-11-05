@@ -3297,6 +3297,10 @@ pub enum Condition {
         directly_above: bool,
     },
     SourceIsInZone(Zone),
+    /// "this object's zone is the battlefield": the source object's exact
+    /// zone, including while it is phased out (unlike "is on the battlefield",
+    /// CR 702.26b). A new incarnation is a different object (CR 400.7).
+    SourceIsInExactZone(Zone),
     ActivationTiming(ActivationTiming),
     MaxActivationsPerTurn(u32),
     /// Lifetime activation cap for the current object instance and ability.

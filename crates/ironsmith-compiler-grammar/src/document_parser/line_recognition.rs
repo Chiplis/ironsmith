@@ -650,6 +650,15 @@ pub(super) fn recognize_static_line(
 ) -> Result<Option<RecognizedStaticLine>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
     let parse_tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
+    if let Some(abilities) =
+        crate::keyword_static::parse_labeled_unknown_companion_marker_line(&line.info.source_tokens)
+    {
+        crate::word_claims::claim_tokens(&parse_tokens);
+        return Ok(Some(RecognizedStaticLine {
+            info: line.info.clone(), parse_tokens, chosen_option: None,
+            parsed: Some(Box::new(crate::cards::builders::LineAst::StaticAbilities(abilities))),
+        }));
+    }
     if let Some(abilities) = crate::keyword_static::parse_descriptive_reminder_line(&parse_tokens) {
         return Ok(Some(RecognizedStaticLine {
             info: line.info.clone(), parse_tokens, chosen_option: None,
@@ -659,6 +668,22 @@ pub(super) fn recognize_static_line(
     // These complete static programs carry multiple independent components.
     // Older leaf recognizers can read only a flash or cost-condition suffix;
     // retain the typed whole-line reading at the document boundary.
+    // "<filter> enter face down." (CR 708): a complete filtered entry
+    // replacement whose open-ended subject has no fixed line head.
+    if crate::lexer::parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(&parse_tokens))
+        .ends_with(&["enter", "face", "down"])
+        || crate::lexer::parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(&parse_tokens))
+            .ends_with(&["enter", "face-down"])
+    {
+        if let Some(ability) = crate::keyword_static::parse_as_enters_becomes_characteristics_for_filter_line(&parse_tokens)? {
+            return Ok(Some(RecognizedStaticLine {
+                info: line.info.clone(),
+                parse_tokens,
+                chosen_option: None,
+                parsed: Some(Box::new(crate::cards::builders::LineAst::StaticAbilities(vec![ability.into()]))),
+            }));
+        }
+    }
     if let Some(abilities) = crate::keyword_static::parse_player_may_cast_spells_free_and_flash_line(&parse_tokens)?
         .or(crate::keyword_static::parse_double_conditional_this_spell_cost_reduction_line(&parse_tokens)?)
     {

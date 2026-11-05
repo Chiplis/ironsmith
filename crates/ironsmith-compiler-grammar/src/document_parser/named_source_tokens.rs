@@ -34,7 +34,16 @@ pub(super) struct Alias {
 
 pub(super) fn aliases_for_builder(card: &crate::card::CardBuilder) -> Vec<Alias> {
     let mut surfaces = Vec::new();
+    // Shortened self-references are the legendary-name convention. A card
+    // whose known type line is not legendary keeps its full name ("Recite
+    // witness" is never "Recite").
+    let declared_nonlegendary = !card.card_types_ref().is_empty()
+        && !card.supertypes_ref().contains(&crate::types::Supertype::Legendary);
     for full_name in source_full_names_for_builder(card) {
+        if declared_nonlegendary && !full_name.contains(',') {
+            push_source_name_alias_surfaces(&mut surfaces, full_name.as_str(), full_name.as_str());
+            continue;
+        }
         // Tokenizing the card name: metadata, not rules text, and the one
         // place this module turns a string into tokens. The name's short
         // alias ("Brago" for "Brago, King Eternal") is read from its tokens.

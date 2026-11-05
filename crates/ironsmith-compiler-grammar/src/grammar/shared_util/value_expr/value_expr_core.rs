@@ -7,16 +7,18 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     let offset=usize::from(words.first()==Some(&"the"));
     if words.get(offset..offset+3)==Some(&["number","of","times"][..]) {
         let begin=offset+3;
-        if let Some(performed)=words[begin..].windows(3).position(|part|part==["has","performed","the"]).map(|i|begin+i)
-            && let Some(action)=words[performed+3..].iter().position(|word|*word=="action").map(|i|performed+3+i) {
+        // Article-stripped readers present "has performed reprieve action".
+        if let Some((performed,label_start))=words[begin..].windows(2).position(|part|part==["has","performed"])
+                .map(|i|(begin+i,begin+i+2+usize::from(words.get(begin+i+2)==Some(&"the"))))
+            && let Some(action)=words[label_start..].iter().position(|word|*word=="action").map(|i|label_start+i) {
             let subject=&words[begin..performed];
             let object=if matches!(subject,["it"]|["that","object"]) {Some(ChooseSpec::Iterated)}else if crate::util::is_source_reference_words(subject) {Some(ChooseSpec::Source)}else{None};
             if let Some(object)=object {
                 let this_turn=words.get(action+1..action+3)==Some(&["this","turn"][..]);
                 let used=action+1+if this_turn{2}else{0};
-                if action>performed+3 {
+                if action>label_start {
                     crate::word_claims::claim_words(&words[..used]);
-                    return Some((Value::NamedActionCount {object:Box::new(object),label:words[performed+3..action].join(" "),this_turn},used));
+                    return Some((Value::NamedActionCount {object:Box::new(object),label:words[label_start..action].join(" "),this_turn},used));
                 }
             }
         }

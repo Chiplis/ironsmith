@@ -62,6 +62,7 @@ fn s1_monarch_uses_live_controller_or_departure_lki_not_a_new_incarnation() {
             g.set_current_controller(returned, BOB).expect("finite controller fixture must refresh successfully");
         }
         ironsmith::resolve_stack_entry(&mut g).unwrap();
+        eprintln!("P3DBG depart={depart} monarch={:?}", g.monarch);
         assert_eq!(g.monarch, Some(C));
     }
 }

@@ -26,6 +26,31 @@ pub(super) fn read(input: &Predicate<'_>) -> Option<PredicateAst> {
         });
     }
 
+    // "there is a creature or land card exiled as this creature entered
+    // [by its ability with designation "X"]": the source's exact entry
+    // result still exists in exile and currently matches the descriptor.
+    if let Some(start) = match words.as_slice() {
+        ["there", "is" | "are", ..] => Some(2),
+        ["theres", ..] => Some(1),
+        _ => None,
+    } && let Some(&filter_start) = view.token_start_indices().get(start)
+        && let Some(Ok(filter)) =
+            crate::object_filters::parse_entry_reference_filter(&original[filter_start..], false)
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str().starts_with("__entry_reference_exiled")
+        })
+    {
+        crate::word_claims::claim_tokens(&original[..filter_start]);
+        return Some(PredicateAst::ValueComparison {
+            left: Value::Count(filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        });
+    }
+
+    if let Some(predicate) = named_action_count_comparison(input.predicate_tokens) {
+        return Some(predicate);
+    }
     if let Some(predicate) = negated_mana_spent(input.predicate_tokens) {
         return Some(predicate);
     }
@@ -325,6 +350,7 @@ const SHAPES: &[Shape] = whole_clause_shapes![
     you_changed_life_this_way,
     distinct_names_among_controlled_qualities,
     distinct_names_among_unlocked_doors,
+    distinct_names_among_objects,
     source_card_in_your_graveyard,
     source_is_on_the_stack,
     source_escaped,
@@ -1528,6 +1554,42 @@ fn distinct_names_among_unlocked_doors(words: &[&str]) -> Option<PredicateAst> {
     Some(at_least(Value::DistinctNames(filter), count))
 }
 
+/// "there are [exactly] N [or more|or fewer] different names among <objects>"
+/// and its negation "there aren't exactly three different names among
+/// Implements you control": a comparison on the number of distinct names
+/// among the described objects (battlefield by default).
+fn distinct_names_among_objects(words: &[&str]) -> Option<PredicateAst> {
+    use crate::effect::ValueComparisonOperator as Op;
+    let (negated, rest) = match words {
+        ["there", "are", "not", rest @ ..] | ["there", "arent", rest @ ..] | ["there", "aren't", rest @ ..]
+        | ["there", "aren’t", rest @ ..] => (true, rest),
+        ["there", "are", rest @ ..] => (false, rest),
+        _ => return None,
+    };
+    let (exact, rest) = match rest {
+        ["exactly", rest @ ..] => (true, rest),
+        _ => (false, rest),
+    };
+    let [count, rest @ ..] = rest else { return None; };
+    let count = i32::try_from(number(count)?).ok()?;
+    let (operator, rest) = match rest {
+        ["or", "more", rest @ ..] if !exact => (Op::GreaterThanOrEqual, rest),
+        ["or", "fewer" | "less", rest @ ..] if !exact => (Op::LessThanOrEqual, rest),
+        rest => (Op::Equal, rest),
+    };
+    let ["different", "names", "among", objects @ ..] = rest else { return None; };
+    let mut filter = filter_from_words(objects)?;
+    if filter.zone.is_none() { filter.zone = Some(Zone::Battlefield); }
+    let operator = match (negated, operator) {
+        (false, operator) => operator,
+        (true, Op::Equal) => Op::NotEqual,
+        (true, Op::GreaterThanOrEqual) => Op::LessThan,
+        (true, Op::LessThanOrEqual) => Op::GreaterThan,
+        _ => return None,
+    };
+    Some(PredicateAst::ValueComparison { left: Value::DistinctNames(filter), operator, right: Value::Fixed(count) })
+}
+
 /// "If seven or more {E} was paid this way" (Wheel of Potential): a
 /// threshold on the energy an earlier "pay any amount of {E}" removed, which
 /// other instructions (a per-player loop) may separate from this gate. The
@@ -1783,4 +1845,32 @@ mod other_death_history_tests {
         } if filter.other && filter.card_types==[crate::types::CardType::Creature] && filter.controller==Some(PlayerFilter::You) && filter.zone.is_none()));
         assert!(died_under_your_control(&["another","creature","died","under","your","control","last","turn"]).is_none());
     }
+}
+
+/// "the number of times this permanent has performed the reprieve action
+/// [this turn] is greater than 0": a typed named-action count compared with
+/// a fixed amount.
+fn named_action_count_comparison(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    use crate::effect::ValueComparisonOperator as Operator;
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let is_at = words.iter().rposition(|word| *word == "is")?;
+    if is_at == 0 {
+        return None;
+    }
+    let (left, used) = crate::util::parse_value_expr_words(&words[..is_at])?;
+    if used != is_at || !matches!(left, Value::NamedActionCount { .. }) {
+        return None;
+    }
+    let (operator, amount) = match &words[is_at + 1..] {
+        ["greater", "than", amount] => (Operator::GreaterThan, *amount),
+        ["less", "than", amount] => (Operator::LessThan, *amount),
+        [amount, "or", "greater" | "more"] => (Operator::GreaterThanOrEqual, *amount),
+        [amount, "or", "less" | "fewer"] => (Operator::LessThanOrEqual, *amount),
+        ["equal", "to", amount] | ["exactly", amount] | [amount] => (Operator::Equal, *amount),
+        _ => return None,
+    };
+    let amount = parse_named_number(amount)? as i32;
+    crate::word_claims::claim_tokens(tokens);
+    Some(PredicateAst::ValueComparison { left, operator, right: Value::Fixed(amount) })
 }

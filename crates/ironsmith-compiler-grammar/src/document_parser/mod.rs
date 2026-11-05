@@ -671,6 +671,12 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
     if crate::grammar::abilities::is_shuffle_into_library_from_graveyard_line_lexed(tokens) {
         return false;
     }
+    // A terminal spell destination replacement with its continuation is a
+    // static ability of the spell itself (CR 614.1a, 608.2n), not a step of
+    // its resolution.
+    if crate::keyword_static::opens_spell_resolution_destination_program_line(tokens) {
+        return false;
+    }
     // An unconditional definition of this card's own subtypes remains a
     // static ability even on an instant or sorcery (CR 604.3). The broad
     // statement classifier also recognizes type assignments; it must not
@@ -1488,6 +1494,15 @@ fn replace_named_source_alias_tokens(
     let mut opaque_status_tokens=vec![false;tokens.len()];
     for start in 0..tokens.len() {
         if !tokens[start].is_word("the"){continue;}
+        // A quoted designation owns its punctuation: `the "unlocked work
+        // named Canvas, Dusk" status`.
+        if tokens.get(start+1).is_some_and(|token|token.kind==TokenKind::Quote)
+            && let Some(close)=(start+2..tokens.len()).find(|index|tokens[*index].kind==TokenKind::Quote)
+            && tokens.get(close+1).is_some_and(|token|token.is_word("status"))
+        {
+            opaque_status_tokens[start+1..=close].fill(true);
+            continue;
+        }
         let mut end=start+1;
         while end<tokens.len()&&tokens[end].kind==TokenKind::Word {
             if tokens[end].is_word("status") {
@@ -5648,11 +5663,15 @@ const QUOTED_GAIN_DECLINES: &[fn(&PreprocessedLine) -> Result<bool, CardTextErro
     // one complete quoted ability-gain sentence only
     |line| Ok(split_lexed_sentences(&line.tokens).len() != 1),
     // a permanent anthem owns its trailing quoted grants
+    // These are ownership probes: a reader that rejects the line does not
+    // own it, so its diagnostic must not preempt the quoted-gain reading.
     |line| {
         Ok(
-            crate::keyword_static::parse_anthem_and_keyword_line(&line.tokens)?.is_some()
-                || crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?
-                    .is_some(),
+            matches!(crate::keyword_static::parse_anthem_and_keyword_line(&line.tokens), Ok(Some(_)))
+                || matches!(
+                    crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens),
+                    Ok(Some(_))
+                ),
         )
     },
     // an enter-as-copy replacement owns its quoted exception

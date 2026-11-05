@@ -1189,6 +1189,10 @@ impl PreparedBattlefieldEntryBatch {
                 // redirected and prevented proposals still lose provisional effects.
                 if let Some(effects) = provisional_entry_effects.get(object) {
                     provisional_effects.retain(|id| !effects.contains(id));
+                    // CR 613.7n: the entrant's own static abilities take the
+                    // entry timestamp; the instruction's simultaneous entry
+                    // modifications are newer than them.
+                    working.effect_store.continuous_effects.restamp_effects(effects);
                 }
             }
             outcomes[index] = finish_battlefield_entry(

@@ -263,7 +263,7 @@ mod sticker_sheet_tests {
             toughness: pt.map(|(_, toughness)| toughness),
             block: pt
                 .is_none()
-                .then(|| format!("Type: Artifact Creature — Sticker\nPower/Toughness: 1/1\n{text}")),
+                .then(|| format!("Type: Artifact Creature\nPower/Toughness: 1/1\n{text}")),
         }
     }
 
@@ -277,7 +277,7 @@ mod sticker_sheet_tests {
                 "artStickers": 1,
                 "rows": [
                     {"index": 0, "ticketCost": 3, "text": "Flying",
-                     "block": "Type: Artifact Creature — Sticker\nPower/Toughness: 1/1\nFlying"},
+                     "block": "Type: Artifact Creature\nPower/Toughness: 1/1\nFlying"},
                     {"index": 1, "ticketCost": 2, "text": "1/4", "power": 1, "toughness": 4},
                 ],
             },

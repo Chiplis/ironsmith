@@ -25,7 +25,11 @@ pub fn with_custom_subtypes<T>(
                     || crate::util::parse_color(&name).is_some()
                     || crate::leaf::parse_leaf_supertype_complete(&name).is_ok()
                     || crate::util::parse_zone_word(&name).is_some()
-                    || crate::util::parse_number_word_i32(&name).is_some()
+                    // Planeswalker types are proper names (MSEM's "Zero",
+                    // CR 205.3j); they only appear as planeswalker subtypes,
+                    // so a name that spells a number is not a quantity word.
+                    || (def.family != ironsmith_core::SubtypeFamily::Planeswalker
+                        && crate::util::parse_number_word_i32(&name).is_some())
                     || crate::leaf::parse_leaf_non_subtype_complete(&name).is_ok()
                     || crate::static_abilities::StaticAbility::keyword_marker(name.clone()).id()
                         != ironsmith_core::StaticAbilityId::KeywordMarker

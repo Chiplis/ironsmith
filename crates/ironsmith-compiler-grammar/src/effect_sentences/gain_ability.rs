@@ -1303,6 +1303,16 @@ fn parse_granted_abilities_for_gain_clause_unchecked(
             if token.kind==TokenKind::Quote {quoted=!quoted;}
             if !quoted && token.is_word("or") {segments.push(&ability_tokens[start..index]);start=index+1;}
         }
+        // Words after the final quoted operand ("choose \"A\" or \"B\" as a
+        // card name") make the quotes literal operands of another clause,
+        // not a choice between granted abilities.
+        let trailing_unquoted_words = ability_tokens
+            .iter()
+            .rposition(|token| token.kind == TokenKind::Quote)
+            .is_some_and(|last| ability_tokens[last + 1..].iter().any(|token| token.as_word().is_some()));
+        if !segments.is_empty() && trailing_unquoted_words {
+            return Ok((Vec::new(), false));
+        }
         if !segments.is_empty() {
             segments.push(&ability_tokens[start..]);
             let mut choices=Vec::new();

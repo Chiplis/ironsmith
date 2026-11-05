@@ -2488,6 +2488,19 @@ pub struct ChooseModeEffect<E> {
 }
 
 impl<E> ChooseModeEffect<E> {
+    /// The decision labels when each one only repeats its mode's own text:
+    /// prompt metadata rather than a distinct modal presentation. Empty
+    /// otherwise.
+    pub fn echoed_decision_labels(&self) -> Vec<String> {
+        let echoes = self.decision_labels.len() == self.modes.len()
+            && self
+                .decision_labels
+                .iter()
+                .zip(&self.modes)
+                .all(|(label, mode)| label.trim() == mode.source_text.trim());
+        if echoes { self.decision_labels.clone() } else { Vec::new() }
+    }
+
     pub fn new(modes: Vec<EffectMode<E>>, min: Value, max: Value, allow_repeat: bool) -> Self {
         let choose_count = max.clone();
         let min_choose_count = min.clone();

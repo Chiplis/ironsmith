@@ -2918,6 +2918,7 @@ pub fn try_parse_optional_cost_with_cast_trigger(
     .repeatable();
     let mut effects = parse_effect_sentences_lexed(shape.followup_effect_tokens)?;
     rewrite_copy_count_to_times_paid_label_rewrite(&mut effects, &label);
+    crate::word_claims::claim_tokens(shape.trigger_frame_tokens);
 
     Ok(Some(LineAst::OptionalCostWithCastTrigger { cost, effects }))
 }

@@ -44,8 +44,16 @@ impl DecisionMaker for Choices {
         if let Some(confirm) = ctx.options.iter().find(|o| o.description == "Confirm payment") {
             return vec![confirm.index];
         }
-        // The cost's two modes, in printed order: choose, then reveal.
-        if ctx.options.len() == 2 && ctx.options.iter().all(|o| o.legal && o.description.is_empty()) {
+        // The cost's two modes, in printed order: choose, then reveal. Their
+        // decision labels echo the printed alternatives.
+        if ctx.options.len() == 2
+            && ctx.options.iter().all(|o| {
+                o.legal
+                    && (o.description.is_empty()
+                        || o.description.starts_with("Choose a creature")
+                        || o.description.starts_with("Reveal a creature"))
+            })
+        {
             return vec![ctx.options[usize::from(self.option_word == "reveal")].index];
         }
         ctx.options.iter().filter(|o| o.legal).take(ctx.min.max(1)).map(|o| o.index).collect()

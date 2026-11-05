@@ -712,6 +712,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::EvolveEnteringCreatureIsLarger | Condition::SoulbondPairingPossible
         | Condition::SourceClassLevelAtLeast(_) | Condition::TriggeringObjectHadCounters { .. }
         | Condition::ControlCreaturesTotalPowerAtLeast(_) | Condition::SourceIsInZone(_)
+        | Condition::SourceIsInExactZone(_)
         | Condition::EachCurrentDesignatedAbilityActivatedByYou { .. }
         | Condition::ActivationTiming(_) | Condition::MaxActivationsPerTurn(_) | Condition::MaxActivationsPerObject(_)
         | Condition::SourceIsEquipped | Condition::SourceIsEnchanted | Condition::EnchantedPermanentIsCreature

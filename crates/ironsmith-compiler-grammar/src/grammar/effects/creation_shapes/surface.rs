@@ -588,6 +588,25 @@ impl<'a> CreationTokens<'a> {
         Some(&self.tokens[range])
     }
 
+    /// Like [`Self::word_range`], but a quoted rule opened inside the range is
+    /// kept whole: the range extends through its closing quote mark, which
+    /// follows the rule's last word (`"{T}: Draw a card."`).
+    pub fn word_range_closing_quotes(self, words: Range<usize>) -> Option<&'a [OwnedLexToken]> {
+        let view = TokenWordView::new(self.tokens);
+        let range = view.token_span_for_words(words.start, words.end)?;
+        let mut end = range.end;
+        let open_quotes = self.tokens[range.start..end]
+            .iter()
+            .filter(|token| token.is_quote())
+            .count();
+        if open_quotes % 2 == 1
+            && let Some(close) = self.tokens[end..].iter().position(OwnedLexToken::is_quote)
+        {
+            end += close + 1;
+        }
+        Some(&self.tokens[range.start..end])
+    }
+
     pub fn token_is(self, token_idx: usize, class: CreationWordClass) -> bool {
         self.tokens.get(token_idx).is_some_and(|token| {
             let text = token.parser_text();

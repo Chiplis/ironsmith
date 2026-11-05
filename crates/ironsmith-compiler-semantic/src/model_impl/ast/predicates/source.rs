@@ -49,6 +49,8 @@ pub enum SourcePredicateAst {
         directly_above: bool,
     },
     SourceIsInZone(Zone),
+    /// "this object's zone is <zone>": exact zone identity, phasing included.
+    SourceIsInExactZone(Zone),
     SourceWasCast,
     /// "if this creature attacked a battle this turn"
     SourceAttackedBattleThisTurn,

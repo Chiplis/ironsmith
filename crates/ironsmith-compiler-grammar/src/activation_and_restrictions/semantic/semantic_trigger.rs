@@ -404,12 +404,30 @@ mod designated_counter_cause;
 #[path = "named_action_trigger.rs"]
 mod named_action_trigger;
 
+fn you_attack_with_at_least(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, CardTextError> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if !words.starts_with(&["you", "attack", "with"]) || words.len() <= 3 { return Ok(None); }
+    let Some(start) = view.token_start_indices().get(3).copied() else { return Ok(None); };
+    let Some((count, object_tokens)) = parse_leading_or_more_quantifier(&tokens[start..]) else { return Ok(None); };
+    if count < 2 || object_tokens.is_empty() { return Ok(None); }
+    let Ok(mut filter) = parse_object_filter_lexed(object_tokens, false) else { return Ok(None); };
+    if filter.controller.is_none() { filter.controller = Some(PlayerFilter::You); }
+    filter.set_union_one_or_more(true);
+    crate::word_claims::claim_tokens(tokens);
+    Ok(Some(TriggerSpec::AttacksOneOrMoreWithMinTotal { filter, min_total_attackers: count, per_attacking_player: false }))
+}
+
 pub(super) fn parse_trigger_clause_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
     if let Some(trigger) = designated_counter_cause::read(tokens)? { return Ok(trigger); }
     if let Some(trigger) = named_action_trigger::read_participant_event_union(tokens) { return Ok(trigger); }
     if let Some(trigger) = named_action_trigger::read(tokens)? { return Ok(trigger); }
+    // "you attack with three or more creatures" (also as one branch of an
+    // "enters or you attack with ..." union): one trigger per declaration
+    // with at least that many of your attackers.
+    if let Some(trigger) = you_attack_with_at_least(tokens)? { return Ok(trigger); }
     // A bounded characteristic-gain clause describes a transition, not an
     // invocation of the effect which happens to produce it.
     {
@@ -5377,6 +5395,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     player,
                     during_turn,
                 });
+            }
+            // "draws a card except during their draw step": every draw in
+            // the drawer's own draw step is excluded (not only the first).
+            if matches!(
+                tail,
+                ["a", "card", "except", "during", "their" | "your" | "his" | "her", "draw", "step"]
+                    | ["a", "card", "except", "during", "their" | "your", "own", "draw", "step"]
+            ) {
+                crate::word_claims::claim_words(&words[draw_word_idx..]);
+                return Ok(TriggerSpec::PlayerDrawsCardOutsideOwnDrawStep(player));
             }
             if has_draw_except_first_in_draw_step_pattern(tail) {
                 // The surface sequences are the whole tail when the lengths

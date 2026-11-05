@@ -186,7 +186,8 @@ fn typed_attack_tax_static_ability(
     let scope = crate::lexer::token_word_refs(&tokens[cant + 1..unless]);
     let covers_planeswalkers = match scope.as_slice() {
         ["attack", "you"] => false,
-        ["attack", "you", "or", "planeswalkers", "you", "control"] => true,
+        ["attack", "you", "or", "planeswalkers", "you", "control"]
+        | ["attack", "you", "or", "a", "planeswalker", "you", "control"] => true,
         _ => return Ok(None),
     };
     let Some(pays) = tokens

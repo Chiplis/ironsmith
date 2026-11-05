@@ -26,8 +26,22 @@ pub(super) fn parse_optional_cost_with_cast_trigger_lexed<'a>(
         primitives::parse_prefix(label_tokens, primitives::phrase(&["you", "may"]))
             .ok_or_else(|| primitives::backtrack_err("optional additional cost", "you may"))?;
     primitives::period().parse_next(input)?;
-    primitives::phrase(&["when", "you", "do"]).parse_next(input)?;
-    opt(primitives::comma()).parse_next(input)?;
+    // "When you do," and "When you cast this spell, if you paid this
+    // additional cost," name the same payment-gated cast trigger.
+    let trigger_frame_tokens = (
+        alt((
+            primitives::phrase(&["when", "you", "do"]),
+            (
+                primitives::phrase(&["when", "you", "cast", "this", "spell"]),
+                opt(primitives::comma()),
+                primitives::phrase(&["if", "you", "paid", "this", "additional", "cost"]),
+            )
+                .void(),
+        )),
+        opt(primitives::comma()),
+    )
+        .take()
+        .parse_next(input)?;
     let followup_effect_tokens =
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
             .map(|((), ())| ())
@@ -38,6 +52,7 @@ pub(super) fn parse_optional_cost_with_cast_trigger_lexed<'a>(
     Ok(OptionalCostWithCastTriggerShape {
         label_tokens,
         optional_cost_effect_tokens,
+        trigger_frame_tokens,
         followup_effect_tokens,
     })
 }

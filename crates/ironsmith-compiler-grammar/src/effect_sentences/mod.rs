@@ -136,7 +136,7 @@ mod dispatch_inner;
 mod divvy;
 mod sector_programs;
 mod document_readings;
-pub(crate) use document_readings::{parse_bounded_program,parse_bounded_inline_modal_tokens};
+pub(crate) use document_readings::{parse_bounded_program,parse_bounded_inline_modal_tokens,parse_bounded_instruction_program_tokens};
 mod exiled_top_procedure;
 mod fanout_family;
 mod for_each_helpers;

@@ -2386,6 +2386,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::SourceClassLevelAtLeast(_)
         | C::TriggeringObjectHadCounters { .. }
         | C::SourceIsInZone(_)
+        | C::SourceIsInExactZone(_)
         | C::ActivationTiming(_)
         | C::MaxActivationsPerTurn(_)
         | C::MaxActivationsPerObject(_)

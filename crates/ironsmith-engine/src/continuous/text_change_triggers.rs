@@ -209,6 +209,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
         | K::PlayerLosesLife { player } | K::PlayersLoseLifeOneOrMore { player }
         | K::PlayerLosesGame { player } | K::PlayerDrawsCard { player }
         | K::PlayerDrawsCardExceptFirstInDrawStep { player }
+        | K::PlayerDrawsCardOutsideOwnDrawStep { player }
         | K::PlayerDrawsNthCardEachTurn { player, card_number: _ }
         | K::PlayerDrawsNumberedCardsEachTurn { player, card_numbers: _ }
         | K::BeginningOfUpkeep { player } | K::BeginningOfDrawStep { player }

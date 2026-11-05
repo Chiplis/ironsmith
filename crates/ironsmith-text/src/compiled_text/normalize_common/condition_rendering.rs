@@ -5695,6 +5695,20 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 "this card is in your graveyard with {count} or more {cards} above it"
             )
         }
+        Condition::SourceIsInExactZone(zone) => format!(
+            "this object's zone is {}",
+            match zone {
+                Zone::Battlefield => "the battlefield",
+                Zone::Hand => "its owner's hand",
+                Zone::Graveyard => "its owner's graveyard",
+                Zone::Library => "its owner's library",
+                Zone::Exile => "exile",
+                Zone::Stack => "the stack",
+                Zone::Command => "the command zone",
+                Zone::Ante => "ante",
+                Zone::OutsideGame => "outside the game",
+            }
+        ),
         Condition::SourceIsInZone(zone) => match zone {
             Zone::Hand => "this card is in your hand".to_string(),
             Zone::Graveyard => "this card is in your graveyard".to_string(),

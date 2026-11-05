@@ -501,6 +501,7 @@ pub enum TriggerSpec {
         during_turn: PlayerFilter,
     },
     PlayerDrawsCardExceptFirstInDrawStep(PlayerFilter),
+    PlayerDrawsCardOutsideOwnDrawStep(PlayerFilter),
     PlayerDrawsNthCardEachTurn {
         player: PlayerFilter,
         card_number: u32,

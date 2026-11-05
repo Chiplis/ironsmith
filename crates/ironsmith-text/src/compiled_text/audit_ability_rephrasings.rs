@@ -182,6 +182,22 @@ pub(super) fn audit_ability_line_rephrasings(line: String, def: &CardDefinition)
         "Creatures you control can't be blocked by more than one creature",
         "Each creature you control can't be blocked by more than one creature",
     );
+    // A card-type setting plus an added Vehicle subtype and crew grant
+    // (Swift Reconfiguration): the set type replaces the other card types
+    // (CR 205.1a); only the subtype is added.
+    if let Some((head, tail)) = line.split_once(" has Crew ")
+        && let Some((amount, rest)) = tail.split_once(" and is an artifact and is a Vehicle in addition to its other types")
+        && !amount.is_empty()
+        && amount.chars().all(|ch| ch.is_ascii_digit())
+    {
+        line = format!("{head} is a Vehicle artifact with crew {amount} and it loses all other card types{rest}");
+    }
+    // Two successive type choices read as one instruction, and the land
+    // type change names them by order (Vision Charm).
+    line = line.replace(
+        "You choose a land type. Choose a basic land type. Each land of the chosen land type becomes that type",
+        "Choose a land type and a basic land type. Each land of the first chosen type becomes the second chosen type",
+    );
     // CR 609.4b mana-type permission, in Oracle's passive form: "mana of
     // any type can be spent to cast that spell".
     line = line

@@ -315,6 +315,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(player)
         | TriggerSpec::PlayerDrawsCard(player)
         | TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player)
+        | TriggerSpec::PlayerDrawsCardOutsideOwnDrawStep(player)
         | TriggerSpec::PlayerGivesGift(player)
         | TriggerSpec::PlayerSearchesLibrary(player)
         | TriggerSpec::PlayerRollsResult { player, .. }

@@ -2319,6 +2319,14 @@ pub(super) fn run_statement_probe_line_family(
         crate::parse_trace::event("statement-probe: declined for this-spell cost modifier");
         return ParseOutcome::NoMatch;
     }
+    // "If this spell was cast from your hand, instead of putting it into your
+    // graveyard as it resolves, exile it and ..." is a static terminal
+    // destination replacement with its continuation, also on an instant or
+    // sorcery; reading it as a resolution statement drops the replacement.
+    if crate::keyword_static::opens_spell_resolution_destination_program_line(&ctx.line.tokens) {
+        crate::parse_trace::event("statement-probe: declined for spell resolution destination");
+        return ParseOutcome::NoMatch;
+    }
     // A direct alternative-cast-cost sentence is a keyword line.  The broad
     // statement parsers can also interpret its leading `you may pay` as an
     // effect, but that interpretation drops the casting-method semantics and

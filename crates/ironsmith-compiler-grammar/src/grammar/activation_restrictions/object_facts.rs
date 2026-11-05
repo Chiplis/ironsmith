@@ -329,6 +329,7 @@ pub fn parse_negated_object_tail_words(words: &[&str]) -> Option<NegatedObjectTa
         words,
         &[
             &["attack", "you", "or", "planeswalkers", "you", "control"],
+            &["attack", "you", "or", "a", "planeswalker", "you", "control"],
             // "can't attack you or a permanent you control" (Immortal
             // Obligation): the attackable permanents a player controls.
             &["attack", "you", "or", "a", "permanent", "you", "control"],

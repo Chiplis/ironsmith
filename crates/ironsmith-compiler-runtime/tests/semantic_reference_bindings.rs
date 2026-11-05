@@ -66,6 +66,11 @@ fn stolen_uniform_watches_the_equipment_for_lost_control() {
         let delayed = effects.iter().find_map(|effect|
             effect.downcast_ref::<ironsmith::effects::ScheduleDelayedTriggerEffect>()).unwrap();
         assert!(delayed.until_end_of_turn, "the control-change watch must expire this turn");
-        assert!(delayed.target_filter.as_ref().unwrap_or_else(|| panic!("missing watched filter: {delayed:#?}; full program: {debug}")).subtypes.contains(&ironsmith::Subtype::Equipment));
+        // The watched Equipment is the trigger's own control-change filter:
+        // the Equipment subtype plus the exact targeted object, not a
+        // separate registration filter.
+        let watched = format!("{:?}", delayed.trigger);
+        assert!(watched.contains("ControlChangeTrigger") && watched.contains("subtypes: [Equipment]")
+            && watched.contains("TagKey(\"targeted_1\")"), "missing watched Equipment: {delayed:#?}; full program: {debug}");
     }
 }

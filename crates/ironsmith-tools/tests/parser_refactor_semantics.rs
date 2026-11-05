@@ -539,8 +539,13 @@ fn counters_on_each_of_them_use_the_preceding_population() {
         game.calculated_characteristics(selected).unwrap().power,
         Some(3)
     );
+    // A noncreature artifact has no power (CR 208.3), so the excluded
+    // population is checked by the counter itself.
     for id in excluded {
-        assert_eq!(game.calculated_characteristics(id).unwrap().power, Some(2));
+        assert_eq!(
+            game.counter_count(id, ironsmith::CounterType::PlusOnePlusOne),
+            0
+        );
     }
 }
 

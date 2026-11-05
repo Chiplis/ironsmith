@@ -863,10 +863,13 @@ mod priority_analysis_tests {
                         }
                         wasm.priority_analysis_job = None;
                         let mut dm = ironsmith::decision::AutoPassDecisionMaker;
+                        let stable = wasm.game.object(land).unwrap().stable_id;
                         ironsmith::special_actions::perform(
                             ironsmith::special_actions::SpecialAction::PlayLand { card_id: land },
                             &mut wasm.game, alice, &mut dm).unwrap();
-                        assert_eq!(wasm.game.object(land).unwrap().zone, ironsmith::Zone::Battlefield);
+                        // CR 400.7: the land on the battlefield is a new object.
+                        let played = wasm.game.find_object_by_stable_id(stable).unwrap();
+                        assert_eq!(wasm.game.object(played).unwrap().zone, ironsmith::Zone::Battlefield);
                     }
                 }
             }

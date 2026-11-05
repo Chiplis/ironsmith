@@ -16,6 +16,25 @@ fn phrase(tokens: &[OwnedLexToken], cursor: &mut usize, words: &[&str]) -> bool 
     true
 }
 
+/// Whether the line opens a terminal spell destination replacement ("If this
+/// spell was cast from your hand, instead of putting it into your graveyard
+/// as it resolves, exile it ..."). Its continuation is part of the static
+/// ability, so the line's static family owns it even on an instant or
+/// sorcery, whose other lines are resolution statements.
+pub(crate) fn opens_spell_resolution_destination_program_line(tokens: &[OwnedLexToken]) -> bool {
+    let mut cursor = 0;
+    phrase(tokens, &mut cursor, &["if", "this", "spell", "was", "cast", "from", "your"])
+        && (phrase(tokens, &mut cursor, &["hand"]) || phrase(tokens, &mut cursor, &["graveyard"]))
+        && phrase(
+            tokens,
+            &mut cursor,
+            &[
+                "instead", "of", "putting", "it", "into", "your", "graveyard", "as", "it",
+                "resolves", "exile", "it",
+            ],
+        )
+}
+
 pub(super) fn parse_spell_resolution_destination_program_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {

@@ -922,6 +922,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player) => {
             Trigger::player_draws_card_except_first_in_draw_step(player)
         }
+        TriggerSpec::PlayerDrawsCardOutsideOwnDrawStep(player) => {
+            Trigger::player_draws_card_outside_own_draw_step(player)
+        }
         TriggerSpec::PlayerDrawsNthCardEachTurn {
             player,
             card_number,
@@ -1707,6 +1710,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerDrawsCard(_)
         | TriggerSpec::PlayerDrawsCardNotDuringTurn { .. }
         | TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_)
+        | TriggerSpec::PlayerDrawsCardOutsideOwnDrawStep(_)
         | TriggerSpec::PlayerDrawsNthCardEachTurn { .. }
         | TriggerSpec::PlayerDrawsNumberedCardsEachTurn { .. }
         | TriggerSpec::PlayerDiscardsCard { .. }

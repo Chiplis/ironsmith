@@ -3211,6 +3211,25 @@ pub fn preprocess_document_with_provenance(
         front_face_name.as_str(),
         &front_face_tokens,
     );
+    // A shortened self-reference is the convention for legendary names
+    // ("Brago" for "Brago, King Eternal"). When the type line says the card
+    // is not legendary, a lone first word of its name ("Zone" of "Zone
+    // witness", "Recite" of "Recite witness") is ordinary rules text.
+    let declared_nonlegendary = !card.supertypes_ref().contains(&crate::types::Supertype::Legendary)
+        && cst.lines.iter().any(|line| matches!(
+            &line.kind,
+            crate::front_end::CstLineKind::Metadata(crate::front_end::MetadataLine::TypeLine(_))
+        ))
+        && !cst.lines.iter().any(|line| matches!(
+            &line.kind,
+            crate::front_end::CstLineKind::Metadata(crate::front_end::MetadataLine::TypeLine(value))
+                if value.to_ascii_lowercase().contains("legendary")
+        ));
+    let short_name = if declared_nonlegendary && !front_face_name.contains(',') {
+        front_face_name.clone()
+    } else {
+        short_name
+    };
     let full_name = SelfReferenceName::new(normalize_card_name_for_self_reference(
         front_face_name.as_str(),
     ));

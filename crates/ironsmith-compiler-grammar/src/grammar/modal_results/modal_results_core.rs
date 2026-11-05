@@ -163,6 +163,26 @@ pub(super) fn parse_direct_prior_effect_result_surface(
             .collect::<Vec<_>>();
         let active_one_or_more =
             crate::word_primitives::parse_sequence_prefix(&filter_words, &["one", "or", "more"]);
+        // "If you exile two cards this way" (Purge): an exact cardinal of two
+        // or more is a count over the action's actual result objects.
+        let counted = (!action_only)
+            .then(|| filter_tokens.first())
+            .flatten()
+            .and_then(|token| token.as_word())
+            .and_then(|word| crate::util::parse_number_word_u32(word).or_else(|| word.parse::<u32>().ok()))
+            .filter(|count| *count >= 2 && filter_tokens.len() > 1);
+        if let Some(count) = counted {
+            let filter = parse_prior_result_object_filter(&filter_tokens[1..])?;
+            crate::word_claims::claim_tokens(&filter_tokens[..1]);
+            let mut surface = PriorEffectResultSurface::new(
+                action,
+                filter,
+                PriorEffectResultActor::You,
+                PriorEffectResultQuantifier::OneOrMore,
+            );
+            surface.required_count = Some(count);
+            return Some(surface);
+        }
         let filter = if action_only {
             crate::target::ObjectFilter::default()
         } else {

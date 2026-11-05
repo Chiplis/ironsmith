@@ -221,6 +221,21 @@ pub fn parse_lose_life(
         });
     }
 
+    // "You lose all research counters" (Eureka): the player loses every
+    // counter of that kind (CR 122.1), exactly "remove all <kind> counters
+    // from you". The ordinary removal reader owns the counter descriptor.
+    if matches!(player, PlayerAst::You | PlayerAst::Implicit)
+        && let ["all", .., "counters"] = crate::lexer::token_word_refs(tokens).as_slice()
+        && tokens.len() >= 3
+        && tokens.iter().all(|token| token.as_word().is_some())
+    {
+        let mut removal = tokens.to_vec();
+        removal.extend(crate::lexer::synthetic_word_tokens(["from", "you"]));
+        if let Ok(effect) = crate::effect_sentences::zone_handlers::parse_remove(&removal) {
+            crate::word_claims::claim_tokens(tokens);
+            return Ok(effect);
+        }
+    }
     let clause_words = crate::lexer::token_word_refs(tokens);
     let life_shape = cca_shapes::parse_life_surface_shape(tokens);
 

@@ -3562,7 +3562,12 @@ pub(super) fn parse_this_spell_was_cast_from_shape(
     // pronoun is the triggering permanent, and the zone is where that spell
     // was cast from, not an ownership qualifier.
     let pronoun_subject = surface::exact(subject_clause.trimmed(), &["it"]);
-    if !pronoun_subject && !is_this_spell_clause(subject_clause) {
+    // A spell's own name ("If Thunderous Charge was cast from exile") is
+    // normalized to the bare source reference "this".
+    if !pronoun_subject
+        && !is_this_spell_clause(subject_clause)
+        && !surface::exact(subject_clause.trimmed(), &["this"])
+    {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;

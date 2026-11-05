@@ -580,6 +580,11 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             &["have"],
             super::named_action_atom::parse_have_performer,
         ),
+        specific_primitive!(
+            "named-action-perform",
+            &["perform"],
+            super::named_action_atom::parse_perform_clause,
+        ),
         specific_primitive!("optional-text-fragment-removal", &["remove"], super::text_changes::parse_optional_text_fragment_removal),
         specific_primitive!("typed-text-change", &["change"], super::text_changes::parse_text_change),
         specific_primitive!(

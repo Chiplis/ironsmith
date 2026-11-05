@@ -558,7 +558,7 @@ mod tests {
             power: None,
             toughness: None,
             block: Some(format!(
-                "Type: Artifact Creature — Sticker\nPower/Toughness: 1/1\n{text}"
+                "Type: Artifact Creature\nPower/Toughness: 1/1\n{text}"
             )),
         };
         let source = CardSourceFile {

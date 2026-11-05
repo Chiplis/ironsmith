@@ -4431,10 +4431,43 @@ pub fn parse_static_condition_clause(
     if let Ok(predicate) = crate::grammar::filters::parse_condition_predicate_lexed(&tokens) {
         return Ok(predicate);
     }
+    if let Some(predicate) = parse_value_is_number_condition(&tokens) {
+        return Ok(predicate);
+    }
 
     Err(CardTextError::ParseError(format!(
         "unsupported static condition clause (clause: '{display}')"
     )))
+}
+
+/// "the last number chosen for this permanent is 1" / "... is 2 or greater":
+/// an ordinary value expression compared with a literal number. The value
+/// reader owns the left operand; only the copula and comparison are read here.
+fn parse_value_is_number_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if words.len() != tokens.len() {
+        return None;
+    }
+    let is_at = words.iter().rposition(|word| *word == "is")?;
+    if is_at == 0 {
+        return None;
+    }
+    let (left, used) = crate::util::parse_value_expr_words(&words[..is_at])?;
+    if used != is_at || matches!(left, Value::Fixed(_)) {
+        return None;
+    }
+    let number = |word: &str| crate::util::parse_number_word_u32(word)
+        .or_else(|| word.parse::<u32>().ok())
+        .and_then(|value| i32::try_from(value).ok());
+    use crate::effect::ValueComparisonOperator as Op;
+    let (operator, right) = match &words[is_at + 1..] {
+        [n] => (Op::Equal, number(n)?),
+        [n, "or", "greater" | "more"] => (Op::GreaterThanOrEqual, number(n)?),
+        [n, "or", "less" | "fewer"] => (Op::LessThanOrEqual, number(n)?),
+        _ => return None,
+    };
+    crate::word_claims::claim_tokens(tokens);
+    Some(PredicateAst::ValueComparison { left, operator, right: Value::Fixed(right) })
 }
 
 fn parse_independently_articled_graveyard_cards_static_condition(

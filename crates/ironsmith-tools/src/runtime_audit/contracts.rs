@@ -1114,6 +1114,7 @@ impl Auditor {
             | "PlayerDrawsCard"
             | "PlayerDrawsCardNotDuringTurn"
             | "PlayerDrawsCardExceptFirstInDrawStep"
+            | "PlayerDrawsCardOutsideOwnDrawStep"
             | "PlayerDrawsNthCardEachTurn"
             | "PlayerDrawsNumberedCardsEachTurn"
             | "TokensCreated" => {

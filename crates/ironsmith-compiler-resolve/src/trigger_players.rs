@@ -167,7 +167,8 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::PlayerDrawsCardDuringTurn { .. } | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCard(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCardNotDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
-        TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_) => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_)
+        | TriggerSpec::PlayerDrawsCardOutsideOwnDrawStep(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsNthCardEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsNumberedCardsEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         // "When a spell or ability an opponent controls causes you to discard
@@ -249,6 +250,14 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         | TriggerSpec::BecomesBlocked(_)
         | TriggerSpec::AttacksPlayerAlone(_)
         | TriggerSpec::BecomesBlockedByObjectWithLesserPower { .. } => {
+            Some(PlayerFilter::Defending)
+        }
+        // "Whenever <this card's name> attacks": the self-named subject is
+        // the same source-only attack trigger as "this creature attacks".
+        TriggerSpec::Attacks(filter)
+            if crate::filter::ObjectFilter { source_surface: None, ..filter.clone() }
+                == crate::filter::ObjectFilter::source() =>
+        {
             Some(PlayerFilter::Defending)
         }
         // "You attack with a creature an opponent owns": the attacker is

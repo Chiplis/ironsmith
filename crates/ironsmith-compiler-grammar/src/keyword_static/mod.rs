@@ -6,6 +6,7 @@ pub(crate) use casting_announcement_payments::read as parse_casting_announcement
 use crate::word_primitives::WordWindows as _;
 mod characteristic_assertions;
 mod spell_resolution_destination;
+pub(crate) use spell_resolution_destination::opens_spell_resolution_destination_program_line;
 use spell_resolution_destination::parse_spell_resolution_destination_program_line;
 mod intrinsic_immediate_actions;
 mod named_action_token_grants;
@@ -458,6 +459,30 @@ fn parse_companion_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
         .unwrap_or_else(|| keyword_static_clause_text(tokens));
 
     Some(StaticAbility::companion(condition, text))
+}
+
+/// CR 702.139a: an authored "Companion — <condition>" line whose condition is
+/// outside the closed deck-condition family. Preprocessing strips the keyword
+/// label before dispatch, so this reads the authored source tokens. The line
+/// stays the keyword's non-executable marker; it never acquires a guessed
+/// deck predicate.
+pub(crate) fn parse_labeled_unknown_companion_marker_line(
+    source_tokens: &[OwnedLexToken],
+) -> Option<Vec<StaticAbilityAst>> {
+    if !is_companion_marker_line_lexed(source_tokens) {
+        return None;
+    }
+    let (_, condition_tokens) = split_em_dash_label_prefix_tokens(source_tokens)?;
+    if condition_tokens.is_empty()
+        || keyword_static_lines::parse_companion_deck_condition_tokens(condition_tokens).is_some()
+    {
+        return None;
+    }
+    // The whole labeled line is this marker's authored surface.
+    crate::word_claims::claim_tokens(source_tokens);
+    Some(vec![
+        StaticAbility::keyword_marker(keyword_static_clause_text(source_tokens)).into(),
+    ])
 }
 
 fn supported_keyword_marker_tokens(tokens: &[OwnedLexToken]) -> bool {

@@ -568,6 +568,13 @@ fn normalize_clause_line(text: &str) -> String {
         // Only lands are basic: "a permanent other than a basic land" names
         // exactly the nonbasic permanents (Eye of Singularity).
         .replace("a permanent other than a basic land", "a nonbasic permanent")
+        // CR 609.4b: the active and passive Oracle wordings of the mana-type
+        // spending permission state the same rule (Outrageous Robbery keeps
+        // the active form; most cards use the passive one).
+        .replace(
+            "you may spend mana as though it were mana of any type to cast ",
+            "mana of any type can be spent to cast ",
+        )
         .replace("other permanents with the same name as it", "other permanents with that name")
         // Only opponents can be attacked (CR 506.2 / 802.1), so the two
         // counts are the same number.

@@ -851,6 +851,7 @@ pub(super) fn parse_effect_sentence_lexed_inner_unstacked(
     if let Some(effects)=crate::effect_sentences::object_group_instructions::parse(tokens)?{return Ok(effects);}
     if let Some(menu)=crate::instruction_menu::parse(tokens)?{return Ok(menu);}
     if let Some(menu)=crate::effect_sentences::parse_bounded_inline_modal_tokens(tokens)?{return Ok(menu);}
+    if let Some(program)=crate::effect_sentences::parse_bounded_instruction_program_tokens(tokens)?{return Ok(program);}
     // Shared-subject continuous instructions own their entire coordinated
     // clause, including characteristic verbs following the first action.
     let words = crate::lexer::parser_token_word_refs(tokens);

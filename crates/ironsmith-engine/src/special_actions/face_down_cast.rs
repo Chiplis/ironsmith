@@ -33,6 +33,11 @@ fn cast_methods(
     { return Vec::new(); }
     let view = crate::derived_view::DerivedGameView::new(game);
     let normal = CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: None };
+    eprintln!("P1DBG fdc legal={} cost={}", crate::decision::completed_effect_driven_cast_proposal_is_legal(game, player, card, &normal, Zone::Exile),
+        crate::decision::can_cast_with_cost_with_view_for_casting_method(
+            game, player, card, card_id, card.mana_cost_owned().as_ref(), None,
+            &crate::decision::AdditionalCastRequirements::default(), &normal, &view,
+        ));
     let mut methods = Vec::new();
     if crate::decision::completed_effect_driven_cast_proposal_is_legal(game, player, card, &normal, Zone::Exile)
         && crate::decision::can_cast_with_cost_with_view_for_casting_method(

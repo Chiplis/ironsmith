@@ -1732,6 +1732,11 @@ impl Trigger {
         Self::new(PlayerDrawsCardExceptFirstInDrawStepTrigger::new(player))
     }
 
+    /// Create a "whenever [player] draws a card except during their draw step" trigger.
+    pub fn player_draws_card_outside_own_draw_step(player: PlayerFilter) -> Self {
+        Self::new(PlayerDrawsCardExceptFirstInDrawStepTrigger::outside_own_draw_step(player))
+    }
+
     /// Create a "whenever a player draws one or more cards" trigger.
     pub fn player_draws_cards(player: PlayerFilter) -> Self {
         Self::new(PlayerDrawsCardTrigger::new(player))
