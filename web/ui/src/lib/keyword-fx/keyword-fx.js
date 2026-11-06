@@ -87,6 +87,23 @@ function flyingMotion(entry, time, still) {
   };
 }
 
+// The visible face inside the card's layout box: art tiles inset their face
+// (2px, a planeswalker's 17% sides, a compact land's smaller tile). Offsets
+// ignore transforms, so the tap tilt does not distort the measurement.
+function faceBox(entry) {
+  const { card } = entry;
+  if (!entry.face?.isConnected || !card.contains(entry.face)) {
+    entry.face = card.querySelector(':scope > .game-card-surface .arena-permanent');
+  }
+  const face = entry.face;
+  if (face && face.offsetWidth && face.offsetHeight) {
+    let x = 0, y = 0, node = face;
+    while (node && node !== card) { x += node.offsetLeft; y += node.offsetTop; node = node.offsetParent; }
+    if (node === card) return { x, y, width: face.offsetWidth, height: face.offsetHeight };
+  }
+  return { x: 0, y: 0, width: card.offsetWidth, height: card.offsetHeight };
+}
+
 function tick(now) {
   frame = null;
   if (!entries.size || !renderer) return;
@@ -105,12 +122,14 @@ function tick(now) {
   for (const entry of entries) {
     const { card } = entry;
     if (!card.isConnected) continue;
-    const width = card.offsetWidth, height = card.offsetHeight;
+    if (!card.offsetWidth || !card.offsetHeight) continue;
+    const face = faceBox(entry);
+    const { width, height } = face;
     if (!width || !height) continue;
     const rect = card.getBoundingClientRect();
     const pad = 40;
     if (rect.right < -pad || rect.bottom < -pad || rect.left > viewW + pad || rect.top > viewH + pad) continue;
-    jobs.push({ entry, width, height });
+    jobs.push({ entry, width, height, face, cardWidth: card.offsetWidth, cardHeight: card.offsetHeight });
   }
 
   // Pack every visible layer into the atlas.
@@ -139,13 +158,18 @@ function tick(now) {
 
   // Writes: lay out each aura canvas and copy its tile out of the atlas.
   for (const job of jobs) {
-    const { entry, margin, size, lift, drift } = job;
-    const key = `${margin}:${size[0]}:${size[1]}`;
+    const { entry, margin, size, lift, drift, face, cardWidth, cardHeight } = job;
+    const left = face.x - margin, top = face.y - margin;
+    const key = `${left}:${top}:${size[0]}:${size[1]}:${cardWidth}:${cardHeight}`;
     if (entry.layoutKey !== key) {
       entry.layoutKey = key;
       for (const target of [entry.back, entry.front]) {
         if (!target) continue;
-        target.style.left = target.style.top = `${-margin}px`;
+        target.style.left = `${left}px`;
+        target.style.top = `${top}px`;
+        // Pivot where the card's face layers pivot (the card centre), so the
+        // tap tilt lands the aura exactly on the tilted face.
+        target.style.transformOrigin = `${cardWidth / 2 - left}px ${cardHeight / 2 - top}px`;
         target.style.width = `${size[0]}px`;
         target.style.height = `${size[1]}px`;
       }

@@ -1022,6 +1022,7 @@
   .battlefield-arena-card.tapped > :is(.game-card-surface, .battlefield-group-stack, .card-inspector-source-glow) {
     transform: rotate(8deg) scale(.90); transform-origin: center;
   }
+  .battlefield-arena-card.tapped > .keyword-aura { transform: rotate(8deg) scale(.90); }
   .battlefield-arena-card.tapped > :is(.game-card-surface, .battlefield-group-stack) { filter: brightness(.65); }
   .arena-tapped-mark { position: absolute; inset: 18% 0 0; text-align: center; font: 700 27px/1 Georgia,serif; color: #e0e5e6a6; text-shadow: 0 1px 2px black; }
   .battlefield-arena-card:is(.playable,.glow-ability,.glow-mana) .arena-permanent { box-shadow: 0 0 0 1px #80d6ef, 0 0 5px #5cc9ff70; }
