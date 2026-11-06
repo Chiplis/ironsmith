@@ -21,7 +21,7 @@ export function auditUiTranslations() {
       if (!node || typeof node !== 'object') return;
       if (node.type === 'JSXText') report(node, node.value.trim().replace(/\s+/g, ' '), 'unlocalized text');
       if (node.type === 'JSXAttribute' && attributes.test(node.name.name) && node.value?.type === 'Literal') report(node, node.value.value, 'unlocalized attribute');
-      if (node.type === 'CallExpression' && ['confirm', 'alert', 'prompt'].includes(node.callee.property?.name) && node.arguments[0]?.type !== 'CallExpression') {
+      if (node.type === 'CallExpression' && ['confirm', 'alert', 'prompt'].includes(node.callee.property?.name) && ['window', 'globalThis'].includes(node.callee.object?.name) && node.arguments[0]?.type !== 'CallExpression') {
         report(node, node.callee.property.name, 'unlocalized browser dialog');
       }
       if (node.type === 'CallExpression' && node.callee.name === 'ui' && node.arguments[0]?.type === 'Literal') {

@@ -2812,19 +2812,29 @@ pub(super) fn nested_combat_payment_keeps_blocks_union_and_end_of_combat_lifetim
     else {
         panic!("expected the payment gate to own the delayed trigger: {effects_debug}");
     };
+    // "this creature blocks or becomes blocked by a creature": the source is
+    // the subject of both arms and the `by` creature is shared, so each arm
+    // names the other creature ("that creature" binds it, never the source).
     let [
         EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
-            trigger: TriggerSpec::BlocksOrBecomesBlockedByObject { subject, other },
+            trigger: TriggerSpec::Either(blocks, blocked),
             duration,
             ..
         }),
     ] = delayed.as_slice()
     else {
-        panic!("expected one canonical block-or-blocked trigger: {effects_debug}");
+        panic!("expected one block-or-blocked trigger pair: {effects_debug}");
+    };
+    let (
+        TriggerSpec::ThisBlocksObject { filter: blocked_object, .. },
+        TriggerSpec::ThisBecomesBlockedByObject(blocker),
+    ) = (blocks.as_ref(), blocked.as_ref())
+    else {
+        panic!("expected the source's blocks and becomes-blocked arms: {effects_debug}");
     };
     assert_eq!(*duration, crate::effect::Until::EndOfCombat);
-    assert_eq!(subject.card_types, vec![CardType::Creature]);
-    assert_eq!(other.card_types, vec![CardType::Creature]);
+    assert_eq!(blocked_object.card_types, vec![CardType::Creature]);
+    assert_eq!(blocker.card_types, vec![CardType::Creature]);
     assert!(effects_debug.contains("FirstStrike"), "{effects_debug}");
     Ok(())
 }

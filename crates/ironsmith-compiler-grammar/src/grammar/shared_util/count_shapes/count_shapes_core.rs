@@ -1265,6 +1265,12 @@ pub fn parse_cards_drawn_count_words(count_words: &[&str]) -> Option<Value> {
             &["cards", "you've", "drawn", "this", "turn"],
             &["card", "you", "have", "drawn", "this", "turn"],
             &["cards", "you", "have", "drawn", "this", "turn"],
+            // Past-tense surface; inside a turn-step trigger "that turn" is
+            // the current turn.
+            &["card", "you", "drew", "this", "turn"],
+            &["cards", "you", "drew", "this", "turn"],
+            &["card", "you", "drew", "that", "turn"],
+            &["cards", "you", "drew", "that", "turn"],
         ],
     ) {
         return Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::You));

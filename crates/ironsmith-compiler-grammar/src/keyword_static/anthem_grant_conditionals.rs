@@ -4336,6 +4336,23 @@ pub fn parse_filter_has_granted_ability_line(
 
     if static_grant_has_outer_sentence_boundary(tokens)
         && !has_owned_granted_cost_companion(tokens)? { return Ok(None); }
+    // A flashback grant with its complete derived-cost companion ("... has
+    // flashback. The flashback cost is equal to that card's mana cost.") is
+    // one typed permission. Both sibling routes retain the same grant,
+    // including a leading duration condition ("During your turn, ...").
+    if static_grant_has_outer_sentence_boundary(tokens)
+        && let Some(head) = anthem_grant_grammar::parse_granted_keyword_verb_facts(tokens)
+        && let Some(first) = crate::grammar::primitives::split_lexed_slices_on_period(
+            &trim_edge_punctuation(&tokens[head.have_token + 1..]),
+        )
+        .first()
+        .map(|first| trim_edge_punctuation(first))
+        && anthem_grant_grammar::parse_granted_alternative_cast_keyword_tokens(&first)
+            == Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Flashback)
+        && let Some(abilities) = parse_granted_keyword_static_line_inner(tokens)?
+    {
+        return Ok(Some(abilities));
+    }
     // A bare blitz declaration, with its optional complete mana-cost
     // companion, grants an alternative casting method over card zones.
     // The keyword owner normalizes the spell subject for that permission;

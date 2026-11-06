@@ -2278,6 +2278,8 @@ impl<'a> ExecutionContext<'a> {
                 filter_ctx.attacking_players.clear();
             }
         }
+        filter_ctx.triggering_event = self.triggering_event.clone();
+        filter_ctx.event_value_amount = self.event_value_amount;
         filter_ctx
     }
 

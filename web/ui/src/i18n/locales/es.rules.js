@@ -1031,5 +1031,29 @@ export const rules = {
   "ability-702-192-paradigm": {
     "title": "Paradigma",
     "summary": "Permite lanzar una copia de un hechizo al comienzo de cada una de tus primeras fases principales."
+  },
+  "action-701-69-heal": {
+    "title": "Curar",
+    "summary": "Quitar el daño marcado en una permanente."
+  },
+  "action-701-70-recruit": {
+    "title": "Reclutar",
+    "summary": "Una acción de palabra clave que permite a un jugador robar una carta, descartar una carta y luego crear una ficha de criatura si la carta descartada no era una tierra."
+  },
+  "action-701-71-empower-jace": {
+    "title": "Potenciar a Jace",
+    "summary": "Una acción de palabra clave que te da una ficha de planeswalker Jace y/o pone contadores de lealtad sobre una ficha de Jace que ya controlas."
+  },
+  "ability-702-193-power-up": {
+    "title": "Potenciación",
+    "summary": "Una habilidad activada de un solo uso que se encuentra en permanentes y cuesta menos durante el turno en que el permanente con la habilidad entró al campo de batalla."
+  },
+  "ability-702-194-teamwork": {
+    "title": "Trabajo en equipo",
+    "summary": "Una habilidad de palabra clave que representa un coste adicional opcional de enderezar criaturas."
+  },
+  "ability-702-195-storied": {
+    "title": "Legendario de cuento",
+    "summary": "Una palabra clave que hace que un jugador obtenga la designación de historia perdurable cuando controla tres o más permanentes que sean artefactos, Sagas y/o legendarios."
   }
 };

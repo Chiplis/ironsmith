@@ -5647,7 +5647,8 @@ pub(super) fn tagged_blocked_set_tap_then_cant_untap_keeps_distributive_referenc
         blocked.clone(),
         tapped.clone(),
     ));
-    let tap = Effect::tap(ChooseSpec::All(blocked));
+    // Effect::tap builds a targeted tap; the untargeted set tap is TapEffect::all.
+    let tap = Effect::new(crate::effects::TapEffect::all(blocked));
     let cant = Effect::cant_until(
         crate::effect::Restriction::Untap(ObjectFilter::tagged(tapped)),
         Until::ControllersNextUntapStep,

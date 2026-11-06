@@ -143,6 +143,14 @@ pub fn parse_statement_label_split_tokens(
     {
         return None;
     }
+    // "When ... dies, you may choose one instruction — <A> | <B>": the dash
+    // opens the instruction menu owned by the sentence before it, so the
+    // trigger and menu header are not an ability-word label.
+    let instruction_menu = ["choose", "one", "instruction"];
+    let label_words = crate::lexer::parser_token_word_refs(label_tokens);
+    if label_words.ends_with(&instruction_menu) {
+        return None;
+    }
     (!label_tokens.is_empty() && !body_tokens.is_empty()).then_some(StatementLabelSplitShape {
         label_tokens,
         body_tokens,

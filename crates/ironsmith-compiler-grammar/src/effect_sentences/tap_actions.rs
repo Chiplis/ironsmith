@@ -41,20 +41,29 @@ pub fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     }
     // "taps an untapped artifact, creature, or land they control for each
     // fade counter on this artifact" (Tangle Wire): one resolution-time
-    // selection repeated once per counted unit, like "sacrifices a creature
-    // for each ...".
+    // selection of that many objects by the instructed player, like
+    // "sacrifices a creature for each ...".
     if let Some((index, _, _)) = grammar::find_prefix(tokens, || grammar::phrase(&["for", "each"]))
-        && index > 0
+        && index > 1
+        && tokens.first().is_some_and(|token| token.is_any_word(&["a", "an"]))
+        && tokens.get(1).is_some_and(|token| token.is_word("untapped"))
         && let Some(count) = parse_get_for_each_count_value(&tokens[index..])?
     {
-        let per_unit = parse_tap(&tokens[..index])?;
-        let count = count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
-        return Ok(EffectAst::ForEach(
-            crate::cards::builders::ForEachEffectAst::RepeatEffects {
-                count,
-                effects: vec![per_unit],
-            },
-        ));
+        let filter = crate::object_filters::parse_object_filter(&tokens[1..index], false)?;
+        crate::word_claims::claim_tokens(&tokens[..1]);
+        let tag = crate::util::helper_tag_for_tokens(tokens, "tapped");
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                    filter,
+                    count: crate::effect::ChoiceCount::dynamic_x(),
+                    count_value: Some(count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)),
+                    player: PlayerAst::Implicit,
+                    tag: crate::tag::TagRef::of(tag.clone()),
+                }),
+                EffectAst::subject_verb_tap_all(ObjectFilter::tagged(tag)),
+            ],
+        });
     }
     // A bare exact count is a non-targeted resolution-time choice. It must
     // not be mistaken for a target declaration or a total-power payment.

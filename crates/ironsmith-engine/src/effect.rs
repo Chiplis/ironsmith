@@ -1495,10 +1495,17 @@ impl RestrictionExt for Restriction {
         use crate::game_loop::player_matches_filter_with_combat;
 
         let combat = game.combat.as_ref();
-        let ctx = game
+        let mut ctx = game
             .filter_context_for_combat(controller, source, None, None)
             .with_iterated_player(iterated_player)
             .with_tagged_objects(tagged_objects);
+        // "Enchanted player may ..." (an Aura attached to a player): the
+        // restriction's scoped player is the Aura's current attachment.
+        if let Some(crate::object::AttachmentTarget::Player(player)) =
+            source.and_then(|source| game.object(source)).and_then(|object| object.attached_to)
+        {
+            ctx.tagged_players.entry("enchanted".into()).or_insert_with(|| vec![player]);
+        }
         let player_matches_restriction_filter =
             |player_id, filter: &crate::target::PlayerFilter| {
                 filter.matches_player(player_id, &ctx)

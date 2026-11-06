@@ -585,6 +585,14 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             &["perform"],
             super::named_action_atom::parse_perform_clause,
         ),
+        // "If you do, link this permanent to it by the X relation ...": the
+        // directed link is an ordinary clause inside conditional and
+        // triggered programs, not only a whole statement.
+        specific_primitive!(
+            "directed-permanent-link-clause",
+            &["link"],
+            super::directed_permanent_links::parse_clause,
+        ),
         specific_primitive!("optional-text-fragment-removal", &["remove"], super::text_changes::parse_optional_text_fragment_removal),
         specific_primitive!("typed-text-change", &["change"], super::text_changes::parse_text_change),
         specific_primitive!(
@@ -1364,7 +1372,10 @@ pub fn parse_reselect_attack_target_clause(
     let view=crate::lexer::TokenWordView::new(tokens);let words=view.word_refs();
     let target=if matches!(words.as_slice(),["its"|"it's"|"theyre"|"they're","attacking"]) {
         Some(TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(),crate::util::span_from_tokens(tokens)))
-    } else if words.len()>2 && words[0]!="reselect" && matches!(words[words.len()-2..],["is"|"are","attacking"]) {
+    } else if words.len()>2 && words[0]!="reselect" && matches!(words[words.len()-2..],["is"|"are","attacking"])
+        // A relative "... the player that creature is attacking" ends a
+        // recipient phrase of another action, not an attacking subject.
+        && !words[1..words.len()-2].iter().any(|word| matches!(*word, "deal" | "deals" | "to" | "that" | "which")) {
         let end=view.token_start_indices()[words.len()-2];Some(parse_target_phrase(&tokens[..end])?)
     }else{None};
     if let Some(target)=target {

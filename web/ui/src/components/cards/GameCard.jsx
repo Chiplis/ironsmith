@@ -12,8 +12,10 @@ import BattlefieldGroupBadge from "./BattlefieldGroupBadge";
 import useUiText from "@/i18n/useUiText";
 import { translateUiText as ui } from "@/i18n/catalog";
 import { useCastTargeting, useCastObjectHovered } from "@/context/DragContext";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
+import KeywordAura from "./KeywordAura";
+import { keywordAuraSpec } from "@/lib/effect-palette";
 import { useChosenObjectIdAmong } from "@/context/ObjectSelectionContext";
 import SelectionCheckBadge from "./SelectionCheckBadge";
 import { cancelMotion, uiSpring } from "@/lib/motion/anime";
@@ -31,6 +33,7 @@ import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import { knownFaceDownNames } from "@/lib/look-pile";
 import { HIDDEN_CARD_BACK_IMAGE_URL as FACE_DOWN_BACK_URL } from "@/lib/scryfall";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
+import { useLocalizedHandFrameCard } from "@/i18n/useLocalizedHandFrameCard";
 import MiniatureCardFrame from "./MiniatureCardFrame";
 import HoloFoil from "./HoloFoil";
 import { useIsFoilCard } from "@/lib/foil-cards";
@@ -814,7 +817,8 @@ export default function GameCard({
       ? {card_faces: presentationCard.card_faces.map(face => ({name: face.name, oracle_text: customCardAssets(face.name)?.displayOracleText}))}
       : {oracle_text: customPrint.displayOracleText})
     : officialSource?.name === name || officialSource?.card_faces?.some(face => face.name === name) ? officialSource : null;
-  const frameCard = useHandFrame ? withOfficialOracleText(presentationCard, handOracleSource) : presentationCard;
+  const englishFrameCard = useHandFrame ? withOfficialOracleText(presentationCard, handOracleSource) : presentationCard;
+  const frameCard = useLocalizedHandFrameCard(englishFrameCard, useHandFrame && !customPrint);
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
   const [repairedHandArt, setRepairedHandArt] = useState(null);
@@ -833,6 +837,11 @@ export default function GameCard({
   const count = Number(card.count);
   const groupSize = Number.isFinite(count) && count > 1 ? count : 1;
   const summoningSick = variant === "battlefield" && card?.summoning_sick === true;
+  const combatSnapshot = state?.combat;
+  const keywordAura = useMemo(
+    () => (variant === "battlefield" ? keywordAuraSpec(card, combatSnapshot) : null),
+    [variant, card, combatSnapshot],
+  );
   const ptModifiedByEffect = variant === "battlefield" && card?.pt_modified_by_effect === true;
   const battlefieldStackDepth = variant === "battlefield"
     ? Math.max(0, Math.min(groupSize, 4) - 1)
@@ -1593,6 +1602,9 @@ export default function GameCard({
           ))}
         </div>
       )}
+      {keywordAura && (
+        <KeywordAura flags={keywordAura.flags} seed={keywordAura.seed} protection={keywordAura.protection} />
+      )}
       {showTokenMaterialize && (
         <>
           <span className="token-materialize-ring" aria-hidden="true" />
@@ -1633,6 +1645,8 @@ export default function GameCard({
               "absolute inset-0 w-full h-full z-0 pointer-events-none",
               variant === "hand" || usePortraitBattlefield ? "object-cover object-top" : "object-fill",
               artTreatmentClass,
+              variant === "battlefield" && "battlefield-art--summoning-sickness",
+              summoningSick && "is-summoning-sick",
             )}
             src={displayedArtUrl}
             alt=""

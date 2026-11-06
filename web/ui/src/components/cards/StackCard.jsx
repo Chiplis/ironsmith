@@ -244,7 +244,7 @@ export default function StackCard({
 
   const automationControl = !isLeaving && entry.ability_kind && entry.automation_identity
     ? <button type="button" className="stack-automation-button" aria-label={`Automation for ${name}`}
-        title="Ability automation" onPointerDown={event => event.stopPropagation()}
+        title={ui("Ability automation")} onPointerDown={event => event.stopPropagation()}
         onClick={event => { event.stopPropagation(); window.dispatchEvent(new CustomEvent('ironsmith:priority-menu', { detail: { entry } })); }}>⋯</button>
     : null;
 

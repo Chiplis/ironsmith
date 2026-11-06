@@ -2952,8 +2952,16 @@ fn compile_conditional_ast(
             effect
                 .downcast_ref::<crate::effects::WithIdEffect>()
                 .is_some_and(|with_id| {
+                    // Only an optional cast is a separate action whose
+                    // absence the fallback observes. A payment or other
+                    // action offered by the condition ("If it's greater,
+                    // you may pay {X}. If you do, ... If you don't, ...",
+                    // Transmute Artifact) keeps both results in its branch.
                     with_id.id == fallback.condition
-                        && with_id.effect.downcast_ref::<crate::effects::MayEffect<Effect>>().is_some()
+                        && with_id
+                            .effect
+                            .downcast_ref::<crate::effects::MayEffect<Effect>>()
+                            .is_some_and(|may| may.effects.iter().any(effect_offers_cast))
                 })
         })
     {
@@ -3122,6 +3130,18 @@ fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
         }
         _ => false,
     }
+}
+
+/// Whether an optional action is (or contains) casting a spell.
+fn effect_offers_cast(effect: &Effect) -> bool {
+    if effect.downcast_ref::<crate::effects::CastTaggedEffect>().is_some()
+        || effect.downcast_ref::<crate::effects::CastSourceEffect>().is_some()
+    {
+        return true;
+    }
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| found |= effect_offers_cast(child));
+    found
 }
 
 #[cfg(test)]

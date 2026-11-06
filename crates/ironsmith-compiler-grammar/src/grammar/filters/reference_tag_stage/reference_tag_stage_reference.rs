@@ -498,6 +498,23 @@ fn parse_object_filter_inner_unchecked(
         }
     }
 
+    // "put two +1/+1 counters on a different creature you control": a
+    // leading "different" excludes the previously referenced object by
+    // identity, exactly like "other than that creature".
+    let different_at = base_tokens
+        .iter()
+        .position(|token| !token.is_word("a") && !token.is_word("an"))
+        .filter(|index| *index <= 1 && base_tokens[*index].is_word("different"));
+    if let Some(index) = different_at
+        && base_tokens.len() > index + 1
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+        crate::word_claims::claim_drained(base_tokens.drain(index..=index));
+    }
+
     // "other than <source>" marks an exclusion, not an additional type
     // selector. Keep "other" and capture the source surface when available.
     let mut idx = 0usize;

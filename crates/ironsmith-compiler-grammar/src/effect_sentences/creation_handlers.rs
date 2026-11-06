@@ -861,7 +861,26 @@ fn parse_inline_token_granted_abilities_owned(
                 .any(|token| token.kind == TokenKind::Colon))
         .then(|| super::parse_granted_abilities_for_token_definition(&filtered_probe, rule_tokens));
         if let Some(Ok(parsed)) = filtered_grant_probe {
-            let filtered_grants = parsed.into_iter().filter(|ability| match ability {
+            // A compound filtered rule ("Enchanted creature has base power
+            // and toughness 2/2, has lifelink, and is a Cleric in addition to
+            // its other types") grants an ability AND changes the filtered
+            // object's characteristics. Those sibling characteristic statics
+            // have no compact reminder slot, so keep them with the grant
+            // instead of silently dropping them.
+            let is_filtered_characteristic = |ability: &GrantedAbilityAst| matches!(ability,
+                GrantedAbilityAst::StaticAbility(ability) if matches!(ability.as_ref(),
+                    StaticAbilityAst::Static(static_ability) if matches!(&static_ability.payload,
+                        ironsmith_core::StaticAbilityPayload::SetBasePowerToughness { .. }
+                        | ironsmith_core::StaticAbilityPayload::SetBasePowerToughnessValue { .. }
+                        | ironsmith_core::StaticAbilityPayload::SetBasePower { .. }
+                        | ironsmith_core::StaticAbilityPayload::SetBaseToughness { .. }
+                        | ironsmith_core::StaticAbilityPayload::AddCardTypes { .. }
+                        | ironsmith_core::StaticAbilityPayload::SetCardTypes { .. }
+                        | ironsmith_core::StaticAbilityPayload::AddSubtypes { .. }
+                        | ironsmith_core::StaticAbilityPayload::SetColors { .. }
+                        | ironsmith_core::StaticAbilityPayload::AddColors { .. }
+                        | ironsmith_core::StaticAbilityPayload::AddSupertypes { .. })));
+            let is_filtered_grant = |ability: &GrantedAbilityAst| match ability {
                 GrantedAbilityAst::StaticAbility(ability) => match ability.as_ref() {
                     StaticAbilityAst::GrantStaticAbility { .. }
                     | StaticAbilityAst::GrantKeywordAction { .. }
@@ -883,15 +902,15 @@ fn parse_inline_token_granted_abilities_owned(
                     )
                 }
                 _ => false,
-            });
-            let mut attached_filtered_grant = false;
-            for ability in filtered_grants {
-                if !abilities.iter().any(|existing| existing == &ability) {
-                    abilities.push(ability);
+            };
+            if parsed.iter().any(|ability| is_filtered_grant(ability)) {
+                for ability in parsed {
+                    if (is_filtered_grant(&ability) || is_filtered_characteristic(&ability))
+                        && !abilities.iter().any(|existing| existing == &ability)
+                    {
+                        abilities.push(ability);
+                    }
                 }
-                attached_filtered_grant = true;
-            }
-            if attached_filtered_grant {
                 continue;
             }
         }

@@ -4334,7 +4334,7 @@ pub(crate) fn can_cast_spell_with_context(
     if let Some(result) = copy_source_preview::any_copy_cast_proposal(game,player,spell,casting_method,|preview,id|{
         let view=DerivedGameView::new(preview);
         let mut preview_ctx=CastLegalityContext::new(preview,player,&view);
-        preview_ctx.allow_library_search_cast_timing=ctx.allow_library_search_cast_timing;
+        preview_ctx.allow_library_search_cast_timing=ctx.allow_library_search_cast_timing;preview_ctx.any_time_cast_timing=ctx.any_time_cast_timing;
         can_cast_spell_with_context(preview.object(id).unwrap(),casting_method,&preview_ctx)
     }) {
         return match result {Ok(legal)=>legal,Err(crate::game_loop::GameLoopError::ExecutionFailed(error))=>{game.record_token_resource_failure(&error);false},Err(_)=>false};
@@ -4345,6 +4345,7 @@ pub(crate) fn can_cast_spell_with_context(
                 let view = DerivedGameView::new(&preview);
                 let mut preview_ctx = CastLegalityContext::new(&preview, player, &view);
                 preview_ctx.allow_library_search_cast_timing = ctx.allow_library_search_cast_timing;
+                preview_ctx.any_time_cast_timing = ctx.any_time_cast_timing;
                 can_cast_spell_with_context(preview.object(id).unwrap(), casting_method, &preview_ctx)
             }
             Err(crate::game_loop::GameLoopError::ExecutionFailed(error)) => { game.record_token_resource_failure(&error); false }
@@ -4534,7 +4535,7 @@ pub(crate) fn can_cast_spell_with_context(
     ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
 
     let timing_started_at = PerfTimer::start();
-    if !has_valid_spell_timing_with_view(game, player, spell_for_checks, spell.id, view)
+    if !ctx.any_time_cast_timing && !has_valid_spell_timing_with_view(game, player, spell_for_checks, spell.id, view)
         && !casting_method_grants_special_timing(ctx, spell_for_checks, spell.id, casting_method)
     {
         ctx.add_timing_ms(timing_started_at.elapsed_ms());
@@ -4890,6 +4891,22 @@ pub(crate) fn can_cast_with_cost_with_view(
     )
 }
 
+/// [`can_cast_with_cost_with_view_for_casting_method`] for a permission that
+/// allows the cast any time its player has priority.
+pub(crate) fn can_cast_with_cost_with_view_for_casting_method_any_time(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    spell_id: crate::ids::ObjectId,
+    mana_cost: Option<&crate::mana::ManaCost>,
+    requirements: &AdditionalCastRequirements,
+    casting_method: &CastingMethod,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let ctx = CastLegalityContext::new(game, player, view).with_any_time_cast_timing();
+    can_cast_with_cost_with_context(spell, spell_id, mana_cost, None, requirements, casting_method, &ctx)
+}
+
 pub(crate) fn can_cast_with_cost_with_view_for_casting_method(
     game: &GameState,
     player: PlayerId,
@@ -5029,7 +5046,7 @@ pub(crate) fn can_cast_with_cost_with_context(
     ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
 
     let timing_started_at = PerfTimer::start();
-    if !has_valid_spell_timing_with_view(game, player, spell_for_checks, spell_id, view)
+    if !ctx.any_time_cast_timing && !has_valid_spell_timing_with_view(game, player, spell_for_checks, spell_id, view)
         && !casting_method_grants_special_timing(ctx, spell_for_checks, spell_id, casting_method)
     {
         ctx.add_timing_ms(timing_started_at.elapsed_ms());
@@ -5489,6 +5506,19 @@ pub(crate) fn spell_view_for_fused_split_cast(
     Some(view)
 }
 
+/// [`can_cast_with_alternative_with_view`] for a permission that allows the
+/// cast any time its player has priority.
+pub(crate) fn can_cast_with_alternative_with_view_any_time(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let ctx = CastLegalityContext::new(game, player, view).with_any_time_cast_timing();
+    can_cast_with_alternative_with_context(spell, method, &ctx)
+}
+
 pub(crate) fn can_cast_with_alternative_with_view(
     game: &GameState,
     player: PlayerId,
@@ -5521,7 +5551,7 @@ pub(crate) fn can_cast_with_alternative_with_context(
             let selected=proposed.cast_alternative_method.as_deref().unwrap_or(method);
             let view=DerivedGameView::new(preview);
             let mut preview_ctx=CastLegalityContext::new(preview,player,&view);
-            preview_ctx.allow_library_search_cast_timing=ctx.allow_library_search_cast_timing;
+            preview_ctx.allow_library_search_cast_timing=ctx.allow_library_search_cast_timing;preview_ctx.any_time_cast_timing=ctx.any_time_cast_timing;
             can_cast_with_alternative_with_context(proposed,selected,&preview_ctx)
         }) {
             return match result {Ok(legal)=>legal,Err(crate::game_loop::GameLoopError::ExecutionFailed(error))=>{game.record_token_resource_failure(&error);false},Err(_)=>false};

@@ -48,6 +48,16 @@ pub(super) fn read(input: &Predicate<'_>) -> Option<PredicateAst> {
         });
     }
 
+    // "you paid this additional cost": the spell's own optional additional
+    // cost was paid as it was cast.
+    if crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(input.predicate_tokens))
+        == ["you", "paid", "this", "additional", "cost"]
+    {
+        crate::word_claims::claim_tokens(input.predicate_tokens);
+        return Some(PredicateAst::ThisSpellPaidLabel(crate::cost::OptionalCostRef::new(
+            crate::cost::OptionalCostKind::Additional,
+        )));
+    }
     if let Some(predicate) = named_action_count_comparison(input.predicate_tokens) {
         return Some(predicate);
     }
@@ -1109,8 +1119,16 @@ fn cards_exiled_with_source(words: &[&str]) -> Option<PredicateAst> {
 }
 
 /// "you have less life than an opponent" (Timely Reinforcements): some
-/// opponent has more life than you.
+/// opponent has more life than you. "you have fewer cards in hand than an
+/// opponent" is the same comparison of hand sizes.
 fn you_have_less_life_than_opponent(words: &[&str]) -> Option<PredicateAst> {
+    if matches!(words, ["you", "have", "fewer", "cards", "in", "hand", "than", "an", "opponent"]
+        | ["you", "have", "fewer", "cards", "in", "hand", "than", "opponent"])
+    {
+        return Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou {
+            player: PlayerAst::Opponent,
+        }));
+    }
     let ["you", "have", "less", "life", "than", "an", "opponent"] = words else {
         return None;
     };

@@ -53,6 +53,7 @@ fn exact_creation_result(tokens:&[OwnedLexToken])->Option<IfResultPredicate> {
     if descriptor.is_empty() || descriptor.first().is_some_and(|word|
         word.parse::<u32>().is_ok() || matches!(*word, "one"|"two"|"three"|"four"|"five"|"six"|"seven"|"eight"|"nine"|"ten")) {return None;}
     let mut filter = if matches!(descriptor, ["token"|"tokens"]) {
+        crate::word_claims::claim_tokens(tokens);
         crate::target::ObjectFilter::default()
     } else {
         let verb_index=tokens.iter().position(|token|token.is_any_word(&["create","created"]))?;
@@ -66,7 +67,11 @@ fn exact_creation_result(tokens:&[OwnedLexToken])->Option<IfResultPredicate> {
             start += 1;
         }
         let operand=&tokens[start..end];
-        crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(operand,false).ok()?
+        let filter=crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(operand,false).ok()?;
+        // The result reader owns "[if] you [didn't] create" and "this way".
+        crate::word_claims::claim_tokens(&tokens[..verb_index + 1]);
+        crate::word_claims::claim_tokens(&tokens[end..]);
+        filter
     };
     filter.token=true;
     Some(IfResultPredicate::ResultObjectsMatch {filter,negated})

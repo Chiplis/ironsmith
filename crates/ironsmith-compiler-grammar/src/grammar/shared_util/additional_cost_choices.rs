@@ -50,7 +50,10 @@ pub fn parse_additional_cost_choices(
 
     let mut choices = Vec::with_capacity(normalized.len());
     for option in normalized {
-        let effects = parse_effect_sentences_lexed(&option)?;
+        let effects = parse_effect_sentences_lexed(&option)?
+            .into_iter()
+            .flat_map(unwrap_exact_selection_feasibility)
+            .collect::<Vec<_>>();
         if effects.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "additional cost option parsed to no effects (clause: '{}')",
@@ -96,4 +99,25 @@ fn render_option_text(tokens: &[OwnedLexToken]) -> String {
         .map(OwnedLexToken::parser_text)
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// "exile exactly two cards from your hand and/or graveyard" as an effect is
+/// gated on the complete set being available. As a payment that gate is the
+/// cost's own legality (an exact choice that cannot be made cannot be paid),
+/// so the price is the gated selection itself.
+fn unwrap_exact_selection_feasibility(effect: EffectAst) -> Vec<EffectAst> {
+    use crate::cards::builders::{ConditionalEffectAst, PredicateAst};
+    match effect {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate:
+                PredicateAst::ValueComparison {
+                    left: crate::effect::Value::Count(_),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: crate::effect::Value::Fixed(_),
+                },
+            if_true,
+            if_false,
+        }) if if_false.is_empty() => if_true,
+        effect => vec![effect],
+    }
 }

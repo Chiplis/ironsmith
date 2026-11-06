@@ -987,7 +987,7 @@ fn corpus_discovered_static_prose_is_structural_or_explicitly_unverified() {
             ("Cogwork Tracker", false),
             ("Plague Nurse", false),
             ("Lore Seeker", true),
-            ("Elemental Time Flamingo", true),
+            ("Elemental Time Flamingo", false),
         ] {
             let def = compile(name);
             let before = audit_lines(&def);

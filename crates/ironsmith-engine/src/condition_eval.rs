@@ -5152,8 +5152,9 @@ fn evaluate_condition_in_context(
                 Some(spell) => *spell == shared.source,
                 // CR 601.2f: an alternative cost conditioned on this spell's
                 // cast order is chosen while the spell is being cast, before
-                // its own cast is recorded. It is the next spell cast.
-                None => casts.len() == index as usize,
+                // its own cast is recorded. It is the next spell cast. At
+                // resolution an uncast spell (a copy) has no cast ordinal.
+                None => ctx.execution().is_none() && casts.len() == index as usize,
             })
         }
         Condition::TargetSpellCastOrderThisTurn(order) => {

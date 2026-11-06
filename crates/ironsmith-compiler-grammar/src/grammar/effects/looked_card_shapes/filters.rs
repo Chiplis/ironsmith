@@ -363,12 +363,6 @@ fn parse_filter_disjunction(tokens: &[OwnedLexToken], words: &[&str]) -> Option<
             crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&segment, false))
         }
         .filter(|filter| *filter != ObjectFilter::default())
-        // The lexed fast path reads simple atom lists only; a qualified arm
-        // ("legendary permanent card") still has a complete full-grammar read.
-        .or_else(|| {
-            crate::grammar::primitives::probe_shape(parse_object_filter(&segment, false))
-                .filter(|filter| *filter != ObjectFilter::default())
-        })
         .or_else(|| parse_named_card_filter_segment(&segment))?;
         branches.push(parsed);
     }

@@ -185,12 +185,9 @@ fn exchanged_enter_trigger_fires_and_the_upkeep_drawback_moves_to_partner() {
         .unwrap()
         .new_id;
     let mut queue = ironsmith::triggers::TriggerQueue::new();
-    {
-        let mut probe = game.clone();
-        let mut probe_queue = ironsmith::triggers::TriggerQueue::new();
-        ironsmith::game_loop::drain_pending_trigger_events(&mut probe, &mut probe_queue);
-        eprintln!("P3DBG drained={} names={:?} entered_name={:?} abilities={}", probe_queue.entries.len(), probe_queue.entries.iter().map(|e| e.source_name.clone()).collect::<Vec<_>>(), game.object(entered).map(|o| o.name.clone()), game.object(entered).map(|o| o.abilities.len()).unwrap_or(0));
-    }
+    // Entry triggers wait as pending trigger events until the game loop
+    // drains them into the queue.
+    ironsmith::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
     ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
     assert_eq!(
         game.stack.len(),

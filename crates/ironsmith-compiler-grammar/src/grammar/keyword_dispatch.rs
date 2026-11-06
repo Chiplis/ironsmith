@@ -203,6 +203,12 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
                 "this",
                 "spell",
                 ]),
+                // A named source ("to cast Foo Bar,") reads as the bare "this".
+                (
+                    primitives::phrase(&["as", "an", "additional", "cost", "to", "cast", "this"]),
+                    primitives::comma(),
+                )
+                    .void(),
             ))
             .value(KeywordDispatchHint::AdditionalCostFamily),
             alt((primitives::kw("you"), primitives::kw("more")))

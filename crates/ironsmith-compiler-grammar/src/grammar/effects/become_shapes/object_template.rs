@@ -135,7 +135,7 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
     while index < descriptor_words.len() {
         let word = descriptor_words[index];
         if matches!(word, "a" | "an" | "and") { index += 1; continue; }
-        if word == "colorless" { color_stated = true; index += 1; continue; }
+        if word == "colorless" { crate::word_claims::claim_word(word); color_stated = true; index += 1; continue; }
         if let Ok(color) = leaf::parse_leaf_color_complete(word) { colors = colors.union(color); color_stated = true; }
         else if let Some(kind) = crate::util::parse_supertype_word(word) { if !supertypes.contains(&kind) { supertypes.push(kind); } }
         else if let Ok(kind) = leaf::parse_leaf_card_type_complete(word) { if !card_types.contains(&kind) { card_types.push(kind); } }

@@ -505,6 +505,7 @@ fn cohort_hand_cast_consult_returns_exiled_pool_to_casters_library_bottom() {
 fn cohort_activated_source_characteristics_and_counters_keep_authored_short_name() {
     let text = "{1}, {T}: When you next cast an instant or sorcery spell with mana value less than or equal to Nyvora's power this turn, copy that spell. You may choose new targets for the copy.\n{4}{R}: Put two +1/+1 counters on Nyvora.";
     let card = crate::CardDefinitionBuilder::new(CardId::new(), "Nyvora Silverbranch")
+        .supertypes(vec![crate::types::Supertype::Legendary])
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(3, 3))
         .parse_text(text)

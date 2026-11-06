@@ -1377,25 +1377,6 @@ select:focus-visible,
   color: rgba(214, 189, 143, 0.62);
 }
 
-/* The clocks ride at the end of the turn status, beside the perspective
-   picker: the mulligan prompt opens over the left of the toolbar and used to
-   cover them there. Slimmer than the standalone pill so the status row keeps
-   its height. */
-.topbar-phase-status .topbar-phase-clock {
-  min-height: 20px;
-  max-width: 340px;
-  padding: 2px 7px;
-  gap: 6px;
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  pointer-events: auto;
-}
-
-.topbar-phase-status .topbar-phase-clock svg {
-  width: 11px;
-  height: 11px;
-}
-
 .topbar-phase-perspective {
   display: inline-flex;
   height: 16px;
@@ -8155,3 +8136,26 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Let the ability menu clear the frame and its P/T border on mobile, too. */
 .mobile-battle-inspect-overlay-stage:has(.inspector-priority-settings) { overflow: visible; }
+
+/* Per-player match clock: beside an opponent's name, and for us beside the
+   chat tab under our zone piles. */
+.player-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--ui-border-strong);
+  background: var(--ui-surface-raised);
+  color: #c9b98f;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.player-clock__icon { width: 12px; height: 12px; }
+.player-clock--active { color: #fff1cd; border-color: #8a6d2f; }
+.player-clock--expired { color: #ffb8c0; }
+.player-zone-chat-dock { align-items: flex-end; gap: 6px; }
+.player-zone-chat-dock:has(.lobby-chat[data-collapsed="false"]) .player-clock--local { display: none; }

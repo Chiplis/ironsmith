@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import useUiText from "@/i18n/useUiText";
 
 const CYCLE_MS = 1600;
 const INTRO_MS = 960;
@@ -7,6 +8,7 @@ const isStrike = name => STRIKES.has(name) || name.startsWith("visor-impact-") |
 
 // A shared clock keeps the hammer, expression, sparks and mask synchronized.
 export default function LoadingSmith({ progress = 0, ready = false, onComplete }) {
+  const ui = useUiText();
   const objectRef = useRef(null);
   const completedRef = useRef(false);
   const inputs = useRef({ progress, ready, onComplete });
@@ -122,8 +124,8 @@ export default function LoadingSmith({ progress = 0, ready = false, onComplete }
   return (
     <object ref={objectRef} className="game-loading-wordmark"
       data={`${import.meta.env.BASE_URL}theme/ironsmith-loading.svg#working`}
-      type="image/svg+xml" role="img" aria-label="IronSmith" tabIndex={-1}>
-      IronSmith
+      type="image/svg+xml" role="img" aria-label={ui("IronSmith")} tabIndex={-1}>
+      {ui("IronSmith")}
     </object>
   );
 }

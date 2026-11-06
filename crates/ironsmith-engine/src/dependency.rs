@@ -787,6 +787,8 @@ fn evaluate_value(
                 stack_entry: None,
                 filter_candidate_players: None,
                 departed_battlefield_lookback: None,
+                triggering_event: None,
+                event_value_amount: None,
                 players_in_range: game.range_players_for_source(effect_controller, Some(source)),
             };
             let mut total = 0i32;
@@ -832,6 +834,8 @@ fn evaluate_value(
                 stack_entry: None,
                 filter_candidate_players: None,
                 departed_battlefield_lookback: None,
+                triggering_event: None,
+                event_value_amount: None,
                 players_in_range: game.range_players_for_source(effect_controller, Some(source)),
             };
             let mut total = 0i32;

@@ -2392,6 +2392,20 @@ fn parse_one_target_per_card_type_phrase(
 pub(crate) mod payment_receipt_references;
 
 pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    // "exactly one card in your graveyard milled this way": an explicit
+    // exact cardinality is the same count as the bare number, never a
+    // complete-set reading of the noun phrase.
+    if tokens.first().is_some_and(|token| token.is_word("exactly"))
+        && tokens
+            .get(1)
+            .is_some_and(|token| parse_number(std::slice::from_ref(token)).is_some())
+    {
+        let target = parse_target_phrase(&tokens[1..])?;
+        if matches!(target, TargetAst::WithCount(..)) {
+            crate::word_claims::claim_tokens(&tokens[..1]);
+            return Ok(target);
+        }
+    }
     // Event-role nouns name the immutable triggering object, independently
     // of a later local target or the ability's source permanent.
     if matches!(crate::lexer::parser_token_word_refs(tokens).as_slice(),

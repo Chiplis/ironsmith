@@ -226,6 +226,16 @@ fn merge_retained_tagged_objects(
 }
 
 impl GameState {
+    /// An entry program's exile receipt names the card's exiled incarnation
+    /// (CR 400.7), not the object it was before the move. When the acted-on
+    /// card's current incarnation is in exile, record that arrival.
+    fn entry_exile_arrival_snapshot(&self, snapshot: &crate::snapshot::ObjectSnapshot) -> crate::snapshot::ObjectSnapshot {
+        self.find_object_by_stable_id(snapshot.stable_id)
+            .and_then(|id| self.object(id))
+            .filter(|object| object.zone == crate::zone::Zone::Exile && object.id != snapshot.object_id)
+            .and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, self))
+            .unwrap_or_else(|| snapshot.clone())
+    }
     /// Frozen layer-1 rules, including casting abilities and copiable other halves.
     pub fn calculated_copiable_values(&self, id: ObjectId) -> Option<crate::snapshot::CopiableValues> {
         crate::continuous::copiable_values_with_effects(id, self.objects_map(),
@@ -617,7 +627,8 @@ impl GameState {
                         program.segments.iter().all(|segment|segment.ability_designations.contains(label)))
                         .cloned().collect::<Vec<_>>()).unwrap_or_default();
                 let snapshots=completed.outputs.iter().flat_map(|output|
-                    output.outcome.action_objects(crate::effect::PriorEffectAction::Exiled,None).into_iter().cloned()
+                    output.outcome.action_objects(crate::effect::PriorEffectAction::Exiled,None).into_iter()
+                        .map(|snapshot|self.entry_exile_arrival_snapshot(snapshot))
                 ).collect::<Vec<_>>();
                 for label in labels {
                     let tag=crate::tag::TagKey::from(format!("__entry_action_exiled_by__:{label}"));
@@ -635,7 +646,8 @@ impl GameState {
                 // by action_objects' instruction-result boundary.
                 let tag=crate::tag::TagKey::from("__entry_action_exiled__");
                 let snapshots=completed.outputs.iter().flat_map(|output|
-                    output.outcome.action_objects(crate::effect::PriorEffectAction::Exiled,None).into_iter().cloned()
+                    output.outcome.action_objects(crate::effect::PriorEffectAction::Exiled,None).into_iter()
+                        .map(|snapshot|self.entry_exile_arrival_snapshot(snapshot))
                 ).collect::<Vec<_>>();
                 if !snapshots.is_empty(){
                     let retained=execution.tagged_objects.entry(tag).or_default();

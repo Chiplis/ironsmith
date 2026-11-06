@@ -32,6 +32,39 @@ pub(super) fn parse_have_performer(tokens: &[OwnedLexToken]) -> Result<Option<Ef
     )))
 }
 
+/// "If <condition>, have <performer> perform the <label> action": the same
+/// performer atom owned by a leading conditional clause.
+pub(crate) fn parse_conditional_have_performer(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    // "You may have <performer> perform the <label> action": the same atom
+    // owned by an optional clause.
+    if tokens.len() > 2 && tokens[0].is_word("you") && tokens[1].is_word("may") && tokens[2].is_word("have") {
+        let probe = crate::word_claims::probe_only(|| matches!(parse_have_performer(&tokens[2..]), Ok(Some(_))));
+        if !probe { return Ok(None); }
+        let Some(body) = parse_have_performer(&tokens[2..])? else { return Ok(None); };
+        crate::word_claims::claim_tokens(&tokens[..2]);
+        return Ok(Some(EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May { effects: vec![body] })));
+    }
+    if !tokens.first().is_some_and(|token| token.is_word("if")) { return Ok(None); }
+    let Some(comma) = tokens.iter().position(|token| token.is_comma()) else { return Ok(None); };
+    if comma < 2 || !tokens.get(comma + 1).is_some_and(|token| token.is_word("have")) { return Ok(None); }
+    // Both halves are probed before either keeps its claims.
+    let probe = crate::word_claims::probe_only(|| {
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens[1..comma]).is_ok()
+            && matches!(parse_have_performer(&tokens[comma + 1..]), Ok(Some(_)))
+    });
+    if !probe { return Ok(None); }
+    let predicate = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens[1..comma])?;
+    let Some(body) = parse_have_performer(&tokens[comma + 1..])? else { return Ok(None); };
+    crate::word_claims::claim_tokens(&tokens[..1]);
+    crate::word_claims::claim_tokens(&tokens[comma..comma + 1]);
+    Ok(Some(EffectAst::Conditionals(crate::cards::builders::ConditionalEffectAst::Conditional {
+        predicate,
+        if_true: vec![body],
+        if_false: Vec::new(),
+    })))
+}
+
 /// "Perform the <label> action [with <objects>]": the bare named-action
 /// instruction, read the same way as a whole sentence and as a nested clause
 /// ("If you do, perform the motivate action with creatures given counters
@@ -53,6 +86,10 @@ pub(crate) fn parse_perform(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
         Some(["with", "cards" | "creatures" | "permanents" | "objects", "exiled", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Exiled),
         Some(["with", "cards" | "creatures" | "permanents" | "objects", "sacrificed", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Sacrificed),
         Some(["with", "creatures" | "permanents" | "objects", "given", "counters", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::CountersPut),
+        // The objects a creation instruction affected are the tokens it
+        // actually created.
+        Some(["with", "tokens" | "permanents" | "objects", "created", "this", "way"]
+            | ["with", "the", "token" | "tokens", "created", "this", "way"]) => Some(ironsmith_core::PriorEffectAction::Affected),
         _ => None,
     };
     let objects = if prior_action.is_some() || action + 1 == words.len() { None }

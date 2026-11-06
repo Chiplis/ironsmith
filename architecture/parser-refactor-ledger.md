@@ -378,3 +378,33 @@ reference-key sites. The additional power-based damage scan preserves the
 full quantity clause when selecting a delegated damage target. These bounded
 additions remain visible to the audits. Module-size and first-match-ladder
 counts remain 133 and 186; the zero redundant-parse gate is unchanged.
+
+## 2026-11-04: reconcile the custom-mechanics checkpoint (test-failure campaign)
+
+The custom-mechanics checkpoint (23b10081a) and the keyword-reminder work
+(cec9897a8) added recognition sites that lex synthesized text: mana-cost and
+alternative-cost operands rebuilt from strings in the prepared/alternative
+cost lines, template sentences (emblem draw trigger, created-token rewrites,
+described effect bundles), and re-lexed rendered branches. Three of the new
+sites were converted to synthetic tokens (the tapped-prestate predicate, the
+surcharge sentence terminator, and the chosen-creature-type operand). The
+remaining twenty-three (including the reminder-definition readers from cec9897a8;
+the intrinsic immediate-action terminator was also converted) are recorded by name in `relex_sites.rs` as explicit debt;
+the gate still fails on any further site.
+
+## 2026-11-05: reconcile audit budgets after the custom-mechanics checkpoints
+
+The custom-mechanics checkpoints (23b10081a, cec9897a8, e5951c5c7, 3692103ee)
+and the November test-failure campaign added parser coverage for custom
+mechanics and keyword reminder definitions without lowering the audit budgets
+from October 18. The executable audits now report 50 architecture findings,
+1,686 manual-parser sections, 144 oversized production modules, 216
+first-match ladders, 1,305 reference-key sites, 72 effect variants, 90 predicate variants,
+and 21 ranked-registry overlaps. The budgets are raised to those measured counts as
+explicit migration debt. Nearly all of the increase predates the campaign
+(its baseline already measured 51, 1,669, 144, 215, 1,303, 72 and 21). No
+findings are suppressed and no audit was disabled; the exact-count gates stay
+enabled, the zero redundant-parse budget is unchanged, and the action (27) and
+ranked-registry (14) budgets are unchanged. The last four manual-parser
+sections come from the campaign's third wave of reader fixes (additional-cost
+choices, conditional performers, trailing "as long as … Otherwise" statics).

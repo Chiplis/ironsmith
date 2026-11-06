@@ -479,6 +479,15 @@ mod tests {
         let [EffectAst::CommaThen { effects }] = effects.as_slice() else {
             panic!("expected authored comma-then surface, got {effects:#?}");
         };
+        // The "and"-joined pair after "then" is one coordinated action list;
+        // its members are still top-level siblings of the each-player mill.
+        let effects = effects
+            .iter()
+            .flat_map(|effect| match effect {
+                EffectAst::Coordinated { effects, .. } => effects.iter().collect::<Vec<_>>(),
+                other => vec![other],
+            })
+            .collect::<Vec<_>>();
         assert!(
             matches!(
                 effects.as_slice(),

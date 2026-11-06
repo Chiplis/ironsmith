@@ -695,6 +695,12 @@ fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<S
         if split.kind == preprocess_grammar::LineVariantSplitKind::CostAdjustmentFollowup
             && second_words.starts_with(&["this", "cost", "is", "reduced", "by"])
             && (first_words.word_windows(2).any(|window| window == ["unless", "you"])
+                // "... rather than paying its mana cost. This cost is reduced
+                // by {3} if ...": the reduction modifies that alternative
+                // price, not this spell's ordinary casting cost.
+                || first_words
+                    .word_windows(5)
+                    .any(|window| window == ["rather", "than", "paying", "its", "mana"])
                 || first_words
                     .first()
                     .is_some_and(|word| matches!(*word, "disguise" | "morph" | "megamorph")))

@@ -110,7 +110,7 @@ export default function SandboxPanel({ currentDraft, onStarted, onBusyChange }) 
         </details>
       </fieldset>
       <fieldset disabled={busy || locked} className="min-w-0 space-y-4">
-        <legend className="text-lg font-semibold">IronSmith Sandboxer</legend>
+        <legend className="text-lg font-semibold">{ui('IronSmith Sandboxer')}</legend>
         <p className="text-sm text-muted-foreground">{ui('Each enabled option adds one ability to this enchantment on the battlefield. Remove the enchantment to turn its abilities off.')}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           {SANDBOX_RULES.map(rule => <label key={rule.id} className="flex items-start gap-2 text-sm">
@@ -119,7 +119,7 @@ export default function SandboxPanel({ currentDraft, onStarted, onBusyChange }) 
         </div>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={bothPlayers} onChange={event => setPreferences(current => ({ ...current, bothPlayers: event.target.checked }))} />{ui('Give each player a Sandboxer')}</label>
         <section className="border border-amber-200/25 bg-black/20 p-4" aria-label={ui('Sandboxer rules preview')}>
-          <p className="font-semibold">IronSmith Sandboxer <span className="float-right">{0}</span></p>
+          <p className="font-semibold">{ui('IronSmith Sandboxer')} <span className="float-right">{0}</span></p>
           <p className="mb-3 text-sm text-muted-foreground">{ui('Enchantment')}</p>
           <div className="whitespace-pre-line text-sm leading-6">{rulesText || ui('Enable an option to add its rules text. No Sandboxer is created when all options are off.')}</div>
         </section>

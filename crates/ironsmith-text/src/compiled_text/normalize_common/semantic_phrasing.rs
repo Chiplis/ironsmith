@@ -2236,6 +2236,12 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace_lit(
             "At the beginning of each player's upkeep, tap an untapped artifact, creature, or land that player controls for each fade counter on this artifact",
             "At the beginning of each player's upkeep, that player taps an untapped artifact, creature, or land they control for each fade counter on this artifact",
+        )
+        // A counted choice the same player then taps is one tap instruction
+        // (Tangle Wire).
+        .replace_lit(
+            "that player chooses an untapped artifact, creature, or land they control for each fade counter on this artifact, then that player taps them",
+            "that player taps an untapped artifact, creature, or land they control for each fade counter on this artifact",
         );
     // Coordinated player actions must retain the subject on both verbs when
     // the second action is conditional or introduces a second effect.

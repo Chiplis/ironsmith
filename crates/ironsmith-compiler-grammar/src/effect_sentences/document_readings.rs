@@ -1714,6 +1714,17 @@ pub(crate) fn parse_bounded_inline_modal_tokens(tokens:&[OwnedLexToken])->Result
 /// If you have eight or more, do the following: [A; B]") reaches nested
 /// sentence dispatch; it keeps the same complete bracketed-program owner as a
 /// document that starts with it.
+/// A named-action program that is not its document's first sentence
+/// ("Choose target creature. Its owner performs the X action as follows:
+/// [...]") is the same complete bracketed owner at sentence scope.
+pub(crate) fn parse_named_action_program_tokens(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,CardTextError>{
+    if !tokens.iter().any(|token| token.kind == TokenKind::LBracket) { return Ok(None); }
+    Ok(crate::word_claims::speculative_keep_if(
+        || read_named_action_program(&Document::new(tokens)),
+        |result| matches!(result, Ok(Some(_))),
+    ).ok().flatten())
+}
+
 pub(crate) fn parse_bounded_instruction_program_tokens(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,CardTextError>{
     if !tokens.iter().any(|token| token.kind == TokenKind::LBracket) { return Ok(None); }
     // Only a complete bracketed program is owned here; any other bracketed

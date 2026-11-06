@@ -1864,12 +1864,17 @@ pub fn parse_attached_cant_attack_or_block_line(
             crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
             format!("{subject} can't attack or block"),
         ),
-        // CR 113.12: "can't be blocked" is a stated restriction of the
-        // attached object, not a granted ability, exactly like "can't attack".
-        attached_grammar::AttachedCombatRestrictionKind::CantBeBlocked => (
-            crate::effect::Restriction::be_blocked(ObjectFilter::source()),
-            format!("{subject} can't be blocked"),
-        ),
+        // CR 113.12 would make this a stated BeBlocked restriction like
+        // "can't attack", but granted BeBlocked restrictions are not yet
+        // enforced at runtime, so it stays the enforced Unblockable grant.
+        attached_grammar::AttachedCombatRestrictionKind::CantBeBlocked => {
+            let display = format!("{subject} can't be blocked");
+            return Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
+                ability: Box::new(StaticAbilityAst::Static(StaticAbility::unblockable())),
+                display,
+                condition: None,
+            }));
+        }
     };
 
     Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {

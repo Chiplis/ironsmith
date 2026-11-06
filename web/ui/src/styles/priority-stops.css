@@ -1,30 +1,33 @@
 .phase-track-group { display: flex; flex-direction: column; min-width: 0; width: 100%; gap: 3px; }
 .phase-track--combat .phase-track-steps { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+/* On wide layouts the six combat steps sit on the phase track's own eight
+   columns (Blockers under Main I, First strike under Combat, Damage under
+   Main II), so each reads as a continuation of the row above. */
+@media (min-width: 721px) {
+  .phase-track--combat .phase-track-steps { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .phase-track--combat .phase-track-cell:first-child { grid-column-start: 2; }
+}
 .phase-track-stop-button {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 3px; width: 100%; min-height: 28px; border: 0; padding: 0 2px;
   background: transparent; color: inherit; font: inherit; cursor: pointer; pointer-events: auto;
 }
 .phase-track-stop-button:disabled { cursor: default; }
+/* Untap has no priority, so its icon stays dim and never shows a stop. */
+.phase-track-stop-button:disabled .phase-track-stop-icon { opacity: .45; }
 .phase-track-stop-button:focus-visible { outline: 1px solid #f6d64a; outline-offset: 2px; }
 .phase-track-stop-button:not(:disabled) .phase-track-step-marker { display: none; }
 .phase-track-stop-icon {
   display: block; width: 16px; height: 16px; flex: 0 0 16px;
   stroke: #c9b4e6; stroke-width: 1.5; fill: none; pointer-events: none;
 }
-/* "I can act" (the default) glows white, "every time" yellow. The hand's
-   silhouette path sits under its outline so the fill has no gaps. */
-.phase-track-stop-fill { stroke: none; }
+/* "I can act" (the default) glows white, "every time" yellow. */
 .phase-track-stop-button[data-stop="can_act"] .phase-track-stop-icon {
   stroke: #ffffff; fill: #ffffff; filter: drop-shadow(0 0 3px #ffffff);
 }
 .phase-track-stop-button[data-stop="always"] .phase-track-stop-icon {
   stroke: #f6d64a; fill: #f6d64a; filter: drop-shadow(0 0 3px #f6d64a);
 }
-/* A filled hand keeps its fingers: the silhouette carries the color and its
-   edge, the outline strokes draw the finger gaps in the panel's dark tone. */
-.phase-track-stop-button:is([data-stop="can_act"], [data-stop="always"]) .phase-track-stop-hand .phase-track-stop-fill { stroke: inherit; stroke-width: 2; }
-.phase-track-stop-button:is([data-stop="can_act"], [data-stop="always"]) .phase-track-stop-hand path:not(.phase-track-stop-fill) { stroke: #15111c; stroke-width: 1.3; fill: none; }
 .phase-track--combat { min-height: 31px; }
 /* The current step reads at a glance: larger label and icon than its neighbours. */
 .table-shell .phase-track-cell[data-phase-active="true"] { overflow: visible; }
@@ -117,8 +120,7 @@
   }
   .phase-track-group--fields .phase-track-player--self .phase-track-player-heading { padding-left: calc(var(--phase-track-span, 100%) / 16); }
 }
-.phase-track-opponent-hand,
-.phase-track-group--duel [data-opponent-stop="true"] .phase-track-stop-icon { transform: rotate(180deg); }
+.phase-track-opponent-hand { transform: rotate(180deg); }
 /* Each turn is a complete sequence, followed by the next player's turn. */
 .phase-track-group--duel .phase-track-player-heading { padding-bottom: 8px; }
 .phase-track-group--duel .phase-track-player-heading svg { flex-shrink: 0; }
@@ -216,3 +218,23 @@
 .phase-track-empty-combat-toggle[aria-pressed="true"][data-combat-skip="blockers"] { color: #ff7878; filter: drop-shadow(0 0 3px #ff4545); }
 .phase-track-empty-combat-toggle:hover { background: #ffffff18; }
 .phase-track-empty-combat-toggle:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
+
+/* The player heading (hand, name, turn and priority cues) sits just above its
+   turn line instead of below it, so the stops rise right under the line. */
+.phase-track-player { position: relative; padding-top: 2px; }
+.phase-track-player .phase-track-player-heading,
+.phase-track-group--duel .phase-track-player .phase-track-player-heading {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 1px); padding: 0 8px 2px;
+}
+.phase-track-player .phase-track-stop-icon { translate: none; }
+.phase-track-group--fields .phase-track-player--self { margin-top: 20px; }
+
+/* Attackers and blockers sit on either side of the Combat stop, level with its icon. */
+.phase-track-empty-combat {
+  top: 3.5px; width: calc(var(--phase-stop-size, 14px) + 40px);
+  justify-content: space-between; pointer-events: none;
+}
+@media (min-width: 1440px) {
+  .phase-track-empty-combat { top: calc(var(--phase-stop-size) / 2 - 2.5px); }
+}
+.phase-track-empty-combat-toggle { pointer-events: auto; }

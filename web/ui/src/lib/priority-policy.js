@@ -321,11 +321,16 @@ export function moveTriggerGroup(decision, order, position, direction) {
   [groups[from], groups[to]] = [groups[to], groups[from]];
   return groups.flat();
 }
-export function yieldDescription(intent, state) {
+// English stop name for a priority-stop key; callers localize it with ui().
+export function stopLabel(key) {
+  const name = String(key || '').split(':')[1] || '';
+  return { Main: 'Main 1', Main2: 'Main 2' }[name] || name.replace(/([a-z])([A-Z])/g, '$1 $2');
+}
+export function yieldDescription(intent, state, ui = text => text) {
   if (!intent) return '';
-  if (intent.mode !== 'until') return YIELD_LABELS[intent.mode];
-  if (intent.anyPlayer) return 'Yielding until the next end step';
+  if (intent.mode !== 'until') return ui(YIELD_LABELS[intent.mode]);
+  if (intent.anyPlayer) return ui('Yielding until the next end step');
   const player = state?.players?.find(player => same(player.id, intent.player));
-  const phase = String(intent.key || '').split(':')[1]?.replace(/([a-z])([A-Z])/g, '$1 $2');
-  return `Yielding until ${player?.name || 'the selected player'}’s ${phase || 'selected stop'}`;
+  const phase = stopLabel(intent.key);
+  return ui('Yielding until {0}’s {1}', { 0: player?.name || ui('the selected player'), 1: ui(phase || 'selected stop') });
 }

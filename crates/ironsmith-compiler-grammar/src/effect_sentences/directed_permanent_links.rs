@@ -20,3 +20,9 @@ pub(super) fn parse(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,Card
  crate::word_claims::claim_words(&words[..4]);crate::word_claims::claim_words(&words[by..]);
  Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Chooser,PlayerAst::You,SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents{target,relation:label.join(" "),require_creatures}))]))
 }
+
+/// The same directed link read as one clause of a larger program.
+pub(super) fn parse_clause(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardTextError>{
+ let Some(mut effects)=parse(tokens)? else{return Ok(None)};
+ Ok((effects.len()==1).then(||effects.remove(0)))
+}

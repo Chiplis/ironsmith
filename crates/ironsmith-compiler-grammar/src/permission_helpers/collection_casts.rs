@@ -237,7 +237,8 @@ fn split_total_mana_value_cap(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Op
     };
     let words = token_word_refs(trim_lexed_commas(bound));
     let value = match words.as_slice() {
-        ["x", "or", "less"] => Some(Value::X),
+        // The variable keeps its authored capital ("X or less").
+        ["x" | "X", "or", "less"] => Some(Value::X),
         [count, "or", "less"] => crate::util::parse_number_word_i32(count).map(Value::Fixed),
         _ => None,
     };

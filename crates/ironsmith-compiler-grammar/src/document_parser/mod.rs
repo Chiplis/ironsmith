@@ -1340,6 +1340,10 @@ pub(crate) fn normalize_named_source_tokens_with_context(
     if !context.card().subtypes.is_empty() {
         card = card.subtypes(context.card().subtypes.clone());
     }
+    // Supertypes decide whether a shortened name ("Vraska") is this card.
+    if !context.card().supertypes.is_empty() {
+        card = card.supertypes(context.card().supertypes.clone());
+    }
     normalize_named_source_tokens_for_builder(&card, tokens)
 }
 
@@ -9336,6 +9340,7 @@ mod tests {
     #[test]
     fn named_source_sentence_rewrite_normalizes_short_legendary_name_in_as_enters_line() {
         let card = CardBuilder::new(CardId::from_raw(1), "Shimatsu the Bloodcloaked")
+            .supertypes(vec![crate::types::Supertype::Legendary])
             .card_types(vec![CardType::Creature]);
 
         let rewritten = normalize_named_source_sentence_for_builder(
@@ -9709,6 +9714,7 @@ mod tests {
     #[test]
     fn named_source_rewrite_does_not_rewrite_prefix_of_preserved_full_name() {
         let card = CardBuilder::new(CardId::from_raw(1), "Vivi Ornitier")
+            .supertypes(vec![crate::types::Supertype::Legendary])
             .card_types(vec![CardType::Creature]);
         let aliases = source_name_aliases_for_builder(&card);
 

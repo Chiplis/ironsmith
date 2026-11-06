@@ -11,9 +11,15 @@ fn exact_source_replaces_uncast_nontoken_arrivals_before_their_etb_abilities_exi
  let mut queue=ironsmith::triggers::TriggerQueue::new();ironsmith::game_loop::drain_pending_trigger_events_with_dm(&mut game,&mut queue,&mut SelectFirstDecisionMaker).unwrap();assert!(queue.entries.is_empty(),"the entrant's printed ETB ability never triggered face-up");
  }}}}
 #[test]
-fn tokens_actual_undercover_identity_and_noncreatures_are_not_modified(){for definition in source(){for (token,identity) in [(true,false),(false,true)]{
- let mut game=GameState::new(vec!["A".into(),"B".into()],20);game.create_object_from_definition(&definition,A,Zone::Battlefield);let incoming=game.create_object_from_definition(&body(token,identity),A,Zone::Hand);let arrival=enter(&mut game,incoming);assert!(!game.is_face_down(arrival));assert_eq!(game.calculated_power(arrival),Some(5));
- }let mut game=GameState::new(vec!["A".into(),"B".into()],20);game.create_object_from_definition(&definition,A,Zone::Battlefield);let artifact=ironsmith_compiler_runtime::compile_to_runtime_definition("Artifact witness","Type: Artifact",false).unwrap();let old=game.create_object_from_definition(&artifact,A,Zone::Graveyard);let arrival=enter(&mut game,old);assert!(!game.is_face_down(arrival));}}
+fn tokens_actual_undercover_identity_and_noncreatures_are_not_modified(){for definition in source(){
+ // A token only ever enters the battlefield by being created there: one
+ // outside the battlefield can't move to another zone (CR 111.8, 704.5d).
+ let mut game=GameState::new(vec!["A".into(),"B".into()],20);let officer=game.create_object_from_definition(&definition,A,Zone::Battlefield);
+ let mut dm=SelectFirstDecisionMaker;ironsmith::effects::execute_effect(&mut game,&ironsmith::effect::Effect::create_tokens(body(true,false),1),&mut ironsmith::effects::EffectContext::new(officer,A,&mut dm)).unwrap();
+ let [arrival]=game.battlefield.iter().copied().filter(|id|game.object(*id).is_some_and(|object|object.kind==ironsmith::ObjectKind::Token)).collect::<Vec<_>>()[..] else{panic!("expected exactly one created token")};
+ assert!(!game.is_face_down(arrival));assert_eq!(game.calculated_power(arrival),Some(5));
+ let mut game=GameState::new(vec!["A".into(),"B".into()],20);game.create_object_from_definition(&definition,A,Zone::Battlefield);let incoming=game.create_object_from_definition(&body(false,true),A,Zone::Hand);let arrival=enter(&mut game,incoming);assert!(!game.is_face_down(arrival));assert_eq!(game.calculated_power(arrival),Some(5));
+ let mut game=GameState::new(vec!["A".into(),"B".into()],20);game.create_object_from_definition(&definition,A,Zone::Battlefield);let artifact=ironsmith_compiler_runtime::compile_to_runtime_definition("Artifact witness","Type: Artifact",false).unwrap();let old=game.create_object_from_definition(&artifact,A,Zone::Graveyard);let arrival=enter(&mut game,old);assert!(!game.is_face_down(arrival));}}
 #[test]
 fn real_cast_receipt_prevents_entry_replacement(){for definition in source(){
  use ironsmith::decision::{compute_legal_actions,LegalAction};use ironsmith::game_loop::{PriorityLoopState,PriorityResponse,apply_priority_response_with_dm,apply_decision_context_with_dm};

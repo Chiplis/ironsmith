@@ -13,12 +13,16 @@ pub fn assemble_activation_cost(
         let mut branches = Vec::with_capacity(cst.alternative_branches.len());
         for branch in &cst.alternative_branches {
             let branch = assemble_activation_cost(branch)?;
-            let [costs] = branch.branches.as_slice() else {
+            // "A or B or C" splits one delimiter at a time; alternatives are
+            // associative, so a nested alternative contributes its branches.
+            let flattens = matches!(branch.relationship, CostRelationship::Alternative)
+                || branch.branches.len() == 1;
+            if !flattens {
                 return Err(CardTextError::ParseError(
                     "nested alternative activation cost is not supported".to_string(),
                 ));
-            };
-            branches.push(costs.clone());
+            }
+            branches.extend(branch.branches);
         }
         return Ok(CompilerTotalCost {
             branches,

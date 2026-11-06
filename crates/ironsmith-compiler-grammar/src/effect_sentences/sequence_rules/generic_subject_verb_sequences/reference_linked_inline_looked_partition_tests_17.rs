@@ -178,11 +178,18 @@ fn reflexive_targeted_graveyard_cast_keeps_target_x_and_replacement_scope() {
         SentenceInput::from_lexed(&nonreflexive),
         SentenceInput::from_lexed(&second),
     ];
-    assert!(
+    // A leading "If you do" may still open the general conditional program;
+    // it must never be read as the reflexive ("When you do") trigger.
+    let near_miss_effects =
         crate::effect_sentences::sequence_rules::try_parse_document_program(&near_miss, 0)
             .map(|matched| matched.map(|matched| matched.effects))
-            .unwrap()
-            .is_none()
+            .unwrap();
+    assert!(
+        near_miss_effects.as_ref().is_none_or(|effects| !matches!(
+            effects.as_slice(),
+            [EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })]
+        )),
+        "{near_miss_effects:#?}"
     );
 }
 

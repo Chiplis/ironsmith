@@ -33,15 +33,12 @@ fn cast_methods(
     { return Vec::new(); }
     let view = crate::derived_view::DerivedGameView::new(game);
     let normal = CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: None };
-    eprintln!("P1DBG fdc legal={} cost={}", crate::decision::completed_effect_driven_cast_proposal_is_legal(game, player, card, &normal, Zone::Exile),
-        crate::decision::can_cast_with_cost_with_view_for_casting_method(
-            game, player, card, card_id, card.mana_cost_owned().as_ref(), None,
-            &crate::decision::AdditionalCastRequirements::default(), &normal, &view,
-        ));
     let mut methods = Vec::new();
     if crate::decision::completed_effect_driven_cast_proposal_is_legal(game, player, card, &normal, Zone::Exile)
-        && crate::decision::can_cast_with_cost_with_view_for_casting_method(
-            game, player, card, card_id, card.mana_cost_owned().as_ref(), None,
+        // "cast it face up any time you have priority": the permission
+        // waives ordinary spell timing, not its costs.
+        && crate::decision::can_cast_with_cost_with_view_for_casting_method_any_time(
+            game, player, card, card_id, card.mana_cost_owned().as_ref(),
             &crate::decision::AdditionalCastRequirements::default(), &normal, &view,
         )
     { methods.push((format!("Cast {}", card.name), normal)); }
@@ -50,7 +47,7 @@ fn cast_methods(
         if alternative.requires_cast_from_hand() || alternative.cast_from_zone() == Zone::Graveyard { continue; }
         let method = CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: Some(index) };
         if crate::decision::completed_effect_driven_cast_proposal_is_legal(game, player, card, &method, Zone::Exile)
-            && crate::decision::can_cast_with_alternative_with_view(game, player, card, alternative, &view)
+            && crate::decision::can_cast_with_alternative_with_view_any_time(game, player, card, alternative, &view)
         { methods.push((format!("Cast {} for its {} cost", card.name, alternative.name()), method)); }
     }
     methods

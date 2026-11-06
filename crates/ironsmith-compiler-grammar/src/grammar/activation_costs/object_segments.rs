@@ -579,7 +579,9 @@ fn parse_discard_hand<'a>(input: &mut LexStream<'a>) -> WResult<DiscardCostShape
 }
 
 fn parse_discard_source<'a>(input: &mut LexStream<'a>) -> WResult<DiscardCostShape> {
-    primitives::phrase(&["this", "card"]).parse_next(input)?;
+    // "Discard <card name>:" normalizes the name to the bare "this".
+    primitives::kw("this").parse_next(input)?;
+    opt(primitives::kw("card")).parse_next(input)?;
     eof.parse_next(input)?;
     Ok(DiscardCostShape::Source)
 }

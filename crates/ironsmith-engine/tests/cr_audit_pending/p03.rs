@@ -699,8 +699,16 @@ fn p03_rules_content(abilities: &[ironsmith::ability::Ability], labels: &[&str])
             &format!("ability_designations: [\"{}\"]", label.to_ascii_lowercase()),
             "ability_designations: []",
         );
+        // The ability-level copy of that same reference designation.
+        text = text.replace(
+            &format!("designations: [\"{}\"]", label.to_ascii_lowercase()),
+            "designations: []",
+        );
     }
     text = strip_between(&text, "LinkedExileDefinition([", "])");
+    // A labeled ability also records its per-compile linkage identity; its
+    // presence (like its hash) is reference metadata, not rules content.
+    text = text.replace("activation_definition: Some(LinkedExileDefinition([_]))", "activation_definition: None");
     strip_between(&text, "InstanceId(", ")")
 }
 

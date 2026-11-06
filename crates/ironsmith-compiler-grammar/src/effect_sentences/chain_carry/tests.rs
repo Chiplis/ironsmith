@@ -1689,6 +1689,7 @@ fn duration_scoped_delayed_triggers_compile_for_the_three_real_cards() {
     );
 
     let vraska = CardDefinitionBuilder::new(CardId::new(), "Vraska the Unseen")
+        .supertypes(vec![crate::types::Supertype::Legendary])
         .card_types(vec![CardType::Planeswalker])
         .parse_text(
             "+1: Until your next turn, whenever a creature deals combat damage to Vraska, destroy that creature.\n−3: Destroy target nonland permanent.\n−7: Create three 1/1 black Assassin creature tokens with \"Whenever this token deals combat damage to a player, that player loses the game.\"",

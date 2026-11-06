@@ -39,7 +39,6 @@ struct Aim(Vec<ObjectId>);
 
 impl DecisionMaker for Aim {
     fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
-        eprintln!("P3DBG requirements={:?}", ctx.requirements.iter().map(|r| (r.description.clone(), r.legal_targets.clone())).collect::<Vec<_>>());
         ctx.requirements
             .iter()
             .zip(&self.0)
@@ -123,10 +122,7 @@ fn ram(trample: bool) -> (Zone, i32, u32) {
         );
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
-    eprintln!("P3DBG stack={:?}", game.stack.last().map(|e| e.targets.clone()));
-    let r = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
-    eprintln!("P3DBG resolve={r:?} life={:?}", game.player(bob).unwrap().life);
-    r.unwrap();
+    ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     let id = game.find_object_by_stable_id(victim_stable).unwrap();
     let marked = game.damage_on(id);
     (

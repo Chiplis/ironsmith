@@ -1,4 +1,5 @@
 import {cardFlavorSource} from '@/lib/card-flavor-source';
+import useUiText from '@/i18n/useUiText';
 import {useLayoutEffect,useMemo} from 'react';
 import CardGlintFrame from './CardGlintFrame';
 import SimpleCardFrame from './SimpleCardFrame';
@@ -10,6 +11,7 @@ import {rulesSourceCard,rulesSourceFrame} from '@/lib/rules-source-frame';
 // `inspector` marks the single inspected card, which may use the WebGL renderer.
 export default function CardFramePresentation({card,imageUrl,faceIndex=0,rulesView,onActivate,highlighted,
   counters,badges,onReadyChange,inspector=false,deferUpgrade=false,keywordHelpers=false}) {
+  const ui=useUiText();
   const snapshot=cardFrameSnapshot(card);
   const printable=useMemo(()=>JSON.parse(snapshot),[snapshot]);
   const source=rulesView ? cardFlavorSource(printable.card_faces?.[faceIndex]?.flavor_text ?? printable.flavor_text) : null;
@@ -27,9 +29,9 @@ export default function CardFramePresentation({card,imageUrl,faceIndex=0,rulesVi
         details={[counters,...(badges||[])].filter(Boolean).join(' · ')}
         rulesContent={rulesView&&<CardFrameRules name={card.name} rulesView={rulesView} onActivate={onActivate} highlighted={highlighted}/>}/>}/>}
     {source && <a className="card-frame-source-link" href={source.href} target="_blank" rel="noopener noreferrer"
-      title={source.href} aria-label={`Open original post on ${source.host}`}
+      title={source.href} aria-label={ui('Open original post on {0}', { 0: source.host })}
       onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>
-      Original post · {source.host} <span aria-hidden="true">↗</span>
+      {ui('Original post · {0}', { 0: source.host })} <span aria-hidden="true">↗</span>
     </a>}
     </div>
   </div>;

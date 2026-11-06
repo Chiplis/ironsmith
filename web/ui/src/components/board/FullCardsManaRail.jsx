@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import ManaPool from "@/components/left-rail/ManaPool";
 import { useGame } from "@/context/GameContext";
+import useUiText from "@/i18n/useUiText";
 import useViewportLayout from "@/hooks/useViewportLayout";
 
 // The local mana pool of the desktop HUD, in both battlefield appearances:
@@ -9,13 +10,14 @@ import useViewportLayout from "@/hooks/useViewportLayout";
 // any fixed child along to the right; rendered here, the rail stays put.
 export default function FullCardsManaRail() {
   const { state } = useGame();
+  const ui = useUiText();
   const { nonDesktopViewport, tabletCompactViewport } = useViewportLayout();
   const players = state?.players || [];
   const me = players.find((player) => player.id === state?.perspective) || null;
   if (nonDesktopViewport || tabletCompactViewport || !me) return null;
   if (typeof document === "undefined") return null;
   return createPortal(
-    <div className="fc-local-mana-rail" aria-label="Your mana pool">
+    <div className="fc-local-mana-rail" aria-label={ui("Your mana pool")}>
       <ManaPool pool={me.mana_pool} player={me} alwaysVisible compact activeScale={2} />
     </div>,
     document.body,

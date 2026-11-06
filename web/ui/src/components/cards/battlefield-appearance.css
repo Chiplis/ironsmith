@@ -59,6 +59,22 @@
   font: 700 clamp(8px, calc(var(--bf-card-height, 90px) * .098), 11.5px)/var(--arena-name-height) Georgia, serif;
   letter-spacing: .01em;
 }
+/* Summoning sickness drains the art to grey; the color flows back when it ends. */
+.arena-permanent-art, .battlefield-art--summoning-sickness { transition: filter 1200ms ease; }
+.arena-permanent-art[data-summoning-sick], .battlefield-art--summoning-sickness.is-summoning-sick {
+  filter: grayscale(1) brightness(.92);
+}
+@media (prefers-reduced-motion: reduce) {
+  .arena-permanent-art, .battlefield-art--summoning-sickness { transition: none; }
+}
+/* Summoning sickness greys the name bar like the P/T box. */
+.battlefield-artwork-card .arena-permanent-name { transition: background 600ms ease, color 600ms ease; }
+.battlefield-artwork-card .arena-permanent-name[data-summoning-sick] {
+  background: #666; color: #fff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .battlefield-artwork-card .arena-permanent-name { transition: none; }
+}
 /* The art sits flush under the name bar and spans the same width as the bars,
    so every seam is the same 1px frame line. */
 .battlefield-artwork-card .arena-permanent-art { top: calc(var(--arena-name-height) + 1px); left: 1px; right: 1px; }

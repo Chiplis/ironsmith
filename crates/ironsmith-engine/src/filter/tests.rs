@@ -3516,3 +3516,149 @@ fn aura_compatibility_does_not_treat_library_memory_as_a_departed_permanent() {
     query.could_enchant_object = Some(Box::new(ObjectFilter::tagged("triggering")));
     assert!(!query.matches(game.object(aura).unwrap(), &ctx, &game));
 }
+
+#[test]
+fn mana_value_at_most_life_gained_this_turn_resolves_and_admits_lands() {
+    // Enlightened Confidant: "a card with mana value less than or equal to
+    // the amount of life you gained this turn". Lands have mana value 0.
+    use crate::card::CardBuilder;
+    use crate::effects::ExecutionContext;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let card = |name: &str, card_type: CardType, generic: Option<u8>| {
+        let mut builder = CardBuilder::new(CardId::new(), name).card_types(vec![card_type]);
+        if let Some(generic) = generic {
+            builder = builder.mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(generic)]));
+        }
+        builder.build()
+    };
+    let land = game.create_object_from_card(&card("Plains", CardType::Land, None), alice, Zone::Graveyard);
+    let three = game.create_object_from_card(&card("Three", CardType::Sorcery, Some(3)), alice, Zone::Graveyard);
+    let four = game.create_object_from_card(&card("Four", CardType::Sorcery, Some(4)), alice, Zone::Graveyard);
+
+    let filter = ObjectFilter::default().with_mana_value(Comparison::LessThanOrEqualExpr(Box::new(
+        crate::effect::Value::LifeGainedThisTurn(crate::target::PlayerFilter::You),
+    )));
+    let source = game.new_object_id();
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    crate::effects::execute_effect(
+        &mut game,
+        &crate::effect::Effect::new(crate::effects::GainLifeEffect::you(3)),
+        &mut ctx,
+    )
+    .expect("gain 3 life");
+    assert_eq!(game.turn_store.turn_history.total_life_gained_for_players(&[alice]), 3);
+
+    let context = FilterContext::new(alice);
+    assert!(filter.matches(game.object(land).unwrap(), &context, &game), "a land has mana value 0");
+    assert!(filter.matches(game.object(three).unwrap(), &context, &game));
+    assert!(!filter.matches(game.object(four).unwrap(), &context, &game));
+}
+
+fn value_bound_filter_fixture() -> (GameState, PlayerId, ObjectId) {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Value Source").card_types(vec![CardType::Creature]).build(),
+        alice,
+        Zone::Battlefield,
+    );
+    (game, alice, source)
+}
+
+fn value_bound_card(game: &mut GameState, owner: PlayerId, generic: u8, power: Option<i32>) -> ObjectId {
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+    let mut builder = CardBuilder::new(CardId::new(), "Candidate")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(generic)]));
+    if let Some(power) = power {
+        builder = builder.power_toughness(PowerToughness::fixed(power, 1));
+    }
+    game.create_object_from_card(&builder.build(), owner, Zone::Graveyard)
+}
+
+fn le(value: crate::effect::Value) -> Comparison {
+    Comparison::LessThanOrEqualExpr(Box::new(value))
+}
+
+#[test]
+fn filter_bound_reads_life_total_and_basic_land_types() {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    let (mut game, alice, source) = value_bound_filter_fixture();
+    // Blazing Hope: "creature with power greater than or equal to your life total".
+    let strong = value_bound_card(&mut game, alice, 1, Some(20));
+    let weak = value_bound_card(&mut game, alice, 1, Some(19));
+    let hope = ObjectFilter::default().with_power(Comparison::GreaterThanOrEqualExpr(Box::new(
+        crate::effect::Value::LifeTotal(crate::target::PlayerFilter::You),
+    )));
+    let ctx = game.filter_context_for(alice, Some(source));
+    assert!(hope.matches(game.object(strong).unwrap(), &ctx, &game));
+    assert!(!hope.matches(game.object(weak).unwrap(), &ctx, &game));
+
+    // Zar Ojanen-style bound: mana value <= basic land types among your lands.
+    for subtype in [Subtype::Plains, Subtype::Island] {
+        game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Basic").card_types(vec![CardType::Land]).subtypes(vec![subtype]).build(),
+            alice,
+            Zone::Battlefield,
+        );
+    }
+    let two = value_bound_card(&mut game, alice, 2, None);
+    let three = value_bound_card(&mut game, alice, 3, None);
+    let lands = ObjectFilter::default().with_mana_value(le(crate::effect::Value::BasicLandTypesAmong(
+        ObjectFilter::land().you_control(),
+    )));
+    assert!(lands.matches(game.object(two).unwrap(), &ctx, &game));
+    assert!(!lands.matches(game.object(three).unwrap(), &ctx, &game));
+}
+
+#[test]
+fn filter_bound_reads_mana_spent_to_cast_the_source() {
+    let (mut game, alice, source) = value_bound_filter_fixture();
+    // Astelli Reclaimer: "mana value X or less, where X is the amount of mana spent to cast this creature".
+    {
+        let spent = &mut game.object_mut(source).unwrap().mana_spent_to_cast;
+        spent.white = 2;
+        spent.colorless = 1;
+    }
+    let three = value_bound_card(&mut game, alice, 3, None);
+    let four = value_bound_card(&mut game, alice, 4, None);
+    let filter = ObjectFilter::default().with_mana_value(le(crate::effect::Value::ManaSpentToCastThisSpell));
+    let ctx = game.filter_context_for(alice, Some(source));
+    assert!(filter.matches(game.object(three).unwrap(), &ctx, &game));
+    assert!(!filter.matches(game.object(four).unwrap(), &ctx, &game));
+
+    let colors = ObjectFilter::default()
+        .with_mana_value(le(crate::effect::Value::ColorsOfManaSpentToCastThisSpell));
+    let one = value_bound_card(&mut game, alice, 1, None);
+    let two = value_bound_card(&mut game, alice, 2, None);
+    assert!(colors.matches(game.object(one).unwrap(), &ctx, &game));
+    assert!(!colors.matches(game.object(two).unwrap(), &ctx, &game));
+}
+
+#[test]
+fn filter_bound_reads_the_triggering_event_amount_from_execution() {
+    let (mut game, alice, source) = value_bound_filter_fixture();
+    // Glamdring: "mana value less than or equal to the damage dealt".
+    let three = value_bound_card(&mut game, alice, 3, None);
+    let four = value_bound_card(&mut game, alice, 4, None);
+    let filter = ObjectFilter::default().with_mana_value(le(crate::effect::Value::EventValue(
+        crate::effect::EventValueSpec::Amount,
+    )));
+    let mut exec = crate::effects::ExecutionContext::new_default(source, alice);
+    exec.event_value_amount = Some(3);
+    let ctx = exec.filter_context(&game);
+    assert!(filter.matches(game.object(three).unwrap(), &ctx, &game));
+    assert!(!filter.matches(game.object(four).unwrap(), &ctx, &game));
+    // Without an event the bound stays unresolvable and matches nothing.
+    let no_event = game.filter_context_for(alice, Some(source));
+    assert!(!filter.matches(game.object(three).unwrap(), &no_event, &game));
+}

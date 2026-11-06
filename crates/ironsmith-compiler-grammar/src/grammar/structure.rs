@@ -1190,6 +1190,16 @@ pub fn split_trailing_if_clause_lexed<'a>(
             .members
             .iter()
             .all(|member| member.tokens.iter().any(|token| token.is_word("if")))
+        // "destroy target artifact if <A> or if <B>": a later member that is
+        // only a condition alternates the trailing predicate; it is not a
+        // second conditional instruction.
+        && !matched.value.members.iter().skip(1).any(|member| {
+            member
+                .tokens
+                .iter()
+                .find(|token| token.as_word().is_some())
+                .is_some_and(|token| token.is_word("if"))
+        })
     {
         return None;
     }

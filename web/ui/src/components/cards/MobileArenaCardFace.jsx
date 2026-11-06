@@ -19,14 +19,16 @@ export default function MobileArenaCardFace({ card, name, artUrl, pending, prima
   const liveCounter = statKind && (card.counters || []).find?.(counter => String(counter.kind).toLowerCase() === statKind);
   const statistic = statKind ? { label: card[statKind] ?? liveCounter?.amount ?? 0, title: statKind } : primary;
   const token = Boolean(card.is_token || card.token);
+  const nameSick = card.summoning_sick === true;
   const chapters = [...new Set(String(card.oracle_text || '').match(/^(?:I|II|III|IV|V|VI)(?=\s*[—,])/gm) || [])];
   return <div className="arena-permanent" data-kind={kind} data-mana-strip={manaColors.length ? "true" : undefined} data-token={token || undefined}
     style={{ '--arena-frame': arenaFrameColor(card) }}>
-    <div className="arena-permanent-art" data-saga-art={sagaArt || undefined}>
+    <div className="arena-permanent-art" data-saga-art={sagaArt || undefined} data-summoning-sick={nameSick || undefined}>
       <LoadingCardArt src={cardArtCropUrl(artUrl)} sourceKey={artUrl} pending={pending}
         colors={cardArtColors(card)} variant="battlefield" alt="" draggable={false} />
     </div>
-    {!token && <div className="arena-permanent-name" title={name || card.name}>{name || card.name}</div>}
+    {!token && <div className="arena-permanent-name" data-summoning-sick={nameSick || undefined}
+      title={nameSick ? `${name || card.name} — ${ui('Summoning sickness')}` : name || card.name}>{name || card.name}</div>}
     {statistic && <span className={kind === 'creature'
       ? ['arena-permanent-pt', 'battlefield-pt-badge',
         card.pt_modified_by_effect && 'battlefield-pt-badge--modified',

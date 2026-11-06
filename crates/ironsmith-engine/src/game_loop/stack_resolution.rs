@@ -2650,11 +2650,20 @@ fn resolve_stack_entry_full_inner(
                     crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG,
                     crate::target::PlayerFilter::Specific(entry.controller),
                 );
-                terminal_rules.push(terminal_destination_replacement(
+                let mut rebound = terminal_destination_replacement(
                     entry.object_id, entry.controller, Zone::Exile,
                     vec![crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(delayed)])],
                     Vec::new(), None, "Exile this spell and allow casting it at your next upkeep",
-                ));
+                );
+                if let crate::replacement::ReplacementAction::Instead(effects) = &mut rebound.replacement
+                    && let [effect] = effects.as_mut_slice()
+                    && let Some(program) = effect.downcast_ref::<ResolvingDestinationProgram>()
+                {
+                    let mut program = program.clone();
+                    program.continuation_source_is_arrival = true;
+                    *effect = Effect::new(program);
+                }
+                terminal_rules.push(rebound);
             }
             if should_exile {
                 if obj.subtypes.contains(&crate::types::Subtype::Adventure) {
@@ -2779,7 +2788,7 @@ fn terminal_destination_replacement(
     crate::replacement::ReplacementEffect::with_matcher(
         object, controller, matcher,
         crate::replacement::ReplacementAction::Instead(vec![Effect::new(
-            ResolvingDestinationProgram { object, destination, programs, after_attempt, adventure_player, choice_description: choice_description.into() },
+            ResolvingDestinationProgram { object, destination, programs, after_attempt, adventure_player, choice_description: choice_description.into(), continuation_source_is_arrival: false },
         )]),
     )
 
@@ -2796,6 +2805,9 @@ struct ResolvingDestinationProgram {
     after_attempt: Vec<Effect>,
     adventure_player: Option<PlayerId>,
     choice_description: String,
+    /// Rebound's continuation ("cast it from exile") refers to the card in
+    /// its new zone (CR 400.7); other dispositions keep the resolving source.
+    continuation_source_is_arrival: bool,
 }
 impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
     fn replacement_choice_description(&self) -> Option<String> { Some(self.choice_description.clone()) }
@@ -2816,7 +2828,6 @@ impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
         }
         let origin = ObjectSnapshot::try_from_object_id(game, self.object)?;
-        eprintln!("P1DBG terminal start suppressed={:?} additional={}", ctx.replacement.suppressed_replacement_effects, ctx.replacement.additional_replacement_effects.len());
         // This exact source is still on the stack. Start a new native movement
         // receipt scope so a previous instruction cannot supply an arrival.
         game.take_zone_change_results(self.object);
@@ -2833,7 +2844,6 @@ impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
         if ctx.decision_maker.awaiting_choice() { return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0))); }
         proposal.seal_original(game, ctx)?;
         let committed = proposal.commit_original_with_outputs(game, ctx)?;
-        eprintln!("P1DBG terminal commit completion={} status={:?} stopped={} awaiting={}", committed.completion.is_some(), committed.completion.as_ref().map(|c| c.original_phase_status()), ctx.resolution_stopped(), ctx.decision_maker.awaiting_choice());
         if committed.completion.as_ref().is_some_and(|completion|
             completion.original_phase_status() == crate::effects::OriginalPhaseStatus::Combined)
         {
@@ -2841,11 +2851,20 @@ impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
                 "terminal exact-object movement retained an uncommitted replacement original".into(),
             ));
         }
-        let committed = crate::effects::composition::complete_retained_original_phase_with_outputs(game, ctx, committed)?;
-        let Some(mut committed) = crate::effects::composition::prepare_standalone_completion_with_outputs(game, ctx, committed)? else {
+        // Freeze and observe the exact original first; the zone completion
+        // binds its replacement additions only from frozen receipts. They run
+        // in the final completion below, after this disposition's own
+        // continuations.
+        let Some(committed) = crate::effects::composition::prepare_standalone_completion_with_outputs(game, ctx, committed)? else {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
         };
-        eprintln!("P1DBG after prepare completion={}", committed.completion.is_some());
+        // Then finish the original phase (an Instead prefix's retained tail
+        // can complete the authored move) before reading its arrival; the
+        // frozen additions stay retained for the final completion.
+        let mut committed = crate::effects::composition::complete_retained_original_phase_with_outputs(game, ctx, committed)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
+        }
         let completed = &mut committed.outcome;
         let mut arrivals = Vec::new();
         for fact in &completed.outcome.instruction_result().execution_facts {
@@ -2889,7 +2908,7 @@ impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
                     // the card in its new zone (rebound's "cast it from
                     // exile"), never to the departed stack object.
                     let source = match arrivals.as_slice() {
-                        [arrival] => arrival.object_id,
+                        [arrival] if self.continuation_source_is_arrival => arrival.object_id,
                         _ => ctx.source,
                     };
                     let previous_source = std::mem::replace(&mut ctx.source, source);

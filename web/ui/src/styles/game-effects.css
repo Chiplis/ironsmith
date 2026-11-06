@@ -975,3 +975,32 @@
 @media (prefers-reduced-motion: reduce) {
   .game-fx-semantic, .game-fx-flight { display: none; }
 }
+
+/* ---- Keyword auras (lib/keyword-fx): GPU tiles copied into each card ---- */
+.game-card > .keyword-aura {
+  position: absolute;
+  pointer-events: none;
+  contain: strict;
+}
+
+/* Shadows and outer glows sit behind the card face. */
+.game-card > .keyword-aura--back {
+  z-index: -1;
+}
+
+/* Shields and haze sit over the art but under badges and counters. */
+.game-card > .keyword-aura--front {
+  z-index: 2;
+}
+
+/* Flying lifts the card with an inline `translate`; keep it smooth. */
+.game-card:has(> .keyword-aura) {
+  will-change: transform, translate;
+}
+
+/* Readouts stay legible above the front aura. */
+.game-card:has(> .keyword-aura) .battlefield-pt-badge,
+.game-card:has(> .keyword-aura) .battlefield-footer,
+.game-card:has(> .keyword-aura) > .battlefield-counter-rail {
+  z-index: 3;
+}

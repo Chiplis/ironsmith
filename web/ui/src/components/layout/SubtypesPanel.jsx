@@ -39,16 +39,16 @@ export default function SubtypesPanel({ definitions: scopedDefinitions, onChange
   }
   return <div className="space-y-5 p-5">
     {setName != null && <h3 className="font-semibold">{setName || ui('Untitled set')} · {ui('Set subtypes')}</h3>}
-    {onChange && <p className="text-sm text-muted-foreground">Subtypes created here belong to this set. Save the set to keep your changes.</p>}
-    <p className="text-sm text-muted-foreground">Define subtype names for your cards. Only types referenced by cards in a game join that game’s type choices, changeling, and “every type” effects. Saved cards carry their definitions.</p>
+    {onChange && <p className="text-sm text-muted-foreground">{ui('Subtypes created here belong to this set. Save the set to keep your changes.')}</p>}
+    <p className="text-sm text-muted-foreground">{ui('Define subtype names for your cards. Only types referenced by cards in a game join that game’s type choices, changeling, and “every type” effects. Saved cards carry their definitions.')}</p>
     <form onSubmit={save} className="flex flex-wrap items-end gap-3">
-      <label className="grid gap-1 text-sm">{ui('Singular')}<input disabled={busy} required maxLength={32} className="rounded border p-2" value={singular} onChange={event => { setSingular(event.target.value); setPlural(suggestSubtypePlural(event.target.value)); }} placeholder="Moonkin" /></label>
-      <label className="grid gap-1 text-sm">{ui('Plural')}<input disabled={busy} required maxLength={32} className="rounded border p-2" value={plural} onChange={event => setPlural(event.target.value)} placeholder="Moonkin" /></label>
+      <label className="grid gap-1 text-sm">{ui('Singular')}<input disabled={busy} required maxLength={32} className="rounded border p-2" value={singular} onChange={event => { setSingular(event.target.value); setPlural(suggestSubtypePlural(event.target.value)); }} placeholder={ui('Moonkin')} /></label>
+      <label className="grid gap-1 text-sm">{ui('Plural')}<input disabled={busy} required maxLength={32} className="rounded border p-2" value={plural} onChange={event => setPlural(event.target.value)} placeholder={ui('Moonkin')} /></label>
       <label className="grid gap-1 text-sm">{ui('Family')}<select disabled={busy} className="rounded border p-2" value={family} onChange={event => setFamily(event.target.value)}>{SUBTYPE_FAMILIES.map(value => <option className="bg-background" key={value} value={value}>{ui(value)}</option>)}</select></label>
       <Button disabled={busy || !game} type="submit">{ui(busy ? 'Checking…' : 'Add subtype')}</Button>
     </form>
-    <p className="text-xs text-muted-foreground">Names may contain words, letters, numbers, hyphens, or apostrophes. Check the suggested plural; irregular and identical forms are supported. Subtypes do not grant inherent abilities.</p>
+    <p className="text-xs text-muted-foreground">{ui('Names may contain words, letters, numbers, hyphens, or apostrophes. Check the suggested plural; irregular and identical forms are supported. Subtypes do not grant inherent abilities.')}</p>
     {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
-    <BuildCatalogList label="Search subtypes" rows={rows || definitions.map((definition, index) => ({ name: definition.singular, index, definition, detail: `${definition.plural} · ${definition.family}` }))} actions={row => <Button disabled={busy} variant="outline" size="sm" aria-label={`${ui('Remove')} ${row.name}`} onClick={() => remove(row.definition)}>{ui('Remove')}</Button>} />
+    <BuildCatalogList label={ui('Search subtypes')} rows={rows || definitions.map((definition, index) => ({ name: definition.singular, index, definition, detail: `${definition.plural} · ${definition.family}` }))} actions={row => <Button disabled={busy} variant="outline" size="sm" aria-label={`${ui('Remove')} ${row.name}`} onClick={() => remove(row.definition)}>{ui('Remove')}</Button>} />
   </div>;
 }

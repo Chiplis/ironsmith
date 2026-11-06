@@ -150,7 +150,7 @@ pub fn parse_become_leading_creature_prefix(words: &[&str]) -> BecomeLeadingCrea
             index += 1;
             continue;
         }
-        if word == "colorless" { index += 1; continue; }
+        if word == "colorless" { crate::word_claims::claim_word(word); index += 1; continue; }
         if let Ok(color) = leaf::parse_leaf_color_complete(word) {
             colors = colors.union(color);
             index += 1;
@@ -209,7 +209,7 @@ pub fn parse_become_creature_descriptor_words(words: &[&str]) -> Option<BecomeCr
             index += 1;
             continue;
         }
-        if word == "colorless" { index += 1; continue; }
+        if word == "colorless" { crate::word_claims::claim_word(word); index += 1; continue; }
         if let Ok(color) = leaf::parse_leaf_color_complete(word) {
             colors = colors.union(color);
             index += 1;
@@ -372,7 +372,7 @@ pub fn parse_become_mixed_characteristics(words: &[&str]) -> Option<BecomeMixedC
     let mut card_types = Vec::new(); let mut subtypes = Vec::new();
     for &word in body {
         if matches!(word, "a" | "an" | "and") { continue; }
-        if word == "colorless" { saw_colors = true; continue; }
+        if word == "colorless" { crate::word_claims::claim_word(word); saw_colors = true; continue; }
         if let Ok(color) = leaf::parse_leaf_color_complete(word) { colors = colors.union(color); saw_colors = true; }
         else if let Ok(kind) = leaf::parse_leaf_card_type_complete(word) { push_unique(&mut card_types, kind); }
         else if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(word) { push_unique(&mut subtypes, subtype); }

@@ -4416,6 +4416,8 @@ impl GameState {
             stack_entry: None,
             filter_candidate_players: None,
             departed_battlefield_lookback: None,
+            triggering_event: None,
+            event_value_amount: None,
         }
     }
 

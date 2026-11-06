@@ -3104,6 +3104,53 @@ fn source_sentence_boundary_splits_hand_pipeline(effects: &[EffectAst], boundary
 /// branch. Once the cross-sentence dependency is proven, the branch's
 /// top-level coordination wrapper is redundant and would otherwise hide the
 /// individual reveal, choice, and consumer effects behind a runtime sequence.
+/// "If you don't, create a Treasure token. If you create a Treasure this way,
+/// draw a card.": the creation result names the creation inside the
+/// preceding result branch, not the optional instruction that branch reads.
+/// The follow-up can only hold when that branch ran, so it is branch-local.
+fn correlate_result_gated_creation_followups(effects: &mut Vec<EffectAst>) -> bool {
+    fn creates_tokens(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(subject_verb) => {
+                matches!(subject_verb.action, SubjectVerbActionAst::Tokens(_))
+            }
+            EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects } => {
+                effects.last().is_some_and(creates_tokens)
+            }
+            _ => false,
+        }
+    }
+    let mut changed = false;
+    let mut index = 0usize;
+    while index + 1 < effects.len() {
+        let correlates = matches!(
+            &effects[index],
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects: branch, .. })
+                if branch.last().is_some_and(creates_tokens)
+        ) && matches!(
+            &effects[index + 1],
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: crate::cards::builders::IfResultPredicate::ResultObjectsMatch { .. },
+                ..
+            })
+        );
+        if !correlates {
+            index += 1;
+            continue;
+        }
+        let followup = effects.remove(index + 1);
+        let EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects: branch, .. }) =
+            &mut effects[index]
+        else {
+            unreachable!("the result-gated branch was checked above")
+        };
+        branch.push(followup);
+        changed = true;
+        index += 1;
+    }
+    changed
+}
+
 fn correlate_result_gated_hand_pipeline_followups(effects: &mut Vec<EffectAst>) -> bool {
     fn flatten_single_coordination(branch: &mut Vec<EffectAst>) {
         let replacement = match branch.as_slice() {
@@ -3309,6 +3356,7 @@ fn flatten_top_level_source_sentences(
     }
 
     if correlate_result_gated_hand_pipeline_followups(&mut flattened)
+        || correlate_result_gated_creation_followups(&mut flattened)
         || correlate_conditional_quantified_choice_followups(&mut flattened)
     {
         // The consumer is authored in the next sentence but is semantically

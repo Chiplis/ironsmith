@@ -99,7 +99,7 @@ export default function CustomCardArtEditor({ face, updateFace }) {
       <label className="flex items-center justify-between gap-2 text-xs">{ui('Output size')}
         <select aria-label={ui('Output size')} className="card-forge-input card-forge-input--compact" style={{ width: 'auto' }} value={editor.crop.width}
           onChange={event => changeCrop({ width: Number(event.target.value) })}>
-          {[411, 822, 1644].map(width => <option key={width} value={width}>{width} × {Math.round(width / ART_RATIO)} px</option>)}
+          {[411, 822, 1644].map(width => <option key={width} value={width}>{width} × {Math.round(width / ART_RATIO)} {ui('px')}</option>)}
         </select>
       </label>
       <div className="flex flex-wrap gap-3 text-xs">

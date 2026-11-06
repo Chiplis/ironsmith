@@ -208,14 +208,14 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
     <div className="mana-plan-actions mana-payment-editor-footer">
       {busyLabel && <span className="mana-payment-editor-busy" role="status"><LoaderCircle size={14} className="animate-spin" />{busyLabel}</span>}
       {hasChoices && <Button type="button" variant="ghost" size="sm" className="mana-payment-reset-button" disabled={!canAct || confirming} onClick={editor.reset}><RotateCcw size={13} />{ui('Reset')}</Button>}
-      <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-pass decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" data-space-primary-action aria-keyshortcuts="Space" disabled={payDisabled} title="Pay and pass priority through this stack (Space)" onClick={() => { requestResolveAfterPayment?.(sourceId); editor.confirm(); }}>Pay &amp; pass<kbd className="priority-shortcut-hint" aria-hidden="true">Space</kbd></Button>
+      <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-pass decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" data-space-primary-action aria-keyshortcuts="Space" disabled={payDisabled} title={ui('Pay and pass priority through this stack (Space)')} onClick={() => { requestResolveAfterPayment?.(sourceId); editor.confirm(); }}>{ui('Pay & pass')}<kbd className="priority-shortcut-hint" aria-hidden="true">{ui('Space')}</kbd></Button>
       <div className="mana-payment-submit-row">
       <div className="mana-payment-secondary-controls">
         <Button type="button" variant="ghost" size="sm" className="decision-neon-button decision-neon-button--danger decision-cancel-button font-bold uppercase" title={`${ui('Cancel')} (ESC)`} disabled={!canAct || confirming} onClick={cancel}>{ui('Cancel')}</Button>
         {inlineSubmit ? quickControls : null}
       </div>
       {inlineSubmit && <div className="mana-payment-pay-region">
-        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" title="Pay. Double-click to pay and pass through this stack." disabled={payDisabled} onClick={pay}>{ui('Pay')}<PriorityShortcutHint number="1" /></Button>
+        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" title={ui('Pay. Double-click to pay and pass through this stack.')} disabled={payDisabled} onClick={pay}>{ui('Pay')}<PriorityShortcutHint number="1" /></Button>
         {warnings.length > 0 && <Popover><PopoverTrigger asChild><button type="button" className="mana-payment-warning-trigger" aria-label={ui('Payment warnings')}><AlertTriangle size={17} /></button></PopoverTrigger><PopoverContent side="top" aria-label={ui('Payment warnings')} className="mana-payment-warning-details"><ul>{warnings.map((warning, index) => <li key={index}>{ui(warning)}</li>)}</ul></PopoverContent></Popover>}
       </div>}
       </div>

@@ -375,7 +375,24 @@ fn scope_may_decider_search_effects(effects: Vec<Effect>, decider: &PlayerFilter
     effects
         .iter()
         .map(|effect| scope_may_decider_search_effect(effect, decider, false))
+        .map(|effect| scope_may_decider_mode_choice(effect, decider))
         .collect()
+}
+
+/// "that player may put a counter on it or remove a counter from it": the
+/// player who takes the optional action also chooses which alternative it is.
+fn scope_may_decider_mode_choice(effect: Effect, decider: &PlayerFilter) -> Effect {
+    if *decider == PlayerFilter::You {
+        return effect;
+    }
+    if let Some(choice) = effect.downcast_ref::<crate::effects::ChooseModeEffect>()
+        && choice.chooser == Some(PlayerFilter::You)
+    {
+        let mut choice = choice.clone();
+        choice.chooser = Some(decider.clone());
+        return Effect::new(choice);
+    }
+    effect
 }
 
 fn try_compile_for_each_object_become_copy_of_prior_choice(

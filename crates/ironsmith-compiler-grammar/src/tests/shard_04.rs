@@ -3377,6 +3377,10 @@ fn repeated_revealed_permanent_groups_lower_with_one_shared_collection_tag() {
     let shuffle = first
         .iter()
         .find_map(|effect| {
+            // The producer may also be tagged with the objects it moved.
+            let effect = effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .map_or(effect, |tagged| tagged.effect.as_ref());
             effect
                 .downcast_ref::<crate::effects::WithIdEffect>()
                 .and_then(|with_id| {

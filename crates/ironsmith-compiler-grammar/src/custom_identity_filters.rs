@@ -10,15 +10,19 @@ pub(crate) fn filter_clause(tokens:&[OwnedLexToken])->Option<(Vec<OwnedLexToken>
     || !tokens.get(start+1+offset).is_some_and(|token|token.is_word("custom"))
     || !tokens.get(start+2+offset).is_some_and(|token|token.is_word(if payment {"cost"} else {"keyword"}))
     || !tokens.get(start+3+offset).is_some_and(|token|token.kind==TokenKind::Quote){continue;}
-  let close=(start+4+offset..tokens.len()).find(|index|tokens[*index].kind==TokenKind::Quote)?;
+  // A clause boundary trims the closing quote of a final operand ("if this
+  // spell is a copy with custom keyword \"X\", ..."); the end of the clause
+  // then closes the name.
+  let close=(start+4+offset..tokens.len()).find(|index|tokens[*index].kind==TokenKind::Quote)
+   .unwrap_or(tokens.len());
   if close==start+4+offset{return None;}
   let name=crate::lexer::render_literal_token_slice(&tokens[start+4+offset..close]).split_whitespace().collect::<Vec<_>>().join(" ").to_ascii_lowercase();
   if name.is_empty(){return None;}
   let cast_start=if payment && start>=3 && tokens[start-3].is_word("that") && tokens[start-2].is_word("was") && tokens[start-1].is_word("cast") {Some(start-3)}
    else if payment && start>=1 && tokens[start-1].is_word("cast") {Some(start-1)}else{None};
   let marker_start=cast_start.unwrap_or(start);
-  let mut base=tokens[..marker_start].to_vec();base.extend_from_slice(&tokens[close+1..]);
-  crate::word_claims::claim_tokens(&tokens[marker_start..=close]);
+  let mut base=tokens[..marker_start].to_vec();base.extend_from_slice(tokens.get(close+1..).unwrap_or_default());
+  crate::word_claims::claim_tokens(&tokens[marker_start..close.min(tokens.len()-1)+1]);
   let marker=if cast_start.is_some(){format!("cast using {name}")}else if payment{format!("using {name}")}else{name};
   return Some((base,marker,tokens[start].is_word("without")));
  }

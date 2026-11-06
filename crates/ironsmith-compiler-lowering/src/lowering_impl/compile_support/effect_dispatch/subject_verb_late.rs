@@ -441,11 +441,18 @@ pub(super) fn compile_put_counters_action(
     // Player counter placement uses the same authored PutCounters operation,
     // but executes through the existing player-marker owner rather than the
     // permanent-only PutCounters executor. Preserve target announcement.
-    if let ChooseSpec::Player(player) = base_spec.base()
+    // "Put a research counter on you" resolves its recipient as the source's
+    // controller, the same player as an explicit `you` player filter.
+    let player_recipient = match base_spec.base() {
+        ChooseSpec::Player(player) => Some(player.clone()),
+        ChooseSpec::SourceController => Some(PlayerFilter::You),
+        _ => None,
+    };
+    if let Some(player) = player_recipient
         && maximum_total.is_none() && target_count.is_none()
         && !*distributed && required_recipient.is_none()
     {
-        let effect = Effect::player_counters(*counter_type, resolved_count, player.clone());
+        let effect = Effect::player_counters(*counter_type, resolved_count, player);
         let choices = if base_spec.is_target() { vec![base_spec] } else { Vec::new() };
         return Ok((vec![effect], choices));
     }
@@ -1993,6 +2000,19 @@ pub(super) fn compile_subject_verb_late(
                 };
             }
             let resolved_amount = match (&resolved_amount, counter_type) {
+                // "remove all research counters from you": a player holder's
+                // count is that player's counters (CR 122.1), not an object's.
+                (Value::CountersOn(counter_source, amount_counter_type), Some(counter_type))
+                    if matches!(counter_source.as_ref(), ChooseSpec::Source)
+                        && amount_counter_type == &Some(*counter_type)
+                        && matches!(spec.unhinted(), ChooseSpec::SourceController | ChooseSpec::Player(_)) =>
+                {
+                    let player = match spec.unhinted() {
+                        ChooseSpec::Player(player) => player.clone(),
+                        _ => PlayerFilter::You,
+                    };
+                    Value::PlayerCounters(player, *counter_type)
+                }
                 (Value::CountersOn(counter_source, amount_counter_type), Some(counter_type))
                     if matches!(counter_source.as_ref(), ChooseSpec::Source)
                         && amount_counter_type == &Some(*counter_type) =>

@@ -68,7 +68,7 @@ export default function BuildLibrary({ currentSet }) {
     </div>
     {loading && <p role="status">{ui('Loading set contents…')}</p>}
     {errors.length > 0 && <div role="alert" className="text-sm text-red-300">{ui('Some sources could not be loaded. Refresh to retry.')}<details><summary>{ui('Details')}</summary>{errors.map((error, index) => <p key={index}>{error}</p>)}</details></div>}
-    <BuildCatalogList key={kind} rows={rows} showSource label="Search library" />
+    <BuildCatalogList key={kind} rows={rows} showSource label={ui('Search library')} />
     {kind !== 'cards' && <details className="fantasy-sheet-section p-4"><summary className="cursor-pointer font-semibold">{ui(kind === 'mechanics' ? 'Official mechanics & personal mechanic editor' : 'Personal subtype editor')}</summary>{kind === 'mechanics' ? <MechanicsPanel /> : <SubtypesPanel />}</details>}
   </div>;
 }

@@ -12,6 +12,6 @@ export default function HandPriorityAction({ action, disabled, className = '', s
     onPointerDown={event => event.preventDefault()}
     onClick={() => activateSelectedHandCard(action.card?.id)}>
     <span>{ui(action.label)}</span>
-    {action.actions.length > 0 && <kbd className="priority-shortcut-hint">Space</kbd>}
+    {action.actions.length > 0 && <kbd className="priority-shortcut-hint">{ui('Space')}</kbd>}
   </Button>;
 }

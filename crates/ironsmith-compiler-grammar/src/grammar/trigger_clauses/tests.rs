@@ -2148,7 +2148,8 @@ fn combat_damage_recipients_resolve_registered_source_names_before_subtypes() {
         vec![CardType::Planeswalker],
         vec![],
         "a creature deals combat damage to Vraska",
-    );
+    )
+    .with_supertypes(vec![crate::types::Supertype::Legendary]);
     for recipient in ["Vraska the Unseen", "Vraska"] {
         let tokens = tokenize_line(&format!("a creature deals combat damage to {recipient}"), 0);
         let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
@@ -2182,7 +2183,8 @@ fn named_source_attack_trigger_uses_explicit_context_identity() {
         vec![CardType::Creature],
         vec![],
         "Altaïr attacks",
-    );
+    )
+    .with_supertypes(vec![crate::types::Supertype::Legendary]);
     let tokens = tokenize_line("Altaïr attacks", 0);
     let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
         context.view(),

@@ -2374,6 +2374,12 @@ pub struct FilterContext {
     /// ("the greatest power among creatures that player controls") still
     /// count them.
     pub departed_battlefield_lookback: Option<std::sync::Arc<[crate::snapshot::ObjectSnapshot]>>,
+
+    /// The event that triggered the ability whose filter this is, and the
+    /// amount it bound, so a filter bound such as "with mana value less than
+    /// or equal to that damage" reads the same event its effect does.
+    pub triggering_event: Option<crate::triggers::TriggerEvent>,
+    pub event_value_amount: Option<i32>,
 }
 
 impl FilterContext {
@@ -3276,7 +3282,7 @@ fn resolve_filter_comparison_rhs_value(
             }
             _ => None,
         },
-        Value::LifeLostThisTurn(player_filter) => {
+        Value::LifeGainedThisTurn(player_filter) | Value::LifeLostThisTurn(player_filter) => {
             let players = game
                 .players
                 .iter()
@@ -3285,11 +3291,12 @@ fn resolve_filter_comparison_rhs_value(
                 })
                 .map(|player| player.id)
                 .collect::<Vec<_>>();
-            Some(
-                game.turn_store
-                    .turn_history
-                    .total_life_lost_for_players(&players) as i64,
-            )
+            let history = &game.turn_store.turn_history;
+            Some(if matches!(rhs, Value::LifeGainedThisTurn(_)) {
+                history.total_life_gained_for_players(&players)
+            } else {
+                history.total_life_lost_for_players(&players)
+            } as i64)
         }
         Value::UnspentMana(player_filter) => Some(
             game.players
@@ -3315,8 +3322,39 @@ fn resolve_filter_comparison_rhs_value(
                 .map(|candidate| game.devotion_to_color(candidate.id, *color) as i64)
                 .sum(),
         ),
-        _ => None,
+        // Every other quantity ("your life total", "the amount of mana spent
+        // to cast it", "that damage") means what it means anywhere else, so
+        // evaluate it with the shared value interpreter rather than failing
+        // the comparison closed.
+        _ => resolve_filter_comparison_rhs_with_value_eval(rhs, game, ctx),
     }
+}
+
+fn resolve_filter_comparison_rhs_with_value_eval(
+    rhs: &crate::effect::Value,
+    game: &crate::game_state::GameState,
+    ctx: &FilterContext,
+) -> Option<i64> {
+    let controller = ctx.you?;
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let source = ctx
+        .source
+        .or_else(|| ctx.source_snapshot.as_ref().map(|snapshot| snapshot.object_id))
+        .unwrap_or(ObjectId::from_raw(u64::MAX));
+    let mut exec = crate::effects::ExecutionContext::new(source, controller, &mut decision_maker);
+    exec.source_snapshot = ctx.source_snapshot.clone();
+    exec.x_value = ctx.x_value;
+    exec.iteration.iterated_player = ctx.iterated_player;
+    exec.tagged_objects = ctx.tagged_objects.clone();
+    exec.tagged_players = ctx.tagged_players.clone();
+    exec.effect_outcomes = ctx.effect_outcomes.clone();
+    if let Some(event) = ctx.triggering_event.clone() {
+        exec = exec.with_triggering_event(event);
+    }
+    exec.event_value_amount = ctx.event_value_amount;
+    crate::effects::helpers::resolve_value(game, rhs, &exec)
+        .ok()
+        .map(i64::from)
 }
 
 fn resolve_player_filter_object_ref<'a>(

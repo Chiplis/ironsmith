@@ -1015,6 +1015,36 @@ fn preserve_leading_result_prefix_for_sequence(
         }
         _ => {}
     }
+    // A program recognized with its own leading result gate ("If you do,
+    // ..." as a typed control-flow condition) already carries this prefix.
+    // Wrapping it again would gate the program on its own first action.
+    if prefix.kind == LeadingResultPrefixKind::If
+        && let [EffectAst::ControlFlow(control)] = effects.as_slice()
+        && let crate::model::ControlFlowNodeAst::Condition {
+            condition,
+            consequence_program,
+            alternative_program: None,
+            reflexive: false,
+        } = &control.node
+        && matches!(
+            condition.position,
+            crate::model::control_flow::ConditionPositionAst::ResultCondition
+        )
+        && matches!(
+            &condition.predicate,
+            crate::model::control_flow::ControlPredicateAst::Result(predicate)
+                if predicate == &prefix.predicate
+        )
+        && let Some(program) = control.program(*consequence_program)
+    {
+        let mut nested = program.effects.clone();
+        super::preserve_result_conjunction_body_lexed(prefix.trailing_tokens, &mut nested);
+        *effects = vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+            predicate: prefix.predicate,
+            effects: nested,
+        })];
+        return;
+    }
 
     let mut nested = std::mem::take(effects);
     super::preserve_result_conjunction_body_lexed(prefix.trailing_tokens, &mut nested);
@@ -1401,7 +1431,6 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
                 false,
             ));
         }
-
         if sentence_contains(tokens, DEALT_DAMAGE_THIS_WAY_PHRASE)
             || sentence_contains(tokens, DEALT_DAMAGE_BY_PHRASE)
         {
@@ -1419,6 +1448,36 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
                     ZoneReplacementDurationAst::OneShot,
                 ),
             );
+        }
+
+        // "If a nontoken creature you control would die this turn, exile it
+        // instead.": a filtered future replacement. The subject's
+        // qualifiers belong to the watched filter; never drop them onto the
+        // "it" reading below.
+        if tokens.first().is_some_and(|token| token.is_word("if"))
+            && !sentence_contains(tokens, CREATURE_OPPONENT_CONTROLS_WOULD_DIE_PHRASE)
+            && let Some(would) = tokens.iter().position(|token| token.is_word("would"))
+            && would > 2
+            && tokens[1].is_any_word(&["a", "an"])
+            && matches!(
+                crate::lexer::token_word_refs(&tokens[would..]).as_slice(),
+                ["would", "die", "this", "turn", "exile", "it", "instead"]
+            )
+            && let Ok(filter) =
+                crate::object_filters::parse_object_filter_lexed(&tokens[2..would], false)
+            && filter != ObjectFilter::default()
+            && !filter.source
+        {
+            crate::word_claims::claim_tokens(tokens);
+            return Some(EffectAst::subject_verb_register_future_zone_replacement(
+                filter,
+                Some(Zone::Battlefield),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                ZoneReplacementDurationAst::UntilEndOfTurn,
+                crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
+                false,
+            ));
         }
 
         let target = if sentence_contains(tokens, CREATURE_OPPONENT_CONTROLS_WOULD_DIE_PHRASE) {

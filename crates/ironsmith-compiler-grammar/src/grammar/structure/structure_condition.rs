@@ -4,7 +4,16 @@ pub(super) fn split_trailing_predicate_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
     keyword: &'static str,
 ) -> Option<TrailingIfClauseSpec<'a>> {
-    let split_idx = rfind_unquoted_dynamic_word(tokens, keyword)?;
+    let mut split_idx = rfind_unquoted_dynamic_word(tokens, keyword)?;
+    // "<effect> if <A> or if <B>": the alternatives form one trailing
+    // predicate, so split at the keyword that opens the disjunction.
+    while split_idx >= 2 && tokens[split_idx - 1].is_word("or")
+        && let Some(earlier) = rfind_unquoted_dynamic_word(&tokens[..split_idx - 1], keyword)
+        && earlier > 0
+        && crate::word_claims::probe_only(|| parse_predicate_with_grammar_entrypoint_lexed(trim_lexed_commas(&tokens[earlier + 1..]))).is_ok()
+    {
+        split_idx = earlier;
+    }
     if split_idx == 0 || split_idx + 1 >= tokens.len() {
         return None;
     }

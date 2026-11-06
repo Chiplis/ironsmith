@@ -108,8 +108,12 @@ impl<T, E, C, Cond, ICond> StaticAbilityFunctionalZones for StaticAbility<T, E, 
                 | crate::KeywordMarkerMechanic::DamageAsCounters { .. },
         }) { return all_zones(); }
         // A conditional size assignment is not a characteristic-defining ability.
+        // CR 721.2: a station row ("STATION N+ | lifelink") is an ability of the
+        // permanent that functions only on the battlefield, even when its
+        // keyword (lifelink, deathtouch) would otherwise function anywhere.
         if matches!(&self.payload, StaticAbilityPayload::Conditional { .. })
-            && self.id == Some(StaticAbilityId::CharacteristicDefiningPT)
+            && (self.id == Some(StaticAbilityId::CharacteristicDefiningPT)
+                || self.label.starts_with(crate::static_ability_model::STATION_THRESHOLD_STATIC_LABEL_PREFIX))
         {
             return vec![Zone::Battlefield];
         }

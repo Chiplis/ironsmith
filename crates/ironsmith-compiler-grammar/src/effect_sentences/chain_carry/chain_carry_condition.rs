@@ -69,6 +69,12 @@ pub fn parse_effect_clause_with_trailing_if_lexed(
         return Ok(effect);
     }
 
+    // "<target> gains <keyword> until end of turn if <source> had
+    // <keyword>" copies that keyword family from the source's last known
+    // state; the trailing condition is part of the copy, not a gate.
+    if let Some(effect) = super::super::gain_ability::parse_conditional_keyword_snapshot_grant(tokens)? {
+        return Ok(effect);
+    }
     let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) else {
         return parse_effect_clause_lexed(tokens);
     };

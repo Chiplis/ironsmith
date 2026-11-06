@@ -226,7 +226,7 @@ export default function TopbarMenuSheet({
         {triggerIcon === "brand" ? (
           <button type="button" className="toolbar-brand topbar-brand topbar-brand-menu-trigger"
             aria-label={ui(t("app.openNavigationMenu"))} title={ui(t("app.menu"))}>
-            IronSmith
+            {ui("IronSmith")}
           </button>
         ) : <Button
           variant="secondary"
@@ -387,8 +387,8 @@ export default function TopbarMenuSheet({
           <TabsContent value="table" className="settings-sheet-body grid px-4 pb-4">
             <MenuSection
               eyebrow="Table"
-              title="This table"
-              description="Share, check, or reload the game in front of you."
+              title={ui("This table")}
+              description={ui("Share, check, or reload the game in front of you.")}
             >
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button variant="secondary" size="sm" className="stone-pill justify-start" onClick={handleShareCurrentTable}>
@@ -461,7 +461,7 @@ export default function TopbarMenuSheet({
             <MenuSection
               eyebrow={t("settings.live.eyebrow")}
               title={t("settings.live.title")}
-              description="How passing priority behaves, and who you play as in local games."
+              description={ui("How passing priority behaves, and who you play as in local games.")}
             >
               <div className="grid gap-2">
                 <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
@@ -592,8 +592,8 @@ export default function TopbarMenuSheet({
           <TabsContent value="developer" className="settings-sheet-body grid px-4 pb-4">
             <MenuSection
               eyebrow="Developer"
-              title="Cards"
-              description="Put any card onto the table, build custom cards, or compile your own rules text."
+              title={ui("Cards")}
+              description={ui("Put any card onto the table, build custom cards, or compile your own rules text.")}
             >
               {inMatch ? (
                 <p className="m-0 text-[13px] leading-5 text-muted-foreground">
@@ -638,8 +638,8 @@ export default function TopbarMenuSheet({
             </MenuSection>
             <MenuSection
               eyebrow="Developer"
-              title="Card pool"
-              description="Cards are only offered when their compiled rules match the printed text at least this closely."
+              title={ui("Card pool")}
+              description={ui("Cards are only offered when their compiled rules match the printed text at least this closely.")}
             >
               <div className="grid gap-2 text-[13px] text-foreground">
                 <div className="fantasy-sheet-stat flex items-center justify-between gap-3 px-3 py-2">
@@ -671,8 +671,8 @@ export default function TopbarMenuSheet({
             </MenuSection>
             <MenuSection
               eyebrow="Developer"
-              title="Debugging"
-              description="Engine diagnostics and extra inspector detail."
+              title={ui("Debugging")}
+              description={ui("Engine diagnostics and extra inspector detail.")}
             >
               <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
                 <Checkbox

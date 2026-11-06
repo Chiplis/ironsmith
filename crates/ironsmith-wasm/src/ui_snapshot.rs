@@ -1176,6 +1176,7 @@ impl SnapshotJsEncodingCache {
         self.set_serde(&object, "snapshot_id", &snapshot.snapshot_id)?;
         self.set_serde(&object, "perspective", &snapshot.perspective)?;
         self.set_serde(&object, "turn_number", &snapshot.turn_number)?;
+        self.set_serde(&object, "active_player_turn", &snapshot.active_player_turn)?;
         self.set_serde(&object, "storm_count", &snapshot.storm_count)?;
         self.set_serde(&object, "active_player", &snapshot.active_player)?;
         self.set_serde(&object, "active_players", &snapshot.active_players)?;
@@ -2730,6 +2731,9 @@ pub(super) struct GameSnapshot {
     pub(super) snapshot_id: u64,
     pub(super) perspective: u8,
     pub(super) turn_number: u32,
+    /// The active player's own turn count, counting the current turn: each
+    /// player's first turn is 1, whatever their seat in the rotation.
+    pub(super) active_player_turn: u32,
     pub(super) storm_count: u32,
     pub(super) active_player: u8,
     pub(super) active_players: Vec<u8>,
@@ -3716,6 +3720,7 @@ impl GameSnapshot {
             sticker_sheets: Vec::new(),
             loop_shortcut: None,
             turn_number: game.turn.turn_number,
+            active_player_turn: game.turns_taken_by(game.turn.active_player).max(1),
             storm_count: game.turn_store.turn_history.total_spells_cast_this_turn(),
             active_player: game.turn.active_player.0,
             active_players: game

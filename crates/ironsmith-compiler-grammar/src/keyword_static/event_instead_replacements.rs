@@ -311,6 +311,27 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
         // "If a card would be put into enchanted player's graveyard from
         // anywhere" (Wheel of Sun and Moon), "... into an opponent's
         // graveyard": the graveyard's owner is the moving card's owner.
+        // "... into your graveyard from your library": the origin zone
+        // restricts the replaced zone change (a mill, CR 701.17).
+        ["be", "put", "into", "your", "graveyard", "from", first, zone]
+        | ["be", "put", "into", "an", "opponent's" | "opponents", "graveyard", "from", first, zone]
+            if !matches!(*first, "anywhere") =>
+        {
+            let from = match (*first, *zone) {
+                ("the", "battlefield" | "stack") => crate::util::parse_zone_word(zone)?,
+                ("your" | "its" | "their" | "owner's" | "owners", "library" | "hand") =>
+                    crate::util::parse_zone_word(zone)?,
+                _ => return None,
+            };
+            let owner = if predicate[3] == "your" { PlayerFilter::You } else { PlayerFilter::Opponent };
+            let mut object = object_subject(header, subject)?;
+            object.owner = Some(owner);
+            Some(ReplacedEventSpec::ZoneChange {
+                object,
+                from: Some(from),
+                to: Some(Zone::Graveyard),
+            })
+        }
         ["be", "put", "into", owner @ .., "graveyard", "from", "anywhere"]
         | ["be", "put", "into", owner @ .., "graveyard"]
             if !owner.is_empty() && !matches!(owner, ["a"]) =>

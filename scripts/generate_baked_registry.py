@@ -1465,7 +1465,7 @@ STICKER_PT_ROW = re.compile(r"^(\d+)/(\d+)$")
 # Ability rows compile in the context of a generic permanent, so "this
 # creature" and "this permanent" both resolve the way they will on the
 # stickered object.
-STICKER_ROW_BLOCK_PREFIX = "Type: Artifact Creature — Sticker\nPower/Toughness: 1/1\n"
+STICKER_ROW_BLOCK_PREFIX = "Type: Artifact Creature\nPower/Toughness: 1/1\n"
 # Name stickers are the words of the sheet's name (CR 123.6); these
 # multi-word stickers stay whole.
 MULTI_WORD_NAME_STICKERS = ("Hot Dog",)

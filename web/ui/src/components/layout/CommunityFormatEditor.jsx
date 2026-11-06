@@ -75,7 +75,7 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
   const save = () => run(async () => {
     await saveCommunityItem(kind, entry());
     setLibrary(await loadCommunityLibrary());
-    setNotice(isSet ? 'Set saved. Add it to a format in the Formats tab.' : 'Format saved. Choose it from the Custom dropdown when creating a lobby.');
+    setNotice(ui(isSet ? 'Set saved. Add it to a format in the Formats tab.' : 'Format saved. Choose it from the Custom dropdown when creating a lobby.'));
   });
   const download = () => run(async () => {
     const data = entry();
@@ -84,15 +84,15 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
     link.href = url; link.download = communityFilename(kind, data.name);
     document.body.append(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setNotice('Exported with custom card and mechanic definitions.');
+    setNotice(ui('Exported with custom card and mechanic definitions.'));
   });
   const importFile = file => run(async () => {
-    if (file.size > COMMUNITY_FILE_MAX_BYTES) throw new Error('Community files must be no larger than 4 MB.');
+    if (file.size > COMMUNITY_FILE_MAX_BYTES) throw new Error(ui('Community files must be no larger than 4 MB.'));
     const imported = decodeCommunityShare(await file.text());
     const saved = await saveCommunityItem(imported.kind, imported.data, { keepExisting: true });
     setLibrary(await loadCommunityLibrary());
     if (imported.kind === kind) await load(saved);
-    setNotice(`Imported ${saved.name}. Existing saved items were kept.`);
+    setNotice(ui('Imported {0}. Existing saved items were kept.', { 0: saved.name }));
   });
   const addOfficial = () => run(async () => {
     const item = source.endsWith('Sets') ? await resolveCommunitySet(official) : await resolveCommunityCard(official);
@@ -130,7 +130,7 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
     {isSet && setView === 'subtypes' ? <section className="fantasy-sheet-section p-4">
       <SubtypesPanel rows={contents.subtypes} setName={value.name} definitions={subtypes} onChange={definitions => {
         const removed = subtypes.filter(def => !definitions.some(next => next.singular === def.singular));
-        if (removed.some(def => value.customCards.some(card => card.draft.customSubtypes?.some(item => item.singular === def.singular)))) throw new Error('This subtype is used by a set card. Remove it from those cards first.');
+        if (removed.some(def => value.customCards.some(card => card.draft.customSubtypes?.some(item => item.singular === def.singular)))) throw new Error(ui('This subtype is used by a set card. Remove it from those cards first.'));
         onChange({ ...value, customSubtypes: definitions });
       }} />
     </section> : isSet && setView === 'mechanics' ? <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
@@ -138,16 +138,16 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
         <h3 className="font-semibold">{value.name || ui('Untitled set')}</h3>
         <p className="text-sm text-muted-foreground">{ui('Updating a mechanic recompiles the cards using that definition. Other variants, sets and your personal library keep their own definitions.')}</p>
         <button className={button} disabled={busy} onClick={() => setEditingMechanic(null)}>{ui('New custom mechanic')}</button>
-        <BuildCatalogList rows={contents.mechanics} label="Search set mechanics" actions={row => <button className={button} disabled={busy} aria-label={`${ui('Edit')} ${row.name}`} onClick={() => setEditingMechanic(row.definition)}>{ui('Edit')}</button>} />
+        <BuildCatalogList rows={contents.mechanics} label={ui('Search set mechanics')} actions={row => <button className={button} disabled={busy} aria-label={`${ui('Edit')} ${row.name}`} onClick={() => setEditingMechanic(row.definition)}>{ui('Edit')}</button>} />
       </section>
       <section className="fantasy-sheet-section p-5">
         <MechanicForm key={editingMechanic ? JSON.stringify(editingMechanic) : 'new'} initial={editingMechanic} saved={mechanics} onSave={async (definition, compile) => {
-          if (!compile) throw new Error('The card compiler must be ready to update set mechanics.');
+          if (!compile) throw new Error(ui('The card compiler must be ready to update set mechanics.'));
           setBusy(true);
           try {
             const next = await updateSetMechanic(value, definition, compile, editingMechanic);
             onChange(next);
-            setNotice('Mechanic applied to all set cards. Save set to keep your changes.');
+            setNotice(ui('Mechanic applied to all set cards. Save set to keep your changes.'));
             return definition;
           } finally { setBusy(false); }
         }} onSaved={() => setEditingMechanic(null)} />

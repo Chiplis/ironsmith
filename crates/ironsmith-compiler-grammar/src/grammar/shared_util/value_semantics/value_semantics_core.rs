@@ -343,6 +343,9 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
             history_filter_from_word_prefix(&tokens, &word_view, words.len() - 4)
         && (!filter.subtypes.is_empty() || !filter.card_types.is_empty() || filter.colors.is_some())
     {
+        if let Some(range) = word_view.token_span_for_words(words.len() - 5, words.len()) {
+            crate::word_claims::claim_tokens(&tokens[range]);
+        }
         filter.token = true;
         filter.controller = None;
         filter.zone = None;
@@ -364,6 +367,9 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
             history_filter_from_word_prefix(&tokens, &word_view, words.len() - 4)
         && !filter.subtypes.is_empty()
     {
+        if let Some(range) = word_view.token_span_for_words(words.len() - 4, words.len()) {
+            crate::word_claims::claim_tokens(&tokens[range]);
+        }
         filter.token = true;
         filter.controller = None;
         filter.zone = None;

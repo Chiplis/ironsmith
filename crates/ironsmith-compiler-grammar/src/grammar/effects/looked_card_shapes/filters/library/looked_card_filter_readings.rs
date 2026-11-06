@@ -161,6 +161,12 @@ fn read_filter_disjunction(input: &LookedCardFilter<'_>) -> Option<ObjectFilter>
     let words = input.words;
     let same_name = input.same_name;
     let filter_tokens = input.tokens;
+    // "land and/or legendary permanent card" has its own typed reading,
+    // whose shared trailing noun scopes both arms; the generic split would
+    // read a second, differently shaped union of the same words.
+    if parse_land_or_legendary_permanent(filter_tokens, words).is_some() {
+        return None;
+    }
     if let Some(filter) = parse_filter_disjunction(filter_tokens, &words) {
         return Some(apply_same_name(filter, same_name));
     }

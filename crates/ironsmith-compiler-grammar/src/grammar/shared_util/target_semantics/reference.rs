@@ -464,6 +464,25 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
         }
     }
+    // "put two +1/+1 counters on a different creature you control" (the
+    // caller consumed the article): exactly "a creature you control other
+    // than that creature", excluding the previously referenced object.
+    if matches!(target_head_outcome, crate::recognition::ParseOutcome::NoMatch)
+        && tokens.len() > 1
+        && tokens[0].is_word("different")
+        && bare_singular_object_noun_head(&tokens[1..])
+        && let Some(noun) = tokens[1].as_word()
+    {
+        let span = tokens[tokens.len() - 1].span;
+        let mut rewritten = tokens[1..].to_vec();
+        for word in ["other", "than", "that", noun] {
+            rewritten.push(OwnedLexToken::word(word, span));
+        }
+        if let Ok(target) = parse_target_phrase_inner(&rewritten) {
+            crate::word_claims::claim_tokens(&tokens[..1]);
+            return Ok(target);
+        }
+    }
     let target_head = match target_head_outcome {
         crate::recognition::ParseOutcome::Match(matched) => matched.value,
         crate::recognition::ParseOutcome::Error(diagnostic) => {

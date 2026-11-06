@@ -129,6 +129,24 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
         &["during", "your", "next", "untap", "step"],
         LeafDurationPhrase::YourNextUntapStep,
     ),
+    // "during this permanent's controller's next untap step": the source's
+    // controller is the ability's "you".
+    (
+        &["during", "this", "permanents", "controllers", "next", "untap", "step"],
+        LeafDurationPhrase::YourNextUntapStep,
+    ),
+    (
+        &["during", "this", "permanent's", "controller's", "next", "untap", "step"],
+        LeafDurationPhrase::YourNextUntapStep,
+    ),
+    (
+        &["during", "this", "creatures", "controllers", "next", "untap", "step"],
+        LeafDurationPhrase::YourNextUntapStep,
+    ),
+    (
+        &["during", "this", "creature's", "controller's", "next", "untap", "step"],
+        LeafDurationPhrase::YourNextUntapStep,
+    ),
     (
         &["during", "its", "controller", "next", "untap", "step"],
         LeafDurationPhrase::ControllersNextUntapStep,

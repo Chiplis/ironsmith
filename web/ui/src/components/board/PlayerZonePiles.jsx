@@ -1,4 +1,5 @@
 import ZonePileLabel from "./ZonePileLabel";
+import PlayerClock from "./PlayerClock";
 import ZoneIcon, { LookEyeGlyph } from "./ZoneIcon";
 import useUiText from "@/i18n/useUiText";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -619,6 +620,6 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
         : <ZoneIconRow key={zone} player={player} zone={zone} onOpenDecklist={onOpenDecklist}
           onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
     </div>
-    {isLocal && <div className="player-zone-chat-dock"><LobbyChat /></div>}
+    {isLocal && <div className="player-zone-chat-dock"><PlayerClock player={player} className="player-clock--local" /><LobbyChat /></div>}
   </>;
 }

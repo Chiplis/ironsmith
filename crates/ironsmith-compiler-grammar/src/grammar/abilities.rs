@@ -585,6 +585,14 @@ pub fn additional_cost_tail_tokens_lexed(tokens: &[OwnedLexToken]) -> Option<&[O
 }
 
 pub fn is_additional_cost_choice_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    // A named source ("to cast Foo Bar,") reaches here as the bare "this".
+    if let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["as", "an", "additional", "cost", "to", "cast", "this"]),
+    ) && rest.first().is_some_and(OwnedLexToken::is_comma)
+    {
+        return true;
+    }
     primitives::parse_prefix(
         tokens,
         primitives::phrase(&[

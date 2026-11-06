@@ -726,7 +726,20 @@ pub fn parse_distribute_counters_sentence(
         required_recipient = Some(TargetAst::Source(span_from_tokens(member.tokens())));
         target_clause = rest;
     }
+    // "distribute two +1/+1 counters among permanents you control": a bare
+    // plural recipient class chooses one or more recipients at resolution
+    // (no targets are declared), each receiving at least one counter.
+    let bare_plural_recipients = || {
+        let words = target_clause.trimmed_word_refs();
+        !words.is_empty()
+            && !words.iter().any(|word| matches!(*word, "target" | "targets"))
+            && !matches!(words[0], "a" | "an" | "the" | "it" | "them" | "each")
+            && crate::grammar::filters::reference_tag_stage::has_plural_object_head_surface(
+                target_clause.tokens(),
+            )
+    };
     let (target_count, used_count) = parse_counter_target_count_prefix(target_clause.tokens())?
+        .or_else(|| bare_plural_recipients().then(|| (crate::effect::ChoiceCount::at_least(1), 0)))
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing distributed target count prefix (clause: '{}')",

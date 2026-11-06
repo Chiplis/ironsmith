@@ -102,12 +102,35 @@ fn teeg_restricts_both_players_and_stops_when_it_leaves() {
 }
 
 fn attempt_cast(game: &GameState, action: LegalAction, expected: bool) {
-    use ironsmith::decision::{GameProgress, SelectFirstDecisionMaker};
+    use ironsmith::decision::{DecisionMaker, GameProgress, SelectFirstDecisionMaker};
     use ironsmith::game_loop::{PriorityLoopState, PriorityResponse};
+    // X is announced without an affordability bound (CR 601.2b); announce a
+    // payable X rather than the unbounded maximum.
+    struct AnnounceOne;
+    impl DecisionMaker for AnnounceOne {
+        fn decide_number(&mut self, _: &GameState, ctx: &ironsmith::decisions::context::NumberContext) -> u32 {
+            1.clamp(ctx.min, ctx.max)
+        }
+        fn decide_boolean(&mut self, g: &GameState, ctx: &ironsmith::decisions::context::BooleanContext) -> bool {
+            SelectFirstDecisionMaker.decide_boolean(g, ctx)
+        }
+        fn decide_objects(&mut self, g: &GameState, ctx: &ironsmith::decisions::context::SelectObjectsContext) -> Vec<ironsmith::ObjectId> {
+            SelectFirstDecisionMaker.decide_objects(g, ctx)
+        }
+        fn decide_options(&mut self, g: &GameState, ctx: &ironsmith::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            SelectFirstDecisionMaker.decide_options(g, ctx)
+        }
+        fn decide_mana_payment(&mut self, g: &GameState, ctx: &ironsmith::decisions::context::ManaPaymentContext) -> ironsmith::mana_payment::ManaPaymentResponse {
+            SelectFirstDecisionMaker.decide_mana_payment(g, ctx)
+        }
+        fn decide_targets(&mut self, g: &GameState, ctx: &ironsmith::decisions::context::TargetsContext) -> Vec<ironsmith::game_state::Target> {
+            SelectFirstDecisionMaker.decide_targets(g, ctx)
+        }
+    }
     let mut game = game.clone();
     let mut queue = ironsmith::triggers::TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
-    let mut dm = SelectFirstDecisionMaker;
+    let mut dm = AnnounceOne;
     let mut result = ironsmith::game_loop::apply_priority_response_with_dm(
         &mut game,
         &mut queue,

@@ -2384,7 +2384,7 @@ export default function HoverArtOverlay({
 
   const abilityPreferencesButton = details?.ability_preferences?.length ? (
     <button type="button" className="inspector-priority-settings"
-      aria-label="Ability priority preferences" title="Choose Hold, Countdown or Pass for an ability"
+      aria-label={ui('Ability priority preferences')} title={ui('Choose Hold, Countdown or Pass for an ability')}
       onClick={event => {
         event.stopPropagation();
         window.dispatchEvent(new CustomEvent('ironsmith:priority-menu', {detail: {abilities: details.ability_preferences}}));

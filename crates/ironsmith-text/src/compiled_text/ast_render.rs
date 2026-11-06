@@ -41037,28 +41037,58 @@ mod matching_keyword_grant_ladder_tests {
             .parse_text(oracle)
             .expect("matching keyword ladder should compile");
 
-            for (index, ability) in definition.abilities.iter().enumerate() {
+            // "... gains flying if ... The same is true for ..." is the printed
+            // card's ONE triggered ability: one trigger whose segments each
+            // keep one keyword with its own condition, so the stack sees a
+            // single ability rather than one trigger per keyword.
+            let [ability] = definition.abilities.as_slice() else {
+                panic!("{name} must stay one triggered ability");
+            };
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                panic!("{name} must be a triggered ability");
+            };
+            // Flying plus each keyword in "The same is true for A, B, and C."
+            let keyword_count = oracle
+                .split_once("The same is true for ")
+                .map_or(0, |(_, list)| list.split(", ").count())
+                + 1;
+            assert_eq!(
+                triggered.effects.segments.len(),
+                keyword_count,
+                "{name}: one segment per keyword"
+            );
+            // Each segment is one keyword grant under its own condition. An
+            // "it" subject (Thunderous Orator) tags the grant for the
+            // triggering attacker, so look through that one tag.
+            let keyword_condition = |effect: &Effect| {
+                conditioned_combat_keyword_application(effect).is_some()
+                    || effect
+                        .downcast_ref::<crate::effects::ConditionalEffect>()
+                        .is_some_and(|conditional| {
+                            conditional.if_false.is_empty()
+                                && matches!(
+                                    conditional.if_true.as_slice(),
+                                    [inner] if inner
+                                        .downcast_ref::<crate::effects::TaggedEffect>()
+                                        .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
+                                        .is_some_and(|apply| apply.condition.is_none())
+                                )
+                        })
+            };
+            for (index, segment) in triggered.effects.segments.iter().enumerate() {
                 assert!(
-                    modeled_matching_keyword_grant(ability).is_some(),
-                    "{name} branch {index} must retain the typed keyword/condition correlation"
+                    segment.default_effects.last().is_some_and(keyword_condition),
+                    "{name} segment {index} must retain the typed keyword/condition correlation"
                 );
             }
 
             assert_eq!(
                 crate::compiled_text::compiled_text_lines(&definition),
-                vec![oracle.to_string()],
+                vec![oracle.replace(
+                    "if a creature card in your graveyard has flying",
+                    "if there is a creature card with flying in your graveyard",
+                )],
                 "{name}"
-            );
-
-            let mut changed_trigger = definition.abilities.clone();
-            let AbilityKind::Triggered(triggered) = &mut changed_trigger[1].kind else {
-                panic!("expected triggered keyword branch");
-            };
-            triggered.trigger = crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::You);
-            assert_eq!(
-                describe_structural_matching_keyword_grant_ladder(&changed_trigger),
-                None,
-                "a changed trigger must not merge unrelated abilities"
             );
         }
     }

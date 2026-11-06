@@ -398,7 +398,7 @@ function CompilePanel({ face, previewError, busy, onOpenMechanic }) {
       {(face?.customMechanics || []).map(mechanic => (
         <div key={mechanic.keyword} className="card-forge-codeblock" role="note">
           {onOpenMechanic ? <button type="button" className="font-bold underline decoration-dotted underline-offset-4" aria-label={ui('Edit set mechanic {0}', { 0: mechanic.keyword })} onClick={() => onOpenMechanic(mechanic.keyword)}>{mechanic.keyword}</button> : <strong>{mechanic.keyword}</strong>}: {mechanic.reminder}
-          <div className="text-xs opacity-70">Compiled meaning: {mechanic.expansion}</div>
+          <div className="text-xs opacity-70">{ui('Compiled meaning: {0}', { 0: mechanic.expansion })}</div>
         </div>
       ))}
       <div className="card-forge-compile-grid">
@@ -1327,7 +1327,7 @@ export default function CreateCardForgeSheet({
               </div>
               <p className="card-forge-printing-credit">
                 {ui("Card frames rendered by")}{" "}
-                <a href="https://github.com/vishvananda/card-glint" target="_blank" rel="noopener noreferrer">card-glint</a>
+                <a href="https://github.com/vishvananda/card-glint" target="_blank" rel="noopener noreferrer">{ui("card-glint")}</a>
               </p>
             </div>
             <div className="flex flex-wrap gap-2">

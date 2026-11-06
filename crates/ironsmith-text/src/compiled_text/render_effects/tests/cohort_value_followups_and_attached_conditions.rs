@@ -326,6 +326,7 @@ fn cohort_second_spell_copies_only_player_or_permanent_targets_otherwise_draws()
 #[test]
 fn cohort_multiword_source_alias_preserves_entry_and_excludes_only_source_identity() {
     let card = crate::CardDefinitionBuilder::new(CardId::new(), "Nyvora Silverbranch of the Vale")
+        .supertypes(vec![crate::types::Supertype::Legendary])
         .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1, 1))
         .parse_text("When Nyvora Silverbranch enters, create a Food token.\nWhenever you create a token, put a +1/+1 counter on target creature you control other than Nyvora Silverbranch.").unwrap();
     assert_eq!(

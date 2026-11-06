@@ -1332,14 +1332,35 @@ fn expand_scoped_subtype_filter_atoms(mut filter: ObjectFilter) -> ObjectFilter 
     }
     // Positive disjunction and negative exclusion are both idempotent: a
     // repeated finalization only encounters members already in the vector.
+    // A spelling's alternatives are limited to the families its card-type
+    // noun admits: "Urza's land" is the land type, never the planeswalker
+    // type Urza.
+    let card_types = filter.card_types.clone();
+    let admitted = |variant: &crate::types::Subtype| {
+        use crate::types::CardType as T;
+        use crate::types::SubtypeFamily as F;
+        card_types.is_empty() || card_types.iter().any(|card_type| {
+            let families: &[F] = match card_type {
+                T::Land => &[F::Land],
+                T::Creature | T::Kindred => &[F::Creature],
+                T::Artifact => &[F::Artifact],
+                T::Enchantment => &[F::Enchantment],
+                T::Planeswalker => &[F::Planeswalker],
+                T::Instant | T::Sorcery => &[F::Spell, F::Creature],
+                T::Battle => &[F::Battle],
+                _ => return true,
+            };
+            families.iter().any(|family| variant.belongs_to_family(*family))
+        })
+    };
     for subtype in filter.subtypes.clone() {
         for variant in crate::grammar::leaf::ambiguous_subtype_spellings(&subtype.to_string()) {
-            if !filter.subtypes.contains(&variant) { filter.subtypes.push(variant); }
+            if !filter.subtypes.contains(&variant) && admitted(&variant) { filter.subtypes.push(variant); }
         }
     }
     for subtype in filter.excluded_subtypes.clone() {
         for variant in crate::grammar::leaf::ambiguous_subtype_spellings(&subtype.to_string()) {
-            if !filter.excluded_subtypes.contains(&variant) { filter.excluded_subtypes.push(variant); }
+            if !filter.excluded_subtypes.contains(&variant) && admitted(&variant) { filter.excluded_subtypes.push(variant); }
         }
     }
     // Each required printed subtype is a separate conjunction. A wrapper's
@@ -2244,6 +2265,40 @@ fn parse_object_filter_unaudited(
     }
     if let Some(result)=crate::util::payment_receipt_references::negative_tap_filter(tokens,other){return result;}
     if let Some(filter)=parse_named_action_role_filter(tokens){return Ok(filter);}
+    // "artifact linked by overclock to this permanent": the directed-link
+    // relation, as the lexed entrypoint reads it.
+    {
+        let link_words = crate::lexer::parser_token_word_refs(tokens);
+        if let Some(index) = link_words.windows(2).position(|words| words == ["linked", "by"])
+            && index > 0
+            && link_words.ends_with(&["to", "this", "permanent"])
+            && index + 2 < link_words.len() - 3
+            && link_words[index + 2..link_words.len() - 3].iter().all(|word| !word.is_empty()
+                && word.chars().all(|ch| ch.is_ascii_alphabetic() || matches!(ch, '-' | '\'')))
+        {
+            let relation = link_words[index + 2..link_words.len() - 3].join(" ");
+            let end = crate::lexer::LexedClause::new(tokens).token_index_after_words(index).unwrap_or(index);
+            let mut filter = parse_object_filter(&tokens[..end], other)?;
+            filter.linked_from_source = Some(relation);
+            crate::word_claims::claim_tokens(&tokens[end..]);
+            return Ok(filter);
+        }
+    }
+    // "creatures in group owned by this creature" / "... in the same group
+    // as that creature": the words-path group relation, for token callers.
+    for (phrase, same) in [(&["in", "group", "owned", "by"][..], false), (&["in", "the", "same", "group", "as"][..], true)] {
+        let words = crate::lexer::parser_token_word_refs(tokens);
+        let Some(split) = words.windows(phrase.len()).rposition(|window| window == phrase) else { continue };
+        if split == 0 || split + phrase.len() == words.len() { continue; }
+        let clause = crate::lexer::LexedClause::new(tokens);
+        let (Some(start), Some(rest)) = (clause.token_index_after_words(split), clause.token_index_after_words(split + phrase.len())) else { continue };
+        let mut filter = parse_object_filter(&tokens[..start], other)?;
+        let owner = parse_object_filter(&tokens[rest..], false)?;
+        let reference = if owner.source { crate::target::ChooseSpec::Source } else { crate::target::ChooseSpec::Object(owner) };
+        crate::word_claims::claim_tokens(&tokens[start..rest]);
+        if same { filter.same_group_as = Some(Box::new(reference)) } else { filter.group_member_of = Some(Box::new(reference)) }
+        return Ok(filter);
+    }
     if let Some(filter)=related_exile::read(tokens,other)? {return Ok(filter);}
     if let Some(result)=parse_custom_identity_filter(tokens,other){return result;}
     if let Some(result) = parse_entry_reference_filter(tokens, other) { return result; }

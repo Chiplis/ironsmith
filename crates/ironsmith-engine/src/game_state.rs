@@ -11585,7 +11585,24 @@ impl GameState {
             .insert(def.card.id, def.clone());
         self.linked_face_definitions_by_name
             .insert(def.card.name.to_string(), def.clone());
-        if let Some(other) = def.card.other_face
+        // Faces compiled independently name each other but carry unrelated
+        // linked ids. A face whose named partner already belongs to a
+        // registered family joins that family instead of founding its own.
+        let named_family_front = def
+            .card
+            .other_face_name
+            .as_deref()
+            .and_then(|name| self.linked_face_definitions_by_name.get(name))
+            .filter(|partner| partner.card.other_face_name.as_deref() == Some(def.card.name.as_str()))
+            .and_then(|partner| self.linked_face_fronts.get(&partner.card.id).copied());
+        if let Some(front) = named_family_front
+            && !self.linked_face_fronts.contains_key(&def.card.id)
+        {
+            self.linked_face_fronts.insert(def.card.id, front);
+            if let Some(other) = def.card.other_face {
+                self.linked_face_fronts.entry(other).or_insert(front);
+            }
+        } else if let Some(other) = def.card.other_face
             && !self.linked_face_fronts.contains_key(&def.card.id)
             && !self.linked_face_fronts.contains_key(&other)
         {

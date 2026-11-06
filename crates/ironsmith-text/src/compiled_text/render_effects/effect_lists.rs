@@ -20108,13 +20108,6 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     for effect in effects {
         note_declared_target(effect);
     }
-    // Exact three-effect procedure: the frozen blocked set, its tap, and the
-    // untap restriction on that same set read as one distributive sentence.
-    // It must run before the generic restriction and tap/untap compactors,
-    // which would split the set from its pronoun.
-    if let Some(rendered) = describe_tagged_blocked_set_tap_then_next_untap(effects) {
-        return rendered;
-    }
     if let Some(rendered) = describe_coordinated_restriction_list(effects) {
         return rendered;
     }

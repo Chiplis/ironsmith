@@ -247,7 +247,13 @@ impl WasmGame {
             let outcome = ironsmith::effects::EffectExecutor::execute(&effect, &mut self.game, &mut ctx)
                 .map_err(ForceFaceUpError::Execution)?;
             if dm.awaiting_choice() { return Err(ForceFaceUpError::PendingChoice); }
-            if outcome.as_count() != Some(1) { return Err(ForceFaceUpError::NotTurnedFaceUp); }
+            // The face-up instruction reports the objects it turned face up;
+            // a count outcome is the legacy summary of the same result.
+            let turned = match outcome.explicit_objects() {
+                Some(objects) => objects == [id],
+                None => outcome.as_count() == Some(1),
+            };
+            if !turned { return Err(ForceFaceUpError::NotTurnedFaceUp); }
             ironsmith::game_loop::try_drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue)
                 .map_err(ForceFaceUpError::Execution)?;
             ironsmith::put_triggers_on_stack(&mut self.game, &mut self.trigger_queue)

@@ -389,7 +389,30 @@ fn cascade_threshold_counts_chosen_x_on_the_stack() {
             .unwrap();
         let mut queue = TriggerQueue::new();
         let mut state = PriorityLoopState::new(game.players_in_game());
-        let mut dm = SelectFirstDecisionMaker;
+        // X is announced without an affordability bound (CR 601.2b), so the
+        // fixture announces the X it can pay instead of the maximum.
+        struct AnnounceThree;
+        impl ironsmith::decision::DecisionMaker for AnnounceThree {
+            fn decide_number(&mut self, _: &GameState, ctx: &ironsmith::decisions::context::NumberContext) -> u32 {
+                3.clamp(ctx.min, ctx.max)
+            }
+            fn decide_boolean(&mut self, g: &GameState, ctx: &ironsmith::decisions::context::BooleanContext) -> bool {
+                SelectFirstDecisionMaker.decide_boolean(g, ctx)
+            }
+            fn decide_objects(&mut self, g: &GameState, ctx: &ironsmith::decisions::context::SelectObjectsContext) -> Vec<ironsmith::ObjectId> {
+                SelectFirstDecisionMaker.decide_objects(g, ctx)
+            }
+            fn decide_options(&mut self, g: &GameState, ctx: &ironsmith::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                SelectFirstDecisionMaker.decide_options(g, ctx)
+            }
+            fn decide_mana_payment(&mut self, g: &GameState, ctx: &ironsmith::decisions::context::ManaPaymentContext) -> ironsmith::mana_payment::ManaPaymentResponse {
+                SelectFirstDecisionMaker.decide_mana_payment(g, ctx)
+            }
+            fn decide_targets(&mut self, g: &GameState, ctx: &ironsmith::decisions::context::TargetsContext) -> Vec<ironsmith::game_state::Target> {
+                SelectFirstDecisionMaker.decide_targets(g, ctx)
+            }
+        }
+        let mut dm = AnnounceThree;
         let mut progress = ironsmith::game_loop::apply_priority_response_with_dm(
             &mut game,
             &mut queue,

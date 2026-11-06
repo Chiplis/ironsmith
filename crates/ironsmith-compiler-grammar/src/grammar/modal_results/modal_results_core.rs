@@ -173,7 +173,12 @@ pub(super) fn parse_direct_prior_effect_result_surface(
             .filter(|count| *count >= 2 && filter_tokens.len() > 1);
         if let Some(count) = counted {
             let filter = parse_prior_result_object_filter(&filter_tokens[1..])?;
-            crate::word_claims::claim_tokens(&filter_tokens[..1]);
+            // "you exile two ... this way": the actor, verb, cardinal and
+            // result frame are read here; the filter reader owns the rest.
+            crate::word_claims::claim_tokens(&tokens[..1 + verb_len + 1]);
+            if let Some(this_way) = crate::slice_primitives::select_position(tokens, |token| token.is_word("this")) {
+                crate::word_claims::claim_tokens(&tokens[this_way..]);
+            }
             let mut surface = PriorEffectResultSurface::new(
                 action,
                 filter,

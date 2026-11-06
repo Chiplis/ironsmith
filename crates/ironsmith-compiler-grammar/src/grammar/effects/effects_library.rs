@@ -417,6 +417,12 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     // A search that reaches another player's library hands the card to you only
     // when the put clause says so; otherwise the move preserves its controller.
     let searched_controller = if effect_routing.enters_under_your_control {
+        // The put instruction's controller phrase is read here (Bribery).
+        if let Some(index) = tokens.windows(3).position(|window| {
+            window[0].is_word("under") && window[1].is_word("your") && window[2].is_word("control")
+        }) {
+            crate::word_claims::claim_tokens(&tokens[index..index + 3]);
+        }
         ReturnControllerAst::You
     } else {
         ReturnControllerAst::Preserve

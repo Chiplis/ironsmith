@@ -178,6 +178,13 @@ impl ParseContext {
         context
     }
 
+    /// The face's supertypes ("Legendary" decides whether a shortened
+    /// self-reference such as "Vraska" is the card's own name).
+    pub fn with_supertypes(mut self, supertypes: Vec<Supertype>) -> Self {
+        self.card.supertypes = supertypes;
+        self
+    }
+
     pub fn source(&self) -> &SourceIdentity {
         &self.source
     }

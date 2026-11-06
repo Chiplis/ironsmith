@@ -3999,9 +3999,16 @@ pub(super) fn compile_subject_verb_middle(
                     .zip(modifications.iter())
                     .map(|(_ability, modifications)| EffectMode {
                         source_text: String::new(),
-                        effects: modifications.iter().map(|modification|Effect::new(
-                            crate::effects::ApplyContinuousEffect::with_spec(spec.clone(),modification.clone(),duration.clone()),
-                        )).collect(),
+                        // One chosen ability is one complete grant, even when
+                        // its definition has several members (rampage's marker
+                        // and trigger).
+                        effects: modifications.split_first().map(|(first, rest)| {
+                            let mut apply = crate::effects::ApplyContinuousEffect::with_spec(spec.clone(),first.clone(),duration.clone());
+                            for modification in rest {
+                                apply = apply.with_additional_modification(modification.clone());
+                            }
+                            Effect::new(apply)
+                        }).into_iter().collect(),
                     })
                     .collect::<Vec<_>>();
                 let mut choice=crate::effects::ChooseModeEffect::choose_one(modes)

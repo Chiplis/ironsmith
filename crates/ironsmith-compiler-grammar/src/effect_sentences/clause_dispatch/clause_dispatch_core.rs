@@ -209,6 +209,9 @@ pub(super) fn parse_effect_clause_unstacked(
     if let Some(effect) = crate::effect_sentences::named_action_atom::parse_perform(tokens) {
         return Ok(effect);
     }
+    if let Some(effect) = crate::effect_sentences::named_action_atom::parse_conditional_have_performer(tokens)? {
+        return Ok(effect);
+    }
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
     }

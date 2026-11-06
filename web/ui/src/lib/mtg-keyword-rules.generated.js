@@ -4,8 +4,8 @@
 export const MTG_KEYWORD_RULESET_SOURCE = Object.freeze(
 {
   "title": "Magic: The Gathering Comprehensive Rules",
-  "effectiveDate": "September 25, 2026",
-  "url": "https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt"
+  "effectiveDate": "November 6, 2026",
+  "url": "https://media.wizards.com/2026/downloads/MagicCompRules%2020261106.txt"
 }
 );
 
@@ -736,6 +736,16 @@ export const MTG_KEYWORD_RULES = Object.freeze(
     "summary": "A keyword action that gives you a Jace planeswalker token and/or puts loyalty counters on a Jace token you already have."
   },
   {
+    "id": "action-701-72-assimilate",
+    "kind": "keywordAction",
+    "rule": "701.72",
+    "title": "Assimilate",
+    "aliases": [
+      "assimilate"
+    ],
+    "summary": "A keyword action that lets a player gain control of a creature and put a +1/+1 counter on it or put a creature card onto the battlefield under their control with a +1/+1 counter on it. In either case, it's a Borg artifact creature with no other creature types."
+  },
+  {
     "id": "ability-702-2-deathtouch",
     "kind": "keywordAbility",
     "rule": "702.2",
@@ -1368,7 +1378,6 @@ export const MTG_KEYWORD_RULES = Object.freeze(
     "rule": "702.62",
     "title": "Suspend",
     "aliases": [
-      "endure",
       "suspend"
     ],
     "summary": "A keyword ability that provides an alternative way to play a card."
@@ -2732,6 +2741,16 @@ export const MTG_KEYWORD_RULES = Object.freeze(
       "storied"
     ],
     "summary": "A keyword causing a player to get the enduring story designation once they control three or more permanents that are artifacts, Sagas, and/or legendary."
+  },
+  {
+    "id": "ability-702-196-beam-me-up",
+    "kind": "keywordAbility",
+    "rule": "702.196",
+    "title": "Beam me up",
+    "aliases": [
+      "beam me up"
+    ],
+    "summary": "A keyword ability that lets a player cast an instant or sorcery spell from their graveyard by paying a specific cost and returning a creature they control to its owner's hand."
   }
 ]
 );

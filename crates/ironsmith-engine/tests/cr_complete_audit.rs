@@ -41916,7 +41916,8 @@ fn cr_721_2a_b_c_station_rows_use_charge_thresholds_and_only_battlefield_creatur
                     );
                     assert_eq!(
                         game.object_has_ability(subject, &StaticAbility::lifelink()),
-                        on_battlefield && has_charge(7)
+                        on_battlefield && has_charge(7),
+                        "lifelink actor={actor:?} zone={zone:?} charge={charge_kind} count={count}"
                     );
                     // Unconditional rules text still exists in every zone; it does
                     // not depend on the charge thresholds.

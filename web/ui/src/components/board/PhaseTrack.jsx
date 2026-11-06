@@ -1,8 +1,9 @@
 import usePrioritySettings from "@/hooks/usePrioritySettings";
 import { useState } from "react";
-import { CircleCheck, FlagTriangleRight, Hand, Shield, Sword, Swords, Zap } from 'lucide-react';
+import { Axe, BrushCleaning, CircleCheck, FlagTriangleRight, Hand, Layers, RotateCcwSquare, Shield, Sparkles, Sunrise, Sunset, Sword, Swords, Zap } from 'lucide-react';
 import { useGame } from '@/context/GameContext';
 import { useI18n } from '@/i18n/I18nContext';
+import useUiText from '@/i18n/useUiText';
 import { normalizePhaseStep, PHASE_TRACK } from '@/lib/constants';
 import { COMBAT_STEPS, priorityStepKey, priorityStopMode, DEFAULT_PRIORITY_STOPS } from '@/lib/priority-stops';
 import { playerDisplayName } from '@/lib/player-display';
@@ -16,22 +17,12 @@ const combatIcons = {
   FirstStrikeDamage: Zap, CombatDamage: Sword, EndCombat: CircleCheck,
 };
 
-// Lucide's hand is open strokes, so a fill leaves gaps between them. The
-// closed silhouette underneath carries the stop color across the whole hand.
-const HAND_OUTLINE = [
-  'M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2',
-  'M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2',
-  'M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8',
-  'M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15',
-];
-const HAND_SILHOUETTE = 'M6 14V6a2 2 0 0 1 4 0V4a2 2 0 0 1 4 0v2a2 2 0 0 1 4 0v2a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82Z';
-function StopHand({ className, size = 24 }) {
-  return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none"
-    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${className || ''} phase-track-stop-hand`} aria-hidden="true">
-    <path className="phase-track-stop-fill" d={HAND_SILHOUETTE} />
-    {HAND_OUTLINE.map(d => <path key={d} d={d} />)}
-  </svg>;
-}
+// Each turn phase has its own icon; MTG has no official set. The stop state
+// (none / if I can act / every time) colors and fills the icon.
+const phaseIcons = {
+  Untap: RotateCcwSquare, Upkeep: Sunrise, Draw: Layers, Main: Sparkles,
+  Combat: Axe, Main2: Sparkles, End: Sunset, Cleanup: BrushCleaning,
+};
 
 export default function PhaseTrack({ compact = false, reserveCombatSpace = false }) {
   const { state, priorityStops = DEFAULT_PRIORITY_STOPS, cyclePriorityStop, priorityPolicy } = useGame();
@@ -39,6 +30,7 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
   const [locked, setLocked] = useState(false);
   const [previewCombatPlayer, setPreviewCombatPlayer] = useState(null);
   const { t } = useI18n();
+  const ui = useUiText();
   const active = state ? normalizePhaseStep(state.phase, state.step) : null;
   const players = state?.players?.length ? state.players : [{ id: state?.active_player ?? 0, name: 'Turn' }];
   // Match TableCore's seat rotation, so each opponent stays over their field.
@@ -51,11 +43,15 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
   const ownsTurn = player => Number(state?.active_player) === Number(player.id);
   const hasPriority = player => state?.decision?.kind === "priority"
     && Number(state.decision.player) === Number(player.id);
+  // Each player's own turn count: the second player's first turn is Turn 1.
+  // Older engine builds only report the game-wide number; assume an even rotation.
+  const turnCount = state?.active_player_turn
+    ?? (state?.turn_number != null ? Math.ceil(state.turn_number / Math.max(1, players.length)) : null);
   const phaseLabel = (entry, kind) => kind === 'step' ? combatLabels[entry] : t(`game.track.${entry}`, null, entry);
 
   const renderStop = (entry, kind, player) => {
     const key = `${kind}:${entry}`;
-    const Icon = kind === 'step' ? combatIcons[entry] : StopHand;
+    const Icon = (kind === 'step' ? combatIcons : phaseIcons)[entry] || Sparkles;
     const mode = priorityStopMode(priorityStops, key, player.id);
     const disabled = !state || entry === 'Untap';
     const label = phaseLabel(entry, kind);
@@ -76,7 +72,7 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
       onClick={() => { if (!locked) {
         cyclePriorityStop?.(key, state?.players?.length ? player.id : undefined);
       } }}>
-      {!disabled && <Icon className="phase-track-stop-icon" size={14} aria-hidden="true" />}
+      <Icon className="phase-track-stop-icon" size={14} aria-hidden="true" />
       <span className="phase-track-step-label">{label}</span>
     </button>;
   };
@@ -84,8 +80,8 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
   const renderHeading = player => <header className="phase-track-player-heading">
     {duel && <Hand size={12} aria-hidden="true" className={player.id === self.id ? undefined : 'phase-track-opponent-hand'} />}
     <span className="phase-track-player-name">{playerName(player)}</span>
-    {ownsTurn(player) && <span className="phase-track-turn-cue">Turn</span>}
-    {hasPriority(player) && <span className="phase-track-priority-cue">Priority</span>}
+    {ownsTurn(player) && <span className="phase-track-turn-cue">{turnCount != null ? ui('Turn {0}', { 0: turnCount }) : ui('Turn')}</span>}
+    {hasPriority(player) && <span className="phase-track-priority-cue">{ui('Priority')}</span>}
   </header>;
 
   const renderTrack = (entries, current, kind, player, concealed = false) => (
@@ -93,7 +89,7 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
       className={`phase-track phase-track--sequence${kind === 'step' ? ' phase-track--combat' : ''}`}
       style={concealed ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
       aria-hidden={concealed || undefined} inert={concealed || undefined}
-      data-compact={compact ? 'true' : 'false'} aria-label={`${state?.players?.length ? `${playerName(player)}: ` : ''}${kind === 'step' ? 'Combat steps' : t('game.phaseTrack', null, 'Turn phases')}`}>
+      data-compact={compact ? 'true' : 'false'} aria-label={`${state?.players?.length ? `${playerName(player)}: ` : ''}${kind === 'step' ? ui('Combat steps') : t('game.phaseTrack', null, 'Turn phases')}`}>
       <ol className="phase-track-steps">
         {entries.map((entry, index) => {
           const key = `${kind}:${entry}`;
@@ -136,7 +132,7 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
   return <div onMouseLeave={() => setPreviewCombatPlayer(null)}
     onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPreviewCombatPlayer(null); }}
     className={`phase-track-group phase-track-group--players${multiplayer ? ' phase-track-group--fields' : ''}${duel ? ' phase-track-group--duel' : ''}`}>
-    <button type="button" className="phase-track-lock" aria-pressed={locked} onClick={() => setLocked(!locked)} title="Lock phase stops against accidental clicks">{locked ? "Unlock stops" : "Lock stops"}</button>
+    <button type="button" className="phase-track-lock" aria-pressed={locked} onClick={() => setLocked(!locked)} title={ui('Lock phase stops against accidental clicks')}>{locked ? ui('Unlock stops') : ui('Lock stops')}</button>
     {duel ? <div className="phase-track-player-grid">{turnPlayers.map(player => renderPlayer(player, player.id === self.id))}</div> : <div className="phase-track-player-grid">
       {multiplayer && <div className="phase-track-opponents" style={{ '--phase-opponent-count': opponents.length }}>
         {opponents.map(player => renderPlayer(player))}

@@ -13,6 +13,7 @@ import { useGame } from "@/context/GameContext";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
+import PlayerClock from "./PlayerClock";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
 const ZONE_ORDER = ["battlefield", "graveyard", "library", "exile", "command", "ante"];
@@ -543,6 +544,7 @@ function OpponentSlot({
                 </span>
                 {zoneName && <span className="text-muted-foreground">{ui(zoneName)}</span>}
               </span>
+              <PlayerClock player={player} />
             </span>
             {canGoldfish && <button type="button" className="player-goldfish-toggle"
               aria-pressed={goldfished} aria-label={ui("Goldfish")}

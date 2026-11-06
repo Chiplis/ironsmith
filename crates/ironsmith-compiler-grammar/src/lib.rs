@@ -357,5 +357,3 @@ pub use ironsmith_grammar_common::custom_subtypes::with_custom_subtypes;
 
 mod instruction_menu;
 
-#[cfg(test)]
-mod p2_probe;

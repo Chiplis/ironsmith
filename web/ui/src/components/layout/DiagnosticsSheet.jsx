@@ -192,21 +192,21 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
             <SheetTitle className="verify-match-title">{t("action.diagnostics")}</SheetTitle>
           </SheetHeader>
           <div className="diagnostics-toolbar">
-            <input ref={fileInput} type="file" accept=".json,application/json" aria-label="Diagnostic report file" hidden onChange={loadReport} />
-            <Button type="button" variant="secondary" size="sm" onClick={() => fileInput.current?.click()}>Load diagnostic</Button>
-            {loaded && <Button type="button" variant="secondary" size="sm" onClick={() => { setLoaded(null); setLoadError(''); }}>Back to live</Button>}
+            <input ref={fileInput} type="file" accept=".json,application/json" aria-label={ui("Diagnostic report file")} hidden onChange={loadReport} />
+            <Button type="button" variant="secondary" size="sm" onClick={() => fileInput.current?.click()}>{ui("Load diagnostic")}</Button>
+            {loaded && <Button type="button" variant="secondary" size="sm" onClick={() => { setLoaded(null); setLoadError(''); }}>{ui("Back to live")}</Button>}
             {loadError && <span role="alert">{loadError}</span>}
           </div>
           {loaded ? <div className="diagnostics-body">
             <section className="fantasy-sheet-section diagnostics-section">
               <h3 className="diagnostics-section-title">{loaded.name}</h3>
-              <p>Saved report · {loaded.report.exportedAt || 'Unknown export time'}</p>
-              <p>Inspect the captured state and recorded events below. Loading a report does not restore a playable game.</p>
+              <p>{ui("Saved report · {0}", { 0: loaded.report.exportedAt || ui('Unknown export time') })}</p>
+              <p>{ui("Inspect the captured state and recorded events below. Loading a report does not restore a playable game.")}</p>
               <div className="diagnostics-stat-grid">
-                <Stat label="Turn" value={loaded.report.gameState?.turn_number ?? '—'} />
-                <Stat label="Decision" value={loaded.report.gameState?.decision?.kind ?? '—'} />
-                <Stat label="Engine calls recorded" value={loaded.report.journal?.entries?.length ?? 0} />
-                <Stat label="Actions traced" value={loaded.report.traces?.length ?? 0} />
+                <Stat label={ui("Turn")} value={loaded.report.gameState?.turn_number ?? '—'} />
+                <Stat label={ui("Decision")} value={loaded.report.gameState?.decision?.kind ?? '—'} />
+                <Stat label={ui("Engine calls recorded")} value={loaded.report.journal?.entries?.length ?? 0} />
+                <Stat label={ui("Actions traced")} value={loaded.report.traces?.length ?? 0} />
               </div>
             </section>
             {['gameState', 'traces', 'events', 'engine', 'engineRequests', 'workerTasks', 'peers', 'mainThread', 'extra', 'environment', 'journal'].filter(key => loaded.report[key] != null).map(key =>
@@ -214,7 +214,7 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
                 <summary>{key}</summary>
                 <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }}>{JSON.stringify(loaded.report[key], null, 2)}</pre>
               </details>)}
-            <div className="diagnostics-toolbar"><Button onClick={handleCopy}>{copied ? 'Copied' : 'Copy report'}</Button><Button onClick={handleDownload}>Download report</Button></div>
+            <div className="diagnostics-toolbar"><Button onClick={handleCopy}>{copied ? 'Copied' : 'Copy report'}</Button><Button onClick={handleDownload}>{ui("Download report")}</Button></div>
           </div> : snapshot ? (() => {
             const summary = verdict({ snapshot, peerWait, multiplayer });
             const current = snapshot.current;

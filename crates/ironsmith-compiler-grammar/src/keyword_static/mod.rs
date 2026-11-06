@@ -1056,6 +1056,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_each_player_additional_land_play_line" => vec![
             StaticAbilityLineHeadHint::Single("each"),
             StaticAbilityLineHeadHint::Pair("each", "player"),
+            StaticAbilityLineHeadHint::Pair("enchanted", "player"),
         ],
         "parse_play_lands_from_graveyard_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
@@ -4376,26 +4377,57 @@ pub(super) fn parse_as_long_as_otherwise_static_line(
     let [first, second] = sentences.as_slice() else {
         return Ok(None);
     };
-    let Some(split) = crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(first)
-    else {
-        return Ok(None);
-    };
     if !second.first().is_some_and(|token| token.is_word("otherwise")) {
         return Ok(None);
     }
+    // "As long as <condition>, <body>." or the trailing "<body> as long as
+    // <condition>." (Evolved Spinoderm: "This creature has trample as long
+    // as it has two or fewer oil counters on it. Otherwise, it has
+    // hexproof.").
+    let trailing_split = || -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+        let first = trim_edge_punctuation_tokens(first);
+        let at = first.windows(3).position(|window| {
+            window[0].is_word("as") && window[1].is_word("long") && window[2].is_word("as")
+        })?;
+        if at == 0 || first[at + 3..].iter().any(|token| token.is_word("as")) {
+            return None;
+        }
+        Some((&first[at + 3..], &first[..at]))
+    };
+    let (condition_tokens, remainder_tokens, trailing) =
+        match crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(first) {
+            Some(split) => (split.condition_tokens, split.remainder_tokens, false),
+            None => match trailing_split() {
+                Some((condition, body)) => (condition, body, true),
+                None => return Ok(None),
+            },
+        };
     let otherwise_body = trim_edge_punctuation(&second[1..]);
-    let condition_words = crate::lexer::parser_token_word_refs(split.condition_tokens);
-    let attached_subject = if condition_words.word_windows(2).any(|pair| pair == ["enchanted", "creature"]) {
-        Some(["enchanted", "creature"])
+    let condition_words = crate::lexer::parser_token_word_refs(condition_tokens);
+    // The source subject a pronoun names: the attached object, or this
+    // permanent itself when the condition or the true body is about it.
+    let source_subject = |words: &[&str]| -> Option<Vec<String>> {
+        match words {
+            ["this", noun, ..] if crate::util::is_source_reference_words(&["this", noun]) => {
+                Some(vec!["this".to_string(), noun.to_string()])
+            }
+            _ => None,
+        }
+    };
+    let attached_subject: Option<Vec<String>> = if condition_words.word_windows(2).any(|pair| pair == ["enchanted", "creature"]) {
+        Some(vec!["enchanted".into(), "creature".into()])
     } else if condition_words.word_windows(2).any(|pair| pair == ["equipped", "creature"]) {
-        Some(["equipped", "creature"])
+        Some(vec!["equipped".into(), "creature".into()])
+    } else if trailing {
+        source_subject(&crate::lexer::parser_token_word_refs(remainder_tokens))
     } else {
-        None
+        source_subject(&condition_words)
     };
     let rebind = |body: &[OwnedLexToken]| -> Option<Vec<OwnedLexToken>> {
         let body = trim_edge_punctuation(body);
         if body.first().is_some_and(|token| token.is_word("it")) {
-            let mut rebound = crate::lexer::synthetic_word_tokens(attached_subject?);
+            let subject = attached_subject.as_ref()?;
+            let mut rebound = crate::lexer::synthetic_word_tokens(subject.iter().map(String::as_str));
             rebound.extend_from_slice(&body[1..]);
             Some(rebound)
         } else {
@@ -4403,14 +4435,19 @@ pub(super) fn parse_as_long_as_otherwise_static_line(
         }
     };
     let (Some(true_body), Some(false_body)) =
-        (rebind(split.remainder_tokens), rebind(&otherwise_body))
+        (rebind(remainder_tokens), rebind(&otherwise_body))
     else {
         return Ok(None);
     };
     if true_body.is_empty() || false_body.is_empty() {
         return Ok(None);
     }
-    let Ok(condition) = parse_static_condition_clause(split.condition_tokens) else {
+    // The trailing condition's "it" is the body's subject.
+    let condition_tokens = match rebind(condition_tokens) {
+        Some(rebound) if trailing => rebound,
+        _ => condition_tokens.to_vec(),
+    };
+    let Ok(condition) = parse_static_condition_clause(&condition_tokens) else {
         return Ok(None);
     };
     let Some(true_abilities) =

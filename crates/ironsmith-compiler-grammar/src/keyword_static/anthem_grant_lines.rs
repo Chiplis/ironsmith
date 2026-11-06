@@ -1384,7 +1384,12 @@ fn parse_complete_foretell_cost_grant_line(
         return Ok(None);
     }
     let second_tokens = trim_edge_punctuation(second);
-    let second_words = crate::lexer::token_word_refs(&second_tokens);
+    // Sentence-initial words keep their authored capitalization ("Its").
+    let second_words = crate::lexer::token_word_refs(&second_tokens)
+        .into_iter()
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    let second_words = second_words.iter().map(String::as_str).collect::<Vec<_>>();
     let [
         "its" | "the", "foretell", "cost", "is", "equal", "to", "its", "mana", "cost", "reduced", "by",
         ..,
@@ -1448,13 +1453,19 @@ fn parse_complete_plot_cost_grant_line(
     };
     let first = trim_edge_punctuation(first);
     let second = trim_edge_punctuation(second);
-    if crate::lexer::token_word_refs(&first)
-        != ["the", "top", "card", "of", "your", "library", "has", "plot"]
-    {
+    // Sentence-initial words keep their authored capitalization ("The").
+    let lowered = |tokens: &[OwnedLexToken]| {
+        crate::lexer::token_word_refs(tokens)
+            .into_iter()
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>()
+    };
+    if lowered(&first) != ["the", "top", "card", "of", "your", "library", "has", "plot"] {
         return Ok(None);
     }
+    let second_words = lowered(&second);
     if !matches!(
-        crate::lexer::token_word_refs(&second).as_slice(),
+        second_words.iter().map(String::as_str).collect::<Vec<_>>().as_slice(),
         ["the" | "its", "plot", "cost", "is", "equal", "to", "its", "mana", "cost"]
     ) {
         return Ok(None);
@@ -2058,6 +2069,15 @@ fn parse_granted_keyword_static_line_inner(
         &clause_words.join(" "),
     )? {
         return Ok(Some(compiled));
+    }
+    // A player half ("You and this creature each have flying") has no
+    // object-filter reading. When the union reader cannot give the player
+    // that keyword, a later filter reading would silently drop the player.
+    if matches!(
+        split_union_grant_subjects(&subject_tokens),
+        Some((UnionGrantSubject::PlayerYou, _))
+    ) {
+        return Ok(None);
     }
 
     if let Some(compiled) = parse_color_filtered_keyword_grants(

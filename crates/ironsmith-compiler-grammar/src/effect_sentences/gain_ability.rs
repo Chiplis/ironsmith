@@ -2905,6 +2905,12 @@ fn parse_simple_ability_modifier_clause_lexed(
 pub fn parse_simple_gain_ability_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // "<target> gains protection until end of turn if <source> had
+    // protection": the historical family copy owns the whole clause,
+    // including a bare family name that is no keyword on its own.
+    if let Some(effect) = parse_conditional_keyword_snapshot_grant(tokens)? {
+        return Ok(Some(effect));
+    }
     parse_simple_ability_modifier_clause(tokens, false)
 }
 
@@ -3808,7 +3814,7 @@ pub(super) fn snapshot_keyword_ids(tokens:&[OwnedLexToken])->Option<Vec<StaticAb
     }
     (!ids.is_empty()).then_some(ids)
 }
-fn parse_conditional_keyword_snapshot_grant(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardTextError>{
+pub(crate) fn parse_conditional_keyword_snapshot_grant(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardTextError>{
     let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
     let mut quoted=false;
     let outside:Vec<_>=tokens.iter().enumerate().filter_map(|(index,token)|{

@@ -134,9 +134,14 @@ export function renameSourceKeywords(text, definitions) {
   return aliasSourceKeywordFaces([{name:'Source import',oracleText:text}],definitions)[0].oracleText;
 }
 
+// Reuse reviewed source layout/corrections for editable browser imports.
+export function sourceDraftFaces(card) {
+  return sourceFaces(card).map(separateInput);
+}
+
 export function materializeCard(card, definitions, scope = card.scope) {
   if (needsMissingFaces(card)) throw Error('The source layout requires all linked faces before expansion');
-  const sources = sourceFaces(card).map(separateInput);
+  const sources = sourceDraftFaces(card);
   // Browser drafts and source fixtures carry the same scoped token inputs
   // under their respective public spelling. Never discard one silently.
   if (card.custom_tokens && card.customTokens && JSON.stringify(card.custom_tokens) !== JSON.stringify(card.customTokens)) {

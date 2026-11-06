@@ -2091,6 +2091,17 @@ fn materialize_trailing_self_replacement(
             && (tests_candidate_ability_on_resolution_target || compares_target_to_prior_choice)
         {
             None
+        } else if has_resolution_target
+            && explicitly_tests_resolution_target
+            && default_effects.iter().any(|effect| {
+                effect.downcast_ref::<crate::effects::TargetOnlyEffect>().is_some()
+            })
+        {
+            // The target was announced by its own declaration ahead of the
+            // action ("Whenever ..., create a token that's a copy of another
+            // target attacking creature"): the condition tests that declared
+            // target, not the object the action creates.
+            None
         } else if has_resolution_target && explicitly_tests_resolution_target {
             // A demonstrative condition ordinarily denotes the target of the
             // default action, whose stable tag preserves authored identity

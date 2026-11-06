@@ -18,7 +18,16 @@ test('card-glint paints a real Magic face and keeps live ability actions', {time
     await page.evaluate(()=>window.showGlintFrame());
     await page.waitForFunction(() => ['ready','error','unavailable'].includes(document.querySelector('[data-card-glint-frame]')?.dataset.cardGlintFrame), undefined, {timeout:150000});
     assert.equal(await page.locator('[data-card-glint-frame]').getAttribute('data-card-glint-frame'),'ready');
-    assert.ok(await page.locator('[data-card-glint-frame]').evaluate(canvas=>canvas.toDataURL()===window.warmedGlintResult.canvas.toDataURL()),'mounted frame uses the prepared pixels');
+    // The mounted canvas shows the warmed texture at its own device-pixel size.
+    assert.ok(await page.locator('[data-card-glint-frame]').evaluate(canvas=>{
+      const source=window.warmedGlintResult.canvas;
+      if (canvas.width>source.width||canvas.width!==Math.min(source.width,Math.ceil(canvas.clientWidth*devicePixelRatio))) return false;
+      const expected=document.createElement('canvas');expected.width=canvas.width;expected.height=canvas.height;
+      const context=expected.getContext('2d');context.imageSmoothingQuality='high';context.drawImage(source,0,0,canvas.width,canvas.height);
+      const a=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data, b=context.getImageData(0,0,canvas.width,canvas.height).data;
+      let difference=0;for(let i=0;i<a.length;i++) difference+=Math.abs(a[i]-b[i]);
+      return difference/a.length<4;
+    }),'mounted frame uses the prepared pixels');
     const button=page.getByRole('button',{name:'Glint Test Adept: {T}: Draw a card.'});
     await button.first().click();
     assert.equal(await page.evaluate(()=>window.glintActivated),'draw');

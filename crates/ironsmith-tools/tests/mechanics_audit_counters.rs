@@ -1119,9 +1119,7 @@ mod day_night {
         game.set_daytime(false);
         assert_eq!(game.object(cathar).unwrap().name.as_str(), "Moonrage Brute");
         let _ = pending(&mut game);
-        eprintln!("P3DBG before day: night={} transformed={} nightbound={}", game.is_night, game.is_transformed_permanent(cathar), game.object_has_static_ability_id(cathar, ironsmith::static_abilities::StaticAbilityId::Nightbound));
         game.set_daytime(true);
-        eprintln!("P3DBG after day: night={} transformed={} pending={:?}", game.is_night, game.is_transformed_permanent(cathar), game.turn_store.pending_day_night_as_transforms);
         assert_eq!(game.object(cathar).unwrap().name.as_str(), "Brutal Cathar");
         let mut dm = Dm::yes().prefer(&["Opposing Bear"]);
         settle(&mut game, &mut dm);
