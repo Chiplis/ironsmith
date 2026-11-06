@@ -104,3 +104,39 @@ test('reserved Stack space participates in card fitting and drop coordinates', (
     assert.equal(battlefieldSceneCellAtPoint(geometry, 10, 10), null);
   }
 });
+
+test('Arena regions: creatures centre, sagas and walkers far right, lands left, others right', () => {
+  const urzasSaga = card(5, 'lands', { card_types: ['enchantment', 'land'], oracle_text: 'I — Urza\'s Saga gains "{T}: Add {C}."' });
+  const layout = allocateBattlefieldScene([
+    card(1, 'artifacts', { card_types: ['artifact'] }),
+    card(2, 'lands', { card_types: ['land'] }),
+    card(3, 'enchantments', { card_types: ['enchantment'] }),
+    card(4, 'planeswalkers', { card_types: ['planeswalker'] }),
+    urzasSaga,
+    card(6, 'creatures', { card_types: ['creature'] }),
+    card(7, 'lands', { card_types: ['land'] }),
+  ], null, { columns: 6 });
+  const at = id => layout.gridPositionById.get(String(id));
+  assert.deepEqual([at(4).row, at(4).column], [1, 6]);
+  assert.deepEqual([at(5).row, at(5).column], [1, 5]);
+  assert.deepEqual([at(6).row, at(6).column], [1, 3]);
+  assert.deepEqual([at(2).row, at(2).column, at(7).column], [2, 1, 2]);
+  assert.deepEqual([at(1).row, at(1).column, at(3).column], [2, 6, 5]);
+});
+
+test('Arena regions are not mirrored sideways for the opponent', () => {
+  const layout = allocateBattlefieldScene([
+    card(1, 'lands', { card_types: ['land'] }), card(2, 'planeswalkers', { card_types: ['planeswalker'] }),
+  ], null, { columns: 6, side: 'top' });
+  assert.deepEqual(layout.gridPositionById.get('1'), { row: 1, column: 1, groupId: 'back', region: 'lands' });
+  assert.deepEqual(layout.gridPositionById.get('2'), { row: 2, column: 6, groupId: 'front', region: 'showcase' });
+});
+
+test('an animated manland moves from the lands to the creatures and back', () => {
+  const land = card(1, 'lands', { card_types: ['land'] });
+  const first = allocateBattlefieldScene([land, card(2, 'creatures', { card_types: ['creature'] })]);
+  const animated = allocateBattlefieldScene([{ ...land, lane: 'creatures', card_types: ['artifact', 'creature', 'land'] }, card(2)], first);
+  assert.equal(animated.gridPositionById.get('1').region, 'creatures');
+  const back = allocateBattlefieldScene([land, card(2)], animated);
+  assert.deepEqual(back.gridPositionById.get('1'), first.gridPositionById.get('1'));
+});

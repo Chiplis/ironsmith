@@ -1,4 +1,3 @@
-import { PAPER_FRONT_LANES, normalizeBattlefieldLane } from './battlefield-layout.js';
 import { compactLandOffsets } from './compact-land-layout.js';
 import { arenaPermanentKind } from './mobile-arena.js';
 
@@ -27,6 +26,20 @@ function attachmentHosts(cards) {
   return hosts;
 }
 
+/** MTG Arena's battlefield regions, in its precedence order: creatures in the
+ * centre of the front row; Sagas, planeswalkers and battles at its far right;
+ * lands from the left of the back row; every other permanent from its right.
+ * Live characteristics decide, so an animated land joins the creatures. */
+export function arenaBattlefieldRegion(card = {}) {
+  const kind = arenaPermanentKind(card);
+  if (kind === 'creature') return 'creatures';
+  const saga = /\bsaga\b/i.test(card.type_line || '')
+    || (/enchantment/i.test((card.card_types || []).join(' ') || card.lane || '') && /^(?:I|II|III|IV|V|VI)\s*[—,]/m.test(card.oracle_text || ''));
+  if (saga || kind === 'planeswalker' || kind === 'battle' || kind === 'saga') return 'showcase';
+  return kind === 'land' ? 'lands' : 'others';
+}
+const FRONT_REGIONS = new Set(['creatures', 'showcase']);
+
 /** Pure allocation: membership changes never repack surviving objects. Engine
  * groups remain authoritative: do not merge cards merely because names match. */
 export function allocateBattlefieldScene(cards, previous, {
@@ -34,7 +47,9 @@ export function allocateBattlefieldScene(cards, previous, {
 } = {}) {
   const survivingColumns = (previous?.orderedCards || []).filter(old => cards.some(card => members(card).some(id => members(old).includes(id))))
     .map(card => previous.gridPositionById.get(String(card.id))?.column || 1);
-  const frontCount = cards.filter(card => PAPER_FRONT_LANES.includes(normalizeBattlefieldLane(card.lane))).length;
+  const regionById = new Map(cards.map(card => [String(card.id), singleRow ? 'main' : arenaBattlefieldRegion(card)]));
+  const region = card => regionById.get(String(card.id)) ?? (singleRow ? 'main' : arenaBattlefieldRegion(card));
+  const frontCount = cards.filter(card => FRONT_REGIONS.has(region(card))).length;
   // Expand tracks before introducing another rank. Bound capacity so a token
   // army eventually scrolls instead of forcing a screen-wide microscopic row.
   const desiredColumns = Math.min(12, Math.max(frontCount, cards.length - frontCount));
@@ -46,12 +61,11 @@ export function allocateBattlefieldScene(cards, previous, {
   for (const card of previous?.orderedCards || []) {
     for (const id of members(card)) oldByMember.set(id, card);
   }
-  const group = card => singleRow ? 'main'
-    : PAPER_FRONT_LANES.includes(normalizeBattlefieldLane(card.lane)) ? 'front' : 'back';
+  const group = card => singleRow ? 'main' : FRONT_REGIONS.has(region(card)) ? 'front' : 'back';
   const firstRow = card => singleRow ? 1 : (group(card) === 'front') === (side !== 'top') ? 1 : 2;
   const claim = (card, position) => {
     if (!position || occupied.has(cellKey(position))) return false;
-    gridPositionById.set(String(card.id), { ...position, groupId: group(card) });
+    gridPositionById.set(String(card.id), { row: position.row, column: position.column, groupId: group(card), region: region(card) });
     occupied.add(cellKey(position));
     return true;
   };
@@ -65,7 +79,7 @@ export function allocateBattlefieldScene(cards, previous, {
   for (const card of cards) {
     const old = members(card).map(id => oldByMember.get(id)).find(Boolean);
     const oldPosition = old && previous.gridPositionById.get(String(old.id));
-    if (!hosts.has(String(card.id)) && !gridPositionById.has(String(card.id)) && oldPosition?.groupId === group(card)) claim(card, oldPosition);
+    if (!hosts.has(String(card.id)) && !gridPositionById.has(String(card.id)) && (oldPosition?.region ?? oldPosition?.groupId) === region(card)) claim(card, oldPosition);
     // Stable identity remembers a slot; runtime membership distinguishes a blink
     // from a surviving group whose representative was replaced.
     const survives = old && incarnations(old).some(id => incarnations(card).includes(id));
@@ -74,12 +88,24 @@ export function allocateBattlefieldScene(cards, previous, {
     visualKeys.add(visualKey);
     visualKeyById.set(String(card.id), visualKey);
   }
-  const centerColumns = Array.from({ length: maxCols }, (_, i) => i + 1)
-    .sort((a, b) => singleRow ? a - b : Math.abs(a - (maxCols + 1) / 2) - Math.abs(b - (maxCols + 1) / 2) || a - b);
-  for (const card of cards) {
-    if (hosts.has(String(card.id)) || gridPositionById.has(String(card.id))) continue;
+  const leftToRight = Array.from({ length: maxCols }, (_, i) => i + 1);
+  const columnOrder = {
+    main: leftToRight,
+    creatures: [...leftToRight].sort((a, b) => Math.abs(a - (maxCols + 1) / 2) - Math.abs(b - (maxCols + 1) / 2) || a - b),
+    showcase: [...leftToRight].reverse(),
+    lands: leftToRight,
+    others: [...leftToRight].reverse(),
+  };
+  // The edge regions claim first so creatures spreading from the centre never
+  // take the far-right showcase seat or the lands' left edge.
+  const claimOrder = ['showcase', 'lands', 'others', 'creatures', 'main'];
+  const pending = cards.filter(card => !hosts.has(String(card.id)) && !gridPositionById.has(String(card.id)))
+    .map((card, index) => ({ card, index }))
+    .sort((a, b) => claimOrder.indexOf(region(a.card)) - claimOrder.indexOf(region(b.card)) || a.index - b.index);
+  for (const { card } of pending) {
+    const columns = columnOrder[region(card)];
     let row = firstRow(card);
-    while (!centerColumns.some(column => claim(card, { row, column }))) row += singleRow ? 1 : 2;
+    while (!columns.some(column => claim(card, { row, column }))) row += singleRow ? 1 : 2;
   }
   const depths = new Map(), attachmentDepthById = new Map();
   for (const [id, host] of hosts) {
