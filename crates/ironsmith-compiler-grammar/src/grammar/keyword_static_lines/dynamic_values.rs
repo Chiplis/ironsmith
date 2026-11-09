@@ -75,6 +75,9 @@ pub enum DynamicCostValueShape<'a> {
     UnsupportedCardTypesAmong,
     CountersRemovedThisWay(Option<CounterType>),
     EnergyPaidThisWay,
+    /// "each time you <verb>ed this turn" / "each time you've performed the
+    /// <label> action this turn": the label's words (or the past-tense verb).
+    NamedActionTimesThisTurn { label_tokens: &'a [OwnedLexToken], past_tense_verb: bool },
     PlayerCounters(CounterType),
     ThisWayMetric(DynamicThisWayMetric),
     RevealedPublic,
@@ -101,6 +104,26 @@ pub fn parse_dynamic_cost_value_shape_tokens(
 }
 
 fn classify_dynamic_filter(tokens: &[OwnedLexToken]) -> DynamicCostValueShape<'_> {
+    {
+        // The sentence's own period is not part of the count.
+        let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+        let words = crate::lexer::parser_token_word_refs(tokens);
+        if let ["time", "you", verb, "this", "turn"] = words.as_slice()
+            && verb.len() > 3
+            && verb.ends_with("ed")
+            && tokens.len() == 5
+        {
+            return DynamicCostValueShape::NamedActionTimesThisTurn { label_tokens: &tokens[2..3], past_tense_verb: true };
+        }
+        if words.len() >= 8
+            && matches!(words[..2], ["time", "youve"] | ["time", "you've"])
+            && words[2..4] == ["performed", "the"]
+            && words[words.len() - 3..] == ["action", "this", "turn"]
+            && tokens.len() == words.len()
+        {
+            return DynamicCostValueShape::NamedActionTimesThisTurn { label_tokens: &tokens[4..tokens.len() - 3], past_tense_verb: false };
+        }
+    }
     if tokens.len() == 4
         && (tokens[0].mana_group_inner().is_some_and(|symbol| symbol.eq_ignore_ascii_case("e"))
             || tokens[0].is_word("e"))

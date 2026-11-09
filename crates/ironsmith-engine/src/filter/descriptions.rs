@@ -1017,6 +1017,14 @@ fn abilities_have_vanishing(abilities: &[crate::ability::Ability]) -> bool {
         })
 }
 
+fn abilities_have_keyword_marker_static(abilities: &[crate::ability::Ability], marker: &str) -> bool {
+    abilities.iter().any(|ability| {
+        matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+            if matches!(static_ability.id(), StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordText)
+                && static_ability.display().eq_ignore_ascii_case(marker))
+    })
+}
+
 pub(crate) fn abilities_have_marker(abilities: &[crate::ability::Ability], marker: &str) -> bool {
     use crate::ability::AbilityKind;
 
@@ -1036,8 +1044,10 @@ pub(crate) fn abilities_have_marker(abilities: &[crate::ability::Ability], marke
     {
         return true;
     }
-    if normalized_marker == "vanishing" && abilities_have_vanishing(abilities) {
-        return true;
+    // CR 702.63a: vanishing is one keyword made of its entry counters and
+    // two triggers; a lone component's text does not grant the keyword.
+    if normalized_marker == "vanishing" {
+        return abilities_have_vanishing(abilities) || abilities_have_keyword_marker_static(abilities, marker);
     }
     if normalized_marker == "cycling" && abilities.iter().any(ability_is_structural_cycling) {
         return true;
@@ -1173,6 +1183,10 @@ pub(super) fn snapshot_has_ability_marker(
         && snapshot.abilities.iter().any(ability_is_structural_unearth)
     {
         return true;
+    }
+    if normalized_marker == "vanishing" {
+        return abilities_have_vanishing(&snapshot.abilities)
+            || abilities_have_keyword_marker_static(&snapshot.abilities, marker);
     }
 
     snapshot.abilities.iter().any(|ability| {

@@ -10,7 +10,11 @@ fn card(name:&str)->serde_json::Value {fixture()["mechanics"][0]["representative
 #[test]
 fn all_nineteen_actual_source_cards_and_twenty_faces_compile_both_independent_routes() {
  let x=fixture();let cards=x["mechanics"][0]["representative_cards"].as_array().unwrap();assert_eq!(cards.len(),19);let mut faces=0;
- for card in cards {for face in card["executable_faces"].as_array().unwrap(){let mut source=card.clone();source.as_object_mut().unwrap().extend(face.as_object().unwrap().clone());let _=source_routes::definitions(&source).unwrap_or_else(|error|panic!("{}: {error}",face["name"]));faces+=1;}}
+ for card in cards {
+  // A physical multiface source compiles all sibling faces together (the
+  // helper refuses to discard linked faces); single-face rows go one by one.
+  if card["executable_faces"].as_array().unwrap().len()>1 {faces+=source_routes::linked_definitions(card).unwrap_or_else(|error|panic!("{}: {error}",card["name"])).len();continue;}
+  for face in card["executable_faces"].as_array().unwrap(){let mut source=card.clone();source.as_object_mut().unwrap().extend(face.as_object().unwrap().clone());let _=source_routes::definitions(&source).unwrap_or_else(|error|panic!("{}: {error}",face["name"]));faces+=1;}}
  assert_eq!(faces,20,"includes both complete Reytali faces");
 }
 fn ready()->GameState {let mut g=GameState::new(vec!["A".into(),"B".into()],20);g.turn.active_player=A;g.turn.priority_player=Some(A);g.turn.phase=ironsmith::game_state::Phase::FirstMain;g}

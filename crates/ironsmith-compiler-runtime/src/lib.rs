@@ -257,6 +257,7 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             linked_exile_class_level: spec.linked_exile_class_level,
             source_exiled_surface: spec.source_exiled_surface,
             filtered_zone_surface: spec.filtered_zone_surface,
+            cast_max_total_mana: spec.cast_max_total_mana,
             top_card_only: spec.top_card_only,
             instant_timing: spec.instant_timing,
             may_look_at_top: spec.may_look_at_top,
@@ -287,12 +288,14 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             .map_err(|error| CompilerIntegrationError::ArtifactEncoding {
                 detail: error.to_string(),
             })?;
+        // The effect is one node of the definition being converted: an
+        // enclosing CardDefinitionScopeEffect may own its real-card catalog.
         let wire = ironsmith_text::with_choice_decision_labels(wire, |wire|
-            ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire)
+            ironsmith_runtime_catalog::artifact_materializer::materialize_nested_effect(wire)
                 .map_err(|error| error.to_string()))
             .map_err(|detail| CompilerIntegrationError::ArtifactEncoding { detail })?;
         let effect = if effect.downcast_ref::<ironsmith::effects::ChooseModeEffect>().is_some() {
-            ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire.clone())
+            ironsmith_runtime_catalog::artifact_materializer::materialize_nested_effect(wire.clone())
                 .map_err(|error| CompilerIntegrationError::ArtifactMaterialization { detail: error.to_string() })?
         } else { effect };
         let json = serde_json::to_string(&wire).map_err(|error| {
@@ -482,13 +485,15 @@ fn convert_derived_alternative_cast(
 fn runtime_static_ability_model(
     ability: compiler::static_abilities::StaticAbility,
 ) -> Result<ironsmith::static_abilities::CompiledStaticAbility, CompilerIntegrationError> {
-    ability.try_map(
+    let mut model = ability.try_map(
         runtime_trigger_from_core_model,
         runtime_effect_from_core_model,
         runtime_cost_from_core_model,
         // Runtime abilities already carry resolved conditions.
         Ok,
-    )
+    )?;
+    ironsmith::effect_model_interpreter::prune_optional_text_variant_programs(&mut model);
+    Ok(model)
 }
 
 fn runtime_static_ability(

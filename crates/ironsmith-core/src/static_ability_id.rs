@@ -631,13 +631,15 @@ pub enum StaticAbilityId {
     NamedCastingPriceReduction,
     CardCreationSelectionReplacement,
     CopySourceSelectionReplacement,
+    /// Inert marker of a printed battlefield casting permission. Appended.
+    BattlefieldCastPermission,
 }
 
 impl StaticAbilityId {
     fn exhaustive_classification_guard(id: StaticAbilityId) {
         use StaticAbilityId::*;
         match id {
-            CopySourceSelectionReplacement | CardCreationSelectionReplacement => {},
+            CopySourceSelectionReplacement | CardCreationSelectionReplacement | BattlefieldCastPermission => {},
             OptionalTextFragments
             | NamedActionPaymentAlternative
             | NamedActionTokenAbilityGrant

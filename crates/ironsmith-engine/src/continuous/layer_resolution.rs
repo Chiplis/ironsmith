@@ -2131,11 +2131,25 @@ pub(super) fn add_temporary_static_ability_grants(
             .origin(index)
             .expect("temporary grant and origin remain paired")
             .clone();
+        // Off the battlefield a self grant's static does not function, yet the
+        // object itself acquired the ability ("when you cast this spell, if
+        // you paid this additional cost, copy it" on a spell paying a granted
+        // optional cost, CR 601.2f/603.2): the spell has it directly.
+        let self_granted = if object.zone != crate::zone::Zone::Battlefield
+            && ability.granted_inline_condition().is_none()
+        {
+            ability.source_granted_inline_abilities().into_iter().cloned().collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         chars.abilities.push_with_origin(
             Ability::static_ability(ability.clone()),
-            super::AbilityOrigin::Temporary(origin),
+            super::AbilityOrigin::Temporary(origin.clone()),
         );
         chars.static_abilities.push(ability);
+        for granted in self_granted {
+            chars.abilities.push_with_origin(granted, super::AbilityOrigin::Temporary(origin.clone()));
+        }
     }
 }
 

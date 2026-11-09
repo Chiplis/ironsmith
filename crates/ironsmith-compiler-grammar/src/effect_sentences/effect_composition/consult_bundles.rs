@@ -266,7 +266,7 @@ pub(super) fn parse_look_manifest_partition_bundle(
     ));
     effects.push(EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
         SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
-            target: TargetAst::Tagged(crate::tag::TagRef::of(remainder), None), top_position: 0,
+            target: TargetAst::Tagged(crate::tag::TagRef::of(remainder), None), top_position: 0, top_position_value: None,
         }),
     ));
     Ok(Some(effects))

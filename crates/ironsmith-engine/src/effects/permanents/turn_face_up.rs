@@ -376,6 +376,13 @@ impl crate::effects::SimultaneousEffectCompletion for FaceUpInstructionCompletio
     }
 }
 
+/// The instruction reports the objects it turned face up (23b10081a), not a
+/// bare count.
+#[cfg(test)]
+fn turned_count(result: &EffectOutcome) -> usize {
+    result.explicit_objects().map_or(0, <[crate::ids::ObjectId]>::len)
+}
+
 #[cfg(test)]
 mod exile_opening_tests {
     use super::*;
@@ -457,7 +464,7 @@ mod exile_opening_tests {
                     assert!(game.publicly_revealed_hidden_cards().is_empty());
                     if !pause { assert!(matches!(result, Err(ExecutionError::IncompleteEvidence(_)))); }
                 } else {
-                    assert_eq!(result.unwrap().count_or_zero(), 2);
+                    assert_eq!(turned_count(&result.unwrap()), 2);
                     assert!(cards[..2].iter().all(|id| !game.is_face_down(*id)));
                 }
                 assert!(cards[2..].iter().all(|id| game.is_face_down(*id) && game.is_hidden_card_placeholder(*id)));
@@ -471,7 +478,7 @@ mod exile_opening_tests {
                     let mut ctx = ExecutionContext::new(source, alice, &mut dm);
                     ctx.set_tagged_objects("selected_pile", selected);
                     let result = effect.execute(&mut game, &mut ctx).unwrap();
-                    assert_eq!(result.count_or_zero(), 2);
+                    assert_eq!(turned_count(&result), 2);
                     assert!(result.events.is_empty());
                     assert!(cards[..2].iter().all(|id| !game.is_face_down(*id)));
                     assert!(cards[2..].iter().all(|id| game.is_face_down(*id) && game.is_hidden_card_placeholder(*id)));
@@ -575,7 +582,7 @@ mod replacement_program_boundary_tests {
                 let mut dm = Answers { pause: true, calls: 0, pending: false };
                 let mut ctx = ExecutionContext::new(target, alice, &mut dm);
                 let result = run(&mut game, &mut ctx, generic).unwrap();
-                observations.push((generic, split, "pause", result.count_or_zero() == 0
+                observations.push((generic, split, "pause", turned_count(&result) == 0
                     && ctx.decision_maker.awaiting_choice() && game.is_face_down(target)
                     && game.object(target).unwrap().face_down_cast_state.is_some()
                     && game.player(alice).unwrap().life == 20
@@ -586,7 +593,7 @@ mod replacement_program_boundary_tests {
                 let mut replay = Answers { pause: false, calls: 0, pending: false };
                 let mut ctx = ExecutionContext::new(target, alice, &mut replay);
                 let result = run(&mut game, &mut ctx, generic).unwrap();
-                observations.push((generic, split, "replay", result.count_or_zero() == 1
+                observations.push((generic, split, "replay", turned_count(&result) == 1
                     && !ctx.decision_maker.awaiting_choice() && !game.is_face_down(target)
                     && game.object(target).unwrap().face_down_cast_state.is_none()
                     && game.player(alice).unwrap().life == 28

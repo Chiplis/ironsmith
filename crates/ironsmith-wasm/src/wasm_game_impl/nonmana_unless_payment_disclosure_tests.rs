@@ -121,6 +121,7 @@ fn resolving_nonmana_unless_disclosure_uses_payer_not_counter_controller_and_ret
         if name == "Reality Smasher" { assert!(disclosure_command(&mut wasm, command(vec![hand[0]])).is_err()); }
         failing.store(false, std::sync::atomic::Ordering::SeqCst);
         disclosure_command(&mut wasm, command(selected)).unwrap();
+        decline_hand_reveal_windows(&mut wasm);
         assert!(wasm.game.stack.iter().any(|entry| !entry.is_ability && entry.object_id == victim));
         assert_eq!(wasm.game.player(PlayerId(1)).unwrap().hand.len(), if name == "Perplex" { 0 } else { 1 });
         assert_eq!(wasm.game.object(foreign).unwrap().zone, Zone::Hand);

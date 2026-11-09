@@ -133,6 +133,36 @@ fn parse_emblem_ability_tokens(tokens: &[OwnedLexToken]) -> Option<EmblemAbility
 /// Every ability of one quoted group, or `None` when any part of the quoted
 /// text yields no ability: an emblem must never silently lose its text.
 fn parse_emblem_ability_group(tokens: &[OwnedLexToken]) -> Option<Vec<EmblemAbilityAst>> {
+    // An emblem's text is already double-quoted, so its own nested quoted
+    // rules use apostrophes ("... has custom keyword 'reverberate', and
+    // '...'"). Read those standalone delimiters as quotes; possessives are
+    // part of their word tokens and are unaffected.
+    let normalized;
+    let tokens = if tokens.iter().any(|token| token.kind == TokenKind::Apostrophe) {
+        // A closing apostrophe right after a word ("'reverberate',") lexes as
+        // part of that word; inside an open nested quote it is the closer.
+        let mut open = false;
+        let mut out = Vec::with_capacity(tokens.len() + 2);
+        for token in tokens {
+            if token.kind == TokenKind::Apostrophe {
+                open = !open;
+                out.push(OwnedLexToken::new(TokenKind::Quote, "\"", token.span()));
+            } else if open
+                && token.kind == TokenKind::Word
+                && let Some(word) = token.slice.strip_suffix('\'').or_else(|| token.slice.strip_suffix('\u{2019}'))
+                && !word.is_empty()
+                && word.chars().all(|ch| ch.is_alphanumeric() || ch == '-')
+            {
+                open = false;
+                out.push(OwnedLexToken::new(TokenKind::Word, word, token.span()));
+                out.push(OwnedLexToken::new(TokenKind::Quote, "\"", token.span()));
+            } else {
+                out.push(token.clone());
+            }
+        }
+        normalized = out;
+        normalized.as_slice()
+    } else { tokens };
     let sentences = split_lexed_sentences(tokens);
     let first_is_triggered_or_activated = sentences.first().is_some_and(|sentence| {
         clause_grammar::parse_trigger_intro_tokens(sentence).body_first > 0

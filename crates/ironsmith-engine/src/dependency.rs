@@ -1818,6 +1818,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::TimesPaidLabel(_)
         | Value::KickCount
         | Value::PlayerCounters(_, _)
+        | Value::PlayerNamedActionCount { .. }
         | Value::CountersOnSource(_)
         | Value::NamedActionCount {..}
         | Value::CountersOn(_, _)
@@ -2541,6 +2542,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::TimesPaidLabel(_)
         | Value::KickCount
         | Value::PlayerCounters(_, _)
+        | Value::PlayerNamedActionCount { .. }
         | Value::CountersOnSource(_)
         | Value::NamedActionCount {..}
         | Value::CountersOn(_, _)

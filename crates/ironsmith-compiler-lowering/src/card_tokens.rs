@@ -421,6 +421,34 @@ pub fn young_hero_role_token_definition() -> CardDefinition {
         )))
         .build()
 }
+/// A custom audition Role (custom CR 701.101c-g): "a <Name> Role giving P/T
+/// and <keyword>" — the enchanted creature has base power and toughness P/T
+/// and the keyword.
+pub fn audition_role_token_definition(
+    name: &str,
+    power: i32,
+    toughness: i32,
+    keyword: StaticAbility,
+    keyword_text: &str,
+) -> CardDefinition {
+    let enchanted = enchanted_creature_filter();
+    CardDefinitionBuilder::new(CardId::new(), &format!("{name} Role"))
+        .token()
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Role])
+        .oracle_text(&format!(
+            "Enchant creature\nEnchanted creature has base power and toughness {power}/{toughness} and has {keyword_text}."
+        ))
+        .enchants(ObjectFilter::creature().into())
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::set_base_power_toughness(
+            enchanted.clone(), power, toughness,
+        )))
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+            GrantObjectAbilityForFilter::from_static_grant(enchanted, keyword.into()),
+        )))
+        .build()
+}
+
 pub fn monster_role_token_definition() -> CardDefinition {
     let enchanted = enchanted_creature_filter();
     CardDefinitionBuilder::new(CardId::new(), "Monster Role")

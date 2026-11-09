@@ -8098,9 +8098,26 @@ fn copied_object_etb_replacement_effects(
         return Vec::new();
     };
 
+    // The copied object's copiable values (CR 707.2), including any
+    // exceptions another copy effect made part of them (CR 707.9b), supply
+    // its entry replacements; its printed abilities alone would miss them.
     let mut copied_abilities = game
         .object(copy_source_id)
-        .map(|source| source.abilities_vec())
+        .map(|source| {
+            let mut source = source.clone();
+            let effects = game.all_continuous_effects();
+            if let Some(values) = crate::continuous::copiable_values_with_effects(
+                copy_source_id,
+                game.objects_map(),
+                &effects,
+                &game.battlefield,
+                game.commander_objects(),
+                game,
+            ) {
+                source.copy_copiable_values_from_values(&values);
+            }
+            source.abilities_vec()
+        })
         .unwrap_or_default();
     copied_abilities.extend(etb.added_abilities.clone());
 

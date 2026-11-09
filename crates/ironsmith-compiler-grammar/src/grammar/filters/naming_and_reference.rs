@@ -1754,31 +1754,43 @@ fn apply_with_triggering_spell_mana_value(
 
 /// "creatures with greater power" (Locke, Éowyn): greater than the source
 /// object's own power or toughness.
+/// "with greater power than this creature" names the source itself, and
+/// "with greater power than it" its antecedent (bound by reference
+/// resolution, the source in a static ability's condition).
 fn apply_with_greater_source_stat(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
     let [greater, stat, rest @ ..] = words else {
         return None;
     };
-    if *greater != "greater"
-        || rest
-            .first()
-            .is_some_and(|word| matches!(*word, "than" | "or" | "and" | "also"))
-    {
+    if *greater != "greater" {
         return None;
     }
+    let antecedent = || {
+        Box::new(crate::ChooseSpec::Tagged(
+            (crate::tag::CompilerReferenceTag::It.bind()).into(),
+        ))
+    };
+    let (power, toughness, used) = match rest {
+        ["than", "this", "creature" | "permanent", ..] => {
+            (crate::effect::Value::SourcePower, crate::effect::Value::SourceToughness, 5)
+        }
+        ["than", "it", ..] => (
+            crate::effect::Value::PowerOf(antecedent()),
+            crate::effect::Value::ToughnessOf(antecedent()),
+            4,
+        ),
+        [next, ..] if matches!(*next, "than" | "or" | "and" | "also") => return None,
+        _ => (crate::effect::Value::SourcePower, crate::effect::Value::SourceToughness, 2),
+    };
     match *stat {
         "power" if filter.power.is_none() => {
-            filter.power = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(
-                crate::effect::Value::SourcePower,
-            )));
+            filter.power = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(power)));
         }
         "toughness" if filter.toughness.is_none() => {
-            filter.toughness = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(
-                crate::effect::Value::SourceToughness,
-            )));
+            filter.toughness = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(toughness)));
         }
         _ => return None,
     }
-    Some(2)
+    Some(used)
 }
 
 pub(super) fn try_apply_with_clause_tail(

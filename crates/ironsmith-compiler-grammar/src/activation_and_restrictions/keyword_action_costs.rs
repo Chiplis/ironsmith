@@ -639,6 +639,33 @@ pub fn parse_payment_clause_as_total_cost(
     if let Some(mana) = crate::grammar::activation_costs::parse_artifact_creature_tap_price(&trimmed)? {
         return Ok(Some(ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Mana(mana))));
     }
+    // "pay {U} and have three lands you control ... become ... and perform
+    // the waste action": a mana payment joined to a characteristic
+    // conversion. The conversion and its named completion are one activation
+    // cost component (its completion reads the converted objects), so read
+    // the list exactly as the activation cost "{U}, Have ...".
+    if trimmed.first().is_some_and(|token| token.is_word("pay"))
+        && let Some(and_have) = {
+            let mut quoted = false;
+            trimmed.windows(2).position(|pair| {
+                if pair[0].kind == crate::lexer::TokenKind::Quote { quoted = !quoted; }
+                !quoted && pair[0].is_word("and") && pair[1].is_word("have")
+            })
+        }
+        && and_have > 1
+    {
+        let mut list = trimmed[1..and_have].to_vec();
+        list.push(OwnedLexToken::comma(trimmed[and_have].span));
+        list.extend_from_slice(&trimmed[and_have + 1..]);
+        if let Ok(cst) = crate::grammar::activation_costs::parse_activation_cost_tokens(&list)
+            && let Ok(cost) = crate::semantic_assembly::activation_costs::assemble_activation_cost(&cst)
+            && let [branch] = cost.branches.as_slice()
+        {
+            crate::word_claims::claim_tokens(&trimmed[..1]);
+            crate::word_claims::claim_tokens(&trimmed[and_have..=and_have]);
+            return Ok(Some(ironsmith_core::TotalCost::from_costs(branch.clone())));
+        }
+    }
     if trimmed.first().is_some_and(|token| token.is_word("waterbend")) {
         let cst = crate::grammar::activation_costs::parse_activation_cost_tokens(&trimmed)?;
         let cost = crate::semantic_assembly::activation_costs::assemble_activation_cost(&cst)?;

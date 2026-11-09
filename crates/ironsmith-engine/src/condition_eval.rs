@@ -3258,6 +3258,21 @@ fn evaluate_turn_history_condition(
                         .is_some_and(|change| change.to == Zone::Battlefield && change.from == *zone)
             })
         }
+        TurnHistoryCondition::TriggeringObjectPaidCustomKeyword(name) => triggering_snapshot()
+            .is_some_and(|snapshot| snapshot.optional_costs_paid.paid_custom_keyword(name)
+                || game.find_object_by_stable_id(snapshot.stable_id)
+                    .and_then(|id| game.object(id))
+                    .is_some_and(|object| object.optional_costs_paid.paid_custom_keyword(name))),
+        TurnHistoryCondition::SourceEnteredFromZoneThisTurn(zone) => game
+            .object(ctx.source)
+            .is_some_and(|object| object.zone == Zone::Battlefield
+                && game.turn_store.turn_history.object_entered_battlefield_from_zone(object.stable_id, *zone)),
+        TurnHistoryCondition::SourceWasCastFromZoneThisTurn(zone) => game
+            .object(ctx.source)
+            .is_some_and(|object| game.turn_store.turn_history.object_was_cast_from_zone(object.stable_id, *zone)),
+        TurnHistoryCondition::SourceWasNamedActionObjectThisTurn(label) => {
+            game.object_was_named_action_object_this_turn(ctx.source, label)
+        }
         TurnHistoryCondition::TriggeringObjectWasCastFromZone(zone) => triggering_snapshot()
             .is_some_and(|snapshot| {
                 game.turn_store
@@ -5044,8 +5059,12 @@ fn evaluate_condition_in_context(
                 let Some(player)=ctx.resolve_player(game,player)? else{return Ok(false)};
                 Some(player)
             } else {None};
+            // CR 608.2h: a source that left keeps its last known casting
+            // receipt; its current incarnation's empty record is not it.
             let receipts=game.object(shared.source).map(|source|source.named_payment_outcomes.as_slice())
-                .or_else(||ctx.execution().and_then(|execution|execution.source_snapshot.as_ref()).filter(|snapshot|snapshot.object_id==shared.source).map(|snapshot|snapshot.named_payment_outcomes.as_slice()));
+                .filter(|receipts|!receipts.is_empty())
+                .or_else(||ctx.execution().and_then(|execution|execution.source_snapshot.as_ref()).filter(|snapshot|snapshot.object_id==shared.source).map(|snapshot|snapshot.named_payment_outcomes.as_slice()).filter(|receipts|!receipts.is_empty()))
+                .or_else(||game.source_departure_snapshot(shared.source).map(|snapshot|snapshot.named_payment_outcomes.as_slice()));
             Ok(receipts.is_some_and(|receipts|receipts.iter().any(|receipt|
                 receipt.label==*label && receipt.paid==*paid && expected.is_none_or(|player|receipt.payer==player))))
         }

@@ -286,6 +286,11 @@ impl EffectExecutor for ironsmith_core::GrantExileControllerInspectionEffect {
             if !game.object(card).is_some_and(|object|object.zone==crate::zone::Zone::Exile){continue;}
             for source in &sources {
                 game.grant_face_down_exile_source_controller_view(card,*source);count+=1;
+                // The created inspector is the card's linked source: its
+                // "cards exiled with this" abilities read this card (CR 607.2a).
+                if !game.get_exiled_with_source_links(*source).contains(&card) {
+                    game.add_exiled_with_source_link(*source,card);
+                }
             }
         }
         Ok(EffectOutcome::count(count))

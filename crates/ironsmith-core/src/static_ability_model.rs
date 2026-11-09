@@ -2557,6 +2557,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// Retain an operation's original resolving menu, perform one indexed mode,
     /// then choose exactly one of its remaining original modes.
     NamedActionFirstThenOtherMode { label: String, player: PlayerFilter, first_mode: u32, display: String },
+    /// Append-only. The live printed ability that permits casting this
+    /// permanent from the battlefield by its named alternative price
+    /// ("You may cast this spell from the battlefield for {1}{U} rather than
+    /// pay its mana cost."). Losing it removes the permission (CR 613.1f).
+    BattlefieldCastPermission { method: String },
 }
 
 /// The printed ticket cost of a sticker-sheet row: one {TK} per ticket
@@ -2935,6 +2940,7 @@ where
                 linked_exile_class_level: spec.linked_exile_class_level,
                 source_exiled_surface: spec.source_exiled_surface,
                 filtered_zone_surface: spec.filtered_zone_surface,
+                cast_max_total_mana: spec.cast_max_total_mana,
                 top_card_only: spec.top_card_only,
                 instant_timing: spec.instant_timing,
                 may_look_at_top: spec.may_look_at_top,
@@ -3133,6 +3139,7 @@ where
                 effects: effects.into_iter().map(&mut *map_effect).collect::<Result<Vec<_>, _>>()?,
             },
             StaticAbilityPayload::NamedCastingPriceReduction {filter,keywords,maximum,optional} => StaticAbilityPayload::NamedCastingPriceReduction {filter,keywords,maximum,optional},
+            StaticAbilityPayload::BattlefieldCastPermission { method } => StaticAbilityPayload::BattlefieldCastPermission { method },
             StaticAbilityPayload::OptionalCostPaymentAlternative {filter,reference,replacement} => StaticAbilityPayload::OptionalCostPaymentAlternative {
                 filter, reference, replacement: replacement.try_map(&mut *map_cost)?,
             },
@@ -5303,6 +5310,17 @@ impl<
         let display = display.into();
         Self { id: Some(StaticAbilityId::SpellManaSpendingRestriction), label: display.clone(),
             payload: StaticAbilityPayload::GenericManaTapPayment { spells, activated_abilities, exclude_source, name: None, display } }
+    }
+
+    pub fn battlefield_cast_permission(method: impl Into<String>) -> Self {
+        let method = method.into();
+        Self {
+            id: Some(StaticAbilityId::BattlefieldCastPermission),
+            // The printed permission sentence is rendered with the
+            // alternative price itself; the marker has no surface of its own.
+            label: String::new(),
+            payload: StaticAbilityPayload::BattlefieldCastPermission { method },
+        }
     }
 
     pub fn custom_keyword_identity(name: impl Into<String>) -> Self {

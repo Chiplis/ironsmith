@@ -75,6 +75,16 @@ pub fn parse_token_definition_shape_tokens(
         Some(BuiltinTokenShape::CursedRole)
     } else if all(&["virtuous", "role"]) {
         Some(BuiltinTokenShape::VirtuousRole)
+    } else if all(&["cleric", "role"]) {
+        Some(BuiltinTokenShape::ClericRole)
+    } else if all(&["scout", "role"]) {
+        Some(BuiltinTokenShape::ScoutRole)
+    } else if all(&["warlock", "role"]) {
+        Some(BuiltinTokenShape::WarlockRole)
+    } else if all(&["wizard", "role"]) {
+        Some(BuiltinTokenShape::WizardRole)
+    } else if all(&["warrior", "role"]) {
+        Some(BuiltinTokenShape::WarriorRole)
     } else if has("blood") && !has("creature") {
         Some(BuiltinTokenShape::Blood)
     } else if has("powerstone") && !has("creature") {
@@ -121,6 +131,11 @@ pub fn parse_token_definition_shape_tokens(
             BuiltinTokenShape::RoyalRole => &["royal", "role"],
             BuiltinTokenShape::CursedRole => &["cursed", "role"],
             BuiltinTokenShape::VirtuousRole => &["virtuous", "role"],
+            BuiltinTokenShape::ClericRole => &["cleric", "role"],
+            BuiltinTokenShape::ScoutRole => &["scout", "role"],
+            BuiltinTokenShape::WarlockRole => &["warlock", "role"],
+            BuiltinTokenShape::WizardRole => &["wizard", "role"],
+            BuiltinTokenShape::WarriorRole => &["warrior", "role"],
             BuiltinTokenShape::Gingerbrute | BuiltinTokenShape::Mutavault
             | BuiltinTokenShape::SpellgorgerWeird | BuiltinTokenShape::Tarmogoyf => unreachable!("complete card-name token leaf owns these shapes"),
         };
@@ -169,9 +184,13 @@ pub fn parse_token_definition_shape_tokens(
                 .take_while(|word| **word != "named")
                 .filter_map(|word| leaf::parse_leaf_subtype_complete(word).ok())
                 .filter(|subtype| {
+                    // A card's declared custom subtype ("Clique") belongs on
+                    // the token when its vocabulary admits enchantments.
                     ironsmith_core::SubtypeFamily::Enchantment
                         .all_subtypes()
                         .contains(subtype)
+                        || matches!(subtype, Subtype::Custom(custom)
+                            if custom.families().any(|family| family == ironsmith_core::SubtypeFamily::Enchantment))
                 })
                 .collect(),
             legendary: reads("legendary"),

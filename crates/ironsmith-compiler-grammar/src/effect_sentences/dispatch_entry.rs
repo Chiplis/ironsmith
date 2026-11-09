@@ -1415,8 +1415,12 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
         );
     }
 
+    // "If a creature would die this turn, do the following instead: [...]"
+    // replaces the event with its complete bracketed program; the timed
+    // event-program reader owns it, not this exile-instead shorthand.
     if sentence_contains(tokens, WOULD_DIE_THIS_TURN_PHRASE)
         && sentence_contains(tokens, EXILE_PHRASE)
+        && !tokens.iter().any(|token| token.kind == crate::lexer::TokenKind::LBracket)
     {
         if tokens.first().is_some_and(|token| token.is_word("if"))
             && sentence_contains(tokens, A_CREATURE_WOULD_DIE_THIS_TURN_PHRASE)
@@ -2546,8 +2550,26 @@ fn into_exact_single_conditional(mut parsed: Vec<EffectAst>) -> Option<EffectAst
 }
 
 pub(super) fn parse_effect_sentences_from_sentence_inputs(
-    sentences: Vec<SentenceInput>,
+    mut sentences: Vec<SentenceInput>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // "This effect reduces only the amount of colored mana you pay." after
+    // "The next ... spell ... costs {U}{R} less to cast." (Merkurio): a
+    // next-spell symbol reduction never spills onto generic mana, which is
+    // exactly what the rider restates; it adds no instruction of its own.
+    let mut index = 1;
+    while index < sentences.len() {
+        let previous = crate::lexer::token_word_refs(sentences[index - 1].lexed()).into_iter()
+            .map(str::to_ascii_lowercase).collect::<Vec<_>>();
+        if previous.len() > 4 && previous[0] == "the" && previous[1] == "next"
+            && previous[previous.len() - 3..] == ["less", "to", "cast"]
+            && crate::keyword_static::cost_reduction_is_colored_only(sentences[index].lexed())
+        {
+            crate::word_claims::claim_tokens(sentences[index].lexed());
+            sentences.remove(index);
+        } else {
+            index += 1;
+        }
+    }
     if let Some(effects) = super::copy_cast_procedure::source_card_copy_cast(&sentences) {
         return Ok(effects);
     }
@@ -2910,6 +2932,27 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
         let previous_sentence_effects_start = sentence_effects_start.min(effects.len());
         sentence_effects_start = effects.len();
         let authored_sentence = sentences[sentence_idx].lexed();
+        // "Tap up to two target creatures. Perform the germinate action as
+        // follows: ..." — a later named-program sentence keeps its program.
+        if sentence_idx > 0
+            && authored_sentence.iter().any(|token| token.kind == TokenKind::Colon)
+            && {
+                let words = crate::lexer::parser_token_word_refs(authored_sentence);
+                (words.starts_with(&["perform", "the"]) || words.starts_with(&["then", "perform", "the"])
+                    || words.starts_with(&["you", "perform", "the"])
+                    || words.starts_with(&["if", "you", "do", "perform", "the"])
+                    || words.starts_with(&["that", "player", "performs", "the"])
+                    || words.starts_with(&["its", "controller", "performs", "the"])
+                    || words.starts_with(&["its", "owner", "performs", "the"]))
+                    && words.windows(2).any(|pair| pair == ["as", "follows"])
+            }
+            && let Some(program) = super::document_readings::parse_named_action_program_sentence(authored_sentence)?
+        {
+            effects.extend(program);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
         let comma_then =
             super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![authored_sentence]);
         if let [target_clause, flip_clause] = comma_then.as_slice()
@@ -3731,6 +3774,12 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 2;
             continue;
         }
+        if let Some(mut payment) = super::pair_procedure::life_payment_limit::read_paid_amount_followup(&sentences, sentence_idx)? {
+            effects.append(&mut payment);
+            carried_context = None;
+            sentence_idx += 2;
+            continue;
+        }
         // A repeated keep-and-rest procedure must retain its first sentence
         // as the antecedent of "the same way" before the single-statement
         // choice reader consumes it.
@@ -3894,25 +3943,40 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
         // is independently read by the ordinary effect sentence grammar.
         let instruction_words=crate::lexer::token_word_refs(&sentence_tokens);
         let optional_instruction=instruction_words.starts_with(&["you","may","choose","one","instruction"]);
+        // The menu reads its branches whole: a branch's quoted token rules
+        // belong to that branch, so read the sentence before the embedded
+        // rules were stripped for broad recognition.
+        let menu_tokens = if (instruction_words.starts_with(&["choose", "one", "instruction"]) || optional_instruction)
+            && stripped_embedded_rule
+        {
+            trim_effect_sentence_edge_punctuation(sentence)
+        } else {
+            sentence_tokens.clone()
+        };
         if (instruction_words.starts_with(&["choose", "one", "instruction"]) || optional_instruction)
-            && let Some(separator) = sentence_tokens.iter().position(|token| matches!(token.kind, TokenKind::EmDash | TokenKind::Colon)) {
+            && let Some(separator) = menu_tokens.iter().position(|token| matches!(token.kind, TokenKind::EmDash | TokenKind::Colon)) {
             let mut modes = Vec::new();
             let mut start = separator + 1;
             let mut quoted = false;
             let mut ends = Vec::new();
-            for (index, token) in sentence_tokens.iter().enumerate().skip(start) {
+            for (index, token) in menu_tokens.iter().enumerate().skip(start) {
                 if token.is_quote() { quoted = !quoted; }
                 if !quoted && matches!(token.kind, TokenKind::Pipe) { ends.push(index); }
             }
-            ends.push(sentence_tokens.len());
+            // A menu needs two alternatives: a header with no separator is an
+            // incomplete menu, never its one listed instruction alone.
+            if ends.is_empty() {
+                return Err(CardTextError::ParseError("instruction menu requires at least two alternatives".into()));
+            }
+            ends.push(menu_tokens.len());
             for end in ends {
-                let branch = &sentence_tokens[start..end];
+                let branch = &menu_tokens[start..end];
                 if branch.is_empty() { return Err(CardTextError::ParseError("empty instruction choice".into())); }
                 let branch_effects = parse_effect_sentences_lexed(branch)?;
                 modes.push(crate::cards::builders::ChooseOneModeAst { description: crate::lexer::render_token_slice(branch), effects: branch_effects });
                 start = end + 1;
             }
-            crate::word_claims::claim_tokens(&sentence_tokens);
+            crate::word_claims::claim_tokens(&menu_tokens);
             let choice=EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { chooser: crate::target::PlayerFilter::You, modes });
             effects.push(if optional_instruction {
                 EffectAst::Permissions(PermissionEffectAst::May {effects:vec![choice]})
@@ -4161,6 +4225,17 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
+        // "Otherwise, choose one instruction — <A> | <B>": the else arm is a
+        // menu whose branches read their own quoted token rules, so it gets
+        // the sentence before those rules were stripped.
+        let followup_tokens = if stripped_embedded_rule
+            && crate::lexer::token_word_refs(&sentence_tokens)
+                .starts_with(&["otherwise", "choose", "one", "instruction"])
+        {
+            trim_effect_sentence_edge_punctuation(sentence)
+        } else {
+            sentence_tokens.clone()
+        };
         let mut parse_plan = {
             let mut state = SentenceDispatchState {
                 effects: &mut effects,
@@ -4170,7 +4245,7 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
                 &mut state,
                 &sentences,
                 sentence_idx,
-                &sentence_tokens,
+                &followup_tokens,
             )? {
                 Some(PreParseFollowupResult::Handled {
                     consumed_sentences,
@@ -8455,6 +8530,11 @@ pub fn parse_effect_sentences_lexed(
     if tokens.iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 != 0 {
         if std::env::var("P6_DEBUG_QUOTES").is_ok() { eprintln!("P6DBG {}\n{}", crate::lexer::render_token_slice(tokens), std::backtrace::Backtrace::force_capture()); } // P6TEMP
         return Err(CardTextError::ParseError("incomplete quoted operand in effect program".into()));
+    }
+    // A judging sentence is its complete defined named program (custom
+    // CR 701.96); every other sentence keeps its authored tokens.
+    if let Some(expanded) = super::judge_action::expand(tokens) {
+        return parse_effect_sentences_lexed(&expanded);
     }
     if let Some(effect)=parse_linked_face_token(tokens)? {return Ok(vec![effect]);}
     // A complete next-spell envelope owns quoted static programs and its
@@ -15128,7 +15208,8 @@ fn replace_definite_prior_damage_recipient_in_effects(effects: &mut [EffectAst])
                 };
                 let mut permanent_or_player_object = ObjectFilter::permanent_card();
                 permanent_or_player_object.zone = Some(Zone::Battlefield);
-                if filter == &permanent_or_player_object {
+                // CR 110.4c: the battlefield noun "permanent" is zone-only.
+                if filter == &permanent_or_player_object || filter == &ObjectFilter::permanent() {
                     *target =
                         TargetAst::Tagged(crate::tag::CompilerReferenceTag::Damaged0.bind(), None);
                 }
@@ -15996,6 +16077,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
@@ -18003,7 +18085,7 @@ fn parse_that_object_dies_delayed_sentence(
         one_shot: true,
         duration: Until::Forever,
         either_of_watched_objects: false,
-        while_any_tagged_object_in_zone: None, source_collection_scope: None,
+        while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
     })))
 }
 

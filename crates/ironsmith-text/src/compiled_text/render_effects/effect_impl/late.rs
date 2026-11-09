@@ -497,11 +497,12 @@
         if let Some(compact) = describe_single_word_alternative_modes(choose_mode) {
             return compact;
         }
-        let mut header = describe_mode_choice_header(
-            &choose_mode.choose_count,
-            Some(&choose_mode.min_choose_count),
-            Some(choose_mode.modes.len()),
-        );
+        let mut header = describe_allowed_mode_counts_header(&choose_mode.allowed_mode_counts)
+            .unwrap_or_else(|| describe_mode_choice_header(
+                &choose_mode.choose_count,
+                Some(&choose_mode.min_choose_count),
+                Some(choose_mode.modes.len()),
+            ));
         if choose_mode.spree {
             header = if choose_mode.descriptive_mode_costs { "Choose one or more additional costs" } else { "Spree (Choose one or more additional costs.)" }.to_string();
         }

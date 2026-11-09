@@ -66,7 +66,19 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
                 }else{controls});
             }
             _ if explicit_each || inherited_each=>{
-                let filter=match parse_object_filter(operand,false){Ok(filter)=>filter,Err(_)=>return Ok(None)};
+                let mut filter=match parse_object_filter(operand,false){Ok(filter)=>filter,Err(_)=>return Ok(None)};
+                // "each opponent and each battle they protect": the pronoun
+                // names the player group listed before it, not you.
+                if let [.., "they", verb] = words.as_slice()
+                    && let Some(players) = player_groups.last().cloned()
+                {
+                    match *verb {
+                        "protect" => filter.protected_by = Some(players),
+                        "control" => filter.controller = Some(players),
+                        "own" => filter.owner = Some(players),
+                        _ => {}
+                    }
+                }
                 object_groups.push(filter);
             }
             _=>return Ok(None),

@@ -2014,6 +2014,23 @@ pub fn parse_permission_clause_spec_lexed(
             lifetime: PermissionLifetime::ThisTurn,
         }));
     }
+    // "you may play cards you own from outside the game" (The Source): an
+    // unlimited play permission from the outside-game zone (CR 400.11).
+    if allow_land
+        && token_word_refs(rest_tokens)
+            == ["cards", "you", "own", "from", "outside", "the", "game"]
+    {
+        crate::word_claims::claim_tokens(rest_tokens);
+        return Ok(Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec: crate::model::CompilerGrantSpecCore::new(
+                crate::model::CompilerGrantableCore::play_from(),
+                ObjectFilter::default().owned_by(PlayerFilter::You),
+                Zone::OutsideGame,
+            ),
+            lifetime: prefixed_lifetime.unwrap_or(PermissionLifetime::Static),
+        }));
+    }
 
     if !allow_land {
         let (zone_grant_tokens, zone_grant_lifetime) =

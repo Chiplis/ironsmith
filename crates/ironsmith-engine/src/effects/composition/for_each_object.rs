@@ -38,22 +38,39 @@ fn matching_objects(
             let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) else {
                 continue;
             };
+            // Announced targets: CR 608.2b, a target that is no longer legal
+            // (it left the filter's zone) is not affected; its last known
+            // information does not admit it.
+            let announced_target = constraint.tag.as_str().starts_with("targeted_");
             for snapshot in snapshots {
                 if seen.insert(snapshot.stable_id) {
-                    candidates.push(snapshot.clone());
+                    candidates.push((snapshot.clone(), announced_target));
                 }
             }
         }
         candidates
             .into_iter()
-            .filter_map(|snapshot| {
+            .filter_map(|(snapshot, announced_target)| {
+                if announced_target
+                    && let Some(zone) = effect.filter.zone
+                    && !game.object(snapshot.object_id).is_some_and(|object| object.zone == zone)
+                {
+                    return None;
+                }
                 let current_id =
                     crate::effects::helpers::resolve_tagged_object_id(game, ctx, &snapshot);
-                let matched_as_lki = effect.filter.matches_snapshot(&snapshot, &filter_ctx, game);
-                let matched_current = current_id
-                    .and_then(|id| game.object(id))
+                let current = current_id.and_then(|id| game.object(id));
+                let matched_current = current
                     .is_some_and(|object| effect.filter.matches(object, &filter_ctx, game));
-                (matched_as_lki || matched_current)
+                // CR 400.7: a tagged card that has since been cast is a new
+                // object (a spell); its old last-known zone no longer admits
+                // it ("put the rest of the exiled cards into your hand").
+                let changed_zone = current.is_some_and(|object| {
+                    object.zone == crate::zone::Zone::Stack && snapshot.zone != crate::zone::Zone::Stack
+                });
+                let matched_as_lki = !changed_zone
+                    && effect.filter.matches_snapshot(&snapshot, &filter_ctx, game);
+                (!changed_zone && (matched_as_lki || matched_current))
                     .then_some((current_id.unwrap_or(snapshot.object_id), snapshot))
             })
             .collect()

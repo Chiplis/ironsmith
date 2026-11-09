@@ -3046,9 +3046,16 @@ fn reject_unprojected_scalar_target(spec: &ChooseSpec, ctx: &ExecutionContext) -
         // ("destroy target artifact ... instead destroy two target
         // artifacts") is a different target role, not an expansion of it.
         let has_exact = ctx.target_assignments.iter().any(|assignment| assignment.spec == *spec);
+        // An announced role with its own larger cardinality ("If the gift
+        // was promised, instead destroy two target artifacts and/or
+        // enchantments", CR 702.174) is that sibling's role, not this scalar
+        // role expanded to several targets.
         let expanded = ctx.target_assignments.iter().any(|assignment| {
-            (if has_exact { assignment.spec == *spec } else { assignment.spec.base() == spec.base() })
-                && assignment.range.len() > 1
+            (if has_exact {
+                assignment.spec == *spec
+            } else {
+                assignment.spec.base() == spec.base() && assignment.spec.count() == spec.count()
+            }) && assignment.range.len() > 1
         });
         if !expanded {
             return Ok(());

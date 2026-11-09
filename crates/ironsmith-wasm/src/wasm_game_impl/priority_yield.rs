@@ -539,9 +539,20 @@ mod priority_yield_tests {
             ));
         authorize(&mut wasm, PassMode::Stack, &[]);
         authorize(&mut wasm, PassMode::Stack, &[]);
+        // The yield returned the draw's crypto requirements before resolving
+        // more objects.
+        assert!(!wasm.last_crypto_requirements.is_empty());
+        // The drawn hidden card opens its owner's optional casting-permission
+        // reveal window (hand_event_reveals.rs); this fixture reveals nothing.
+        if matches!(wasm.pending_decision.as_ref(), Some(DecisionContext::SelectObjects(objects))
+            if objects.description == "You may reveal cards with a casting permission for this event")
+        {
+            wasm.dispatch_typed_command(UiCommand::SelectObjects {
+                object_ids: Vec::new(), object_stable_ids: Vec::new(), object_hidden_refs: Vec::new(),
+            }, 0.0).map_err(|_| "declining the hand reveal window was rejected").unwrap();
+        }
         assert_eq!(wasm.game.stack.len(), 2);
         assert_eq!(wasm.game.player(PlayerId(0)).unwrap().life, 20);
-        assert!(!wasm.last_crypto_requirements.is_empty());
     }
     #[test]
     fn priority_yield_rearms_phase_pause_for_an_inserted_combat() {

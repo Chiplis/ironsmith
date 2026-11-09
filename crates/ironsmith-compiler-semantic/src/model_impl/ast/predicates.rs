@@ -307,6 +307,16 @@ pub enum TurnHistoryPredicateAst {
         subject: String,
         producer: String,
     },
+    /// "if it was cast using \"relocate\"": the triggering object's cast
+    /// receipt records the named custom price.
+    TriggeringObjectPaidCustomKeyword(String),
+    /// "it entered from a graveyard this turn" said of the source itself.
+    SourceEnteredFromZoneThisTurn(Zone),
+    /// "it was cast from a graveyard this turn" said of the source itself.
+    SourceWasCastFromZoneThisTurn(Zone),
+    /// "if it was revived": the source was an object of that completed
+    /// custom named action this turn.
+    SourceWasNamedActionObjectThisTurn(String),
 }
 
 /// Whether a compared value measures the source object itself ("the number

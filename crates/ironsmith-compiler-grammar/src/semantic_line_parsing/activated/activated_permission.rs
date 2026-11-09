@@ -103,11 +103,29 @@ pub(super) fn parse_activated_effects_lexed(
     }
 
     let mut effects = Vec::new();
+    let mut previous_next_spell_reduction = false;
     for sentence_lexed in sentence_chunks {
-        if let Some(effect) = parse_next_spell_cost_reduction_sentence(sentence_lexed) {
-            effects.push(effect);
+        // "This effect reduces only the amount of colored mana you pay."
+        // (Merkurio): a next-spell symbol reduction never spills onto generic
+        // mana, which is exactly what the rider restates.
+        if previous_next_spell_reduction
+            && crate::keyword_static::cost_reduction_is_colored_only(sentence_lexed)
+        {
+            crate::word_claims::claim_tokens(sentence_lexed);
+            previous_next_spell_reduction = false;
             continue;
         }
+        if let Some(effect) = parse_next_spell_cost_reduction_sentence(sentence_lexed) {
+            effects.push(effect);
+            previous_next_spell_reduction = true;
+            continue;
+        }
+        previous_next_spell_reduction = {
+            let words = crate::lexer::token_word_refs(sentence_lexed).into_iter()
+                .map(str::to_ascii_lowercase).collect::<Vec<_>>();
+            words.len() > 4 && words[0] == "the" && words[1] == "next"
+                && words[words.len() - 3..] == ["less", "to", "cast"]
+        };
         effects.extend(parse_effect_sentences_lexed(sentence_lexed)?);
     }
     Ok(effects)

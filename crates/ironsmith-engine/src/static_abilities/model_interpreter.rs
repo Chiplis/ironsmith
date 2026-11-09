@@ -426,6 +426,7 @@ impl StaticAbilityModelInterpreter {
             linked_exile_class_level: spec.linked_exile_class_level,
             source_exiled_surface: spec.source_exiled_surface.clone(),
             filtered_zone_surface: spec.filtered_zone_surface.clone(),
+            cast_max_total_mana: spec.cast_max_total_mana,
             top_card_only: spec.top_card_only,
             instant_timing: spec.instant_timing,
             may_look_at_top: spec.may_look_at_top,
@@ -1056,6 +1057,7 @@ impl StaticAbilityModelInterpreter {
             | ironsmith_core::StaticAbilityPayload::GenericManaTapPaymentProhibition { .. }
             | ironsmith_core::StaticAbilityPayload::GenericManaTapPayment { .. }
             | ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity { .. }
+            | ironsmith_core::StaticAbilityPayload::BattlefieldCastPermission { .. }
             | ironsmith_core::StaticAbilityPayload::CanBeBlockedAsThoughBlockersWereUntapped(_)
             | ironsmith_core::StaticAbilityPayload::AdditionalSpellTargets { .. } => return None,
             ironsmith_core::StaticAbilityPayload::Enchant(_)

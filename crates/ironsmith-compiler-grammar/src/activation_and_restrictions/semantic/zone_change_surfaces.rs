@@ -6,6 +6,66 @@ use crate::grammar::trigger_clauses::{ZoneOrigin, parse_zone_change_surface};
 pub(super) fn parse_complete_zone_change(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
+    if let Some(event) = parse_you_put_zone_change(tokens)? {
+        return Ok(Some(event));
+    }
+    parse_passive_zone_change(tokens)
+}
+
+/// "Whenever you put a card with the journeyed status into your hand": the
+/// passive movement "<object> is put into <zone>" whose cause is controlled
+/// by you.
+fn parse_you_put_zone_change(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if words.get(..2) != Some(&["you", "put"][..]) {
+        return Ok(None);
+    }
+    let Some(into) = words.iter().position(|word| *word == "into") else {
+        return Ok(None);
+    };
+    let starts = view.token_start_indices();
+    let (Some(&subject_start), Some(&into_start)) = (starts.get(2), starts.get(into)) else {
+        return Ok(None);
+    };
+    if subject_start >= into_start {
+        return Ok(None);
+    }
+    // "put a card ... from exile into your hand": the origin is said before
+    // the destination; the passive surface says it after.
+    let origin_start = words[2..into]
+        .iter()
+        .rposition(|word| *word == "from")
+        .and_then(|offset| starts.get(2 + offset).copied());
+    let subject_end = origin_start.unwrap_or(into_start);
+    let mut passive = tokens[subject_start..subject_end].to_vec();
+    passive.extend(crate::lexer::synthetic_word_tokens(["is", "put"]));
+    passive.extend_from_slice(&tokens[into_start..]);
+    if let Some(origin_start) = origin_start {
+        let end = passive.len() - usize::from(passive.last().is_some_and(OwnedLexToken::is_period));
+        passive.splice(end..end, tokens[origin_start..into_start].iter().cloned());
+    }
+    let Some(TriggerSpec::ZoneChange(mut event)) = parse_passive_zone_change(&passive)? else {
+        return Ok(None);
+    };
+    if event.this || event.cause_filter.is_some() {
+        return Ok(None);
+    }
+    event.cause_filter = Some(ironsmith_core::CauseFilter {
+        cause_type: None,
+        source_filter: None,
+        controller_filter: Some(ironsmith_core::ControllerFilter::You),
+        ability_kind: None,
+    });
+    crate::word_claims::claim_tokens(&tokens[..subject_start]);
+    Ok(Some(TriggerSpec::ZoneChange(event)))
+}
+
+fn parse_passive_zone_change(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
     let word_view = ActivationRestrictionCompatWords::new(tokens);
     let words = word_view.to_word_refs();
     let Some(surface) = parse_zone_change_surface(&words) else {

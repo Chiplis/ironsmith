@@ -152,6 +152,15 @@ pub fn parse_attached_gets_and_has_ability_line(
         ]));
     }
 
+    // "gets +1/+1 and has custom keyword \"slipstream\", and \"...\"": the
+    // heterogeneous tail reads the identity marker and the quoted rules.
+    if crate::lexer::token_word_refs(&ability_tokens).starts_with(&["custom", "keyword"])
+        && let Some(tail) = parse_heterogeneous_granted_tail(&ability_tokens, &crate::lexer::token_word_refs(tokens), true)? {
+        let mut out = vec![anthem.into()];
+        out.extend(lower_granted_tail_for_anthem_subject(&clause.subject, &clause.condition, tail));
+        return Ok(Some(out));
+    }
+
     if (ability_tokens.first().is_some_and(|token| token.is_word("can"))
         || shape.ability_tokens.first().is_some_and(OwnedLexToken::is_quote))
         && let Some(tail) = parse_heterogeneous_granted_tail(shape.ability_tokens, &crate::lexer::token_word_refs(tokens), true)? {
@@ -293,6 +302,48 @@ pub fn parse_attached_gets_and_has_ability_line(
         "unsupported attached granted ability clause (clause: '{}')",
         line_text
     )))
+}
+
+/// Split a leading `custom keyword "<name>"` marker from the rest of a
+/// granted list, returning the marker grant and the tail after `, and`.
+pub(crate) fn split_custom_keyword_marker_prefix(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(StaticAbilityAst, &[OwnedLexToken])>, CardTextError> {
+    if !crate::lexer::token_word_refs(tokens).starts_with(&["custom", "keyword"]) {
+        return Ok(None);
+    }
+    let quotes = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(index, token)| token.is_quote().then_some(index))
+        .collect::<Vec<_>>();
+    let [_, marker_close, ..] = quotes.as_slice() else {
+        return Ok(None);
+    };
+    let marker_close = *marker_close;
+    let mut rest = &tokens[marker_close + 1..];
+    while rest.first().is_some_and(|token| token.is_comma()) {
+        rest = &rest[1..];
+    }
+    if !rest.is_empty() {
+        if !rest.first().is_some_and(|token| token.is_word("and")) {
+            return Ok(None);
+        }
+        rest = &rest[1..];
+        if !rest.first().is_some_and(OwnedLexToken::is_quote) {
+            return Ok(None);
+        }
+    }
+    let Some(parts) =
+        crate::effect_sentences::parse_custom_keyword_identity_grant_component(&tokens[..=marker_close])?
+    else {
+        return Ok(None);
+    };
+    let [crate::cards::builders::GrantedAbilityAst::StaticAbility(marker)] = parts.as_slice() else {
+        return Ok(None);
+    };
+    crate::word_claims::claim_tokens(&tokens[marker_close + 1..tokens.len() - rest.len()]);
+    Ok(Some((marker.as_ref().clone(), rest)))
 }
 
 pub fn parse_equipped_gets_and_has_activated_ability_line(

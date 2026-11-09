@@ -173,7 +173,14 @@ fn creature_subtypes(words: &[&str]) -> Vec<Subtype> {
         if let Some(subtype) = crate::grammar::primitives::probe_shape(
             leaf::parse_leaf_subtype_flexible_complete(word),
         )
-        .or_else(|| leaf::classify_token_definition_subtype(word))
+        .or_else(|| {
+            // A token's creature-type list may use a subtype that is also an
+            // ordinary English word ("3/1 red Sand creature tokens"); in this
+            // descriptor position it is the subtype, and reading it reads it.
+            let subtype = leaf::classify_token_definition_subtype(word)?;
+            crate::word_claims::claim_words(std::slice::from_ref(word));
+            Some(subtype)
+        })
             && !subtypes.contains(&subtype)
         {
             subtypes.push(subtype);

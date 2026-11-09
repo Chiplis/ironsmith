@@ -157,6 +157,23 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if let Some(devotion) = parse_devotion_value_words(words) {
         return Some(devotion);
     }
+    // "your fealty to Deserts" (custom): the number of permanents of that
+    // subtype you control ("modes with total ★ less than or equal to the
+    // number of Forests you control").
+    if let ["your", "fealty", "to", subtype, ..] = words
+        && let Some(subtype) = crate::util::parse_subtype_word(subtype)
+    {
+        crate::word_claims::claim_words(&words[..4]);
+        return Some((
+            Value::Count(
+                crate::target::ObjectFilter::default()
+                    .with_subtype(subtype)
+                    .in_zone(crate::zone::Zone::Battlefield)
+                    .controlled_by(crate::target::PlayerFilter::You),
+            ),
+            4,
+        ));
+    }
     // "the number of colors that spell is" (Crystal, Inhuman Princess): the
     // colors among the referenced object.
     for phrase in [

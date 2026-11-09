@@ -1443,12 +1443,29 @@ pub fn apply_supertype_or_mana_capability_union(
         && filter.could_produce_mana.is_empty()
         && let [that, could, produce, symbol] = &words[words.len() - 4..]
         && that.1 == "that"
-        && could.1 == "could"
+        // "lands that can produce {C}" (The Source) says the same capability.
+        && matches!(could.1, "could" | "can")
         && produce.1 == "produce"
-        && let Ok(mana_symbol) = parse_mana_symbol(tokens[symbol.0].parser_text())
+        // A normalized line carries the symbol lowercased ("{c}").
+        && let Ok(mana_symbol) = parse_mana_symbol(&tokens[symbol.0].parser_text().to_ascii_uppercase())
     {
         filter.could_produce_mana = vec![mana_symbol];
         crate::word_claims::claim_tokens(&tokens[that.0..=symbol.0]);
+        return;
+    }
+    // The same clause when the symbol is not a word piece of the stream
+    // (a normalized "{c}"): the token after "produce" is the symbol.
+    if words.len() > 2
+        && filter.could_produce_mana.is_empty()
+        && let [that, could, produce] = &words[words.len() - 3..]
+        && that.1 == "that"
+        && matches!(could.1, "could" | "can")
+        && produce.1 == "produce"
+        && produce.0 + 2 == tokens.len()
+        && let Ok(mana_symbol) = parse_mana_symbol(&tokens[produce.0 + 1].parser_text().to_ascii_uppercase())
+    {
+        filter.could_produce_mana = vec![mana_symbol];
+        crate::word_claims::claim_tokens(&tokens[that.0..]);
         return;
     }
     for word_idx in 0..words.len().saturating_sub(6) {
@@ -1465,7 +1482,7 @@ pub fn apply_supertype_or_mana_capability_union(
         let Some(supertype) = parse_supertype_word(window[2].1) else {
             continue;
         };
-        let Ok(mana_symbol) = parse_mana_symbol(tokens[window[6].0].parser_text()) else {
+        let Ok(mana_symbol) = parse_mana_symbol(&tokens[window[6].0].parser_text().to_ascii_uppercase()) else {
             continue;
         };
         let Some(supertype_idx) =
@@ -1523,6 +1540,14 @@ pub(super) fn parse_object_filter(
     if let Some(result) = crate::object_filters::parse_entry_reference_filter(tokens, other) { return result; }
     if let Some(result) = crate::object_filters::parse_custom_identity_filter(tokens, other) {
         return result;
+    }
+    // "a permanent with the autocrat status": the named status is an
+    // ordinary qualifier; every remaining word is read by this grammar.
+    if let Some((base, name, negative)) = crate::custom_status::filter_clause(tokens) {
+        let mut filter = parse_object_filter(&base, other)?;
+        if negative { filter.excluded_custom_statuses.push(name); }
+        else { filter.custom_statuses.push(name); }
+        return Ok(filter);
     }
     // Preserve the complete name-reference operand before projecting words:
     // punctuation inside a reference must not disappear from its grammar.

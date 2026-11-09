@@ -1348,6 +1348,109 @@ fn add_hand_special_actions(
     Ok(())
 }
 
+/// "You may cast this spell from the battlefield for {1}{U} rather than pay
+/// its mana cost.": a permanent its player controls is cast from the
+/// battlefield (it becomes a new object on the stack, CR 400.7), whether the
+/// price is printed on it or granted to it.
+fn battlefield_cast_permission_is_live(
+    game: &GameState,
+    card_id: ObjectId,
+    card: &crate::object::Object,
+) -> bool {
+    let is_marker = |ability: &crate::ability::Ability| matches!(&ability.kind,
+        crate::ability::AbilityKind::Static(static_ability)
+            if matches!(static_ability.compiled_model().map(|model| &model.payload),
+                Some(ironsmith_core::StaticAbilityPayload::BattlefieldCastPermission { .. })));
+    // A later named-payment attribution may rename the method; the marker
+    // is the printed permission itself, whatever its price is called.
+    match game.calculated_characteristics(card_id) {
+        Some(characteristics) => characteristics.abilities.iter().any(is_marker),
+        None => card.abilities.iter().any(is_marker),
+    }
+}
+
+fn add_battlefield_cast_actions(
+    game: &GameState,
+    actions: &mut Vec<LegalAction>,
+    player: PlayerId,
+    view: &DerivedGameView<'_>,
+) {
+    let has_grants = view.player_has_active_grants_for_zone(player, Zone::Battlefield);
+    for card_id in game.zone_ids(Zone::Battlefield) {
+        if !requested_action_source(card_id) {
+            continue;
+        }
+        let Some(card) = game.object(card_id) else { continue; };
+        if game.controller_of(card) != player || game.is_phased_out(card_id) {
+            continue;
+        }
+        let native = card.alternative_casts.iter().any(|method| method.cast_from_zone() == Zone::Battlefield);
+        if !native && !has_grants {
+            continue;
+        }
+        if native {
+            for (idx, method) in card.alternative_casts.iter().enumerate() {
+                if method.cast_from_zone() != Zone::Battlefield {
+                    continue;
+                }
+                if named_price_is_prohibited(game, player, card, method.name()) {
+                    continue;
+                }
+                // The printed permission is an ability of the permanent: it
+                // exists only while that live ability does (CR 613.1f).
+                if !battlefield_cast_permission_is_live(game, card_id, card) {
+                    continue;
+                }
+                if can_cast_with_alternative_with_view(game, player, card, method, view) {
+                    actions.push(LegalAction::CastSpell {
+                        spell_id: card_id,
+                        from_zone: Zone::Battlefield,
+                        casting_method: CastingMethod::Alternative(idx),
+                    });
+                }
+            }
+        }
+        if has_grants {
+            let start = actions.len();
+            append_zone_granted_alternative_cast_actions_for_card(
+                game, actions, player, card_id, card, Zone::Battlefield, view,
+            );
+            let granted = view.granted_alternative_casts_for_card(card_id, Zone::Battlefield, player);
+            let base = card.alternative_casts.len();
+            let mut index = start;
+            while index < actions.len() {
+                let prohibited = matches!(&actions[index], LegalAction::CastSpell {
+                    casting_method: CastingMethod::PlayFrom { use_alternative: Some(alt), .. }, ..
+                } if alt.checked_sub(base).and_then(|offset| granted.get(offset))
+                    .is_some_and(|grant| named_price_is_prohibited(game, player, card, grant.method.name())));
+                if prohibited { actions.remove(index); } else { index += 1; }
+            }
+        }
+    }
+}
+
+/// "Creatures you control can't be cast using \"relocate\"": a cast
+/// prohibition naming one price blocks only that selected price (CR 601.3).
+fn named_price_is_prohibited(
+    game: &GameState,
+    player: PlayerId,
+    card: &crate::object::Object,
+    price_name: &str,
+) -> bool {
+    let marker = format!("using {}", price_name.trim().to_ascii_lowercase());
+    game.effect_store.cant_effects.cast_filters_for_player(player).is_some_and(|filters| {
+        filters.iter().any(|restriction| {
+            if !restriction.filter.ability_markers.iter().any(|existing| existing.eq_ignore_ascii_case(&marker)) {
+                return false;
+            }
+            let mut filter = restriction.filter.clone();
+            filter.ability_markers.retain(|existing| !existing.eq_ignore_ascii_case(&marker));
+            let ctx = game.filter_context_for(restriction.controller.unwrap_or(player), restriction.source);
+            filter.matches(card, &ctx, game)
+        })
+    })
+}
+
 fn add_graveyard_cast_actions(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -2196,7 +2299,10 @@ fn compute_legal_actions_checked(
     }
     // "You may plot nonland cards from the top of your library." (Fblthp,
     // Lost on the Range): the plot special action for the library's top card.
-    if game.player_may_plot_nonland_from_top_of_library(player)
+    // A special action has no action source, so it belongs to the global
+    // query; per-source queries would rescan every permanent to rediscover it.
+    if requested_global_actions()
+        && game.player_may_plot_nonland_from_top_of_library(player)
         && let Some(&top) = game.player(player).and_then(|state| state.library.last())
     {
         let action = crate::special_actions::SpecialAction::Plot { card_id: top };
@@ -2227,6 +2333,7 @@ fn compute_legal_actions_checked(
     perf.exile_casts_ms = exile_casts_started_at.elapsed_ms();
 
     add_library_cast_actions(game, &mut actions, player, &view, library_has_active_grants)?;
+    add_battlefield_cast_actions(game, &mut actions, player, &view);
     // An ordinary play permission can cover command-zone cards that are not
     // commanders. The same permission must expose their alternative prices.
     if view.player_has_active_grants_for_zone(player, Zone::Command) {
@@ -2407,6 +2514,14 @@ pub(crate) fn can_invoke_designated_ability_without_costs(
     if matches!(permitted.timing, crate::ability::ActivationTiming::SorcerySpeed)
         && action.is_some_and(|action| permitted.effects.activation_sorcery_exceptions.iter().any(|name| name.eq_ignore_ascii_case(action))) {
         permitted.timing = crate::ability::ActivationTiming::AnyTime;
+        // The same sorcery restriction may also be carried as the ability's
+        // activation condition; the exception lifts that copy too.
+        if matches!(
+            permitted.activation_condition,
+            Some(crate::ConditionExpr::ActivationTiming(crate::ability::ActivationTiming::SorcerySpeed))
+        ) {
+            permitted.activation_condition = None;
+        }
     }
     let activated = &permitted;
     let Some(object) = game.object(source) else { return false; };

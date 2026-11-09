@@ -3792,6 +3792,24 @@
                                                 && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
                                 })
                     });
+            // "You may cast ... If that spell would be put into a graveyard,
+            // exile it instead": the cast-result gate only binds the spell;
+            // its own "If that spell would ..." is the complete condition.
+            let is_cast_result_replacement = filtered[idx]
+                .downcast_ref::<crate::effects::IfEffect>()
+                .is_some_and(|gate| {
+                    gate.else_.is_empty()
+                        && matches!(gate.then.as_slice(), [only]
+                            if only
+                                .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()
+                                .is_some_and(|replacement| {
+                                    replacement.from_zone == Some(Zone::Stack)
+                                        && replacement.to_zone == Some(Zone::Graveyard)
+                                        && replacement.replacement_zone == Zone::Exile
+                                        && matches!(replacement.filter.tagged_constraints.as_slice(), [constraint]
+                                            if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+                                }))
+                });
             // "If you do, an opponent guesses ... If they guessed wrong, ...
             // If they guessed right, ..." (The Toymaker's Trap): each gate
             // reads the result of the preceding number choice or guess; they
@@ -3816,6 +3834,7 @@
                 && !is_battlefield_move_result_followup
                 && !is_prior_result_followup
                 && !is_cast_collection_replacement
+                && !is_cast_result_replacement
             {
                 rendered = format!("Then {}", lowercase_first(&rendered));
                 if let Some(comma_idx) = rendered.find(", ") {

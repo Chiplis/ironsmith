@@ -83,6 +83,58 @@ impl TriggerMatcher for PermanentBecomesTappedTrigger {
     }
 }
 
+/// "Whenever this and at least one other <filter> become tapped": the
+/// source's own tap event, when its simultaneous action (CR 603.2c) also
+/// tapped another permanent matching `other`. Separate actions never pair.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SourceAndOtherBecomeTappedTrigger {
+    pub other: ObjectFilter,
+}
+
+impl TriggerMatcher for SourceAndOtherBecomeTappedTrigger {
+    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        if event.kind() != EventKind::PermanentTapped {
+            return false;
+        }
+        let Some(own) = event.downcast::<PermanentTappedEvent>() else {
+            return false;
+        };
+        if own.permanent != ctx.source_id {
+            return false;
+        }
+        let Some(batch) = event.simultaneous_batch() else {
+            return false;
+        };
+        let history = &ctx.game.turn_store.turn_history;
+        history
+            .event_records
+            .iter()
+            .chain(history.staged_event_records.iter())
+            .filter(|record| record.event.simultaneous_batch() == Some(batch))
+            .filter_map(|record| record.event.downcast::<PermanentTappedEvent>())
+            .any(|other| {
+                other.permanent != ctx.source_id
+                    && match &other.snapshot {
+                        Some(snapshot) => self.other.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game),
+                        None => ctx
+                            .game
+                            .object(other.permanent)
+                            .is_some_and(|object| self.other.matches(object, &ctx.filter_ctx, ctx.game)),
+                    }
+            })
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::PermanentTapped])
+    }
+
+    fn display(&self) -> String {
+        let other = self.other.description();
+        let other = other.strip_prefix("another ").map(|rest| format!("other {rest}")).unwrap_or(other);
+        format!("Whenever this and at least one {other} become tapped")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

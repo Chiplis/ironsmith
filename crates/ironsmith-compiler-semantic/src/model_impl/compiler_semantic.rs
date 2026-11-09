@@ -224,6 +224,9 @@ pub struct ParsedModalHeader {
     /// Keywords chosen as an activation cost, one per mode (Phyrexian
     /// Splicer); presentation for the lowered `ChooseModeEffect`.
     pub cost_choice_keywords: Vec<String>,
+    /// "Choose two or four —": the exact counts allowed in `min..=max`;
+    /// empty means every count in the range.
+    pub allowed_mode_counts: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

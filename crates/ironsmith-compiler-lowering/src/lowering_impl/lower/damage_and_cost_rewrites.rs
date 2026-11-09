@@ -708,6 +708,16 @@ pub fn lower_normalized_card_ast_with_facts(
     generated.extend(first_draw.iter().map(|proof| proof.definition()));
     super::activation_definitions::stamp_activation_definitions_with_generated(&mut definition, &generated)?;
     super::trigger_definitions::stamp_trigger_definitions_with_generated(&mut definition, &generated)?;
+    // A printed "you may cast this spell from the battlefield for <price>"
+    // is an ability of the permanent; its live marker gates the price.
+    let battlefield_methods = definition.alternative_casts.iter()
+        .filter(|method| method.cast_from_zone() == crate::zone::Zone::Battlefield)
+        .map(|method| method.name().to_string())
+        .collect::<Vec<_>>();
+    for method in battlefield_methods {
+        definition.abilities.push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::battlefield_cast_permission(method)));
+    }
     if let Some(plan) = optional_text_asts {
         let casting_payment = if plan.casting_payment {
             let candidates = definition.optional_costs.iter().enumerate().filter_map(|(index,cost)| cost.repeatable.then_some(index)).collect::<Vec<_>>();

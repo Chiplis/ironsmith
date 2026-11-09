@@ -488,7 +488,13 @@ mod cycling {
         let on_stack = game
             .stack
             .iter()
-            .filter(|entry| entry.is_ability && entry.source_name.as_deref() == Some(name))
+            // Triggered abilities only: the cycling activation itself is also
+            // an ability on the stack from the same card.
+            .filter(|entry| {
+                entry.is_ability
+                    && entry.trigger_identity.is_some()
+                    && entry.source_name.as_deref() == Some(name)
+            })
             .count();
         from_queue + on_stack
     }

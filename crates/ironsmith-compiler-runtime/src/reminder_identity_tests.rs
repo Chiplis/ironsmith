@@ -2442,14 +2442,12 @@ fn reminder_identity_exclusive_graveyard_permission_restricts_zone_and_all_depar
     for native in [false, true] {
         for departure in ["resolve", "counter", "bounce"] {
             let rules = if native { "Aftermath" } else { "Cast this spell only from your graveyard. Then exile it." };
-            let mut card = compile_to_runtime_definition("Exclusive", &format!("Type: Sorcery\nMana cost: {{3}}\n{rules}\nYou gain 1 life."), false).unwrap();
-            assert_eq!(card.alternative_casts[0].name() == "Aftermath", native);
-            // Use a different permission's unmarked price: the printed stack
-            // rider must apply even without the chosen price's exile flag.
-            if departure == "bounce" {
-                let ironsmith::alternative_cast::AlternativeCastingMethod::FromZone { instructions, .. } = &mut card.alternative_casts[0] else { panic!("zone price") };
-                instructions.exile_on_stack_exit = false;
-            }
+            let card = compile_to_runtime_definition("Exclusive", &format!("Type: Sorcery\nMana cost: {{3}}\n{rules}\nYou gain 1 life."), false).unwrap();
+            // CR 702.127a: the graveyard permission is a self-grant cast for
+            // the card's mana cost (not an alternative cost), beside the
+            // "cast only from your graveyard" restriction and the stack rider.
+            let permission = if native { "Aftermath" } else { "Parsed exclusive graveyard permission" };
+            assert!(format!("{:?}", card.abilities).contains(permission), "{:#?}", card.abilities);
             let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
             let a = PlayerId::from_index(0);
             game.turn.active_player = a;

@@ -398,6 +398,40 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
                     shuffle_subject_library: true,
                 }),
             ));
+        } else if has_hand_clause
+            && let [possessive @ ("your" | "their"), "hand", "and", rest @ ..] = target_words.as_slice()
+            && !matches!(rest, ["graveyard"] | ["graveyard", ..])
+        {
+            // "their hand and each non-Revelation card from their graveyard":
+            // the whole hand plus a filtered graveyard subset, one shuffle.
+            let and_token = target_tokens
+                .iter()
+                .position(|token| token.is_word("and"))
+                .expect("matched hand-and conjunction");
+            let mut graveyard_target = parse_target_phrase(&target_tokens[and_token + 1..])?;
+            apply_shuffle_subject_graveyard_owner_context(&mut graveyard_target, subject);
+            let hand_words = ["all", "cards", "in", *possessive, "hand"];
+            let mut hand_target = parse_target_phrase(&crate::lexer::synthetic_word_tokens(&hand_words))?;
+            apply_shuffle_subject_graveyard_owner_context(&mut hand_target, subject);
+            let (Some(hand), Some(graveyard)) = (
+                super::zone_counter_helpers::target_object_filter_mut(&mut hand_target).cloned(),
+                super::zone_counter_helpers::target_object_filter_mut(&mut graveyard_target).cloned(),
+            ) else {
+                return Err(CardTextError::ParseError("unsupported hand and graveyard subset shuffle".into()));
+            };
+            crate::word_claims::claim_tokens(&target_tokens[..=and_token]);
+            let filter = ObjectFilter { any_of: vec![hand, graveyard], ..Default::default() };
+            effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                player,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
+                    target: TargetAst::Object(filter, None, None),
+                    all: true,
+                    owner_library_destination,
+                    possessive_owner_subject: false,
+                    shuffle_subject_library: true,
+                }),
+            ));
         } else if has_hand_clause {
             // "their hand and graveyard [, and all permanents they own]": the
             // shuffling player's own zones.

@@ -807,7 +807,16 @@ fn read_payment_per_extra_mode(input: &AlternativeCastLine<'_>) -> Result<Option
 }
 
 fn read_reveal_to_add_spell_text(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
-    let sentences = crate::lexer::split_lexed_sentences(input.tokens);
+    Ok(add_spell_text_static(input.tokens)?.and_then(|ability| ast(LineAst::StaticAbility(ability.into()))))
+}
+
+/// "As you cast an instant or sorcery spell, you may reveal|exile this card
+/// ... If you do, add this card's effects to that spell." (splice-like text
+/// addition), as one complete static ability — also the body of a quoted
+/// grant ("Each instant and sorcery card in your graveyard has \"...\"").
+pub(crate) fn add_spell_text_static(tokens: &[OwnedLexToken]) -> Result<Option<crate::model::CompilerStaticAbilityCore>, CardTextError> {
+    let input_tokens = tokens;
+    let sentences = crate::lexer::split_lexed_sentences(input_tokens);
     if !(2..=4).contains(&sentences.len()) { return Ok(None); }
     let first = crate::util::trim_edge_punctuation_tokens(&sentences[0]);
     let words = crate::lexer::parser_token_word_refs(first);
@@ -863,6 +872,6 @@ fn read_reveal_to_add_spell_text(input: &AlternativeCastLine<'_>) -> Result<Opti
     }
     // Every frame and optional rider above was read completely. The cost
     // reader records its operands; record the remaining validated syntax too.
-    crate::word_claims::claim_tokens(input.tokens);
-    Ok(ast(LineAst::StaticAbility(ability.into())))
+    crate::word_claims::claim_tokens(input_tokens);
+    Ok(Some(ability))
 }

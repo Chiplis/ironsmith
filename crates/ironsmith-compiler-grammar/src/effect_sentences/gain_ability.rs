@@ -670,6 +670,7 @@ fn push_unique_keyword_action(actions: &mut Vec<KeywordAction>, action: KeywordA
 fn color_only_hexproof_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     // "hexproof from that color" (Skrelv, Defector Mite): the chosen color.
     if crate::lexer::token_word_refs(tokens) == ["that", "color"] {
+        crate::word_claims::claim_tokens(tokens);
         let mut filter = ObjectFilter::default();
         filter.chosen_color = true;
         return Some(filter);
@@ -786,7 +787,12 @@ fn parse_granted_ability_component_for_gain(
         && let crate::model::CompilerAbilityKindCore::Triggered(triggered) = ability.kind_mut()
         && triggered.presentation_label.is_none()
     {
+        let designation = label.to_ascii_lowercase();
         triggered.presentation_label = Some(crate::ability::PresentationLabel::AbilityWord(label));
+        // As on a printed labeled line, the label designates the ability's group.
+        if !ability.ability.designations.contains(&designation) {
+            ability.ability.designations.push(designation);
+        }
     }
     Ok(parsed)
 }
@@ -809,7 +815,11 @@ fn parse_granted_ability_component_for_gain_unlabeled(
         crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(&ability_tokens)
             .filter(|shape| shape.kind != crate::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::SupportedProcedure
                 && shape.body_tokens.first().is_some_and(|token| token.is_any_word(&["when", "whenever", "at"])))
-            .map_or_else(|| ability_tokens.clone(), |shape| shape.body_tokens.to_vec())
+            .map_or_else(|| ability_tokens.clone(), |shape| {
+                // The label is the granted ability's presentation label.
+                crate::word_claims::claim_tokens(shape.label_tokens);
+                shape.body_tokens.to_vec()
+            })
     } else { ability_tokens };
     if ability_tokens.is_empty() {
         return Ok(None);
@@ -1411,7 +1421,13 @@ fn parse_granted_abilities_for_gain_clause_unchecked(
         return Ok((abilities.clone(), false));
     }
 
-    if let Some(abilities) = parse_granted_ability_component_for_gain(ability_tokens, clause_words)?
+    // A list headed by a custom identity marker was already offered item by
+    // item; the bounded marker component cannot read the whole list, and
+    // must not veto the other (static) readers of the complete line.
+    let marker_headed_list = crate::lexer::token_word_refs(ability_tokens).starts_with(&["custom", "keyword"])
+        && ability_tokens.iter().filter(|token| token.kind == TokenKind::Quote).count() > 2;
+    if !marker_headed_list
+        && let Some(abilities) = parse_granted_ability_component_for_gain(ability_tokens, clause_words)?
     {
         return Ok((abilities, false));
     }
@@ -1632,10 +1648,17 @@ pub fn parse_granted_abilities_for_token_definition(
     // example, `Landfall — Whenever ...`). The label is presentation, while
     // the trigger body is the executable ability that the nested parser must
     // see.
+    // A labeled activated ability ("Pledge — {4}: ...") keeps its label: it
+    // is the ability's designation, read by the activated-line grammar.
     let ability_tokens =
         crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(
             ability_tokens,
         )
+        .filter(|shape| {
+            let colon = shape.body_tokens.iter().position(|token| token.kind == TokenKind::Colon);
+            let intro = shape.body_tokens.first().is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]));
+            intro || colon.is_none()
+        })
         .map_or(ability_tokens, |shape| shape.body_tokens);
     // "Whenever Redwing attacks, surveil 1." on the legendary token named
     // Redwing: the quoted trigger names the token itself. The trigger
@@ -3110,6 +3133,12 @@ pub fn parse_pronoun_ability_and_type_pair(
 pub fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // "Whenever a creature attacks this turn, it gets +1/+1 and gains
+    // trample until end of turn": a delayed trigger owns its effect; the
+    // grant reader must not read the effect and drop the trigger.
+    if tokens.first().is_some_and(|token| token.is_any_word(&["when", "whenever"])) {
+        return Ok(None);
+    }
     // "for each {R}{R} spent to cast it, it gets +1/+0 and gains trample and
     // haste" (Bladecoil Serpent): the multiplier owns the whole grant, which
     // the dedicated for-each reading repeats.
@@ -3661,7 +3690,9 @@ pub(crate) fn parse_custom_keyword_identity_grant_component(tokens: &[OwnedLexTo
     while end>0 && matches!(tokens[end-1].kind,TokenKind::Comma|TokenKind::Period|TokenKind::Semicolon) {end-=1;}
     let tokens=&tokens[..end];
     let Some(((),name))=crate::grammar::primitives::parse_prefix(tokens,crate::grammar::primitives::phrase(&["custom","keyword"])) else{return Ok(None);};
-    if name.len()<3 || name.first().is_none_or(|token|token.kind!=TokenKind::Quote)||name.last().is_none_or(|token|token.kind!=TokenKind::Quote) {
+    // A nested quoted rule delimits its own operand with apostrophes.
+    let delimiter=name.first().map(|token|token.kind).filter(|kind|matches!(kind,TokenKind::Quote|TokenKind::Apostrophe));
+    if name.len()<3 || delimiter.is_none() || name.last().is_none_or(|token|Some(token.kind)!=delimiter) {
         return Err(CardTextError::ParseError("custom keyword grant requires one complete quoted name".into()));
     }
     let words=&name[1..name.len()-1];

@@ -46,6 +46,7 @@ impl Family {
             // local color decision ("Add one mana of any color. This creature
             // becomes that color"); the executor records its single color.
             Self::Color => matches!(action, SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
+                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })),
             Self::Reveal => matches!(action, SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand)),
         }

@@ -58,6 +58,9 @@ fn apply(definition:&mut CardDefinition,pair:LinkedExilePair)->Result<(),CardTex
             AbilityKind::Static(ability)=>{
                 match &mut ability.payload{
                     StaticAbilityPayload::CostReductionManaCost(reduction)=>{filter(&mut reduction.filter,pair);},
+                    // "Spells you cast with a name noted for this permanent
+                    // cost {1} less": the generic reduction reads the pair too.
+                    StaticAbilityPayload::CostReduction(reduction)=>{filter(&mut reduction.filter,pair);},
                     _=>{},
                 }
                 (None,false)

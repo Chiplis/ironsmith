@@ -253,7 +253,7 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
             _ => None,
         }
     });
-    for sentence in sentences {
+    for (sentence_index, sentence) in sentences.iter().enumerate() {
         if let Some(kind) = attachment_kind {
             let words = crate::lexer::parser_token_word_refs(sentence);
             if words == ["this", "card", "enters", "unattached", "and", "stays", "on", "the", "battlefield", "if", "the", kind, "leaves"] {
@@ -261,6 +261,25 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
             }
         }
         has_exhaust_once_restriction |= tokens_are_exhaust_once_restriction(sentence);
+        // "The next instant or sorcery spell you cast this turn costs {U}{R}
+        // less to cast. This effect reduces only the amount of colored mana
+        // you pay.": a registered next-spell symbol reduction never spills
+        // onto generic mana, which is exactly what the rider states.
+        let previous_is_next_spell_reduction = inline_effects_ast.last().is_some_and(|effect| matches!(effect,
+                EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::Stack(
+                        crate::cards::builders::StackActionAst::ReduceNextSpellCostThisTurn { .. }), .. })))
+            || sentence_index.checked_sub(1).and_then(|index| sentences.get(index)).is_some_and(|previous| {
+                let words = crate::lexer::token_word_refs(previous).into_iter()
+                    .map(str::to_ascii_lowercase).collect::<Vec<_>>();
+                words.first().is_some_and(|word| word == "the") && words.get(1).is_some_and(|word| word == "next")
+                    && words.ends_with(&["less".to_string(), "to".to_string(), "cast".to_string()])
+            });
+        if previous_is_next_spell_reduction
+            && crate::keyword_static::cost_reduction_is_colored_only(sentence)
+        {
+            continue;
+        }
         let Some(parsed) = parse_activated_sentence_modifier_lexed(sentence, &timing) else {
             kept_sentences.push(*sentence);
             continue;

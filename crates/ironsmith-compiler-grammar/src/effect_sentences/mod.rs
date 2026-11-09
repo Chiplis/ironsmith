@@ -1,4 +1,5 @@
 mod named_action_inputs;
+mod judge_action;
 pub(crate) mod face_state_actions;
 pub(crate) mod bounded_source_programs;
 mod object_group_instructions;

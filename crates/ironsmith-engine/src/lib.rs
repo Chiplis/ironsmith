@@ -44,6 +44,7 @@
 extern crate self as ironsmith;
 
 pub mod linked_exile;
+pub mod subroutines;
 pub mod source_numbers;
 pub mod ability;
 pub mod ability_program_identity;

@@ -35,6 +35,9 @@ fn finish(game:&mut GameState,state:&mut PriorityLoopState,queue:&mut ironsmith:
 }
 fn cast(game:&mut GameState,card:ObjectId,dm:&mut Choices) {
     let (mut state,mut queue,progress)=begin(game,card,dm);finish(game,&mut state,&mut queue,progress,dm);
+    // CR 603.3: abilities that triggered while the spell was cast go on the
+    // stack the next time a player would receive priority.
+    ironsmith::game_loop::put_triggers_on_stack_with_dm(game,&mut queue,dm).unwrap();
 }
 fn settle(game:&mut GameState,dm:&mut Choices) {
     let mut queue=ironsmith::triggers::TriggerQueue::new();ironsmith::game_loop::drain_pending_trigger_events_with_dm(game,&mut queue,dm).unwrap();ironsmith::game_loop::put_triggers_on_stack_with_dm(game,&mut queue,dm).unwrap();
@@ -104,7 +107,7 @@ fn source_dragon_entry_trigger_uses_frozen_receipt_after_source_and_payer_depart
 fn source_granted_trial_failure_observers_use_actual_spell_type_and_success() {
     for definition in definitions("msem-513") {for creature in [false,true] {for pay in [false,true] {
         let mut game=game();game.create_object_from_definition(&definition,A,Zone::Battlefield);
-        let body=ironsmith_compiler_runtime::compile_to_runtime_definition("Independent granted spell",if creature {"Type: Creature\nPower/Toughness: 1/1"}else{"Type: Instant\nYou gain 1 life."},false).unwrap();
+        let body=ironsmith_compiler_runtime::compile_to_runtime_definition("Independent granted spell",if creature {"Mana cost: {1}\nType: Creature\nPower/Toughness: 1/1"}else{"Mana cost: {1}\nType: Instant\nYou gain 1 life."},false).unwrap();
         let card=game.create_object_from_definition(&body,A,Zone::Hand);let stable=game.object(card).unwrap().stable_id;let mut dm=Choices::new(pay);cast(&mut game,card,&mut dm);settle(&mut game,&mut dm);
         while game.stack.last().is_some_and(|entry|entry.is_ability) {ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();}
         ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
@@ -128,7 +131,7 @@ fn copy_trial_spell(game:&mut GameState,spell:ObjectId,dm:&mut Choices)->ObjectI
 fn copied_trial_instant_keeps_paid_or_failed_casting_decision_without_repeating_payment() {
     for definition in definitions("msem-509") {for pay in [false,true] {
         let mut game=game();let card=game.create_object_from_definition(&definition,A,Zone::Hand);let stable=game.object(card).unwrap().stable_id;let mut dm=Choices::new(pay);cast(&mut game,card,&mut dm);
-        let spell=game.find_object_by_stable_id(stable).unwrap();assert_eq!(failure_count(&game.take_pending_trigger_events()),usize::from(!pay));
+        let spell=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.player_named_action_count(B,"fail trial",ironsmith_core::value_model::PlayerActionWindow::ThisTurn),u32::from(!pay),"the casting published exactly one failed-trial action (CR 603.2: matched when it happened)");
         let life=game.player(B).unwrap().life;copy_trial_spell(&mut game,spell,&mut dm);assert_eq!(game.player(B).unwrap().life,life,"an opponent pays only for the original casting");
         ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();assert_eq!(game.battlefield.len(),if pay {1}else{3},"copy resolves with the original trial decision");assert_eq!(game.stack.len(),1);
     }}
@@ -137,7 +140,7 @@ fn copied_trial_instant_keeps_paid_or_failed_casting_decision_without_repeating_
 fn copied_trial_permanent_keeps_announcement_through_entry_but_ordinary_token_copy_does_not() {
     for definition in definitions("msem-511") {for pay in [false,true] {
         let mut game=game();let card=game.create_object_from_definition(&definition,A,Zone::Hand);let stable=game.object(card).unwrap().stable_id;let mut dm=Choices::new(pay);cast(&mut game,card,&mut dm);
-        let spell=game.find_object_by_stable_id(stable).unwrap();assert_eq!(failure_count(&game.take_pending_trigger_events()),usize::from(!pay));let life=game.player(B).unwrap().life;
+        let spell=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.player_named_action_count(B,"fail trial",ironsmith_core::value_model::PlayerActionWindow::ThisTurn),u32::from(!pay),"the casting published exactly one failed-trial action (CR 603.2: matched when it happened)");let life=game.player(B).unwrap().life;
         let copy=copy_trial_spell(&mut game,spell,&mut dm);let copy_stable=game.object(copy).unwrap().stable_id;
         ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();settle(&mut game,&mut dm);while game.stack.last().is_some_and(|entry|entry.is_ability){ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();}
         let permanent=game.find_object_by_stable_id(copy_stable).unwrap();assert_eq!(game.object(permanent).unwrap().zone,Zone::Battlefield);assert_eq!(game.object(permanent).unwrap().named_payment_outcomes.len(),1);assert_eq!(game.current_has_static_ability_id(permanent,ironsmith_core::StaticAbilityId::Haste),!pay);assert_eq!(game.player(B).unwrap().life,life);

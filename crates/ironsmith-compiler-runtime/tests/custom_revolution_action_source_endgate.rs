@@ -96,7 +96,7 @@ fn actual_breaching_jaxl_wander_is_a_paid_battlefield_cast_with_fresh_entry() {
   for _ in 0..60 {if !state.has_pending_action(){break;}let ironsmith::GameProgress::NeedsDecisionCtx(ctx)=progress else {panic!("{progress:?}")};progress=apply_decision_context_with_dm(&mut game,&mut queue,&mut state,&ctx,&mut dm).unwrap();}
   assert!(!state.has_pending_action());put_triggers_on_stack_with_dm(&mut game,&mut queue,&mut dm).unwrap();
   let spell=game.find_object_by_stable_id(stable).unwrap();assert_ne!(spell,source);assert_eq!(game.object(spell).unwrap().zone,Zone::Stack);assert_eq!(game.player(A).unwrap().mana_pool.total(),0);
-  play::resolve_all(&mut game,&mut dm);let returned=game.find_object_by_stable_id(stable).unwrap();assert_ne!(returned,spell);assert_eq!(game.object(returned).unwrap().zone,Zone::Battlefield);assert!(!game.is_tapped(target));
+  for _ in 0..30{put_triggers_on_stack_with_dm(&mut game,&mut ironsmith::triggers::TriggerQueue::new(),&mut dm).unwrap();if game.stack_is_empty(){break;}ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();}let returned=game.find_object_by_stable_id(stable).unwrap();assert_ne!(returned,spell);assert_eq!(game.object(returned).unwrap().zone,Zone::Battlefield);assert!(!game.is_tapped(target));
  }
 }
 

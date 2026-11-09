@@ -190,9 +190,13 @@ pub fn parse_quoted_cost_program_tokens(tokens: &[OwnedLexToken]) -> Option<Resu
     let mut tokens = tokens;
     while tokens.first().is_some_and(|token| matches!(token.kind, TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon)) { tokens = &tokens[1..]; }
     while tokens.last().is_some_and(|token| matches!(token.kind, TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon)) { tokens = &tokens[..tokens.len()-1]; }
-    if tokens.len() < 6 || !tokens[..3].iter().zip(["pay", "the", "cost"]).all(|(token, word)| token.is_word(word))
-        || tokens[3].kind != TokenKind::Quote || tokens.last()?.kind != TokenKind::Quote { return None; }
-    let inner = &tokens[4..tokens.len()-1];
+    // "you may pay the cost \"...\"": a reader that already consumed the
+    // "pay" verb hands on "the cost \"...\"".
+    let head = if tokens.first().is_some_and(|token| token.is_word("pay")) { 4 } else { 3 };
+    let words: &[&str] = if head == 4 { &["pay", "the", "cost"] } else { &["the", "cost"] };
+    if tokens.len() < head + 2 || !tokens[..head - 1].iter().zip(words).all(|(token, word)| token.is_word(word))
+        || tokens[head - 1].kind != TokenKind::Quote || tokens.last()?.kind != TokenKind::Quote { return None; }
+    let inner = &tokens[head..tokens.len()-1];
     if inner.iter().any(|token| token.kind == TokenKind::Quote) { return Some(Err(CardTextError::ParseError("a quoted cost program cannot nest quotation marks".into()))); }
     // A disjunction of complete actions is one atomic alternative price.
     // Give its existing choice owner the whole inner program before a broad
@@ -211,7 +215,7 @@ pub fn parse_quoted_cost_program_tokens(tokens: &[OwnedLexToken]) -> Option<Resu
     };
     Some(program.and_then(|effects| {
         if effects.is_empty() { return Err(CardTextError::ParseError("a quoted cost program must contain an action".into())); }
-        crate::word_claims::claim_tokens(&tokens[..4]);
+        crate::word_claims::claim_tokens(&tokens[..head]);
         crate::word_claims::claim_tokens(&tokens[tokens.len()-1..]);
         Ok(effects)
     }))

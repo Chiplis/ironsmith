@@ -69,6 +69,22 @@ fn optional_branch_cursor(
     )
 }
 
+/// "You may pay the cost \"Exile A; Exile B\"": a paid program is one total
+/// cost whose actions are its components, so all of it is paid or none is,
+/// and no one object pays two components (CR 601.2h, 118.3). Lowering keeps
+/// the program as one plain sequence; expose its actions as those components.
+fn optional_cost_components(effects: &[Effect]) -> Vec<Effect> {
+    if let [only] = effects
+        && let Some(sequence) = only.downcast_ref::<super::SequenceEffect>()
+        && sequence.surface == ironsmith_core::SequenceSurface::Sequential
+        && sequence.result_label.is_none()
+        && sequence.effects.len() > 1
+    {
+        return sequence.effects.clone();
+    }
+    effects.to_vec()
+}
+
 fn execute_optional_effects_with_outputs(
     effects: &[Effect],
     pay_as_cost: bool,
@@ -78,7 +94,7 @@ fn execute_optional_effects_with_outputs(
     purpose: crate::effects::EffectExecutionPurpose,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     if pay_as_cost {
-        let cost = crate::costs::Cost::try_effects(effects.iter().cloned())
+        let cost = crate::costs::Cost::try_effects(optional_cost_components(effects))
             .map_err(ExecutionError::InternalError)?;
         if let ironsmith_core::TotalCostKind::All(components) = cost.kind()
             && components.iter().all(|component| component.0.supports_prepared_payment()) {
@@ -494,7 +510,7 @@ impl EffectExecutor for MayEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         if self.payment_receipt.is_some() {return false;}
         if !self.pay_as_cost { return true; }
-        crate::costs::Cost::try_effects(self.effects.iter().cloned()).is_ok_and(|cost|
+        crate::costs::Cost::try_effects(optional_cost_components(&self.effects)).is_ok_and(|cost|
             matches!(cost.kind(), ironsmith_core::TotalCostKind::All(components)
                 if components.iter().all(|component| component.0.supports_prepared_payment())))
     }
@@ -519,7 +535,7 @@ impl EffectExecutor for MayEffect {
             .map(|accepted| accepted.player)
             .unwrap_or(ctx.iteration.iterated_player);
         let prepared = if self.pay_as_cost && acceptance.is_some() {
-            let cost = crate::costs::Cost::try_effects(self.effects.iter().cloned()).map_err(ExecutionError::InternalError)?;
+            let cost = crate::costs::Cost::try_effects(optional_cost_components(&self.effects)).map_err(ExecutionError::InternalError)?;
             crate::costs::prepare_total_cost_program_action(&cost, game, ctx, acceptance.as_ref().expect("accepted payment").payment_player, crate::costs::PaymentReason::Effect)?
         } else if self.pay_as_cost { None } else { super::prepared_branch::prepare_action_branch(
             &effects,
@@ -816,6 +832,8 @@ fn execute_may_with_outputs(
             let snapshot=crate::snapshot::ObjectSnapshot::from_object_id(game,ctx.source).ok_or_else(||ExecutionError::IncompleteEvidence("named payment source snapshot is unavailable".into()))?;
             let sources=game.try_trigger_source_lookback_snapshots()?;
             let event=crate::events::NamedActionEvent::new(format!("fail {label}"),payer,ctx.source,snapshot.clone(),vec![snapshot],1,ctx.cause.clone()).with_complete_source_lookback();
+            // The payer performed the "fail <label>" action this turn.
+            game.record_player_named_action(payer,&format!("fail {label}"))?;
             let provenance=game.alloc_child_event_provenance(ctx.provenance,crate::events::EventKind::KeywordAction);
             let event=crate::triggers::TriggerEvent::new_with_provenance(event,provenance).with_lookback_source_snapshots(sources);
             receipt_event=Some(event);
@@ -892,7 +910,7 @@ impl MayEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<bool, ExecutionError> {
         if self.pay_as_cost {
-            let cost = crate::costs::Cost::try_effects(self.effects.iter().cloned()).map_err(ExecutionError::InternalError)?;
+            let cost = crate::costs::Cost::try_effects(optional_cost_components(&self.effects)).map_err(ExecutionError::InternalError)?;
             let payer = match self.decider.as_ref() {
                 Some(filter) => crate::effects::helpers::resolve_player_filter_as_chooser(game, filter, ctx)?,
                 None => ctx.controller,

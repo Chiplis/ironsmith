@@ -243,7 +243,12 @@ pub fn parse_delayed_source_leaves_shape(
                 primitives::kw("planeswalker"),
                 primitives::kw("battle"),
             ))),
-            primitives::phrase(&["leaves", "the", "battlefield"]),
+            // "When Engulfing Incubus is no longer on the battlefield, ..."
+            // names the same leave of the source (CR 603.7, 603.10a).
+            alt((
+                primitives::phrase(&["leaves", "the", "battlefield"]),
+                primitives::phrase(&["is", "no", "longer", "on", "the", "battlefield"]),
+            )),
             eof,
         ),
         "delayed source leaves trigger",

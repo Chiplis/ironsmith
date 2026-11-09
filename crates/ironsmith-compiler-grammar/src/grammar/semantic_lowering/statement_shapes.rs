@@ -425,8 +425,17 @@ pub fn parse_statement_effect_preference_tokens(
     {
         Some(StatementEffectPreference::TargetBecomes)
     } else if phrase_is_prefix(&words, &["if"])
+        // Only the leading conditional sentence can point back to the
+        // preceding instruction; a later sentence's "those creatures" can
+        // name this statement's own result ("If ..., tap all attacking
+        // creatures. Those creatures don't untap ...").
         && any_phrase_is_present(
-            &words,
+            &parser_token_word_refs(
+                tokens
+                    .split(|token| token.is_period())
+                    .next()
+                    .unwrap_or(tokens),
+            ),
             &[
                 &["that", "card"],
                 &["that", "creature"],

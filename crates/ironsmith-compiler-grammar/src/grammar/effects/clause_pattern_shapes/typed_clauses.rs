@@ -432,6 +432,9 @@ fn has_no_defender_tail(tokens: &[OwnedLexToken]) -> bool {
             ),
             repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(primitives::kw("defender"))),
             primitives::kw("defender"),
+            // "... as though it didn't have defender this turn": the same
+            // turn-long permission with its duration after the comparison.
+            opt(primitives::phrase(&["this", "turn"])),
             primitives::sentence_end(),
         )
             .void(),

@@ -426,6 +426,27 @@ pub fn parse_anthem_and_keyword_line(
         return Ok(None);
     }
 
+    // "gets +2/+0 and has custom keyword \"slipstream\", and \"<rule>\"": the
+    // identity marker and quoted rules are one heterogeneous granted tail.
+    if tokens.get(have_token_idx).is_some_and(|token| token.is_any_word(&["has", "have"]))
+        && crate::lexer::token_word_refs(&tokens[have_token_idx + 1..]).starts_with(&["custom", "keyword"])
+    {
+        let clause_end = if have_token_idx > 0 && tokens[have_token_idx - 1].is_word("and") {
+            have_token_idx - 1
+        } else {
+            have_token_idx
+        };
+        let clause = parse_anthem_clause(tokens, get_idx, clause_end)?;
+        let Some(tail) =
+            parse_heterogeneous_granted_tail(&tokens[have_token_idx + 1..], &clause_words, false)?
+        else {
+            return Ok(None);
+        };
+        let mut result = vec![build_anthem_static_ability(&clause).into()];
+        result.extend(lower_granted_tail_for_anthem_subject(&clause.subject, &clause.condition, tail));
+        return Ok(Some(result));
+    }
+
     // The shared anthem/keyword head recognizes both gain and loss verbs.
     // A loss tail changes the affected object's own abilities; it must not be
     // lowered as though the object were granted a nested source-removal rule.
@@ -1747,6 +1768,47 @@ fn parse_granted_object_ability_segment(
     if ability_tokens.is_empty() {
         return Ok(None);
     }
+    // `has "experience — Whenever this creature attacks, ..."`: an
+    // ability-word label inside a quoted granted trigger is its presentation
+    // label, exactly as on a printed line; the body is the executable trigger.
+    if raw_segment.iter().any(|token| token.kind == TokenKind::Quote)
+        && let Some(shape) =
+            crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(&ability_tokens)
+        && shape.kind
+            != crate::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::SupportedProcedure
+        && shape
+            .body_tokens
+            .first()
+            .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
+    {
+        let label = shape
+            .label_tokens
+            .iter()
+            .filter(|token| token.kind == TokenKind::Word)
+            .map(|token| token.literal_surface().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let body = shape.body_tokens.to_vec();
+        let label_tokens = shape.label_tokens;
+        let label_designation = label.to_ascii_lowercase();
+        if !label.is_empty()
+            && let Some((mut parsed, display)) =
+                parse_granted_object_ability_segment(&body, clause_words, attached_subject)?
+        {
+            if let crate::model::CompilerAbilityKindCore::Triggered(triggered) = parsed.kind_mut()
+                && triggered.presentation_label.is_none()
+            {
+                triggered.presentation_label =
+                    Some(crate::ability::PresentationLabel::AbilityWord(label));
+            }
+            let designation = label_designation;
+            if !parsed.ability.designations.contains(&designation) {
+                parsed.ability.designations.push(designation);
+            }
+            crate::word_claims::claim_tokens(label_tokens);
+            return Ok(Some((parsed, display)));
+        }
+    }
 
     if attached_subject && contains_token_kind(&ability_tokens, TokenKind::Colon) {
         let Some(parsed) = parse_attached_granted_activated_line(raw_segment)? else {
@@ -1964,6 +2026,21 @@ pub fn parse_heterogeneous_granted_tail(
     clause_words: &[&str],
     attached_subject: bool,
 ) -> Result<Option<ParsedGrantedTailAst>, CardTextError> {
+    // `custom keyword "<name>", and "<rule>"`: the identity marker is one
+    // granted static; the quoted remainder is the ordinary tail.
+    if let Some((marker, rest)) = split_custom_keyword_marker_prefix(
+        trim_edge_punctuation_tokens(tail_tokens),
+    )? {
+        let mut tail = if rest.is_empty() {
+            Some(ParsedGrantedTailAst::default())
+        } else {
+            parse_heterogeneous_granted_tail(rest, clause_words, attached_subject)?
+        };
+        if let Some(tail) = tail.as_mut() {
+            tail.granted_static.insert(0, marker);
+        }
+        return Ok(tail);
+    }
     if let Some(parsed) =
         parse_complete_single_quoted_object_ability_tail(tail_tokens, clause_words)?
     {
@@ -4333,6 +4410,11 @@ pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     if let Some(abilities)=parse_quoted_alternative_method_grant(tokens)? {return Ok(Some(abilities));}
+    // A malformed protection grant is rejected before any sentence-boundary
+    // decline, so no other reader can trim its delimiters away.
+    if tokens.iter().any(|token| token.is_word("protection")) {
+        crate::clause_support::validate_protection_static_line(tokens)?;
+    }
 
     if static_grant_has_outer_sentence_boundary(tokens)
         && !has_owned_granted_cost_companion(tokens)? { return Ok(None); }
@@ -6436,12 +6518,24 @@ fn parse_quoted_alternative_method_grant(tokens:&[OwnedLexToken])->Result<Option
     // A complete quoted announcement is an ordinary recipient ability, not a
     // cast-from-zone permission. Its own static program retains payer choice,
     // price and outcome label under that receiving spell's source context.
-    let announcement=if method.is_none() {
+    let mut announcement=if method.is_none() {
         crate::keyword_static::parse_casting_announcement_program_line(body)?
     } else { None };
+    // A quoted text-adding cost ("As you cast an instant or sorcery spell,
+    // you may exile this card from your graveyard and pay ... If you do, add
+    // this card's effects to that spell.") is one granted static rule.
+    if method.is_none() && announcement.is_none()
+        && let Some(rule)=crate::keyword_payloads::add_spell_text_static(body)?
+    {
+        announcement=Some(vec![StaticAbilityAst::Static(rule)]);
+    }
     if method.is_none() && announcement.is_none() { return Ok(None); }
     let mut filter=crate::object_filters::parse_object_filter(&tokens[..verb],false)?;
-    let zone=filter.zone.take().unwrap_or_else(||method.as_ref().map_or(Zone::Stack,|method|method.cast_from_zone()));
+    // "Each instant and sorcery card in your graveyard": a union whose
+    // branches share one zone is a recipient set in that zone.
+    let branch_zone=filter.any_of.first().and_then(|branch|branch.zone)
+        .filter(|zone|filter.any_of.iter().all(|branch|branch.zone==Some(*zone)));
+    let zone=filter.zone.take().or(branch_zone).unwrap_or_else(||method.as_ref().map_or(Zone::Stack,|method|method.cast_from_zone()));
     // A quoted "you" belongs to each recipient, while a grant's beneficiary
     // is evaluated relative to the grantor. Admit this translation only when
     // the filter proves the recipient's rules controller is the grantor.

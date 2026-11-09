@@ -3223,7 +3223,10 @@ mod live_action_rollback_tests {
         assert!(payment.mana_abilities.iter().all(|a| a.source_id != filter.0.to_string()));
         assert!(payment.mana_abilities.iter().any(|a| a.source_id == mountain.0.to_string()));
         activate_manual_source(&mut wasm, mountain, 0);
-        assert!(wasm.current_mana_payment_view().unwrap().mana_abilities.is_empty());
+        // CR 605.3a: once floating mana covers the cost, every activatable
+        // mana ability is offered again (the filter can spend the floating R).
+        assert!(wasm.current_mana_payment_view().unwrap().mana_abilities.iter()
+            .all(|a| a.source_id != mountain.0.to_string()), "the tapped Mountain is spent");
         assert_eq!(wasm.priority_state.pending_cast.as_ref().unwrap().spell_id, spell);
         confirm_pending_mana_payment(&mut wasm);
         assert!(wasm.priority_state.pending_cast.is_none());
@@ -3692,6 +3695,7 @@ mod live_action_rollback_tests {
                 object_ids: vec![id.0], object_stable_ids: Vec::new(), object_hidden_refs: Vec::new(),
             });
         }
+        decline_hand_reveal_windows(&mut wasm);
         assert_eq!(wasm.game.player(alice).unwrap().mana_pool.green, 2);
         let green_before_reveals = wasm
             .game

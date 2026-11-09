@@ -4765,6 +4765,49 @@ pub(super) fn continue_spell_next_cost_or_finalize(
             }
         }
     }
+    // "... by paying {3}{G} and exiling this card from your graveyard": when
+    // a copy is cast, the original card is moved as part of paying the price
+    // (CR 601.2h), after the price's own conditions were checked. If the move
+    // is prevented, the price can't be paid and the cast is reversed.
+    if pending.pending_mana_payment.is_none()
+        && let Some(zone) = game.object(pending.spell_id)
+            .and_then(|spell| spell.cast_alternative_method.as_deref())
+            .and_then(|method| method.battlefield_instructions().source_destination_as_cost)
+        && let Some((donor, origin)) = game.cast_origin_snapshot(pending.spell_id)
+            .map(|snapshot| (snapshot.object_id, snapshot.zone))
+        && game.object(donor).is_some_and(|object| object.zone == origin && origin != zone)
+    {
+        let donor_stable = game.object(donor).map(|object| object.stable_id);
+        let move_donor = crate::effect::Effect::move_to_zone(
+            crate::target::ChooseSpec::SpecificObject(donor), zone, false);
+        let mut move_ctx = crate::effects::ExecutionContext::new_default(pending.spell_id, pending.caster);
+        let moved = crate::effects::execute_effect(game, &move_donor, &mut move_ctx);
+        let arrived = moved.is_ok() && donor_stable
+            .and_then(|stable| game.find_object_by_stable_id(stable))
+            .and_then(|moved| game.object(moved))
+            .is_some_and(|moved| moved.zone == zone);
+        if !arrived {
+            state.rollback_action(game);
+            return Err(GameLoopError::ActionCancelled(
+                "The original card could not be moved to pay this price".into(),
+            ));
+        }
+    }
+    // "You may cast this card from your graveyard if you spend 5 or less mana
+    // to cast it": the permission holds only for a total cost within its cap,
+    // known once the total cost is locked (CR 601.2f). Otherwise the cast is
+    // illegal and is reversed (CR 601.2, 728.1).
+    if pending.pending_mana_payment.is_none()
+        && let Some(cap) = game.object(pending.spell_id).and_then(|spell| {
+            crate::decision::cast_permission_constraints(game, pending.caster, spell, &pending.casting_method)
+        }).and_then(|constraints| constraints.max_total_mana_spent)
+        && pending.mana_cost_to_pay.as_ref().map_or(0, |cost| cost.mana_value()) > cap
+    {
+        state.rollback_action(game);
+        return Err(GameLoopError::ActionCancelled(format!(
+            "this permission allows casting only by spending {cap} or less mana"
+        )));
+    }
     if pending.mana_cost_to_pay.is_some() && pending.pending_mana_payment.is_none() {
         return begin_spell_mana_payment(game, trigger_queue, state, pending, decision_maker);
     }
@@ -9311,12 +9354,34 @@ fn complete_cast_announcement_programs(
 fn complete_cast_announcement_programs_inner(
     game:&mut GameState,pending:&mut PendingCast,decision_maker:&mut impl DecisionMaker,
 )->Result<(),GameLoopError> {
+    // "As you cast this spell, ..." functions while the spell is being cast
+    // (CR 601.2, 113.6b), whether printed or granted ("Spells you cast have
+    // ..."), so a granted rule's default battlefield zone does not exclude it.
     let programs=game.current_abilities(pending.spell_id).unwrap_or_default().into_iter().filter_map(|ability| {
-        if !ability.functional_zones.contains(&Zone::Stack) {return None;}
         let crate::ability::AbilityKind::Static(rule)=ability.kind else{return None};
         let ironsmith_core::StaticAbilityPayload::CastAnnouncementProgram {program}=&rule.compiled_model()?.payload else{return None};
         Some(program.clone())
     }).collect::<Vec<_>>();
+    // "Spells you cast have "As you cast this spell, ..."": a permanent's
+    // grant reaches the spell being cast (CR 601.2a); the spell is evaluated
+    // as that prospective cast.
+    let mut programs=programs;
+    if let Some(spell)=game.object(pending.spell_id).cloned() {
+        for &permanent in &game.battlefield {
+            for ability in game.current_abilities(permanent).unwrap_or_default() {
+                let crate::ability::AbilityKind::Static(rule)=&ability.kind else{continue};
+                let Some(spec)=rule.grant_spec() else{continue};
+                let crate::grant::Grantable::Ability(granted)=&spec.grantable else{continue};
+                let Some(ironsmith_core::StaticAbilityPayload::CastAnnouncementProgram {program})=granted.compiled_model().map(|model|&model.payload) else{continue};
+                if programs.contains(program) || !rule.is_active(game,permanent) {continue;}
+                let Some(permanent_object)=game.object(permanent) else{continue};
+                let filter_ctx=game.filter_context_for(game.controller_of(permanent_object),Some(permanent))
+                    .with_caster(Some(pending.caster)).with_prospective_cast(pending.spell_id);
+                let mut filter=spec.filter.clone();filter.zone=None;
+                if filter.matches_non_recursive(&spell,&filter_ctx,game) {programs.push(program.clone());}
+            }
+        }
+    }
     let mut ctx=crate::effects::ExecutionContext::new(pending.spell_id,pending.caster,decision_maker)
         .with_provenance(pending.provenance)
         .with_targets(pending.chosen_targets.iter().map(|target|match target {

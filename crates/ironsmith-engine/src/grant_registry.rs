@@ -968,6 +968,10 @@ pub struct PlayFromConstraints {
         )
     )]
     pub cast_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    /// The permission's total-mana cap ("if you spend N or less mana to cast
+    /// it"), checked once the total cost is determined (CR 601.2f).
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub max_total_mana_spent: Option<u32>,
     /// A linked cast watcher requires the chosen grant's immutable receipt.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub requires_cast_receipt: bool,
@@ -2554,6 +2558,7 @@ impl GrantRegistry {
                                     instant_timing: spec.instant_timing,
                                     may_look_at_top: spec.may_look_at_top,
                                     cast_mana_spend_mode: spec.cast_mana_spend_mode,
+                                    max_total_mana_spent: spec.cast_max_total_mana,
                                     ..Default::default()
                                 },
                                 cast_this_way_grants: spec.cast_this_way_grants.clone(),
@@ -2722,6 +2727,18 @@ fn static_linked_exile_targets(
     linked_exile_targets_for_identity(game, spec.linked_exile_pair, identity).map(Some)
 }
 
+/// Whether the object prints its own linked exile instruction. Such a source's
+/// readers must prove their native pair; only a source with no producer of
+/// its own (a token created by an external cache action) reads its
+/// externally recorded "exiled with" links.
+fn source_has_own_linked_exile_producer(game: &crate::GameState, source: ObjectId) -> bool {
+    game.object(source).is_some_and(|object| object.abilities_slice().iter().any(|ability| match &ability.kind {
+        crate::ability::AbilityKind::Triggered(triggered) => triggered.effects.linked_exile_pair.is_some(),
+        crate::ability::AbilityKind::Activated(activated) => activated.effects.linked_exile_pair.is_some(),
+        _ => false,
+    }))
+}
+
 fn linked_exile_targets_for_identity(
     game: &crate::GameState,
     pair: Option<ironsmith_core::LinkedExilePair>,
@@ -2731,8 +2748,25 @@ fn linked_exile_targets_for_identity(
         GrantPermissionIdentity::Static { source, origin, .. } =>
             crate::linked_exile::LinkedExileOwner::capture(*source, pair, Some(origin)),
         _ => None,
-    }.ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
-        "linked static permission has no proven definition/acquisition pair; native recovery or replay required".into()))?;
+    };
+    let Some(owner) = owner else {
+        // A definition with no linked exile instruction of its own (a Memory
+        // token created by a cache action) reads the cards an external
+        // effect exiled with it (CR 607.2a, 701.80a).
+        if pair.is_none()
+            && let GrantPermissionIdentity::Static { source, .. } = identity
+            && !source_has_own_linked_exile_producer(game, *source)
+        {
+            return Ok(game
+                .get_exiled_with_source_links(*source)
+                .iter()
+                .copied()
+                .filter(|member| game.object(*member).is_some_and(|object| object.zone == Zone::Exile))
+                .collect());
+        }
+        return Err(crate::effects::ExecutionError::IncompleteEvidence(
+            "linked static permission has no proven definition/acquisition pair; native recovery or replay required".into()));
+    };
     Ok(game
         .linked_exile_pair_members(&owner)?
         .iter()

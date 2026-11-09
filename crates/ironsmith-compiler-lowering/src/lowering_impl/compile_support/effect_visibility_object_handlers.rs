@@ -23,12 +23,15 @@ fn chooses_tagged_object_pool(filter: &ObjectFilter) -> bool {
 }
 
 fn scoped_collection_zones() -> Vec<Zone> {
+    // A tagged pool can hold a spell ("Choose it" for the resolving spell a
+    // replacement program names), so the stack is one of its zones too.
     vec![
         Zone::Battlefield,
         Zone::Hand,
         Zone::Graveyard,
         Zone::Library,
         Zone::Exile,
+        Zone::Stack,
     ]
 }
 

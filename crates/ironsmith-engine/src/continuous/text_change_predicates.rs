@@ -328,6 +328,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::CommandersCastFromCommandZoneBy(player)
         | Value::CommanderColorIdentityColors(player) | Value::CardTypesInGraveyard(player)
         | Value::PlayerCounters(player, _) | Value::PlayerVoteCount(player)
+        | Value::PlayerNamedActionCount { player, .. }
         | Value::MaximumLifeTotal(player) | Value::CountPlayersBelowHalfStartingLifeTotal(player) => {
             *player = rewrite_player_filter_words(player, change)?;
         }
@@ -552,6 +553,10 @@ fn rewrite_turn_history_condition_words(condition: &TurnHistoryCondition, change
         | TurnHistoryCondition::TriggeringObjectEnlistedThisCombat | TurnHistoryCondition::TriggeringObjectWasCast
         | TurnHistoryCondition::TriggeringObjectWasCastByController
         | TurnHistoryCondition::TriggeringObjectWasCastFromZone(_) | TurnHistoryCondition::TriggeringObjectDied
+        | TurnHistoryCondition::TriggeringObjectPaidCustomKeyword(_)
+        | TurnHistoryCondition::SourceEnteredFromZoneThisTurn(_)
+        | TurnHistoryCondition::SourceWasCastFromZoneThisTurn(_)
+        | TurnHistoryCondition::SourceWasNamedActionObjectThisTurn(_)
         | TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn | TurnHistoryCondition::TriggeringPlayersTurn { .. }
         | TurnHistoryCondition::ControllerTeamGainedLifeThisTurn | TurnHistoryCondition::TriggeringObjectsNoneWereCastOrNoManaSpent
         | TurnHistoryCondition::AllPlayersLifeAtMost(_) | TurnHistoryCondition::TriggeringAbilityIsManaAbility

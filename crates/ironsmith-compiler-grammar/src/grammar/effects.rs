@@ -2443,6 +2443,11 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
             ),
         ]));
     }
+    // "If the trial was failed, X can't attack or block ...": a leading
+    // condition belongs to the conditional sentence, which owns its body.
+    if tokens.first().is_some_and(|token| token.is_word("if")) {
+        return Ok(None);
+    }
     let Some(prepared_clause) = prepare_cant_sentence_restriction_clause_lexed(tokens)? else {
         return Ok(None);
     };

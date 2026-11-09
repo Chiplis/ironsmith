@@ -370,6 +370,18 @@ fn effect_references_prior_declared_targets(effect: &Effect) -> bool {
 }
 
 fn effect_references_prior_object_targets(effect: &Effect) -> bool {
+    // "Target creature you control deals damage ... to target creature you
+    // don't control" (Ram Through): the acting source keeps its announced
+    // target contract, so the source's earlier declaration stays in scope.
+    let unwrapped = effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map_or(effect, |tagged| tagged.effect.as_ref());
+    if unwrapped
+        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        .is_some_and(|with_source| with_source.source.is_target())
+    {
+        return true;
+    }
     effect
         .downcast_ref::<crate::effects::FightEffect>()
         .is_some()
@@ -1452,10 +1464,18 @@ pub(super) fn stack_entry_execution_context<'a>(
     // any other grant on the same permanent. Refresh only the sampled IDs;
     // absence/new incarnation never widens into source-wide linked cards.
     if let Some(program) = &entry.ability_effects {
+        let named_copy_tags = named_copy_cast_tags(program);
         for (tag, ids) in &program.captured_object_references {
-            let snapshots = ids.iter().filter_map(|id|game.object(*id).filter(|object|game.find_object_by_stable_id(object.stable_id)==Some(*id)))
+            let mut snapshots = ids.iter().filter_map(|id|game.object(*id).filter(|object|game.find_object_by_stable_id(object.stable_id)==Some(*id)))
                 .map(|object| ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game))
                 .collect::<Result<Vec<_>, _>>().map_err(GameLoopError::ExecutionFailed)?;
+            // CR 607.2 / 608.2h: "a copy of the card with the noted name"
+            // reads only the name the granting ability noted. A noted card
+            // that has since changed zones is identified by its last known
+            // information; the copy is made from its printed definition.
+            if snapshots.is_empty() && named_copy_tags.contains(tag) {
+                snapshots = ids.iter().filter_map(|id| game.source_last_known_snapshot(*id).cloned()).collect();
+            }
             ctx.set_tagged_objects(tag.clone(), snapshots);
             ctx.exact_object_reference_tags.insert(tag.clone());
         }
@@ -1467,6 +1487,25 @@ pub(super) fn stack_entry_execution_context<'a>(
     apply_keyword_payment_tags_for_resolution(game, entry, &mut ctx);
 
     Ok(ctx)
+}
+
+/// Tags whose cast instruction copies the printed definition named by the
+/// tagged card ("a copy of the card with the noted name").
+fn named_copy_cast_tags(program: &crate::resolution::ResolutionProgram) -> Vec<crate::tag::TagKey> {
+    fn visit(effect: &Effect, out: &mut Vec<crate::tag::TagKey>) {
+        if let Some(cast) = effect.downcast_ref::<crate::effects::CastTaggedEffect>()
+            && cast.copy_named_definition
+            && !out.contains(&cast.tag)
+        {
+            out.push(cast.tag.clone());
+        }
+        effect.visit_child_effects(&mut |child| visit(child, out));
+    }
+    let mut out = Vec::new();
+    for effect in program.all_effects() {
+        visit(effect, &mut out);
+    }
+    out
 }
 
 /// Capture active and announced target views at the caller's post-legality
@@ -1564,6 +1603,10 @@ pub(super) fn resolve_stack_entry_full_with_outputs(
                     }
                 } else {
                     game.finish_resolution_player_control(resolving_source);
+                    // CR 603.8: a state trigger made true by the entry's last
+                    // instruction triggers now, not only at the next
+                    // state-based-action check.
+                    crate::triggers::check::defer_state_triggers_at_instruction_boundary(game);
                 }
             }
             result

@@ -5662,6 +5662,15 @@ mod source_setup_replay_tests {
         assert_eq!(wasm.game.player(a).unwrap().hand.len(),0,"source setup precedes opening hands");
         for (source,payload) in [first,second].into_iter().zip(payloads){
             let context=wasm.build_pregame_decision().unwrap().unwrap();
+            // Once the first program has moved its card, the second has a single
+            // legal card left; that forced choice completes without a prompt.
+            if !matches!(context, DecisionContext::SelectObjects(_)) && source==second {
+                let chosen=wasm.game.chosen_object(source).expect("forced setup choice is recorded");
+                assert_ne!(chosen.object_id,payload,"persistent link records actual moved incarnation");
+                assert_eq!(wasm.game.object(chosen.object_id).unwrap().zone,Zone::Command);
+                assert!(wasm.game.is_face_down(chosen.object_id));
+                continue;
+            }
             let DecisionContext::SelectObjects(ref offered)=context else{panic!("setup program should expose its ordinary object decision")};
             assert!(offered.candidates.iter().any(|o|o.legal&&o.id==payload));
             assert!(!offered.candidates.iter().any(|o|o.legal&&o.id==foreign));

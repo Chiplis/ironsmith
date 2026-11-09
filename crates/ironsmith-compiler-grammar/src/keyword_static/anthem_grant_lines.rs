@@ -555,6 +555,11 @@ pub fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     let Some(parsed) = parse_cant_be_blocked_as_long_as_clause(tokens) else {
         return Ok(None);
     };
+    // A quote opening inside the subject means the restriction belongs to a
+    // quoted ability granted by the outer line, not to this line's subject.
+    if parsed.subject_tokens.iter().any(OwnedLexToken::is_quote) {
+        return Ok(None);
+    }
     // "... as long as defending player controls an artifact" and "... the most
     // creatures" have dedicated blocking-time restrictions; the generic
     // condition reading yields to them.
@@ -1486,9 +1491,18 @@ fn parse_complete_plot_cost_grant_line(
 fn parse_described_preparation_cost_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let prose = crate::lexer::render_token_slice(tokens).to_ascii_lowercase();
-    let Some((subject, quoted)) = prose.trim_end_matches('.').split_once(" has \"") else { return Ok(None); };
-    let Some(body) = quoted.strip_suffix('"') else { return Ok(None); };
+    // Split on the quote tokens themselves: rendered prose does not promise
+    // any particular spacing around a quotation mark.
+    let Some(open) = tokens.iter().position(|token| token.kind == crate::lexer::TokenKind::Quote) else { return Ok(None); };
+    let Some(close) = tokens.iter().rposition(|token| token.kind == crate::lexer::TokenKind::Quote) else { return Ok(None); };
+    if close <= open + 1 || open == 0 || !tokens[open - 1].is_any_word(&["has", "have"])
+        || tokens[close + 1..].iter().any(|token| token.kind != crate::lexer::TokenKind::Period) {
+        return Ok(None);
+    }
+    let subject = crate::lexer::render_token_slice(&tokens[..open - 1]).to_ascii_lowercase();
+    let subject = subject.as_str();
+    let body = crate::lexer::render_token_slice(&tokens[open + 1..close]).to_ascii_lowercase();
+    let body = body.trim();
     let (body, label) = if let Some((body, annotation)) = body.rsplit_once(" this is the ") {
         let Some(label) = annotation.strip_suffix(" preparation ability.") else { return Ok(None); };
         if label.is_empty() || label.chars().any(|character| matches!(character, '"' | '{' | '}' | '.')) { return Ok(None); }
@@ -1499,9 +1513,17 @@ fn parse_described_preparation_cost_grant_line(
     let Some(reduction) = price.strip_prefix("its mana cost reduced by ") else { return Ok(None); };
     let reduction = crate::grammar::values::parse_mana_cost_tokens(&crate::lexer::lex_line(reduction, 0)?)?;
     if reduction.mana_value() != reduction.generic_mana_total() { return Ok(None); }
-    let mut filter = parse_object_filter(&crate::lexer::lex_line(subject, 0)?, false)?;
-    if filter.zone != Some(Zone::Hand) { return Ok(None); }
+    // "Each instant and sorcery card in your hand has ...": the distributive
+    // determiner is not part of the filter.
+    let subject = subject.strip_prefix("each ").unwrap_or(subject);
+    let Ok(mut filter) = parse_object_filter(&crate::lexer::lex_line(subject, 0)?, false) else { return Ok(None); };
+    // "each instant and sorcery card in your hand" reads as a union whose
+    // arms each carry the hand zone.
+    let union_in_hand = filter.zone.is_none() && !filter.any_of.is_empty()
+        && filter.any_of.iter().all(|arm| arm.zone == Some(Zone::Hand));
+    if filter.zone != Some(Zone::Hand) && !union_in_hand { return Ok(None); }
     filter.zone = None;
+    for arm in &mut filter.any_of { arm.zone = None; }
     let spec = crate::model::CompilerGrantSpecCore::new(
         crate::model::CompilerGrantableCore::DerivedAlternativeCast(
             ironsmith_core::DerivedAlternativeCast::ExilePreparationFromCardManaCost {
@@ -1544,6 +1566,16 @@ fn has_owned_granted_cost_companion(tokens: &[OwnedLexToken]) -> Result<bool, Ca
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // "You may have it fight ...": a causative instruction, never a
+    // "<subject> has <keyword>" grant.
+    if crate::lexer::token_word_refs(tokens).starts_with(&["you", "may", "have"]) {
+        return Ok(None);
+    }
+    // A malformed protection grant is rejected before any sentence-boundary
+    // decline, so no other reader can trim its delimiters away.
+    if tokens.iter().any(|token| token.is_word("protection")) {
+        crate::clause_support::validate_protection_static_line(tokens)?;
+    }
     if static_grant_has_outer_sentence_boundary(tokens)
         && !has_owned_granted_cost_companion(tokens)? { return Ok(None); }
     // The complete compound reader separates granted keywords from a stated
@@ -4454,6 +4486,9 @@ pub fn parse_static_condition_clause(
     if let Some(predicate) = parse_value_is_number_condition(&tokens) {
         return Ok(predicate);
     }
+    if let Some(predicate) = parse_any_player_life_threshold_condition(&tokens) {
+        return Ok(predicate);
+    }
 
     Err(CardTextError::ParseError(format!(
         "unsupported static condition clause (clause: '{display}')"
@@ -4463,6 +4498,31 @@ pub fn parse_static_condition_clause(
 /// "the last number chosen for this permanent is 1" / "... is 2 or greater":
 /// an ordinary value expression compared with a literal number. The value
 /// reader owns the left operand; only the copula and comparison are read here.
+/// "any player has 21 or more life" / "a player has 9 or less life": some
+/// in-game player meets the threshold, i.e. the greatest (least) current life
+/// total among all players does.
+fn parse_any_player_life_threshold_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if words.len() != tokens.len() {
+        return None;
+    }
+    let number = |word: &str| crate::util::parse_number_word_u32(word)
+        .or_else(|| word.parse::<u32>().ok())
+        .and_then(|value| i32::try_from(value).ok());
+    use crate::effect::ValueComparisonOperator as Op;
+    let (operator, amount) = match words.as_slice() {
+        ["any" | "a", "player", "has", n, "or", "more" | "greater", "life"] => (Op::GreaterThanOrEqual, number(n)?),
+        ["any" | "a", "player", "has", n, "or", "less" | "fewer", "life"] => (Op::LessThanOrEqual, number(n)?),
+        _ => return None,
+    };
+    let left = match operator {
+        Op::GreaterThanOrEqual => Value::MaximumLifeTotal(PlayerFilter::Any),
+        _ => Value::LifeTotal(PlayerFilter::LowestLifeTied),
+    };
+    crate::word_claims::claim_tokens(tokens);
+    Some(PredicateAst::ValueComparison { left, operator, right: Value::Fixed(amount) })
+}
+
 fn parse_value_is_number_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
     if words.len() != tokens.len() {
@@ -6595,17 +6655,9 @@ mod dynamic_anthem_tests {
                 panic!("expected typed colors-among value, got {value:#?}");
             };
             assert_eq!(filter.controller, Some(PlayerFilter::You));
-            assert!(
-                filter
-                    .card_types
-                    .contains(&crate::types::CardType::Artifact)
-            );
-            assert!(
-                filter
-                    .card_types
-                    .contains(&crate::types::CardType::Creature)
-            );
-            assert!(filter.card_types.contains(&crate::types::CardType::Land));
+            // CR 110.4c: "permanents" on the battlefield is zone-only.
+            assert_eq!(filter.zone, Some(crate::zone::Zone::Battlefield));
+            assert!(filter.card_types.is_empty(), "{filter:#?}");
         }
     }
 
@@ -7226,4 +7278,47 @@ mod present_linked_exile_condition_tests {
             assert!(parse_static_condition_clause(&crate::lexer::lex_line(invalid,0).unwrap()).is_err(), "{invalid}");
         }
     }
+}
+
+/// `Other creatures have haste and attack each combat if able.`: one subject
+/// with a keyword grant and an independent attack requirement. Each half is
+/// read by its own complete static reader over the shared subject.
+pub fn parse_subject_has_keywords_and_attacks_each_combat_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let Some(has_idx) = tokens.iter().position(|token| token.is_any_word(&["has", "have"])) else {
+        return Ok(None);
+    };
+    if has_idx == 0 || tokens.iter().any(|token| token.kind == crate::lexer::TokenKind::Quote) {
+        return Ok(None);
+    }
+    let Some(and_idx) = (has_idx + 1..tokens.len().saturating_sub(5)).find(|index| {
+        tokens[*index].is_word("and")
+            && crate::lexer::parser_token_word_refs(&tokens[index + 1..])
+                .as_slice()
+                .first()
+                .is_some_and(|word| matches!(*word, "attack" | "attacks"))
+    }) else {
+        return Ok(None);
+    };
+    let tail_words = crate::lexer::parser_token_word_refs(&tokens[and_idx + 1..]);
+    if tail_words.get(1..) != Some(&["each", "combat", "if", "able"][..]) {
+        return Ok(None);
+    }
+    let subject = &tokens[..has_idx];
+    let mut grant = tokens[..and_idx].to_vec();
+    grant.push(OwnedLexToken::period(crate::TextSpan::synthetic()));
+    let mut requirement = subject.to_vec();
+    requirement.extend(tokens[and_idx + 1..].iter().cloned());
+    requirement.push(OwnedLexToken::period(crate::TextSpan::synthetic()));
+    let Some(mut abilities) = parse_static_ability_ast_line_lexed(&grant)? else {
+        return Ok(None);
+    };
+    let Some(required) = parse_static_ability_ast_line_lexed(&requirement)? else {
+        return Ok(None);
+    };
+    crate::word_claims::claim_tokens(std::slice::from_ref(&tokens[and_idx]));
+    abilities.extend(required);
+    Ok(Some(abilities))
 }

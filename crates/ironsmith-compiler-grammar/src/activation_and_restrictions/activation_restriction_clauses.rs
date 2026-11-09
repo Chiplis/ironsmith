@@ -1801,6 +1801,23 @@ pub fn parse_negated_object_restriction_clause(
         }));
     }
 
+    // "Creatures you control can't be cast using \"relocate\"": no player may
+    // cast a matching object by that named price. The price name is the
+    // explicit custom identity the spell's cast receipt would record.
+    if let ["be", "cast", "using", name @ ..] = remainder_words.as_slice()
+        && !name.is_empty()
+        && name.iter().all(|word| word.chars().all(|ch| ch.is_ascii_alphabetic() || ch == '-'))
+    {
+        crate::word_claims::claim_tokens(&tokens[neg_start..]);
+        let spells = filter;
+        return Ok(Some(ParsedCantRestriction {
+            restriction: Restriction::cast_spells_matching(
+                PlayerFilter::Any,
+                spells.with_ability_marker(format!("using {}", name.join(" ").to_ascii_lowercase())),
+            ),
+            target,
+        }));
+    }
     // "The Aetherspark can't be attacked": no creature may choose the
     // restricted permanent as the object it attacks (CR 508.1b).
     if remainder_words.as_slice() == ["be", "attacked"] {

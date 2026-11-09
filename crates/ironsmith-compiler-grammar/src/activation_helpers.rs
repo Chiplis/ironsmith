@@ -618,6 +618,15 @@ pub fn parse_add_mana(
             clause_words.join(" ")
         )));
     }
+    // "add four mana of that color" (Test Site: Syzygy): a fixed amount of
+    // the color chosen just before.
+    if !fixed_output.has_explicit_symbol
+        && clause_words.ends_with(&["mana", "of", "that", "color"])
+        && let Some(amount) = parse_add_mana_amount(tokens)
+    {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(EffectAst::subject_verb_add_mana_chosen_color(player, amount, None));
+    }
     if facts.amount_that_color {
         let amount = parse_devotion_value_from_add_clause(tokens)?
             .or_else(|| parse_add_mana_equal_amount_value(tokens))

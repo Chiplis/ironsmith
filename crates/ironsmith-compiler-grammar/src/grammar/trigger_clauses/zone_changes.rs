@@ -123,6 +123,18 @@ fn zone_change_surface(words: &[&str]) -> Option<ZoneChangeSurface> {
                 during_turn,
             });
         }
+        // "When <this> is no longer on the battlefield" is the leave event.
+        if let ["is" | "are", "no", "longer", "on", rest @ ..] = tail
+            && let Some(origin) = origin(rest)
+        {
+            return Some(ZoneChangeSurface {
+                subject_word_end: index,
+                origin: Some(origin),
+                destination: None,
+                returned: false,
+                during_turn,
+            });
+        }
         let ["is" | "are", verb, preposition, rest @ ..] = tail else {
             continue;
         };

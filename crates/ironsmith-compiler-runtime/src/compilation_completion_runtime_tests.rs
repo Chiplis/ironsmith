@@ -1187,6 +1187,8 @@ fn crafted_return_chooses_only_shared_exiled_material_types_before_entry() {
     ] {
         let alice = PlayerId::from_index(0);
         let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        // The first registered linked face is the front face.
+        game.register_linked_face_definition(&front);
         game.register_linked_face_definition(&back);
         // Resolution begins after the craft costs have exiled the source and materials.
         let source = game.create_object_from_definition(&front, alice, Zone::Exile);
@@ -1254,6 +1256,7 @@ fn crafted_return_chooses_only_shared_exiled_material_types_before_entry() {
     let alice = PlayerId::from_index(0);
     let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+    game.register_linked_face_definition(&front);
     game.register_linked_face_definition(&back);
     game.player_mut(alice).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless, 6);
     let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);

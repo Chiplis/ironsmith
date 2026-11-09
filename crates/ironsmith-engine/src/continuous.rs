@@ -1797,7 +1797,7 @@ impl ContinuousEffectManager {
                 completed_turn_number > effect.expires_end_of_turn
                     && completed_turn_players.contains(&effect.controller)
             }
-            Until::NextEndStep => turn_number > effect.expires_end_of_turn,
+            Until::NextEndStep | Until::YourNextEndStep => turn_number > effect.expires_end_of_turn,
             Until::YourNextUpkeepEnd => turn_number > effect.expires_end_of_turn,
             _ => false,
         };
@@ -5848,7 +5848,7 @@ fn continuous_effect_duration_is_active(
         Until::YourNextTurnEnd => game.turn.turn_number <= effect.expires_end_of_turn,
         // `expires_end_of_turn` holds the turn whose end step ends the
         // effect; it ends as that end step begins.
-        Until::NextEndStep => {
+        Until::NextEndStep | Until::YourNextEndStep => {
             game.turn.turn_number < effect.expires_end_of_turn
                 || (game.turn.turn_number == effect.expires_end_of_turn
                     && !matches!(game.turn.phase, crate::game_state::Phase::Ending))

@@ -295,6 +295,7 @@ where
         converted.optional_choice = payload.optional_choice;
         converted.cost_choice_keywords = payload.cost_choice_keywords.clone();
         converted.announced_modes = payload.announced_modes.clone();
+        converted.allowed_mode_counts = payload.allowed_mode_counts.clone();
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =
@@ -506,6 +507,7 @@ where
         converted.effects.object_reference_imports = payload.object_reference_imports.clone();
         converted.persistent_player_rule = payload.persistent_player_rule.clone();
         converted.intervening_if = payload.intervening_if.clone();
+        converted.fires_if_watched_source_absent = payload.fires_if_watched_source_absent;
         if let Some(filter) = &payload.target_filter {
             converted = converted.with_target_filter(filter.clone());
         }
@@ -2213,9 +2215,10 @@ where
         }));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseColorEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::ChooseColorEffect::new(
-            payload.chooser.clone(),
-        )));
+        return Ok(Effect::new(
+            crate::effects::ChooseColorEffect::new(payload.chooser.clone())
+                .with_among(payload.among.clone()),
+        ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseLandTypeEffect>(&effect) {
         let mut choose =
@@ -2714,6 +2717,30 @@ where
         "no runtime conversion registered for compiler effect payload `{}`",
         M::payload_type_name(&effect)
     )))
+}
+
+/// A precompiled optional-text subset holds the same printed bodies the
+/// top-level conversion prunes; keep its programs in that runtime form.
+pub fn prune_optional_text_variant_programs(
+    model: &mut crate::static_abilities::CompiledStaticAbility,
+) {
+    let ironsmith_core::StaticAbilityPayload::OptionalTextFragments(spec) = &mut model.payload else { return; };
+    for variant in &mut spec.variants {
+        for ability in &mut variant.abilities {
+            match &mut ability.kind {
+                ironsmith_core::AbilityKind::Activated(activated) => {
+                    prune_redundant_target_only_effects_in_program(&mut activated.effects);
+                }
+                ironsmith_core::AbilityKind::Triggered(triggered) => {
+                    prune_redundant_target_only_effects_in_program(&mut triggered.effects);
+                }
+                ironsmith_core::AbilityKind::Static(_) => {}
+            }
+        }
+        if let Some(spell_effect) = &mut variant.spell_effect {
+            prune_redundant_target_only_effects_in_program(spell_effect);
+        }
+    }
 }
 
 pub fn prune_redundant_target_only_effects_in_program(

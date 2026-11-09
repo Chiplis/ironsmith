@@ -324,7 +324,12 @@ fn read_quoted_granted_ability_line(
     let mut opening = true;
     let only_designation_quotes = lexed.iter().enumerate().all(|(index, token)| {
         if token.kind != TokenKind::Quote { return true; }
-        let ok = !opening || index.checked_sub(1).and_then(|prior| lexed.get(prior))
+        // `spells with custom keyword "fabled"` names a filter operand too.
+        let keyword_filter_operand = index >= 3
+            && lexed[index - 1].is_word("keyword")
+            && lexed[index - 2].is_word("custom")
+            && lexed[index - 3].is_any_word(&["with", "without"]);
+        let ok = !opening || keyword_filter_operand || index.checked_sub(1).and_then(|prior| lexed.get(prior))
             .is_some_and(|prior| prior.is_word("designation"));
         opening = !opening;
         ok

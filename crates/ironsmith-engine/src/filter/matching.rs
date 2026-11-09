@@ -1094,6 +1094,19 @@ pub(super) fn matches_subject(
         };
         if !is_copy{return false;}
     }
+    // "a spell for its showcase cost": the candidate's own cast receipt
+    // records the named paid cost (CR 601.2b, 118.9).
+    if let Some(label) = &filter.cast_paid_label {
+        let (paid, controller) = match subject {
+            ObjectSubject::Live(object) => (&object.optional_costs_paid, game.controller_of(object)),
+            ObjectSubject::Snapshot(snapshot) => (&snapshot.optional_costs_paid, snapshot.controller),
+        };
+        if !crate::condition_eval::evaluate_paid_cost_receipt(paid, label, game.turn.turn_number, controller)
+            .unwrap_or(false)
+        {
+            return false;
+        }
+    }
     if filter.physical_card && !subject.is_physical_card() {
         return false;
     }

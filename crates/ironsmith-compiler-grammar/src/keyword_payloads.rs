@@ -315,6 +315,23 @@ pub(super) fn parse_additional_cost(
     let Some(effect_tokens) = additional_cost_tail_tokens_lexed(tokens) else {
         return Ok(None);
     };
+    // "As an additional cost to cast this spell, perform the <label> action
+    // with objects chosen this way if the following cost is paid: You may pay
+    // the cost \"...\"" (custom collect backing, CR 701.106c): an optional
+    // additional cost whose payment the spell's linked abilities read.
+    if let Some(colon) = effect_tokens.iter().position(|token| token.kind == crate::lexer::TokenKind::Colon) {
+        let header = crate::lexer::parser_token_word_refs(&effect_tokens[..colon]);
+        let suffix = ["action", "with", "objects", "chosen", "this", "way", "if", "the", "following", "cost", "is", "paid"];
+        let body = crate::util::trim_edge_punctuation_tokens(&effect_tokens[colon + 1..]);
+        if header.starts_with(&["perform", "the"]) && header.ends_with(&suffix) && header.len() > suffix.len() + 2
+            && crate::lexer::parser_token_word_refs(body).starts_with(&["you", "may", "pay", "the", "cost"])
+        {
+            let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(&body[2..])?;
+            crate::word_claims::claim_tokens(&effect_tokens[..=colon]);
+            crate::word_claims::claim_tokens(&body[..2]);
+            return Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::custom("Additional", cost))));
+        }
+    }
     if let Some(price) = crate::grammar::activation_costs::parse_artifact_creature_tap_price(effect_tokens)? {
         return Ok(ast(LineAst::AdditionalCost { effects: vec![EffectAst::subject_verb_pay_mana(PlayerAst::You, price)] }));
     }
@@ -434,6 +451,14 @@ pub(super) fn parse_additional_cost(
             return Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::custom("Additional", cost))));
         }
         let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(payment)?;
+        // "you may have any number of lands ... become ..." (a conversion
+        // payment): converting zero lands is already a legal payment of the
+        // ordinary additional cost, exactly as "you may sacrifice any number".
+        if crate::lexer::parser_token_word_refs(payment).starts_with(&["have", "any", "number", "of"])
+            && let Some([crate::model::CompilerCost::ValidatedEffect(effect)]) = cost.as_all()
+        {
+            return Ok(ast(LineAst::AdditionalCost { effects: vec![(**effect).clone()] }));
+        }
         return Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::custom("Additional", cost))));
     }
     let evidence_minimum = match words.as_slice() {
@@ -509,6 +534,7 @@ pub(super) fn parse_additional_cost(
 
 #[path = "keyword_payloads/alternative_cast_readings.rs"]
 mod alternative_cast_readings;
+pub(crate) use alternative_cast_readings::add_spell_text_static;
 
 pub(super) fn parse_alternative_cast(
     line: &PreprocessedLine,

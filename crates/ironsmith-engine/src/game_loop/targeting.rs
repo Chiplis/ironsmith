@@ -2084,6 +2084,8 @@ fn modal_effect_has_legal_targets_internal_with_view(
 
         let valid_selection = if require_full_selection {
             selected_count >= min_modes && selected_count <= max_modes
+                && (modal.allowed_mode_counts.is_empty()
+                    || modal.allowed_mode_counts.iter().any(|count| *count as usize == selected_count))
         } else {
             selected_count <= max_modes
         } && (!modal.distinct_player_targets_per_mode

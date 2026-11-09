@@ -1477,6 +1477,20 @@ fn compile_effect_inner(
     }
     if let EffectAst::MergePermanents(merge)=effect {
         let mut merge=merge.clone();let refs=current_reference_env(ctx);
+        // A demonstrative operand ("that permanent") with no earlier object
+        // in this program names the triggering object, exactly as the same
+        // demonstrative does as an instruction target in a trigger.
+        if refs.known_last_object_tag().is_none() {
+            for operand in [&mut merge.incoming, &mut merge.host] {
+                for constraint in &mut operand.tagged_constraints {
+                    if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                        && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                    {
+                        constraint.tag = crate::tag::CompilerReferenceTag::Triggering.key();
+                    }
+                }
+            }
+        }
         merge.incoming=resolve_it_tag(&merge.incoming,&refs)?;
         merge.host=resolve_it_tag(&merge.host,&refs)?;
         return Ok((vec![Effect::new(merge)],Vec::new()));

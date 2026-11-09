@@ -4,6 +4,25 @@ use super::*;
 
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, CardTextError> {
     let words = crate::lexer::parser_token_word_refs(tokens);
+    // "When this Equipment is destroyed" / "Whenever a creature you control
+    // is destroyed": the passive destruction event (CR 701.8).
+    if let [subject @ .., "is" | "are", "destroyed"] = words.as_slice()
+        && !subject.is_empty()
+        && !subject.contains(&"or")
+        && let Some(end) = trigger_word_token_start(tokens, subject.len())
+    {
+        let filter = if is_source_reference_words(&non_article_word_refs(subject)) {
+            crate::word_claims::claim_words(subject);
+            ObjectFilter::source()
+        } else {
+            match crate::word_claims::probe_only(|| parse_object_filter_lexed(&tokens[..end], false)) {
+                Ok(filter) if filter != ObjectFilter::default() => parse_object_filter_lexed(&tokens[..end], false)?,
+                _ => return Ok(None),
+            }
+        };
+        crate::word_claims::claim_words(&words[subject.len()..]);
+        return Ok(Some(TriggerSpec::PermanentDestroyed(filter)));
+    }
     let Some(rest) = words.strip_prefix(&["a", "spell", "or", "ability"]) else { return Ok(None); };
     let (controller, actor_len) = if rest.starts_with(&["you", "control"]) { (PlayerFilter::You, 2) }
         else if rest.starts_with(&["an", "opponent", "controls"]) { (PlayerFilter::Opponent, 3) }

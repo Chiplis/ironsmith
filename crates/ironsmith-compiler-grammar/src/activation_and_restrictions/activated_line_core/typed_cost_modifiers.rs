@@ -131,6 +131,7 @@ fn parse_typed_price(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, 
         {
             return Err(unsupported(tokens, "minimum sentence"));
         }
+        crate::word_claims::claim_tokens(sentences[1]);
         minimum = Some(1);
     }
     let mut predicate = None;
@@ -169,6 +170,8 @@ fn parse_typed_price(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, 
         let condition = &tail[1..];
         if condition.len() > 2 && words_are(&condition[..2], &["it", "targets"]) {
             let target = parse_object_filter(&condition[2..], false)?;
+            // "if it targets": the connector and target verb are this reading.
+            crate::word_claims::claim_tokens(&tail[..3]);
             target_condition = Some(if equipment_ability {
                 ActivatedAbilityCostCondition::EquipAbility {
                     targeting: Some(target),

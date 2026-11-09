@@ -223,6 +223,8 @@ pub(super) fn bind_static_linked_exile(definition: &mut CardDefinition) {
                 producer = Some((slot, kind));
             }
             AbilityKind::Static(ability) => match &ability.payload {
+                // A presentation marker grouping one printed line's statics.
+                StaticAbilityPayload::SourceLineStaticGroup { .. } => {}
                 StaticAbilityPayload::None
                     if matches!(ability.id, Some(StaticAbilityId::Flying | StaticAbilityId::Menace)) => {}
                 // These independent player rules contain no producer,

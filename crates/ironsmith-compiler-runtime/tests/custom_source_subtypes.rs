@@ -20,7 +20,12 @@ fn exact_source_type_metadata_compiles_with_scoped_vocabulary_and_survives_artif
    let source=game.create_object_from_definition(&definition,ironsmith::PlayerId(0),ironsmith::Zone::Battlefield);
    assert!(game.current_characteristics(source).unwrap().subtypes.contains(&expected));
   }
-  assert!(ironsmith_compiler_runtime::compile_to_runtime_definition(name,text,false).is_err(),"source-scoped vocabulary leaked: {}",vocabulary.singular);
+  // A custom card's type line declares its own unknown subtype words (CR 205.3),
+  // so the text compiles outside the explicit scope; the scoped vocabulary
+  // itself must not leak past that scope.
+  assert!(ironsmith_core::custom_subtypes::lookup(&vocabulary.singular).is_none(),"source-scoped vocabulary leaked: {}",vocabulary.singular);
+  let _ = ironsmith_compiler_runtime::compile_to_runtime_definition(name,text,false);
+  assert!(ironsmith_core::custom_subtypes::lookup(&vocabulary.singular).is_none(),"implicit type-line vocabulary leaked: {}",vocabulary.singular);
  }
 }
 

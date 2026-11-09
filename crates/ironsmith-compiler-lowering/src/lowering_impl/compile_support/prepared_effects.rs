@@ -3475,6 +3475,21 @@ fn prepend_effect_prelude(mut compiled: Vec<Effect>, mut prelude: Vec<Effect>) -
     if prelude.is_empty() {
         return compiled;
     }
+    // A "triggering" object binding no compiled instruction reads is dropped:
+    // "Choose this creature; if it has lifelink, ..." rebinds each "it" to the
+    // choice, and an unread binding would still demand a triggering event.
+    prelude.retain(|effect| {
+        let Some(binding) = effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>() else {
+            return true;
+        };
+        if binding.tag.as_str() != crate::tag::CompilerReferenceTag::Triggering.as_str() {
+            return true;
+        }
+        // Not every payload walks its tag keys (TagKeyWalk misses some), so
+        // read the complete compiled structure for any use of the tag.
+        let needle = format!("{:?}", binding.tag.as_str());
+        compiled.iter().any(|effect| format!("{effect:?}").contains(&needle))
+    });
     prelude.append(&mut compiled);
     prelude
 }

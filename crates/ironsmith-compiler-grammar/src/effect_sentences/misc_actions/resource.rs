@@ -10,6 +10,20 @@ pub fn parse_pay(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    // "Pay the cost \"<program>\"" (an additional cost, a resolving payment):
+    // the quoted program is one bounded payment its payer performs.
+    if matches!(player, PlayerAst::Implicit | PlayerAst::You)
+        && tokens.len() > 3
+        && tokens[0].is_word("the")
+        && tokens[1].is_word("cost")
+        && tokens[2].kind == crate::lexer::TokenKind::Quote
+    {
+        let mut full = crate::lexer::synthetic_word_tokens(["pay"]);
+        full.extend_from_slice(tokens);
+        if let Some(program) = crate::grammar::activation_costs::parse_quoted_cost_program_tokens(&full) {
+            return Ok(EffectAst::Sequence { effects: program? });
+        }
+    }
     // "you may pay that much life again" (Verrak): repeating the amount
     // already paid is an ordinary payment of that amount.
     let tokens = match tokens.iter().rposition(|token| token.as_word().is_some()) {

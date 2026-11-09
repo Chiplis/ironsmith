@@ -144,7 +144,8 @@ fn departed_planeswalker_and_battle_destinations_retain_controller_or_protector_
         let destination=if battle{let id=printed(&mut game,A,Zone::Battlefield,"Siege","Type: Battle — Siege\nDefense: 8");assert!(game.set_battle_protector(id,B));id}
             else{printed(&mut game,B,Zone::Battlefield,"Planeswalker","Type: Planeswalker\nLoyalty: 8")};
         let mut queue=attack(&mut game,attacker,if battle{AttackTarget::Battle(destination)}else{AttackTarget::Planeswalker(destination)});
-        let expected=if battle&&change==0{assert!(game.set_battle_protector(destination,C));C}else{B};
+        // CR 506.4c: a protector change removes the battle from combat; the attacker keeps attacking nothing and its defending player stays the protector it attacked.
+        if battle&&change==0{assert!(game.set_battle_protector(destination,C));}let expected=B;
         match change{0 if !battle=>{game.set_current_controller(destination,C).unwrap();},1=>{game.move_object_by_effect(destination,Zone::Graveyard).unwrap();},2=>{game.phase_out(destination);},_=>{}}
         let mut choices=Choices::default();admit(&mut game,&mut queue,&mut choices);resolve(&mut game,&mut choices);assert_eq!(game.player(expected).unwrap().life,19,"battle={battle} change={change} expected={expected:?}; combat={:?}; stack={:?}",game.combat,game.stack);
     }}}

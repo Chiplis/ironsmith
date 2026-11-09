@@ -925,6 +925,41 @@ fn parse_attached_granted_triggered_line(
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let edge_trimmed = trim_edge_punctuation(tokens);
     let trimmed = trim_edge_punctuation(&trim_outer_quotes(&edge_trimmed));
+    // `"Crash Land — Whenever ..."`: the quoted trigger's ability-word label
+    // is its presentation label; the body is the executable trigger.
+    if let Some(shape) =
+        crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(&trimmed)
+        && shape.kind
+            != crate::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::SupportedProcedure
+        && attached_grammar::parse_trigger_intro_tokens(shape.body_tokens)
+    {
+        let label = shape
+            .label_tokens
+            .iter()
+            .filter(|token| token.kind == crate::lexer::TokenKind::Word)
+            .map(|token| token.literal_surface().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let label_tokens = shape.label_tokens.to_vec();
+        let label_designation = label.to_ascii_lowercase();
+        let body = shape.body_tokens.to_vec();
+        if !label.is_empty()
+            && let Some(mut parsed) = parse_attached_granted_triggered_line(&body)?
+        {
+            if let crate::model::CompilerAbilityKindCore::Triggered(triggered) = parsed.kind_mut()
+                && triggered.presentation_label.is_none()
+            {
+                triggered.presentation_label =
+                    Some(crate::ability::PresentationLabel::AbilityWord(label));
+            }
+            let designation = label_designation;
+            if !parsed.ability.designations.contains(&designation) {
+                parsed.ability.designations.push(designation);
+            }
+            crate::word_claims::claim_tokens(&label_tokens);
+            return Ok(Some(parsed));
+        }
+    }
     if !attached_grammar::parse_trigger_intro_tokens(&trimmed) {
         return Ok(None);
     }
@@ -1209,6 +1244,104 @@ fn parse_attached_quoted_ability_grant(
     Ok(parse_attached_quoted_static_grant(subject, &tokens, condition))
 }
 
+/// `has [keywords,] custom keyword "<name>"[, and "<ability>"]...`: the
+/// opaque identity marker is one attached static grant, independent of each
+/// keyword or quoted ability granted alongside it.
+fn parse_attached_custom_keyword_grant_list(
+    subject: &str,
+    grant_prefix: &[OwnedLexToken],
+    tokens: &[OwnedLexToken],
+    condition: &Option<PredicateAst>,
+    clause_text: &str,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let has_marker = tokens.windows(3).any(|window| {
+        window[0].is_word("custom") && window[1].is_word("keyword") && window[2].is_quote()
+    });
+    // A conditional suffix was split off the trimmed list; this reader only
+    // owns the complete unconditional list.
+    if !has_marker || condition.is_some() {
+        return Ok(None);
+    }
+    let mut items: Vec<&[OwnedLexToken]> = Vec::new();
+    let mut start = 0usize;
+    let mut quoted = false;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.is_quote() {
+            quoted = !quoted;
+            continue;
+        }
+        if !quoted && (token.kind == crate::lexer::TokenKind::Comma || token.is_word("and")) {
+            items.push(&tokens[start..index]);
+            start = index + 1;
+        }
+    }
+    if quoted {
+        return Ok(None);
+    }
+    items.push(&tokens[start..]);
+    // Quotes delimit items here; only list punctuation is trimmed.
+    let trim_list_punctuation = |item: &[OwnedLexToken]| {
+        let is_list_punctuation = |token: &OwnedLexToken| {
+            matches!(
+                token.kind,
+                crate::lexer::TokenKind::Comma
+                    | crate::lexer::TokenKind::Period
+                    | crate::lexer::TokenKind::Semicolon
+            )
+        };
+        let start = item.iter().position(|token| !is_list_punctuation(token)).unwrap_or(item.len());
+        let end = item.iter().rposition(|token| !is_list_punctuation(token)).map_or(start, |end| end + 1);
+        item[start..end.max(start)].to_vec()
+    };
+    let items = items
+        .into_iter()
+        .map(trim_list_punctuation)
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+    let mut grants = Vec::new();
+    for item in items {
+        if let Some(markers) =
+            crate::effect_sentences::parse_custom_keyword_identity_grant_component(&item)?
+        {
+            for marker in markers {
+                let crate::cards::builders::GrantedAbilityAst::StaticAbility(ability) = marker
+                else {
+                    return Ok(None);
+                };
+                grants.push(StaticAbilityAst::AttachedStaticAbilityGrant {
+                    ability,
+                    display: format!("{subject} has {}", display_text_for_tokens(&item, true)),
+                    condition: condition.clone(),
+                });
+            }
+            continue;
+        }
+        if item.first().is_some_and(OwnedLexToken::is_quote) {
+            if let Some(grant) = parse_attached_quoted_ability_grant(subject, &item, condition)? {
+                grants.push(grant);
+                continue;
+            }
+            // The complete `<attached subject> has "<rule>"` reader owns
+            // quoted statics the item-level reader does not know.
+            let mut line = grant_prefix.to_vec();
+            line.extend(item.iter().cloned());
+            line.push(OwnedLexToken::period(crate::TextSpan::synthetic()));
+            let Some(abilities) = parse_filter_has_granted_ability_line(&line)? else {
+                return Ok(None);
+            };
+            grants.extend(abilities);
+            continue;
+        }
+        let Some(keyword_grants) =
+            parse_attached_keyword_action_grants(subject, &item, condition.clone(), clause_text, false)?
+        else {
+            return Ok(None);
+        };
+        grants.extend(keyword_grants);
+    }
+    Ok((!grants.is_empty()).then_some(grants))
+}
+
 pub fn parse_enchanted_creature_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -1286,6 +1419,12 @@ pub fn parse_enchanted_creature_has_line(
             display,
             condition,
         }]));
+    }
+
+    if let Some(grants) =
+        parse_attached_custom_keyword_grant_list(subject, &tokens[..=has.has_token], has.ability_tokens, &condition, &clause_text)?
+    {
+        return Ok(Some(grants));
     }
 
     // `"A" and "B"`: whole quoted abilities, each its own continuous
@@ -1684,7 +1823,7 @@ pub fn parse_attached_restrictions_with_ignore_special_action_line(
     let subject = format!("enchanted {attached_noun}");
     let attached_filter = match attached_noun {
         "creature" => ObjectFilter::creature(),
-        "permanent" => ObjectFilter::permanent_card().in_zone(Zone::Battlefield),
+        "permanent" => ObjectFilter::permanent(),
         _ => unreachable!("the complete grammar above owns the attached noun"),
     }
     .match_tagged(
@@ -1982,7 +2121,7 @@ fn parse_attached_gets_and_negated_restriction_line(
         } else {
             crate::tag::CompilerReferenceTag::Enchanted
         };
-        let host = ObjectFilter::permanent_card().in_zone(Zone::Battlefield).match_tagged(
+        let host = ObjectFilter::permanent().match_tagged(
             host_tag.bind(),
             crate::filter::TaggedOpbjectRelation::IsTaggedObject,
         );
@@ -2135,6 +2274,7 @@ pub use attached_object_static_lines_object_action_programs::{
     parse_attached_is_legendary_gets_and_has_keywords_line,
     parse_equipped_gets_and_has_activated_ability_line,
 };
+pub(crate) use attached_object_static_lines_object_action_programs::split_custom_keyword_marker_prefix;
 #[path = "attached_object_static_lines/attached_object_static_lines_trigger.rs"]
 mod attached_object_static_lines_trigger_programs;
 pub use attached_object_static_lines_trigger_programs::parse_attached_has_keywords_and_triggered_ability_line;

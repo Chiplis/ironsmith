@@ -2786,6 +2786,9 @@ fn perform_prepare_exile(game: &mut GameState, player: PlayerId, card_id: Object
             game.mark_selected_exile_preparation(new_id,method_index,false,player);
         }
         ExilePreparation::FaceUpSorcery { on_next_spell_resolution: true, optional_cast, .. } => {
+            if let Some(name)=game.object(new_id).and_then(|object|object.alternative_casts.get(method_index)).map(|method|method.name().to_string()).filter(|name|!name.is_empty() && !name.to_ascii_lowercase().starts_with("parsed ")) {
+                game.record_next_resolution_preparation_name(new_id,name);
+            }
             let cast=crate::effect::Effect::new(crate::effects::CastSourceEffect::new().from_zone(Zone::Exile).without_paying_mana_cost());
             let cast=if optional_cast {crate::effect::Effect::may(vec![cast])}else{cast};
             crate::effects::delayed::queue_delayed_trigger(game,crate::effects::delayed::DelayedTriggerConfig::new(
@@ -4373,13 +4376,42 @@ fn check_total_cost_in_query_scope(
                         }),
                     )?
                 {
-                    if next
-                        .effect_ref()
-                        .is_some_and(|effect| effect.downcast_ref::<crate::effects::ExileEffect>().is_some())
-                    {
+                    if cost_consumes_each_chosen_object(next) {
                         exile_choice_slots.extend(std::iter::repeat_n(candidates, required));
                     }
                     speculative_tagged_objects.insert(tag, snapshots);
+                }
+                // A component that is itself a choose-then-consume program
+                // ("have a land ... become ...") still draws on the same
+                // objects as its siblings: two such components need two.
+                if let Some(sequence) = adjusted_component
+                    .effect_ref()
+                    .and_then(|effect| effect.downcast_ref::<crate::effects::SequenceEffect>())
+                    && let Ok(children) = sequence
+                        .effects
+                        .iter()
+                        .cloned()
+                        .map(crate::costs::Cost::try_effect)
+                        .collect::<Result<Vec<_>, _>>()
+                {
+                    for pair in children.windows(2) {
+                        if cost_consumes_each_chosen_object(&pair[1])
+                            && let Ok(Some((_, _, candidates, required))) =
+                                preflight_tagged_choice_in_context(
+                                    game,
+                                    payer,
+                                    source,
+                                    &pair[0],
+                                    &pair[1],
+                                    reason,
+                                    execution_ctx,
+                                    &speculative_tagged_objects,
+                                    false,
+                                )
+                        {
+                            exile_choice_slots.extend(std::iter::repeat_n(candidates, required));
+                        }
+                    }
                 }
             }
             if !crate::costs::distinct_discard_assignment_exists(&exile_choice_slots) {
@@ -4414,6 +4446,18 @@ fn check_total_cost_in_query_scope(
             ))
         }
     }
+}
+
+/// Whether paying `cost` uses up each object its preceding chooser selected,
+/// so one object can't serve two such slots: exiling it, or converting its
+/// characteristics (one conversion per object).
+fn cost_consumes_each_chosen_object(cost: &crate::costs::Cost) -> bool {
+    cost.effect_ref().is_some_and(|effect| {
+        effect.downcast_ref::<crate::effects::ExileEffect>().is_some()
+            || effect
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                .is_some_and(crate::effects::continuous::is_static_characteristic_change_cost)
+    })
 }
 
 fn preflight_tagged_choice_in_context(

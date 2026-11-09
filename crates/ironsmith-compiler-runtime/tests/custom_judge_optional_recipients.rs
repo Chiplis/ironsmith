@@ -7,6 +7,10 @@ const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);
 struct Choices{targets:Vec<Target>,mode:usize,resolution_prompts:usize}
 impl DecisionMaker for Choices{
  fn decide_targets(&mut self,_:&GameState,_:&ironsmith::decisions::context::TargetsContext)->Vec<Target>{self.targets.clone()}
+ fn decide_mana_payment(&mut self,_:&GameState,c:&ironsmith::decisions::context::ManaPaymentContext)->ironsmith::mana_payment::ManaPaymentResponse{
+  // The cast's own mana payment is confirmed; it is not a Judge mode prompt.
+  ironsmith::mana_payment::ManaPaymentResponse::Confirm{plan_id:c.plan.id,request_hash:c.plan.request_hash}
+ }
  fn decide_options(&mut self,_:&GameState,c:&ironsmith::decisions::context::SelectOptionsContext)->Vec<usize>{self.resolution_prompts+=1;vec![c.options.iter().filter(|o|o.legal).nth(self.mode).expect("one requested legal Judge branch").index]}
  fn decide_objects(&mut self,g:&GameState,c:&ironsmith::decisions::context::SelectObjectsContext)->Vec<ObjectId>{SelectFirstDecisionMaker.decide_objects(g,c)}
 }
@@ -40,6 +44,8 @@ fn run(selected:bool){
  let assignments=&game.stack.last().unwrap().target_assignments;assert_eq!(assignments.len(),2);assert_eq!(assignments[0].range.len(),1);assert_eq!(assignments[1].range.len(),usize::from(announce));
  if !selected&&announce{game.move_object_by_effect(friendly,Zone::Graveyard).unwrap();}
  dm.resolution_prompts=0;resolve_stack_entry_with(&mut game,&mut dm).unwrap();
+ // A -5/-5 recipient dies to state-based actions (CR 704.5f), checked after resolution.
+ ironsmith::rules::state_based::apply_state_based_actions_with(&mut game,&mut dm).unwrap();
  let enemy_now=game.find_object_by_stable_id(enemy_stable).unwrap();assert_eq!(game.object(enemy_now).unwrap().zone,Zone::Graveyard,"the mandatory source instruction resolves despite an empty/invalid optional group");
  assert_eq!(dm.resolution_prompts,usize::from(selected),"only a legal selected recipient offers a Judge mode");
  assert_eq!(game.player(A).unwrap().hand.len(),usize::from(selected&&variant==1),"draw belongs exclusively to one completed condemnation");

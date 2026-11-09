@@ -103,6 +103,10 @@ const DOCUMENT_READINGS: &[Reading] = &[
         read: |document| document.outcome(read_value_bound_following_program(document)),
     },
     Reading {
+        id: RuleId::new("leading-sentences-value-bound-program"), head: HeadDiscriminator::Any,
+        read: |document| document.outcome(read_leading_sentences_value_bound_program(document)),
+    },
+    Reading {
         id: RuleId::new("selected-card-copy-free-cast"), head: HeadDiscriminator::Words(&["copy"]),
         read: |document| document.outcome(read_selected_card_copy_free_cast(document)),
     },
@@ -113,7 +117,8 @@ const DOCUMENT_READINGS: &[Reading] = &[
     },
     Reading {
         id: RuleId::new("bounded-inline-modal-program"),
-        head: HeadDiscriminator::Words(&["choose"]),
+        // "choose ...", "you may choose ...", "its owner chooses ...".
+        head: HeadDiscriminator::Any,
         read: |document| document.outcome(read_bounded_inline_modal(document)),
     },
     Reading {
@@ -508,7 +513,43 @@ pub(crate) fn parse_bounded_program(tokens: &[OwnedLexToken]) -> Result<Vec<Effe
             }
         }
     }
-    crate::clause_support::parse_effect_sentences_lexed(&body)
+    let mut effects = crate::clause_support::parse_effect_sentences_lexed(&body)?;
+    bind_just_created_named_token_sources(&mut effects);
+    Ok(effects)
+}
+
+/// "Create a ... token named Memory; Allow the controllers of tokens named
+/// Memory just created to ...": the later instruction names the exact token
+/// the earlier creation in this program produced, never every object with
+/// that name. The creation keeps its result under a declared tag.
+fn bind_just_created_named_token_sources(effects: &mut [EffectAst]) {
+    use crate::cards::builders::{KeywordActionAst, SubjectVerbActionAst, TargetAst, TokenActionAst};
+    for index in 0..effects.len() {
+        let name = match &effects[index] {
+            EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::GrantExileControllerInspection {
+                    sources: TargetAst::Object(filter, _, _), ..
+                }) => filter.name.clone(),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(name) = name else { continue };
+        // The nearest earlier token creation in this program is the one
+        // "just created".
+        let creation = (0..index).rev().find(|candidate| matches!(&effects[*candidate],
+            EffectAst::SubjectVerb(subject_verb) if matches!(&subject_verb.action,
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }))));
+        let Some(creation) = creation else { continue };
+        let tag = ironsmith_compiler_semantic::tag::declared_key(format!("just_created_{}", name.to_ascii_lowercase()));
+        let created = std::mem::replace(&mut effects[creation], EffectAst::Sequence { effects: Vec::new() });
+        effects[creation] = EffectAst::TagAffected { tag: tag.clone(), effect: Box::new(created) };
+        if let EffectAst::SubjectVerb(subject_verb) = &mut effects[index]
+            && let SubjectVerbActionAst::KeywordActions(KeywordActionAst::GrantExileControllerInspection { sources, .. }) = &mut subject_verb.action
+        {
+            *sources = TargetAst::Tagged(tag, None);
+        }
+    }
 }
 
 fn bounded_program_colon(tokens: &[OwnedLexToken]) -> Option<usize> {
@@ -600,6 +641,37 @@ fn read_value_bound_following_program(document: &Document<'_>) -> Result<Option<
     Ok(Some(output))
 }
 
+/// "Return target creature card ... . With X equal to that creature's power,
+/// do the following: [...]" (It's Alive!): ordinary leading sentences, then a
+/// value-bound program whose value names their result. The leading sentences
+/// keep their own readings; the bound program is read by its owner above.
+fn read_leading_sentences_value_bound_program(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = document.tokens;
+    let (mut quoted, mut depth) = (false, 0usize);
+    let mut split = None;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.kind {
+            TokenKind::Quote => quoted = !quoted,
+            TokenKind::LBracket if !quoted => depth += 1,
+            TokenKind::RBracket if !quoted => depth = depth.saturating_sub(1),
+            TokenKind::Colon if !quoted && depth == 0 => break,
+            TokenKind::Period if !quoted && depth == 0
+                && crate::lexer::parser_token_word_refs(&tokens[index + 1..]).starts_with(&["with", "x", "equal", "to"]) =>
+            {
+                split = Some(index);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let Some(period) = split else { return Ok(None); };
+    let Some(bound) = read_value_bound_following_program(&Document::new(&tokens[period + 1..]))? else { return Ok(None); };
+    let mut output = crate::clause_support::parse_effect_sentences_lexed(&tokens[..=period])?;
+    if output.is_empty() { return Ok(None); }
+    output.extend(bound);
+    Ok(Some(output))
+}
+
 fn read_selected_card_copy_free_cast(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let [first, second, rest @ ..] = document.sentences.as_slice() else { return Ok(None); };
     let first = crate::util::trim_edge_punctuation_tokens(first);
@@ -629,7 +701,34 @@ pub(super) fn parse_bounded_foreach_program(tokens:&[OwnedLexToken])->Result<Opt
 }
 
 fn read_foreach_following_program(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(colon) = bounded_program_colon(document.tokens) else { return Ok(None); };
+    let Some(colon) = bounded_program_colon(document.tokens) else {
+        // `Choose ... . For each card chosen this way, do the following:
+        // [...]`: earlier complete sentences precede the program's header.
+        // Several complete sentences may precede it ("You choose one of
+        // them. Choose that card. For each card chosen this way, ...").
+        let mut quoted = false;
+        let mut depth = 0usize;
+        let header_period = document.tokens.iter().enumerate().position(|(index, token)| {
+            match token.kind {
+                TokenKind::Quote => quoted = !quoted,
+                TokenKind::LBracket => depth += 1,
+                TokenKind::RBracket => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+            !quoted && depth == 0 && token.kind == TokenKind::Period && {
+                let rest = &document.tokens[index + 1..];
+                bounded_program_colon(rest).is_some()
+                    && crate::lexer::parser_token_word_refs(rest).starts_with(&["for", "each"])
+            }
+        });
+        let Some(period) = header_period else { return Ok(None); };
+        let rest_tokens = &document.tokens[period + 1..];
+        let rest = Document::new(rest_tokens);
+        let Some(mut program) = read_foreach_following_program(&rest)? else { return Ok(None); };
+        let mut output = crate::clause_support::parse_effect_sentences_lexed(&document.tokens[..=period])?;
+        output.append(&mut program);
+        return Ok(Some(output));
+    };
     let header = &document.tokens[..colon];
     let Some(comma) = header.iter().rposition(|token|token.kind==TokenKind::Comma) else{return Ok(None)};
     let suffix = &header[comma + 1..];
@@ -670,7 +769,17 @@ fn read_foreach_following_program(document: &Document<'_>) -> Result<Option<Vec<
     }
     let player_target=super::for_each_helpers::parse_for_each_targeted_player_subject(subject)?;
     let target = if player_target.is_none() {super::for_each_helpers::parse_for_each_targeted_object_subject(subject)?}else{None};
-    let filter = if player_target.is_none() && target.is_none() { super::for_each_helpers::parse_for_each_object_subject(subject)? } else { None };
+    // `For each object chosen this way`: the generic noun names the chosen
+    // set exactly as `card` would.
+    let generic_object_subject;
+    let object_subject = if matches!(subject_words.as_slice(), ["for", "each", "object" | "objects", "chosen", "this", "way"]) {
+        generic_object_subject = subject.iter().map(|token| if token.is_any_word(&["object", "objects"]) {
+            crate::lexer::synthetic_word_tokens(["card"]).remove(0)
+        } else { token.clone() }).collect::<Vec<_>>();
+        crate::word_claims::claim_tokens(&subject[2..3]);
+        &generic_object_subject[..]
+    } else { subject };
+    let filter = if player_target.is_none() && target.is_none() { super::for_each_helpers::parse_for_each_object_subject(object_subject)? } else { None };
     if player_target.is_none() && target.is_none() && filter.is_none() { return Ok(None); }
     let (body, tail) = bounded_program_payload(document, colon)?;
     let mut effects = parse_bounded_program(body)?;
@@ -691,7 +800,19 @@ fn read_foreach_following_program(document: &Document<'_>) -> Result<Option<Vec<
         vec![EffectAst::TagAffected { tag: crate::tag::CompilerReferenceTag::It.bind(), effect: Box::new(EffectAst::subject_verb_target_only(target)) },
             EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag: crate::tag::CompilerReferenceTag::It.bind(), effects })]
     } else {
-        vec![EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter: filter.expect("object iterator"), effects })]
+        let filter = filter.expect("object iterator");
+        // `For each card chosen this way`: iterate the exact chosen objects
+        // wherever they are (a chosen library or hand card is not on the
+        // battlefield), not a battlefield query restricted to them.
+        let chosen_tag = match filter.tagged_constraints.as_slice() {
+            [constraint] if filter.zone.is_none()
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject => Some(constraint.tag.clone()),
+            _ => None,
+        };
+        match chosen_tag {
+            Some(tag) => vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag: crate::tag::TagRef::of(tag), effects })],
+            None => vec![EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects })],
+        }
     };
     bounded_program_followups(&mut output, tail)?;
     Ok(Some(output))
@@ -720,6 +841,83 @@ fn read_first_shared_resolution_program(document: &Document<'_>) -> Result<Optio
 fn read_named_action_program(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(colon) = bounded_program_colon(document.tokens) else { return Ok(None); };
     let header = &document.tokens[..colon];
+    // "If you do, perform the <label> action as follows: ..." as its own
+    // document (the tail an optional-cost reader hands on).
+    if document.tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(comma) = header.iter().position(|token| token.is_comma())
+        && crate::lexer::parser_token_word_refs(&document.tokens[1..comma]) == ["you", "do"]
+        && crate::lexer::parser_token_word_refs(&document.tokens[comma + 1..]).starts_with(&["perform", "the"])
+    {
+        let Some(program) = read_named_action_program(&Document::new(&document.tokens[comma + 1..]))? else { return Ok(None); };
+        crate::word_claims::claim_tokens(&document.tokens[..=comma]);
+        return Ok(Some(vec![EffectAst::Conditionals(crate::cards::builders::ConditionalEffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did, effects: program,
+        })]));
+    }
+    // A sequenced "Then perform the <name> action as follows: ..." sentence.
+    if document.tokens.first().is_some_and(|token| token.is_word("then"))
+        && crate::lexer::parser_token_word_refs(&document.tokens[1..]).starts_with(&["perform", "the"])
+    {
+        let Some(program) = read_named_action_program(&Document::new(&document.tokens[1..]))? else { return Ok(None); };
+        crate::word_claims::claim_tokens(&document.tokens[..1]);
+        return Ok(Some(program));
+    }
+    // "<earlier instructions>. Then perform the <name> action as follows: ..."
+    // (Ontarachie Envoy): the earlier sentences resolve first, then the
+    // named program; each keeps its own reader.
+    if let Some(period) = header.iter().rposition(|token| token.is_period())
+        && period + 1 < header.len()
+    {
+        let rest = &document.tokens[period + 1..];
+        let leading_then = rest.first().is_some_and(|token| token.is_word("then"));
+        let program_tokens = if leading_then { &rest[1..] } else { rest };
+        let program_words = crate::lexer::parser_token_word_refs(program_tokens);
+        // "... . If you controlled that spell, perform the catalyze action
+        // as follows: ...": the named program is the conditional's body.
+        if program_words.first() == Some(&"if")
+            && !header[..period].iter().any(|token| token.kind == TokenKind::Quote)
+            && let Some(comma) = program_tokens.iter().position(|token| token.is_comma())
+            && crate::lexer::parser_token_word_refs(&program_tokens[comma + 1..]).starts_with(&["perform", "the"])
+            && comma > 1
+        {
+            // "If you do, perform the <label> action as follows: ..." (after
+            // an optional payment): the program runs only if it was paid.
+            if crate::lexer::parser_token_word_refs(&program_tokens[1..comma]) == ["you", "do"] {
+                let Some(program) = read_named_action_program(&Document::new(&program_tokens[comma + 1..]))? else { return Ok(None); };
+                let mut effects = crate::clause_support::parse_effect_sentences_lexed(&document.tokens[..=period])?;
+                crate::word_claims::claim_tokens(&program_tokens[..=comma]);
+                if leading_then { crate::word_claims::claim_tokens(&rest[..1]); }
+                effects.push(EffectAst::Conditionals(crate::cards::builders::ConditionalEffectAst::IfResult {
+                    predicate: crate::cards::builders::IfResultPredicate::Did, effects: program,
+                }));
+                return Ok(Some(effects));
+            }
+            let probe = crate::word_claims::probe_only(|| {
+                crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&program_tokens[1..comma]).is_ok()
+            });
+            if probe {
+                let Some(program) = read_named_action_program(&Document::new(&program_tokens[comma + 1..]))? else { return Ok(None); };
+                let predicate = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&program_tokens[1..comma])?;
+                let mut effects = crate::clause_support::parse_effect_sentences_lexed(&document.tokens[..=period])?;
+                crate::word_claims::claim_tokens(&program_tokens[..1]);
+                crate::word_claims::claim_tokens(&program_tokens[comma..comma + 1]);
+                if leading_then { crate::word_claims::claim_tokens(&rest[..1]); }
+                effects.push(EffectAst::Conditionals(crate::cards::builders::ConditionalEffectAst::Conditional {
+                    predicate, if_true: program, if_false: Vec::new(),
+                }));
+                return Ok(Some(effects));
+            }
+        }
+        if program_words.starts_with(&["perform", "the"])
+            && !header[..period].iter().any(|token| token.kind == TokenKind::Quote)
+        {
+            let Some(program) = read_named_action_program(&Document::new(program_tokens))? else { return Ok(None); };
+            let mut effects = crate::clause_support::parse_effect_sentences_lexed(&document.tokens[..=period])?;
+            if leading_then { crate::word_claims::claim_tokens(&rest[..1]); }
+            effects.extend(program);
+            return Ok(Some(effects));
+        }
+    }
     let all_words = crate::lexer::parser_token_word_refs(header);
     let (words, performer_player) = if all_words.starts_with(&["perform", "the"]) {
         (all_words.as_slice(), crate::cards::builders::PlayerAst::Implicit)
@@ -1580,6 +1778,10 @@ fn read_bounded_inline_modal(document: &Document<'_>) -> Result<Option<Vec<Effec
     let tokens = document.tokens;
     let Some(colon) = bounded_program_colon(tokens) else { return Ok(None); };
     let header = crate::lexer::parser_token_word_refs(&tokens[..colon]);
+    // "you may choose one of the following: [A] or [B]": the same choice,
+    // which the player may decline.
+    let optional = header.starts_with(&["you", "may", "choose"]);
+    let header = if optional { header[2..].to_vec() } else { header };
     let chooser = match header.as_slice() {
         ["choose", "one", "of", "the", "following"]
         | ["you", "choose", "one", "of", "the", "following"] => crate::target::PlayerFilter::You,
@@ -1631,10 +1833,13 @@ fn read_bounded_inline_modal(document: &Document<'_>) -> Result<Option<Vec<Effec
     if tokens.get(cursor).is_some_and(|token| !matches!(token.kind, TokenKind::Period | TokenKind::Semicolon)) {
         return Err(CardTextError::ParseError("bounded modal choice needs a separator before its following program".into()));
     }
-    let mut effects = vec![EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+    let choice = EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
         chooser,
         modes,
-    })];
+    });
+    let mut effects = vec![if optional {
+        EffectAst::Permissions(PermissionEffectAst::May { effects: vec![choice] })
+    } else { choice }];
     bounded_program_followups(&mut effects, crate::util::trim_edge_punctuation_tokens(&tokens[cursor..]))?;
     Ok(Some(effects))
 }
@@ -1717,6 +1922,12 @@ pub(crate) fn parse_bounded_inline_modal_tokens(tokens:&[OwnedLexToken])->Result
 /// A named-action program that is not its document's first sentence
 /// ("Choose target creature. Its owner performs the X action as follows:
 /// [...]") is the same complete bracketed owner at sentence scope.
+/// A later sentence "Perform the <name> action as follows: ..." read with the
+/// complete named-program grammar (its body's own sentences included).
+pub(crate) fn parse_named_action_program_sentence(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,CardTextError>{
+    read_named_action_program(&Document::new(tokens))
+}
+
 pub(crate) fn parse_named_action_program_tokens(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,CardTextError>{
     if !tokens.iter().any(|token| token.kind == TokenKind::LBracket) { return Ok(None); }
     Ok(crate::word_claims::speculative_keep_if(

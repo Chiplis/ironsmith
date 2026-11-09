@@ -166,6 +166,9 @@ fn exchanged_enter_trigger_fires_and_the_upkeep_drawback_moves_to_partner() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let partner = CardDefinitionBuilder::new(CardId::new(), "Triggered partner")
         .card_types(vec![CardType::Creature])
+        // A 0/0 fixture would die to state-based actions (CR 704.5f) before
+        // the upkeep half of the test.
+        .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2))
         .with_ability(Ability::triggered(
             ironsmith::triggers::Trigger::enters_battlefield(
                 ironsmith::target::ObjectFilter {

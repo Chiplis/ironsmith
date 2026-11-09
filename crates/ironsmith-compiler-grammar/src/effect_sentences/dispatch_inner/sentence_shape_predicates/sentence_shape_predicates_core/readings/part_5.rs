@@ -48,6 +48,13 @@ pub(super) fn read_leading_if_conditional(
                     tokens,
                     parse_effect_chain_preserving_source_exiled_owner_library_bottom,
                 )
+            } else if tokens.windows(2).any(|pair| pair[0].kind == crate::lexer::TokenKind::Colon
+                && pair[1].kind == crate::lexer::TokenKind::LBracket)
+            {
+                // "If <condition>, you may do the following: [A; B]": the
+                // body is a complete bracketed program, read by the
+                // document readers rather than split as one action chain.
+                parse_conditional_sentence_family_lexed(tokens, crate::clause_support::parse_effect_sentences_lexed)
             } else {
                 parse_conditional_sentence_family_lexed(tokens, parse_complete_become_before_effect_chain)
             };

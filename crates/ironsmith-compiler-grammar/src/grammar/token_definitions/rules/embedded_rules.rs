@@ -20,6 +20,13 @@ fn parse_builtin_token_kind<'a>(
             primitives::phrase(&["eldrazi", "spawn"]).value(BuiltinTokenShape::EldraziSpawn),
         )),
         alt((
+            alt((
+                primitives::phrase(&["cleric", "role"]).value(BuiltinTokenShape::ClericRole),
+                primitives::phrase(&["scout", "role"]).value(BuiltinTokenShape::ScoutRole),
+                primitives::phrase(&["warlock", "role"]).value(BuiltinTokenShape::WarlockRole),
+                primitives::phrase(&["wizard", "role"]).value(BuiltinTokenShape::WizardRole),
+                primitives::phrase(&["warrior", "role"]).value(BuiltinTokenShape::WarriorRole),
+            )),
             primitives::phrase(&["eldrazi", "scion"]).value(BuiltinTokenShape::EldraziScion),
             primitives::kw("food").value(BuiltinTokenShape::Food),
             primitives::phrase(&["wicked", "role"]).value(BuiltinTokenShape::WickedRole),

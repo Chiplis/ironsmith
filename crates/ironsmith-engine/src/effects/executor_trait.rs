@@ -178,6 +178,8 @@ pub struct ModalEffectSpec<'a> {
     pub disallow_previously_chosen_modes_this_turn: bool,
     pub distinct_player_targets_per_mode: bool,
     pub conditional_mode_range: Option<&'a crate::effect::ConditionalModeRange>,
+    /// Exact allowed mode counts ("choose two or four"); empty = the range.
+    pub allowed_mode_counts: &'a [u32],
 }
 
 /// Trait for executing effects.

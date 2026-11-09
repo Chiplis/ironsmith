@@ -725,6 +725,33 @@ fn parse_type_line_tokens<'a>(input: &mut LexedInput<'a>) -> WResult<(Vec<&'a st
     Ok((left, right))
 }
 
+/// The subtype family an unknown type-line subtype word belongs to, by the
+/// card types it is printed with (CR 205.3d-205.3n).
+fn implicit_type_line_subtype(word: &str, card_types: &[CardType]) -> Option<Subtype> {
+    use ironsmith_core::SubtypeFamily as Family;
+    if !word.chars().next().is_some_and(char::is_alphabetic) {
+        return None;
+    }
+    let family = if card_types.contains(&CardType::Creature) || card_types.contains(&CardType::Kindred) {
+        Family::Creature
+    } else if card_types.contains(&CardType::Planeswalker) {
+        Family::Planeswalker
+    } else if card_types.contains(&CardType::Land) {
+        Family::Land
+    } else if card_types.contains(&CardType::Artifact) {
+        Family::Artifact
+    } else if card_types.contains(&CardType::Enchantment) {
+        Family::Enchantment
+    } else if card_types.contains(&CardType::Battle) {
+        Family::Battle
+    } else if card_types.contains(&CardType::Instant) || card_types.contains(&CardType::Sorcery) {
+        Family::Spell
+    } else {
+        return None;
+    };
+    ironsmith_core::custom_subtypes::declare_type_line_subtype(word, family)
+}
+
 pub fn parse_type_line_with(
     raw: &str,
     mut parse_supertype: impl FnMut(&str) -> Option<Supertype>,
@@ -739,11 +766,17 @@ pub fn parse_type_line_with(
 
     let mut supertypes = Vec::new();
     let mut card_types = Vec::new();
-    for word in &left_words {
+    for (index, word) in left_words.iter().enumerate() {
         if let Some(supertype) = parse_supertype(word) {
             supertypes.push(supertype);
         } else if let Some(card_type) = parse_card_type(word) {
             card_types.push(card_type);
+        } else if card_types.is_empty()
+            && left_words[index + 1..].iter().any(|later| parse_card_type(later).is_some())
+            && let Some(supertype) = ironsmith_core::custom_subtypes::declare_type_line_supertype(word)
+        {
+            // "Totemic Enchantment — Aura": a custom card's own supertype.
+            supertypes.push(supertype);
         } else {
             return Err(CardTextError::ParseError(format!("unrecognized type-line word: {word}")));
         }
@@ -803,6 +836,9 @@ pub fn parse_type_line_with(
                 });
                 if !compatible { return Err(CardTextError::ParseError(format!("{subtype} requires one of these subtype families: {}", value.families().map(|family|family.type_phrase()).collect::<Vec<_>>().join(", ")))); }
             }
+            subtypes.push(subtype);
+        } else if let Some(subtype) = implicit_type_line_subtype(right_words[index], &card_types) {
+            // A custom card's type line names its own subtypes (CR 205.3).
             subtypes.push(subtype);
         } else {
             return Err(CardTextError::ParseError(format!("unrecognized subtype in type line: {}", right_words[index])));

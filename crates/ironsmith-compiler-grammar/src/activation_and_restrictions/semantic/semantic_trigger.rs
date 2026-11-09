@@ -418,6 +418,17 @@ fn you_attack_with_at_least(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSp
     Ok(Some(TriggerSpec::AttacksOneOrMoreWithMinTotal { filter, min_total_attackers: count, per_attacking_player: false }))
 }
 
+/// "this and at least one other creature you control become tapped"
+/// (Rapport) is one paired event, read before any union split at its "and".
+pub(super) fn parse_paired_source_tap_trigger_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    if !crate::lexer::token_word_refs(tokens).windows(4).any(|window| window == ["and", "at", "least", "one"]) {
+        return Ok(None);
+    }
+    permanent_tap_state::parse_permanent_tap_state_trigger(tokens)
+}
+
 pub(super) fn parse_trigger_clause_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
@@ -2295,6 +2306,34 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         });
     }
 
+    // "Whenever an ability of equipped creature is activated or triggered"
+    // (copy that ability): either event of an ability of that object.
+    if let [.., "is", "activated", "or", "triggered"] = &words[..]
+        && words.len() > 4
+        && let Some(is_token) = trigger_word_token_start(tokens, words.len() - 4)
+        && let Some((filter, _)) = parse_ability_of_object_trigger_tail_lexed(
+            &tokens[..is_token],
+            &words[..words.len() - 4],
+        )?
+    {
+        crate::word_claims::claim_words(&words[words.len() - 4..]);
+        return Ok(TriggerSpec::Either(
+            Box::new(TriggerSpec::AbilityActivated {
+                activator: PlayerFilter::Any,
+                filter: filter.clone(),
+                non_mana_only: false,
+                loyalty_only: false,
+                activation_cost_has_tap: None,
+            }),
+            Box::new(TriggerSpec::AbilityTriggered {
+                another: false,
+                source_filter: Some(filter),
+                caused_by_source_entering: false,
+                caused_by_source_attacking: false,
+                caused_by_permanent_entering: false,
+            }),
+        ));
+    }
     // "Whenever an ability of equipped creature is activated" (Battlemage's
     // Bracers): the passive form names no activator, so any player's
     // activation of an ability whose source matches counts (CR 602.2).
@@ -2382,6 +2421,26 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter: ObjectFilter::default().with_ability_marker(marker),
+                    non_mana_only: false,
+                    loyalty_only: false,
+                    activation_cost_has_tap,
+                });
+            }
+            // "activate an invoke ability of a card in your graveyard": the
+            // named ability marker plus the object whose ability it is.
+            if let Some(of_index) = tail_words.iter().position(|word| *word == "of")
+                && of_index >= 2
+                && tail_words[of_index - 1] == "ability"
+                && tail_words.len() > of_index + 1
+                && let Some(of_token) = trigger_word_token_start(ability_tail_tokens, of_index)
+                && let Some(marker) = parse_named_ability_trigger_tail_lexed(&ability_tail_tokens[..of_token])
+                && let Ok(filter) = parse_object_filter_lexed(&ability_tail_tokens[of_token + 1..], false)
+            {
+                claim_verb();
+                crate::word_claims::claim_tokens(&ability_tail_tokens[..=of_token]);
+                return Ok(TriggerSpec::AbilityActivated {
+                    activator,
+                    filter: filter.with_ability_marker(marker),
                     non_mana_only: false,
                     loyalty_only: false,
                     activation_cost_has_tap,
@@ -3186,6 +3245,15 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             return Ok(this_transforms_trigger_spec(
                 source_reference_surface_for_trigger_subject(subject_tokens),
                 destination_name,
+            ));
+        }
+        // "When this creature transforms": the source's own transform event
+        // (CR 701.28), with no named destination face.
+        if is_source_reference_words(&subject_words) && transforms_word_idx + 1 == words.len() {
+            crate::word_claims::claim_tokens(tokens.get(transforms_token_idx..).unwrap_or_default());
+            return Ok(this_transforms_trigger_spec(
+                source_reference_surface_for_trigger_subject(subject_tokens),
+                None,
             ));
         }
     }

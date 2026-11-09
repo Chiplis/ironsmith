@@ -128,6 +128,13 @@ fn payment_disclosure_exact_discard_cost_cards_disable_completed_action_undo() {
                                 .index,
                         ],
                     },
+                    // A private hand opens the owner's optional hand-reveal
+                    // window for each event (hand_event_reveals.rs); decline it.
+                    DecisionContext::SelectObjects(objects)
+                        if objects.description == "You may reveal cards with a casting permission for this event" =>
+                    {
+                        UiCommand::SelectObjects { object_ids: Vec::new(), object_stable_ids: Vec::new(), object_hidden_refs: Vec::new() }
+                    }
                     DecisionContext::SelectObjects(objects) => {
                         assert!(
                             objects
@@ -372,6 +379,13 @@ fn payment_disclosure_knollspine_nested_discard_replacement_cannot_undo_opened_p
                 );
                 confirm_pending_mana_payment(&mut wasm);
                 continue;
+            }
+            // A private hand opens the owner's optional hand-reveal
+            // window for each event (hand_event_reveals.rs); decline it.
+            DecisionContext::SelectObjects(objects)
+                if objects.description == "You may reveal cards with a casting permission for this event" =>
+            {
+                UiCommand::SelectObjects { object_ids: Vec::new(), object_stable_ids: Vec::new(), object_hidden_refs: Vec::new() }
             }
             DecisionContext::SelectObjects(objects) => {
                 assert_eq!(objects.reveal_policy, SelectionRevealPolicy::Public);

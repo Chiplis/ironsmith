@@ -722,6 +722,17 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     if matches_surface(&remaining_words, TARGET_OR_TARGETS_WORD_PATTERN) {
         return Ok(wrap_target_count(TargetAst::AnyTarget(span), target_count));
     }
+    // "up to one nonplayer target": any target except a player — a
+    // creature, planeswalker, or battle (CR 115.4).
+    if matches!(remaining_words.as_slice(), ["nonplayer", "target" | "targets"]) {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+        filter.card_types = vec![CardType::Creature, CardType::Planeswalker, CardType::Battle];
+        crate::word_claims::claim_tokens(remaining);
+        return Ok(wrap_target_count(
+            TargetAst::Object(filter, span, None),
+            target_count,
+        ));
+    }
 
     let bare_top_library_shorthand = saw_top_prefix
         && !remaining_words

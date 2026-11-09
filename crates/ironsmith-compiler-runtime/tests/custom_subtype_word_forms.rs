@@ -15,7 +15,10 @@ fn all_six_punctuated_unicode_and_digit_source_forms_keep_exact_source_evidence(
   let text=row["test_parse_input"].as_str().unwrap();
   let pair=ironsmith_compiler::with_custom_subtypes(&[definition],||support::definitions(row["name"].as_str().unwrap(),text)).unwrap();
   for card in pair {assert!(card.card.subtypes.contains(&expected),"{} {:?}",row["source_card_key"],card.card.subtypes);}
-  assert!(ironsmith_compiler_runtime::compile_to_runtime_definition("Outside source scope",text,false).is_err());
+  // Outside the explicit scope the type line declares its own words
+  // (CR 205.3); the explicit source vocabulary itself does not leak.
+  let _ = ironsmith_compiler_runtime::compile_to_runtime_definition("Outside source scope",text,false);
+  assert!(ironsmith_core::custom_subtypes::lookup(&row["definition"]["singular"].as_str().unwrap()).is_none());
  }
 }
 #[test]
@@ -26,7 +29,11 @@ fn multiword_names_use_longest_explicit_scope_match_and_preserve_neighboring_sub
   for text in ["Type: Creature — Clockwork Sage Wizard\nPower/Toughness: 1/1","Type: Creature — Clockwork Sages Wizard\nPower/Toughness: 1/1"] {
    for card in support::definitions("Scoped phrase",text) {assert!(card.card.subtypes.contains(&expected));assert!(card.card.subtypes.contains(&Subtype::Wizard));}
   }
-  assert!(ironsmith_compiler_runtime::compile_to_runtime_definition("Unknown neighbor","Type: Creature — Clockwork Sage Undefinedneighbor\nPower/Toughness: 1/1",false).is_err());
+  // An unknown neighboring word is that card's own implicit subtype; the
+  // longest explicit match is still kept whole.
+  let neighbor=ironsmith_compiler_runtime::compile_to_runtime_definition("Unknown neighbor","Type: Creature — Clockwork Sage Undefinedneighbor\nPower/Toughness: 1/1",false).unwrap();
+  assert!(neighbor.card.subtypes.contains(&expected));
+  assert!(neighbor.card.subtypes.contains(&Subtype::Custom(CustomSubtype::new("Undefinedneighbor",SubtypeFamily::Creature).unwrap())));
  }).unwrap();
 }
 #[test]

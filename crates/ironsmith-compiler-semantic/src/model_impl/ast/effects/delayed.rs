@@ -72,6 +72,9 @@ pub enum DelayedEffectAst {
         /// the captured tag remains in this zone.
         while_any_tagged_object_in_zone: Option<(TagRef, Zone)>,
         source_collection_scope: Option<ironsmith_core::effect::SourceCollectionScope>,
+        /// "When <source> is no longer on the battlefield": a state (CR
+        /// 603.8) that triggers at registration if the source is already gone.
+        source_absence_state: bool,
     },
     DelayedWhenLastObjectDiesThisTurn {
         /// Restricts which object is captured when the delayed ability is installed.

@@ -1956,6 +1956,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_subject_has_keywords_and_cant_be_blocked_line
         ),
         multi_static_ability_ast_passthrough_rule!(
+            parse_subject_has_keywords_and_attacks_each_combat_line
+        ),
+        multi_static_ability_ast_passthrough_rule!(
             parse_subject_cant_be_blocked_and_has_keywords_line
         ),
         single_static_ability_ast_passthrough_rule!(parse_subject_is_every_subtype_family_line),
@@ -2658,7 +2661,40 @@ mod copy_source_replacement;
 pub fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let mut abilities = parse_static_ability_ast_line_lexed_unbound(tokens)?;
+    // "Equipped creature can't be blocked as long as its power is 3 or less":
+    // a condition wrapped around an attached-object grant names that object
+    // through "it", never the attachment itself.
+    for ability in abilities.iter_mut().flatten() {
+        if let StaticAbilityAst::ConditionalStaticAbility { ability: inner, condition } = ability
+            && matches!(
+                inner.as_ref(),
+                StaticAbilityAst::AttachedStaticAbilityGrant { .. }
+                    | StaticAbilityAst::AttachedKeywordActionGrant { .. }
+            )
+        {
+            *condition = bind_condition_to_attached_object(condition.clone());
+        }
+    }
+    Ok(abilities)
+}
+
+fn parse_static_ability_ast_line_lexed_unbound(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     if let Some(ability) = copy_source_replacement::read(tokens)? {return Ok(Some(vec![ability]));}
+    // "<filter> enter face down." (CR 708): a complete filtered entry
+    // replacement whose open-ended subject has no fixed line head. The reader
+    // owns its optional reminder and rejects any other tail.
+    {
+        let words = crate::lexer::parser_token_word_refs(tokens);
+        if (words.windows(3).any(|window| window == ["enter", "face", "down"])
+            || words.windows(2).any(|window| window == ["enter", "face-down"]))
+            && let Some(ability) = parse_as_enters_becomes_characteristics_for_filter_line(tokens)?
+        {
+            return Ok(Some(vec![ability.into()]));
+        }
+    }
     // This exact source-owned payment prohibition must reach the same typed
     // reader in quoted/token abilities as at a card's top level. A broad
     // negated-object restriction does not own its trailing payment qualifier.
@@ -10368,6 +10404,10 @@ fn parse_conjoined_this_spell_cost_condition(tokens: &[OwnedLexToken]) -> Option
     None
 }
 
+/// The per-controller history label a Subroutine's run records (custom CR
+/// 303.9b); the engine's run-next-program action writes the same label.
+pub const SUBROUTINE_RUN_ACTION: &str = ironsmith_core::SUBROUTINE_RUN_ACTION;
+
 pub fn parse_trailing_this_spell_cost_condition(
     remaining_tokens: &[OwnedLexToken],
     clause_words: &[&str],
@@ -10401,6 +10441,49 @@ pub fn parse_trailing_this_spell_cost_condition(
                 condition: bind_static_condition_predicate(condition)
                     .ok_or_else(|| CardTextError::ParseError(display.clone()))?,
                 display,
+            },
+        ));
+    }
+    // "if a Subroutine ran under your control this turn" (custom CR 303.9b,
+    // 701.81a): a Subroutine you controlled ran as you ran a program.
+    if crate::word_primitives::parse_sequence_suffix(
+        &remaining_words,
+        &["if", "a", "subroutine", "ran", "under", "your", "control", "this", "turn"],
+    ) {
+        crate::word_claims::claim_words(&remaining_words[remaining_words.len() - 9..]);
+        return Ok(Some(
+            crate::static_abilities::ThisSpellCostCondition::ConditionExpr {
+                condition: crate::ConditionExpr::ValueComparison {
+                    left: crate::effect::Value::PlayerNamedActionCount {
+                        player: crate::target::PlayerFilter::You,
+                        label: SUBROUTINE_RUN_ACTION.to_string(),
+                        window: ironsmith_core::value_model::PlayerActionWindow::ThisTurn,
+                    },
+                    operator: ironsmith_core::effect_model::ValueComparisonOperator::GreaterThan,
+                    right: crate::effect::Value::Fixed(0),
+                },
+                display: "if a Subroutine ran under your control this turn".to_string(),
+            },
+        ));
+    }
+    // "if an opponent was dealt combat damage this turn" (Dastardly Duo):
+    // some opponent was dealt combat damage by any source this turn.
+    if crate::word_primitives::parse_sequence_suffix(
+        &remaining_words,
+        &["if", "an", "opponent", "was", "dealt", "combat", "damage", "this", "turn"],
+    ) {
+        crate::word_claims::claim_words(&remaining_words[remaining_words.len() - 9..]);
+        return Ok(Some(
+            crate::static_abilities::ThisSpellCostCondition::ConditionExpr {
+                condition: crate::ConditionExpr::ValueComparison {
+                    left: crate::effect::Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayersDealtCombatDamageBy {
+                        players: crate::target::PlayerFilter::Opponent,
+                        sources: crate::target::ObjectFilter::default(),
+                    }),
+                    operator: ironsmith_core::effect_model::ValueComparisonOperator::GreaterThan,
+                    right: crate::effect::Value::Fixed(0),
+                },
+                display: "if an opponent was dealt combat damage this turn".to_string(),
             },
         ));
     }

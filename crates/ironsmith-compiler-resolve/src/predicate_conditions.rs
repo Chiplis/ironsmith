@@ -1090,6 +1090,18 @@ pub fn resolve_condition_from_predicate(
             TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(zone) => {
                 ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCastFromZone(*zone)
             }
+            TurnHistoryPredicateAst::TriggeringObjectPaidCustomKeyword(name) => {
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectPaidCustomKeyword(name.clone())
+            }
+            TurnHistoryPredicateAst::SourceEnteredFromZoneThisTurn(zone) => {
+                ironsmith_core::TurnHistoryCondition::SourceEnteredFromZoneThisTurn(*zone)
+            }
+            TurnHistoryPredicateAst::SourceWasCastFromZoneThisTurn(zone) => {
+                ironsmith_core::TurnHistoryCondition::SourceWasCastFromZoneThisTurn(*zone)
+            }
+            TurnHistoryPredicateAst::SourceWasNamedActionObjectThisTurn(label) => {
+                ironsmith_core::TurnHistoryCondition::SourceWasNamedActionObjectThisTurn(label.clone())
+            }
             TurnHistoryPredicateAst::TriggeringObjectEnteredFromZone(zone) => {
                 ironsmith_core::TurnHistoryCondition::TriggeringObjectEnteredFromZone(*zone)
             }

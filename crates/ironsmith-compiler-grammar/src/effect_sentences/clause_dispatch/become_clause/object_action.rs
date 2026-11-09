@@ -754,8 +754,10 @@ pub fn parse_become_clause(
             crate::word_claims::claim_tokens(aura.enchant_filter_tokens);
             ObjectFilter::default()
         } else if enchant_words == ["creature"] {
+            crate::word_claims::claim_tokens(aura.enchant_filter_tokens);
             ObjectFilter::creature()
         } else if aura.attachment_you_control && enchant_words == ["creature", "you", "control"] {
+            crate::word_claims::claim_tokens(aura.enchant_filter_tokens);
             ObjectFilter::creature().you_control()
         } else {
             // "enchant creature put onto the battlefield with Necromancy"

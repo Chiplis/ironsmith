@@ -2847,6 +2847,15 @@ impl GameState {
 
         program_choices.battle_protector = battle_protector;
         let mut choices = program_choices;
+        // Custom CR 303.9a: as a Subroutine enters, its controller chooses its
+        // program designation (Program A, B, or C).
+        let mut prospective_abilities = prospective_abilities;
+        if prospective_subtypes.iter().any(crate::subroutines::is_subroutine_subtype)
+            && !prospective_abilities.iter().any(|ability| matches!(&ability.kind,
+                crate::ability::AbilityKind::Static(rule) if rule.named_option_choice_as_enters().is_some()))
+        {
+            prospective_abilities.push(crate::subroutines::program_designation_choice());
+        }
         for ability in prospective_abilities {
             let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
                 continue;
@@ -5873,7 +5882,21 @@ retain_original_types: false, retain_original_name: false,
         id: ObjectId,
         effects: &[ContinuousEffect],
     ) -> Option<crate::continuous::CalculatedCharacteristics> {
-        if self.continuous_state_is_clean()
+        if let Some(cached) = self.cached_characteristics_for_effects(id, effects) {
+            return Some(cached.as_ref().clone());
+        }
+        self.calculated_characteristics_with_effects(id, effects)
+    }
+
+    /// The cached result of `calculated_characteristics_with_effects(id,
+    /// effects)`, available exactly when `effects` is the clean state's own
+    /// effect snapshot (the same allocation). None means "compute it".
+    pub(crate) fn cached_characteristics_for_effects(
+        &self,
+        id: ObjectId,
+        effects: &[ContinuousEffect],
+    ) -> Option<Arc<crate::continuous::CalculatedCharacteristics>> {
+        let snapshot_is_current = self.continuous_state_is_clean()
             && !self.is_phased_out(id)
             && self
                 .runtime_cache
@@ -5883,13 +5906,8 @@ retain_original_types: false, retain_original_name: false,
                 .is_some_and(|(revision, cached)| {
                     *revision == self.effect_store.continuous_effects.revision()
                         && std::ptr::eq(cached.as_slice(), effects)
-                })
-        {
-            return self
-                .calculated_characteristics_arc(id)
-                .map(|chars| chars.as_ref().clone());
-        }
-        self.calculated_characteristics_with_effects(id, effects)
+                });
+        if snapshot_is_current { self.calculated_characteristics_arc(id) } else { None }
     }
 
     pub(crate) fn calculated_characteristics_batch_with_effects(
@@ -7383,6 +7401,19 @@ retain_original_types: false, retain_original_name: false,
         static_ability: &crate::static_abilities::StaticAbility,
     ) -> bool {
         use crate::static_abilities::StaticAbilityId;
+
+        // An attachment grant applies its granted rule restriction to the
+        // host through apply_restrictions ("Enchanted creature can't
+        // transform"), so it needs the scan whenever the granted static does.
+        if matches!(
+            static_ability.id(),
+            StaticAbilityId::AttachedAbilityGrant | StaticAbilityId::EquipmentGrant
+        ) && let Some(crate::ability::AbilityKind::Static(granted)) = static_ability
+            .granted_inline_ability()
+            .map(|ability| &ability.kind)
+        {
+            return Self::static_ability_requires_cant_update(granted);
+        }
 
         !matches!(
             static_ability.id(),

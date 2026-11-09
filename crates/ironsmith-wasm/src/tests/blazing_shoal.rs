@@ -68,7 +68,13 @@ fn blazing_shoal_casts_with_red_card_mana_value_or_normal_mana() {
                     )
                 }
                 DecisionContext::Number(ctx) => {
-                    assert_eq!(ctx.max, 1, "X must reflect the red resource, not zero (alternative={alternative})");
+                    if alternative {
+                        assert_eq!(ctx.max, 1, "X must reflect the exiled red card's mana value");
+                    } else {
+                        // A mana-cost X is not capped by the currently
+                        // available mana: future production is unknown.
+                        assert_eq!(ctx.max, u32::MAX, "a normal-cost X stays uncapped");
+                    }
                     announced_x = true;
                     (PriorityResponse::XValue(1), ReplayDecisionAnswer::Number(1))
                 }

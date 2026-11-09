@@ -37,7 +37,7 @@ fn blind_exile_command(wasm: &WasmGame, card: ObjectId) -> UiCommand {
     UiCommand::PriorityAction { action_index: None, action_ref: Some(priority_action_ref(action)) }
 }
 fn blind_exile_choose(wasm: &mut WasmGame, index: usize) {
-    disclosure_command(wasm, UiCommand::SelectOptions { option_indices: vec![index] }).unwrap();
+    disclosure_command(wasm, UiCommand::SelectOptions { option_indices: vec![index] }).map_err(|_| format!("blind exile option {index} was rejected")).unwrap();
 }
 
 #[test]
@@ -457,12 +457,12 @@ fn blind_exile_accepted_kind_remains_public_and_fixed_after_payment_rollback() {
     let (mut wasm, _, card) = blind_exile_fixture(CardType::Sorcery, 100, false);
     wasm.game.player_mut(PlayerId(1)).unwrap().mana_pool.colorless = 3;
     blind_exile_priority(&mut wasm);
-    let command = blind_exile_face_down_command(&wasm, card); disclosure_command(&mut wasm, command).unwrap();
+    let command = blind_exile_face_down_command(&wasm, card); disclosure_command(&mut wasm, command).map_err(|_| "face-down cast command rejected").unwrap();
     blind_exile_choose(&mut wasm, 0);
     assert!(matches!(wasm.pending_decision, Some(DecisionContext::ManaPayment(_))));
     assert_eq!(wasm.priority_state.declared_exile_face_down.as_ref().unwrap().declared_kind,
         Some(ironsmith::game_state::FaceDownCastKind::Morph));
-    disclosure_command(&mut wasm, UiCommand::ManaPayment { response: ManaPaymentCommand::Cancel }).unwrap();
+    disclosure_command(&mut wasm, UiCommand::ManaPayment { response: ManaPaymentCommand::Cancel }).map_err(|_| "payment cancel rejected").unwrap();
     let accepted = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
     assert_eq!(accepted["priorityRuntime"]["exileFaceDown"]["declaredKind"]["kind"], "morph");
     assert_eq!(accepted["priorityRuntime"]["exileFaceDown"]["choicePending"], true);
@@ -472,7 +472,14 @@ fn blind_exile_accepted_kind_remains_public_and_fixed_after_payment_rollback() {
     native.restore(&mut wasm);
     assert_eq!(wasm.priority_state.pending_exile_face_down.as_ref().unwrap().declared_kind,
         Some(ironsmith::game_state::FaceDownCastKind::Morph));
-    blind_exile_choose(&mut wasm, 3);
+    // Choose the cancel option by its label: the face-down kind menu now
+    // also offers the defined face-down kinds, so its position moved.
+    let cancel = match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::SelectOptions(options)) => options.options.iter()
+            .find(|option| option.description == "Cancel face-down cast").map(|option| option.index),
+        _ => None,
+    }.expect("face-down kind menu offers cancel");
+    blind_exile_choose(&mut wasm, cancel);
     assert!(!wasm.priority_state.has_pending_action()); assert!(wasm.game.stack.is_empty());
     assert!(wasm.game.is_face_down(card)); assert!(!wasm.game.can_player_look_at_face_down_exiled_card(card, PlayerId(1)));
     assert!(wasm.payment_disclosure.is_none()); assert_eq!(wasm.game.player(PlayerId(1)).unwrap().mana_pool.total(), 3);

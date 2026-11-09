@@ -391,14 +391,17 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         let snapshots = ctx.get_tagged_all(self.tag.as_str()).cloned().or_else(|| {
             if permission_bound_mana || self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield { return None; }
 
-            (self.tag.as_str() == "__source_exiled__").then(|| {
+            // "You may play the exiled card this turn" on a linked source
+            // with no exile in this resolution names its linked card
+            // (CR 607.2a).
+            (self.tag.as_str() == "__source_exiled__" || self.tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG).then(|| {
                 let linked = game
                     .get_exiled_with_source_links(ctx.source)
                     .iter()
                     .filter_map(|id| game.object(*id))
                     .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
                     .collect::<Vec<_>>();
-                if !linked.is_empty() {
+                if !linked.is_empty() || self.tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG {
                     return linked;
                 }
                 // Sorted by tag so grant order is identical on every peer.
@@ -621,6 +624,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 top_card_only: false, instant_timing: false, may_look_at_top: false,
                 requires_cast_receipt: false,
                 cast_mana_spend_mode: if permission_bound_mana { self.mana_spend_mode } else { ironsmith_core::value_model::ManaSpendMode::Normal },
+                max_total_mana_spent: None,
             };
             let shared_usage_id = self.max_plays.map(|max_plays| {
                 *shared_usage_by_player.entry(player_id).or_insert_with(|| {

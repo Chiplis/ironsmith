@@ -2165,7 +2165,11 @@ pub(super) fn is_name_clause_boundary(word: &str) -> bool {
 pub(super) fn find_name_clause_end(all_words: &[&str], name_start: usize) -> usize {
     let mut name_end = all_words.len();
     for (idx, word) in all_words.iter().enumerate().skip(name_start + 1) {
-        if is_name_clause_boundary(word) {
+        // "each land named Wastes put onto the battlefield this way": a
+        // participial result clause follows the name, it isn't part of it.
+        let participial_result = *word == "put"
+            && all_words.get(idx + 1).is_some_and(|next| matches!(*next, "onto" | "into"));
+        if is_name_clause_boundary(word) || participial_result {
             name_end = idx;
             break;
         }

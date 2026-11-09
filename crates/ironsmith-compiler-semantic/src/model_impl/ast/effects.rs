@@ -2616,6 +2616,7 @@ impl EffectAst {
             SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
                 target,
                 top_position: 0,
+                top_position_value: None,
             }),
         )
     }

@@ -11,6 +11,12 @@ pub(super) struct PriorityAnalysisJob {
     presentation_actions: Vec<LegalAction>,
 }
 
+struct PriorityAnalysisStep {
+    finished: bool,
+    /// Whether this step replaced the published priority menu.
+    published: bool,
+}
+
 struct PriorityCandidate {
     player: PlayerId,
     source: Option<ObjectId>,
@@ -40,14 +46,27 @@ pub(super) fn priority_can_act(ctx: &ironsmith::decisions::context::PriorityCont
 }
 
 impl WasmGame {
+    /// Test-facing form of `advance_priority_analysis_step`.
+    #[cfg(test)]
     fn advance_priority_analysis(&mut self, token: &str, budget: usize) -> Result<Option<bool>, ironsmith::game_loop::GameLoopError> {
+        Ok(self.advance_priority_analysis_step(token, budget)?.map(|step| step.finished))
+    }
+
+    /// One candidate source per call. A step that neither proves an action,
+    /// retires a provisional one, nor finishes leaves the published menu as
+    /// it was: rebuilding, re-keying and re-encoding an identical decision on
+    /// every candidate is a fixed cost paid once per object on the board.
+    fn advance_priority_analysis_step(&mut self, token: &str, budget: usize) -> Result<Option<PriorityAnalysisStep>, ironsmith::game_loop::GameLoopError> {
         let Some(mut job) = self.priority_analysis_job.take() else {
             return Ok(None);
         };
         if job.token != token || job.key != self.priority_analysis_key() {
             return Ok(None);
         }
-        let Some(mut candidate) = job.candidates.pop_front() else { return Ok(Some(true)); };
+        let Some(mut candidate) = job.candidates.pop_front() else {
+            return Ok(Some(PriorityAnalysisStep { finished: true, published: false }));
+        };
+        let published_before = (job.actions.len(), job.provisional_actions.len(), job.presentation_actions.len());
         let id_counters = snapshot_id_counters();
         if !candidate.presentation_checked {
             let eligible = match candidate.source {
@@ -93,6 +112,14 @@ impl WasmGame {
             job.candidates.push_back(candidate);
         }
         let finished = job.candidates.is_empty();
+        // The three lists only grow (actions, presentation) or shrink
+        // (provisional), so equal lengths mean an identical menu.
+        let unchanged = published_before
+            == (job.actions.len(), job.provisional_actions.len(), job.presentation_actions.len());
+        if !finished && unchanged {
+            self.priority_analysis_job = Some(job);
+            return Ok(Some(PriorityAnalysisStep { finished: false, published: false }));
+        }
         let mut displayed = job.actions.clone();
         for action in &job.provisional_actions { if !displayed.contains(action) { displayed.push(action.clone()); } }
         let mut ctx = ironsmith::decisions::context::PriorityContext::new(
@@ -108,7 +135,7 @@ impl WasmGame {
             job.key = self.priority_analysis_key();
             self.priority_analysis_job = Some(job);
         }
-        Ok(Some(finished))
+        Ok(Some(PriorityAnalysisStep { finished, published: true }))
     }
 
     fn current_non_mana_eligibility(&self, cached: &[LegalAction]) -> Result<Vec<LegalAction>, ironsmith::effects::ExecutionError> {
@@ -363,18 +390,21 @@ impl WasmGame {
         true
     }
 
-    /// False means cancelled/stale. Every step returns cumulative confirmed actions;
-    /// analysis_complete distinguishes pending cards from proven unavailable cards.
+    /// False means cancelled/stale and null means this step changed nothing.
+    /// Otherwise it returns the cumulative confirmed actions; analysis_complete
+    /// distinguishes pending cards from proven unavailable cards.
     #[wasm_bindgen(js_name = stepPriorityAnalysis)]
     pub fn step_priority_analysis(
         &mut self,
         token: String,
         budget: usize,
     ) -> Result<JsValue, JsValue> {
-        match self.advance_priority_analysis(&token, budget)
+        match self.advance_priority_analysis_step(&token, budget)
             .map_err(|error| JsValue::from_str(&format!("priority action analysis failed: {error}")))? {
             None => return Ok(JsValue::FALSE),
-            Some(false) | Some(true) => {}
+            // Nothing new to show: callers keep their last decision and step again.
+            Some(PriorityAnalysisStep { finished: false, published: false }) => return Ok(JsValue::NULL),
+            Some(_) => {}
         }
         let decision = DecisionView::from_context(
             &self.game,

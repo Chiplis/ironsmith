@@ -846,6 +846,21 @@ pub(super) fn read_you_choose_objects_with_count(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
     if let Some(choice) = choose_from_explicit_zone_union(tokens)? { return Ok(Some(choice)); }
+    // "Choose the top card of your library": the selection is fixed by the
+    // library position; the chosen object(s) become "it"/"chosen this way".
+    if tokens.first().is_some_and(|token| token.is_word("choose"))
+        && tokens.get(1).is_some_and(|token| token.is_word("the"))
+        && tokens.get(2).is_some_and(|token| token.is_any_word(&["top", "bottom"]))
+        && (crate::grammar::effects::parse_exile_top_library_shape(&tokens[1..], crate::cards::builders::PlayerAst::Implicit).is_some()
+            || crate::grammar::effects::parse_exile_bottom_library_shape(&tokens[1..], crate::cards::builders::PlayerAst::Implicit).is_some())
+    {
+        let mut effects = crate::effect_sentences::named_action_inputs::capture(&tokens[1..], crate::tag::CompilerReferenceTag::It.bind())?;
+        crate::word_claims::claim_tokens(&tokens[..1]);
+        if effects.len() == 1 {
+            return Ok(effects.pop());
+        }
+        return Ok(Some(EffectAst::Sequence { effects }));
+    }
     let restriction_duration_shape = if find_negation_span(tokens).is_some() {
         effect_grammar::parse_search_restriction_duration_shape_lexed(tokens)?
     } else {
@@ -1042,6 +1057,25 @@ pub(super) fn read_target_only(input: &Clause<'_>) -> Result<Option<EffectAst>, 
     }
     if let Some(effect) = crate::effect_sentences::now_attacking::parse(tokens)? {
         return Ok(Some(effect));
+    }
+    // "target creature must block this turn" is the block requirement
+    // "target creature blocks this turn if able" (CR 509.1c).
+    if let Some(must) = tokens.iter().position(|token| token.is_word("must"))
+        && must > 0
+        && crate::lexer::parser_token_word_refs(&tokens[must..]) == ["must", "block", "this", "turn"]
+    {
+        let mut rewritten = tokens[..must].to_vec();
+        rewritten.push(OwnedLexToken::synthetic_word("blocks"));
+        rewritten.extend_from_slice(&tokens[must + 2..]);
+        rewritten.retain(|token| token.kind != crate::lexer::TokenKind::Period);
+        rewritten.push(OwnedLexToken::synthetic_word("if"));
+        rewritten.push(OwnedLexToken::synthetic_word("able"));
+        if let Ok(mut effects) = crate::clause_support::parse_effect_sentences_lexed(&rewritten)
+            && effects.len() == 1
+        {
+            crate::word_claims::claim_tokens(tokens);
+            return Ok(effects.pop());
+        }
     }
     if let Some(shape) = clause_grammar::parse_target_only_shape(tokens) {
         if find_negation_span(tokens).is_some() || shape.restriction_like {

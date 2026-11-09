@@ -2440,11 +2440,19 @@ impl LoseTheGameEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ChooseColorEffect {
     pub chooser: PlayerFilter,
+    /// "Choose a color from among <objects>": only colors some matching
+    /// object has may be chosen.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub among: Option<ObjectFilter>,
 }
 
 impl ChooseColorEffect {
     pub fn new(chooser: PlayerFilter) -> Self {
-        Self { chooser }
+        Self { chooser, among: None }
+    }
+
+    pub fn among(chooser: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self { chooser, among: Some(filter) }
     }
 }
 

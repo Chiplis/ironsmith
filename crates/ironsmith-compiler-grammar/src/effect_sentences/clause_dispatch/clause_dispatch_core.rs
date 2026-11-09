@@ -463,6 +463,14 @@ pub(super) fn parse_effect_clause_unstacked(
             render_lower_words(tokens)
         ))
     })?;
+    // A bracketed program body is never inside a subject ("its owner
+    // performs the X action as follows: [draw a card]").
+    if verb_shape.subject_tokens.iter().any(|token| token.kind == crate::lexer::TokenKind::LBracket) {
+        return Err(CardTextError::ParseError(format!(
+            "subject contains a bracketed program (clause: '{}')",
+            render_lower_words(tokens)
+        )));
+    }
     let mut subject_tokens_storage = trim_commas(verb_shape.subject_tokens);
     // "It also gets +1/+0 ..." (Might of the Meek): the adverb sits between
     // the subject and its verb and is not part of the subject phrase.
@@ -584,6 +592,7 @@ pub(super) fn parse_effect_clause_unstacked(
                             LibraryActionAst::MoveToLibraryTopOrBottomChoice {
                                 target,
                                 top_position,
+                                top_position_value: None,
                             },
                         ),
                     ));

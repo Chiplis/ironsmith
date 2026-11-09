@@ -563,7 +563,9 @@ fn read_sentence_each_player_may_reveal_selected_cards_in_their_hand(
     Ok(None)
 }
 fn read_named_token_appositive(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let tokens = input.tokens;
+    parse_named_token_appositive_tokens(input.tokens)
+}
+pub(super) fn parse_named_token_appositive_tokens(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let named_token_appositive = tokens.first().is_some_and(|token| token.is_word("create"))
         && crate::slice_primitives::select_position(tokens, OwnedLexToken::is_comma).is_some_and(
             |comma| {
@@ -574,6 +576,46 @@ fn read_named_token_appositive(input: &Chain<'_>) -> Result<Option<Vec<EffectAst
             },
         );
     if named_token_appositive {
+        // `Create Name, a legendary ... token, then attach this Equipment to
+        // it`: the sequenced instruction after the complete token description
+        // is its own clause (its pronoun names the created token).
+        let mut in_quote = false;
+        let token_word = tokens.iter().position(|token| {
+            if token.kind == crate::lexer::TokenKind::Quote { in_quote = !in_quote; }
+            !in_quote && (token.is_word("token") || token.is_word("tokens"))
+        });
+        let mut quoted = false;
+        let then_split = tokens.iter().enumerate().position(|(index, token)| {
+            if token.kind == crate::lexer::TokenKind::Quote { quoted = !quoted; }
+            !quoted
+                && token_word.is_some_and(|word| index > word)
+                && token.is_comma()
+                && tokens.get(index + 1).is_some_and(|next| next.is_word("then"))
+                && tokens.len() > index + 2
+        });
+        if let Some(split) = then_split {
+            let mut effects = vec![super::super::creation_handlers::parse_create(&tokens[..split], None)?];
+            crate::word_claims::claim_tokens(&tokens[split..split + 2]);
+            effects.extend(parse_effect_chain_lexed(&tokens[split + 2..])?);
+            return Ok(Some(effects));
+        }
+        // A lifted quoted rule took the comma before "then" with it
+        // ("... with flying, indestructible then attach ..."): an unquoted
+        // "then" heading a verb still sequences the next instruction.
+        let mut quoted = false;
+        let bare_then = tokens.iter().enumerate().position(|(index, token)| {
+            if token.kind == crate::lexer::TokenKind::Quote { quoted = !quoted; }
+            !quoted
+                && token_word.is_some_and(|word| index > word)
+                && token.is_word("then")
+                && tokens.get(index + 1).is_some_and(|next| next.is_any_word(&["attach", "put", "tap", "untap", "exile", "sacrifice", "return", "draw"]))
+        });
+        if let Some(split) = bare_then {
+            let mut effects = vec![super::super::creation_handlers::parse_create(&tokens[..split], None)?];
+            crate::word_claims::claim_tokens(&tokens[split..split + 1]);
+            effects.extend(parse_effect_chain_lexed(&tokens[split + 1..])?);
+            return Ok(Some(effects));
+        }
         return Ok(Some(vec![super::super::creation_handlers::parse_create(
             tokens, None,
         )?]));

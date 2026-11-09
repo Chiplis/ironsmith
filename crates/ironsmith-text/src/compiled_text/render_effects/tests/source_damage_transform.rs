@@ -41,8 +41,10 @@ fn source_damage_transform_counts_damage_and_returns_to_owner() {
             let alice = game.players[0].id;
             let bob = game.players[1].id;
             let carol = game.players[2].id;
-            game.create_object_from_definition(&back, alice, Zone::Exile);
+            // The first registered face of a linked family is its front (CR 712.8a;
+            // card ids carry no face order), so the front registers before the back.
             let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+            game.create_object_from_definition(&back, alice, Zone::Exile);
             game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
             let mut ctx = crate::effects::EffectContext::new_default(source, bob);
             crate::effects::execute_effect(

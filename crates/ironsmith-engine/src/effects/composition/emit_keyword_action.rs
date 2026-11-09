@@ -523,6 +523,31 @@ impl EffectExecutor for PerformNamedActionEffect {
                             .find(|event|event.permanent==snapshot.object_id).and_then(|event|event.snapshot.clone()).unwrap_or_else(||snapshot.clone())
                     }else{snapshot.clone()}
                 }).collect();
+                // An instruction that changed objects in place ("have a land
+                // ... become a basic land named Wastes") exports them as its
+                // frozen result packet rather than a separate affected memory.
+                let objects = if objects.is_empty() && action == crate::effect::PriorEffectAction::Affected {
+                    receipt.result_object_memory().map(<[_]>::to_vec).unwrap_or_default()
+                } else { objects };
+                // A created token's receipt can name its staged pre-entry
+                // object; the action is performed with the token that
+                // actually entered (its entry move's result object).
+                let objects: Vec<_> = objects.into_iter().map(|snapshot| {
+                    if snapshot.zone != crate::zone::Zone::Command { return snapshot; }
+                    receipt.events.iter().filter_map(|event| event.downcast::<crate::events::ZoneChangeEvent>())
+                        .filter(|change| change.from == crate::zone::Zone::Command && change.to == crate::zone::Zone::Battlefield)
+                        .find_map(|change| {
+                            let index = change.objects.iter().position(|id| *id == snapshot.object_id)?;
+                            change.destination_snapshots.get(index).cloned().or_else(|| {
+                                let entered = change.result_objects.get(index).copied()?;
+                                ObjectSnapshot::from_object_id(game, entered)
+                            })
+                        })
+                        .or_else(|| game.find_object_by_stable_id(snapshot.stable_id)
+                            .filter(|id| game.object(*id).is_some_and(|object| object.zone == crate::zone::Zone::Battlefield))
+                            .and_then(|id| ObjectSnapshot::from_object_id(game, id)))
+                        .unwrap_or(snapshot)
+                }).collect();
                 if objects.is_empty() {
                     let original = receipt.instruction_result();
                     if original.status != crate::effect::OutcomeStatus::Succeeded { return Ok(EffectOutcome::count(0)); }
@@ -637,8 +662,22 @@ impl EffectExecutor for PerformNamedActionEffect {
                 let mut event=crate::events::NamedActionEvent::new(self.label.clone(),player,performer,source,objects.clone(),amount,ctx.cause.clone())
                     .with_mana_spent(ctx.mana.activation_payment.clone()).with_combat_phase(matches!(game.turn.phase, crate::game_state::Phase::Combat).then_some(game.turn_store.combat_phases_started_this_turn)).with_complete_source_lookback();
                 if let Some(sources) = &participant_sources { event = event.with_participant_source_lookback(sources.clone()); }
-                let provenance=game.alloc_child_event_provenance(ctx.provenance,crate::events::EventKind::KeywordAction);
-                events.push(TriggerEvent::new_with_provenance(event,provenance).with_lookback_source_snapshots(lookback.clone()));
+                // This effect owns the operation's completion (CR 701 named
+                // actions): publish the receipt as a completed action, so
+                // player history reads it without a later queue promotion.
+                events.push(crate::effects::observe_action_completion(game,
+                    TriggerEvent::new_with_provenance(event,ctx.provenance).with_lookback_source_snapshots(lookback.clone()),
+                    Some(ctx.provenance))?);
+            }
+            // Outside an instruction-boundary matching scope the completion
+            // would reach observers only if the caller re-queued the result.
+            // Queue it like the physical events it reports (CR 603.2).
+            if !game.effect_store.per_event_trigger_matching && !game.action_observations_suppressed() {
+                for event in &events {
+                    if !game.event_is_pending_for_trigger_matching(event) {
+                        game.queue_trigger_event(event.provenance(), event.clone());
+                    }
+                }
             }
             if self.performer.is_none(){affected=objects;}
             let affected_ids=affected.iter().map(|snapshot|snapshot.object_id).collect();

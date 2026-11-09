@@ -2521,6 +2521,21 @@ pub fn parse_dynamic_cost_modifier_value(
             .with_counter_type(counter_type),
         )
         .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay),
+        DynamicCostValueShape::NamedActionTimesThisTurn { label_tokens, past_tense_verb } => {
+            let words = crate::lexer::parser_token_word_refs(label_tokens);
+            let label = if past_tense_verb {
+                let verb = words.first().copied().unwrap_or_default();
+                if let Some(stem) = verb.strip_suffix("ied") { format!("{stem}y") }
+                else if verb.strip_suffix('d').is_some_and(|stem| stem.ends_with('e')) { verb[..verb.len() - 1].to_string() }
+                else { verb.strip_suffix("ed").unwrap_or(verb).to_string() }
+            } else { words.join(" ") };
+            crate::word_claims::claim_tokens(label_tokens);
+            Value::PlayerNamedActionCount {
+                player: PlayerFilter::You,
+                label,
+                window: ironsmith_core::value_model::PlayerActionWindow::ThisTurn,
+            }
+        }
         DynamicCostValueShape::EnergyPaidThisWay => Value::PendingPriorEffectMetric(
             ironsmith_core::PriorEffectMetricQuery::new(
                 EffectMetricSource::Outcome,
@@ -5072,7 +5087,11 @@ pub fn parse_prevent_all_damage_to_matching_permanents_line(
         )
         || words
             .iter()
-            .any(|word| matches!(*word, "by" | "and" | "or"))
+            .enumerate()
+            // "creatures in group owned by <source>": a recipient relation,
+            // not a damage source.
+            .any(|(index, word)| matches!(*word, "and" | "or")
+                || (*word == "by" && index.checked_sub(1).and_then(|prev| words.get(prev)) != Some(&"owned")))
         // "... to target creature this turn" is a one-shot prevention shield
         // (Indestructible Aura), never a static over every creature.
         || words
@@ -5703,7 +5722,7 @@ pub fn parse_attached_untap_and_activation_restrictions_line(
     } else {
         crate::tag::CompilerReferenceTag::Enchanted
     };
-    let filter = ObjectFilter::permanent_card().in_zone(Zone::Battlefield).match_tagged(
+    let filter = ObjectFilter::permanent().match_tagged(
         tag.bind(), crate::filter::TaggedOpbjectRelation::IsTaggedObject,
     );
     let (restriction, text) = if beam_prohibition {
@@ -5888,7 +5907,7 @@ pub fn parse_doesnt_untap_during_untap_step_line(
             } else {
                 crate::tag::CompilerReferenceTag::Enchanted
             };
-            let attached = ObjectFilter::permanent_card().in_zone(Zone::Battlefield).match_tagged(
+            let attached = ObjectFilter::permanent().match_tagged(
                 tag.bind(),
                 crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             );
@@ -6698,9 +6717,54 @@ pub fn parse_each_player_source_exiled_by_them_line(
     Ok(Some(StaticAbility::grants(spec)))
 }
 
+/// "You may cast <this card> from your graveyard if you spend 5 or less mana
+/// to cast it": the play permission holds only while the cast's total mana
+/// cost is at most the cap (checked when the total cost is locked).
+fn parse_spend_capped_permission_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let end = tokens.iter().rposition(|token| !token.is_period()).map_or(0, |index| index + 1);
+    let body = &tokens[..end];
+    let view = TokenWordView::new(body);
+    let words = view.word_refs();
+    let Some(tail_start) = words.len().checked_sub(10) else {
+        return Ok(None);
+    };
+    let ["if", "you", "spend", count, "or", "less", "mana", "to", "cast", "it"] = &words[tail_start..] else {
+        return Ok(None);
+    };
+    let Some(cap) = crate::util::parse_number_word_u32(count) else {
+        return Ok(None);
+    };
+    let start = view.token_start_indices()[tail_start];
+    let Some(mut abilities) = parse_you_may_static_grant_line(&body[..start])? else {
+        return Ok(None);
+    };
+    let [ability] = abilities.as_mut_slice() else {
+        return Ok(None);
+    };
+    let ironsmith_core::StaticAbilityPayload::Grants(spec) = &mut ability.payload else {
+        return Ok(None);
+    };
+    if !matches!(spec.grantable, crate::model::CompilerGrantableCore::PlayFrom)
+        || spec.cast_max_total_mana.is_some()
+    {
+        return Ok(None);
+    }
+    spec.cast_max_total_mana = Some(cap);
+    if let Some(surface) = spec.filtered_zone_surface.as_mut() {
+        surface.push_str(&format!(" if you spend {cap} or less mana to cast it"));
+    }
+    crate::word_claims::claim_tokens(&body[start..]);
+    Ok(Some(abilities))
+}
+
 pub fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if let Some(abilities) = parse_spend_capped_permission_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     // A complete zone-specific free-cast line on a permanent is a standing
     // permission. The document dispatcher gives spell statements precedence
     // on instants/sorceries; activated and triggered bodies use effect parsing.

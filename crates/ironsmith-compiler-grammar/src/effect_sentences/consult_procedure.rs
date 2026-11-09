@@ -702,7 +702,14 @@ pub(super) fn continue_with(
                             false,
                             None,
                         )
-                        .with_move_to_zone_plural_surface_if(target_plural_surface),
+                        .with_move_to_zone_plural_surface_if(target_plural_surface)
+                        // CR 110.2a: the consulting player puts the card onto
+                        // the battlefield, so it enters under their control.
+                        .with_move_to_zone_actor_surface(match player.clone() {
+                            PlayerAst::ItsController | PlayerAst::ItsOwner => PlayerAst::That,
+                            PlayerAst::You => PlayerAst::Implicit,
+                            other => other,
+                        }),
                     );
                     group
                         .followups

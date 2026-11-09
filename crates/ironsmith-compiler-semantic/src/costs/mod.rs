@@ -34,6 +34,26 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
             && runtime_are_controller_changes
     }
 
+    // "Have two lands you control ... become ..." (a characteristic
+    // conversion cost): the same untargeted, permanent characteristic change
+    // the runtime pays as a cost.
+    fn is_static_characteristic_change_cost(effect: &effects::ApplyContinuousEffect) -> bool {
+        use crate::continuous::Modification;
+        let allowed = |modification: &Modification| matches!(modification,
+            Modification::SetName(_) | Modification::SetCardTypes(_)
+            | Modification::AddCardTypes(_) | Modification::RemoveCardTypes(_)
+            | Modification::AddSupertypes(_) | Modification::RemoveSupertypes(_)
+            | Modification::AddSubtypes(_) | Modification::RemoveSubtypes(_)
+            | Modification::RemoveAllSubtypesOfFamily(_)
+            | Modification::AddAbility(_) | Modification::AddAbilityGeneric(_)
+            | Modification::RemoveAllAbilities);
+        effect.modification.as_ref().is_some_and(allowed)
+            && effect.additional_modifications.iter().all(allowed)
+            && effect.runtime_modifications.is_empty()
+            && effect.condition.is_none()
+            && effect.target_spec.as_ref().is_some_and(|target| !target.is_target())
+    }
+
     if effect.payload_type_name().ends_with("MoveToZoneEffect") {
         return true;
     }
@@ -91,6 +111,11 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
         || effect
             .downcast_ref::<effects::ChooseObjectsEffect>()
             .is_some()
+        // A quoted cost program's "the chosen creatures" capture: pure
+        // bookkeeping the runtime already executes as part of a cost.
+        || effect
+            .downcast_ref::<effects::TagMatchingObjectsEffect>()
+            .is_some()
         || effect
             .downcast_ref::<effects::ChoosePlayerEffect>()
             .is_some()
@@ -106,7 +131,15 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
             .is_some()
         || effect
             .downcast_ref::<effects::ApplyContinuousEffect>()
-            .is_some_and(is_controller_change_continuous_cost)
+            .is_some_and(|effect| {
+                is_controller_change_continuous_cost(effect)
+                    || is_static_characteristic_change_cost(effect)
+            })
+        // A named action completed by its exact predecessor's receipt
+        // ("... and perform the waste action") publishes from the payment.
+        || effect
+            .downcast_ref::<effects::PerformNamedActionEffect>()
+            .is_some_and(|action| action.prior_objects.is_some())
         || effect.downcast_ref::<effects::CrewCostEffect>().is_some()
         || effect.downcast_ref::<effects::SaddleCostEffect>().is_some()
         || effect

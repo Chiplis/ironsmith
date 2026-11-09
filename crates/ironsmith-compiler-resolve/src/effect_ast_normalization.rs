@@ -4427,7 +4427,7 @@ mod tests {
             one_shot: false,
             duration: Until::EndOfTurn,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: None, source_collection_scope: None,
+            while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
         });
         let grant = EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
             crate::tag::CompilerReferenceTag::It.bind(),
@@ -4461,7 +4461,7 @@ mod tests {
             one_shot: false,
             duration: Until::EndOfTurn,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: None, source_collection_scope: None,
+            while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
         });
         let explicit_tag =
             ironsmith_compiler_semantic::tag::declared_key("explicit_permission_pool");

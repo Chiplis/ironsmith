@@ -827,4 +827,7 @@ pub enum TriggerSpec {
     PermanentTransformsFromOwnNamedActivation { filter: ObjectFilter, label: String, activator: Option<PlayerFilter> },
     /// Append-only: typed gain on a continuing battlefield incarnation.
     CharacteristicGained(ironsmith_core::trigger_model::CharacteristicGainTrigger),
+    /// Append-only: "Whenever this and at least one other <filter> become
+    /// tapped" (one simultaneous action taps both).
+    ThisAndOtherBecomeTapped { other: ObjectFilter },
 }

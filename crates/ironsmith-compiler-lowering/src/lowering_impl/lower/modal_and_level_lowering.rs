@@ -93,6 +93,7 @@ pub fn try_merge_modal_into_remove_mode(
             optional_choice: choose_mode.optional_choice,
             cost_choice_keywords: choose_mode.cost_choice_keywords.clone(),
             announced_modes: choose_mode.announced_modes.clone(),
+            allowed_mode_counts: choose_mode.allowed_mode_counts.clone(),
         },
     ));
     true
@@ -140,6 +141,7 @@ pub fn lower_parsed_modal(
         cast_chooser,
         optional_choice,
         cost_choice_keywords,
+        allowed_mode_counts,
     } = header;
     let header_source = info
         .provenance
@@ -395,6 +397,7 @@ pub fn lower_parsed_modal(
         if !cost_choice_keywords.is_empty() {
             choose_mode = choose_mode.with_cost_choice_keywords(cost_choice_keywords.clone());
         }
+        choose_mode.allowed_mode_counts = allowed_mode_counts.clone();
         crate::effect::Effect::new(choose_mode)
     };
 

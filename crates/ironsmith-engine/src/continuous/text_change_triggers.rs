@@ -325,6 +325,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             *owner = rewrite_player_filter_words(owner, change)?;
         }
         K::SpellResolves {controller} => {*controller=rewrite_player_filter_words(controller,change)?;}
+        K::SourceAndOtherBecomeTapped { other } => { *other = rewrite_filter_words(other, change)?; }
         K::SpellCopied { filter, copier } => {
             rewrite_optional_filter(filter, change)?;
             *copier = rewrite_player_filter_words(copier, change)?;
@@ -768,6 +769,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
         } else { K::PermanentBecomesTapped { filter: n.filter.clone(), one_or_more: n.one_or_more } };
         return exact_native_kind(n, kind);
     }
+    exact!(SourceAndOtherBecomeTappedTrigger, n, K::SourceAndOtherBecomeTapped { other: n.other.clone() });
     exact!(PermanentBecomesUntappedTrigger, n, K::PermanentBecomesUntapped { filter: n.filter.clone(), one_or_more: n.one_or_more });
     exact!(PermanentSacrificedTrigger, n, K::PermanentSacrificed { filter: n.filter.clone() });
     exact!(PermanentDestroyedTrigger, n, K::PermanentDestroyed { filter: n.filter.clone() });

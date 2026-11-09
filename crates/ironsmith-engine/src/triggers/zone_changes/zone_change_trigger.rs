@@ -1391,6 +1391,21 @@ impl ZoneChangeTrigger {
                 };
                 parts.push(format!("{verb} put into the command zone{origin}"));
             }
+            // "Whenever a card is put into your hand [from your graveyard]":
+            // the hand destination is the event, never a generic zone change.
+            (_, ZonePattern::Specific(Zone::Hand)) => {
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "are"
+                } else {
+                    "is"
+                };
+                let destination = owned_zone_phrase(self.object_filter.owner.as_ref(), "hand");
+                let origin = match &self.from {
+                    ZonePattern::Specific(from) => format!(" from {}", zone_origin_name(*from)),
+                    _ => String::new(),
+                };
+                parts.push(format!("{verb} put into {destination}{origin}"));
+            }
             _ => {
                 parts.push("changes zones".to_string());
             }

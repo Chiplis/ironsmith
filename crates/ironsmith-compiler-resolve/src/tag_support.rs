@@ -336,6 +336,12 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+            // "Exile another target creature. Put that card onto the
+            // battlefield face down ... Give that creature the submerged
+            // status" (submerge): these operands name the prior object
+            // (CR 608.2c), so its producer must be tagged.
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { target, .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { target })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target })
             | SubjectVerbActionAst::Stack(StackActionAst::Counter { target, .. })
@@ -386,6 +392,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target, .. })
@@ -1795,6 +1802,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
         | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
+        | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { .. })
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
@@ -2498,6 +2506,26 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
         return true;
     }
     if delayed_trigger_references_tag(effect, crate::tag::CompilerReferenceTag::It.as_str()) {
+        return true;
+    }
+    // "... When Engulfing Incubus is no longer on the battlefield, turn that
+    // card face up": the source's own leave supplies no other object, so the
+    // body's anaphor names the scheduling instruction's antecedent (CR
+    // 603.7c), which must be tagged for the registration to capture it.
+    if let EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { trigger, effects, .. }) = effect
+        && {
+            fn source_leaves(trigger: &crate::cards::builders::TriggerSpec) -> bool {
+                use crate::cards::builders::TriggerSpec;
+                match trigger {
+                    TriggerSpec::WithIntro { trigger, .. } => source_leaves(trigger),
+                    TriggerSpec::ThisLeavesBattlefield | TriggerSpec::ThisLeavesBattlefieldWithSurface(_) => true,
+                    _ => false,
+                }
+            }
+            source_leaves(trigger)
+        }
+        && effects_reference_it_tag(effects)
+    {
         return true;
     }
     if direct_effect_targets_reference_tag(effect, crate::tag::CompilerReferenceTag::It.as_str()) {

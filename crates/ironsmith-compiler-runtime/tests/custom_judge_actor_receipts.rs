@@ -61,7 +61,10 @@ fn resolve(game:&mut GameState,definition:&CardDefinition,recipient:ObjectId,opt
 fn actual(name:&str)->[CardDefinition;2]{
  let input:serde_json::Value=serde_json::from_str(include_str!("../../../fixtures/custom_mechanics/msem-actions-status-whole-source-complete.json")).unwrap();
  let source=input["mechanics"].as_array().unwrap().iter().flat_map(|row|row["representative_cards"].as_array().unwrap()).find(|card|card["name"]==name).unwrap();
- assert!(source["original_text"].as_str().unwrap().contains("judge"));
+ // Judge sources print "judge"; observers (Suhra and Fori) print the
+ // honor/condemn verbs the judge action performs.
+ let original=source["original_text"].as_str().unwrap();
+ assert!(original.contains("judge")||(original.contains("honor")&&original.contains("condemn")));
  source_support::definitions(source).unwrap()
 }
 #[test]fn marianne_full_source_returns_to_original_controller_after_opponent_judges(){

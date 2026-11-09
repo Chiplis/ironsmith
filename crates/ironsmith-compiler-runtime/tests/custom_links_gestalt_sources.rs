@@ -61,7 +61,17 @@ fn complete_source_programs_round_trip() {
                             &decoded,
                         )
                         .unwrap();
-                    assert_eq!(direct, restored);
+                    // Effects compare by executor identity (Arc::ptr_eq), so two
+                    // independent routes are compared through their canonical
+                    // wire encodings.
+                    let canonical = |definition| {
+                        serde_json::to_value(
+                            ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition(definition)
+                                .unwrap(),
+                        )
+                        .unwrap()
+                    };
+                    assert_eq!(canonical(direct), canonical(restored));
                 })
                 .unwrap();
                 count += 1;

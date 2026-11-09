@@ -196,8 +196,15 @@ pub(crate) fn prepare_token_entry_attachments(
     use crate::events::tokens::TokenGroupKey;
     let spec=ctx.pending_entry_attachment.clone();
     if spec.is_none() && entry_modifications.is_empty() {return Ok(None)}
+    // An illegal authored host leaves no destination (CR 608.2b): the token
+    // is still created; an Equipment enters unattached and an Aura with no
+    // legal object can't enter (CR 303.4i, 301.5c).
     let destinations=match &spec {
-        Some(spec)=>crate::effects::permanents::attachment_destinations(game,spec,ctx)?,
+        Some(spec)=>match crate::effects::permanents::attachment_destinations(game,spec,ctx) {
+            Ok(destinations)=>destinations,
+            Err(ExecutionError::InvalidTarget)=>Vec::new(),
+            Err(error)=>return Err(error),
+        },
         None=>Vec::new(),
     };
     let mut plan = TokenEntryAttachmentPlan::default();
@@ -276,6 +283,15 @@ pub(crate) fn prepare_token_entry_attachments(
             if prepared.result.prevented { continue; }
             let prospective = game.prepared_entry_attachment_game_state(entry.id, prepared, None)?
                 .ok_or_else(|| ExecutionError::IncompleteEvidence("token entry lost its prospective attachment world".into()))?;
+            // "Create an Equipment token ... attached to this creature": an
+            // Equipment (or Fortification) token may also enter attached
+            // (CR 301.5c / 301.6); its host legality is the attach owner's.
+            let prospective_subtypes = prospective.calculated_subtypes(entry.id);
+            let equipment_like = prospective_subtypes.contains(&crate::types::Subtype::Equipment)
+                || prospective_subtypes.contains(&crate::types::Subtype::Fortification);
+            if equipment_like {
+                prepared.entry_attachment_requires_aura = false;
+            }
             if prepared.entry_attachment_requires_aura
                 && !prospective.calculated_subtypes(entry.id).contains(&crate::types::Subtype::Aura)
             { prepared.entry_attachment = None; continue; }
@@ -283,6 +299,11 @@ pub(crate) fn prepare_token_entry_attachments(
                 &prospective, ctx, entry.id, &destinations,
             )?;
             if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+            // CR 301.5c: an Equipment with no legal host still enters, just
+            // unattached; only an Aura's entry depends on its object.
+            if equipment_like && prepared.entry_attachment.is_none() {
+                prepared.entry_attachment_specified = false;
+            }
         }
     }
     Ok(Some(plan))

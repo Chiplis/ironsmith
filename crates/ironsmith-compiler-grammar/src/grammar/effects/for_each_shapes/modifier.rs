@@ -169,6 +169,26 @@ pub fn parse_modifier_tail_shape(tokens: &[OwnedLexToken]) -> ModifierTailShape<
     )
     .is_some()
     {
+        // `gets +1/+0 for each other attacking Lizard you control until end
+        // of turn`: a trailing duration closes the counted phrase.
+        let mut tail = tail;
+        if let Some(until) = tail.iter().rposition(|token| token.is_word("until"))
+            && until > 2
+            && let Some(parsed) = leaf::parse_leaf_restriction_duration_prefix_tokens(&tail[until..])
+            && trim_edge_punctuation_tokens(parsed.rest).is_empty()
+        {
+            let suffix_duration = match parsed.duration {
+                leaf::LeafDurationPhrase::UntilEndOfTurn => Some(Until::EndOfTurn),
+                leaf::LeafDurationPhrase::UntilYourNextTurn => Some(Until::YourNextTurn),
+                leaf::LeafDurationPhrase::UntilEndOfCombat => Some(Until::EndOfCombat),
+                _ => None,
+            };
+            if let Some(suffix_duration) = suffix_duration {
+                crate::word_claims::claim_tokens(&tail[until..]);
+                duration = suffix_duration;
+                tail = trim_edge_punctuation_tokens(&tail[..until]);
+            }
+        }
         return ModifierTailShape {
             duration,
             condition: None,

@@ -177,7 +177,9 @@ fn source_card_copy_executor_uses_native_lki_and_pays_the_copy_cost() {
         assert_eq!(game.stack.len(), 1);
         let copy = game.stack[0].object_id;
         assert_eq!(game.object(copy).unwrap().name.as_str(), "Copied source");
-        assert_eq!(game.object(copy).unwrap().kind, ironsmith::object::ObjectKind::Token);
+        // CR 707.12: the cast copy is a spell copy on the stack; it becomes a
+        // token only as the permanent spell resolves (checked below).
+        assert_eq!(game.object(copy).unwrap().kind, ironsmith::object::ObjectKind::SpellCopy);
         assert_eq!(game.object(original).unwrap().zone, if departed { Zone::Graveyard } else { Zone::Exile });
         resolve_stack_entry(&mut game).unwrap();
         assert!(game.battlefield.iter().any(|id| game.object(*id).is_some_and(|object|

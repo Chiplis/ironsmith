@@ -586,6 +586,44 @@ pub fn parse_granted_activated_or_triggered_ability_for_gain(
     clause_words: &[&str],
 ) -> Result<Option<GrantedAbilityAst>, CardTextError> {
     let trimmed = trim_edge_punctuation_and_quotes(ability_tokens);
+    // `"experience — Whenever ..."`: an ability-word label on a granted
+    // trigger is its presentation label and authored group designation.
+    if let Some(shape) =
+        crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(&trimmed)
+        && shape.kind
+            != crate::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::SupportedProcedure
+        && shape
+            .body_tokens
+            .first()
+            .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
+    {
+        let label = shape
+            .label_tokens
+            .iter()
+            .filter(|token| token.kind == TokenKind::Word)
+            .map(|token| token.literal_surface().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let label_tokens = shape.label_tokens.to_vec();
+        let body = shape.body_tokens.to_vec();
+        if !label.is_empty()
+            && let Some(GrantedAbilityAst::ParsedObjectAbility { mut ability, display }) =
+                parse_granted_activated_or_triggered_ability_for_gain(&body, clause_words)?
+        {
+            let designation = label.to_ascii_lowercase();
+            if let crate::model::CompilerAbilityKindCore::Triggered(triggered) = ability.kind_mut()
+                && triggered.presentation_label.is_none()
+            {
+                triggered.presentation_label =
+                    Some(crate::ability::PresentationLabel::AbilityWord(label));
+            }
+            if !ability.ability.designations.contains(&designation) {
+                ability.ability.designations.push(designation);
+            }
+            crate::word_claims::claim_tokens(&label_tokens);
+            return Ok(Some(GrantedAbilityAst::ParsedObjectAbility { ability, display }));
+        }
+    }
     let direct_trigger_subject = match (trimmed.first(), trimmed.get(1)) {
         (Some(intro), Some(subject)) if matches!(intro.parser_text(), "when" | "whenever") => {
             subject.is_word("this")
@@ -724,9 +762,39 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
         // to the parsed ability below.
         let mut activation_tokens = semantic_tokens.clone();
         let mut mana_restrictions = Vec::new();
+        let mut activation_label: Option<String> = None;
+        let mut sorcery_exceptions: Vec<String> = Vec::new();
+        let mut restriction_sentences: Vec<Vec<OwnedLexToken>> = Vec::new();
         if let Some(colon) = semantic_tokens.iter().position(|token| token.kind == TokenKind::Colon) {
             activation_tokens = semantic_tokens[..=colon].to_vec();
             for sentence in crate::lexer::split_lexed_sentences(&semantic_tokens[colon + 1..]) {
+                // "Activate only as a sorcery unless you're making a pledge.":
+                // sorcery timing whose named action is excepted. The timing is
+                // read below with the other restrictions; the exception is
+                // kept here, never dropped with the "unless" tail.
+                let rider_words = crate::lexer::token_word_refs(sentence);
+                let action_start = match rider_words.as_slice() {
+                    ["activate", "only", "as", "a", "sorcery", "unless", "you're" | "youre" | "you’re", ..] => Some(7),
+                    ["activate", "only", "as", "a", "sorcery", "unless", "you", "are", ..] => Some(8),
+                    _ => None,
+                };
+                if let Some(action_start) = action_start.filter(|start| rider_words.len() > *start) {
+                    sorcery_exceptions.push(rider_words[action_start..].join("-"));
+                    activation_tokens.extend(crate::lexer::lex_line("Activate only as a sorcery.", 0)?);
+                    crate::word_claims::claim_tokens(sentence);
+                    continue;
+                }
+                // "This is the revive activated ability.": the authored
+                // activation identity, exactly as on a printed activation.
+                if let ["this", "is", "the", label, "activated", "ability"] =
+                    crate::lexer::parser_token_word_refs(sentence).as_slice()
+                {
+                    if activation_label.replace((*label).to_string()).is_some() {
+                        return Err(CardTextError::ParseError("duplicate activation label".into()));
+                    }
+                    crate::word_claims::claim_tokens(sentence);
+                    continue;
+                }
                 if let Some(restriction) = crate::grammar::restriction_facts::parse_activation_restriction_tokens(sentence) {
                     // A surface-shaped restriction is not necessarily executable.
                     // Never remove an unknown condition and grant an unrestricted ability.
@@ -744,6 +812,7 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
                         )));
                     }
                     crate::word_claims::claim_tokens(sentence);
+                    restriction_sentences.push(sentence.to_vec());
                 } else if let Some(restriction) = crate::grammar::restriction_facts::parse_mana_restriction_tokens(sentence) {
                     // Use the ordinary compiler-owned restriction transport;
                     // nested on-spend programs are lowered with the ability.
@@ -767,7 +836,35 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
             )));
         };
         apply_quoted_activation_restrictions(&mut parsed, &semantic_tokens);
+        // "Activate only ... if this card is exiled." (Q, Stacking the Deck):
+        // the restriction sentence was separated from the activation above,
+        // but it still names where the ability functions (CR 113.6). Read it
+        // with the same resolver a printed activation uses.
+        if parsed.ability.functional_zones == [Zone::Battlefield]
+            && let Some(colon) = activation_tokens.iter().position(|token| token.kind == TokenKind::Colon)
+        {
+            let sentences = restriction_sentences.iter().map(Vec::as_slice).collect::<Vec<_>>();
+            let zones = crate::grammar::functional_zones::parse_activated_functional_zones_tokens(
+                &activation_tokens[..colon],
+                &sentences,
+            );
+            if !zones.is_empty() {
+                parsed.ability.functional_zones = zones;
+            }
+        }
         crate::restriction_support::apply_pending_mana_restrictions(&mut parsed, &mana_restrictions)?;
+        if let Some(label) = activation_label
+            && let ironsmith_core::AbilityKind::Activated(activated) = &mut parsed.ability.kind
+        {
+            activated.effects.activation_label = Some(label);
+        }
+        if let ironsmith_core::AbilityKind::Activated(activated) = &mut parsed.ability.kind {
+            for exception in sorcery_exceptions {
+                if !activated.effects.activation_sorcery_exceptions.contains(&exception) {
+                    activated.effects.activation_sorcery_exceptions.push(exception);
+                }
+            }
+        }
         parsed
     };
 

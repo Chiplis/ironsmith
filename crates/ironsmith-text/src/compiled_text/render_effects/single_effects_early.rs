@@ -3634,11 +3634,12 @@ pub(super) fn describe_source_labeled_choose_mode_branch(effects: &[Effect]) -> 
     if modes.is_empty() {
         return None;
     }
-    let header = describe_mode_choice_header(
-        &choose.choose_count,
-        Some(&choose.min_choose_count),
-        Some(choose.modes.len()),
-    );
+    let header = describe_allowed_mode_counts_header(&choose.allowed_mode_counts)
+        .unwrap_or_else(|| describe_mode_choice_header(
+            &choose.choose_count,
+            Some(&choose.min_choose_count),
+            Some(choose.modes.len()),
+        ));
     Some(format!("{header}\n• {}", modes.join("\n• ")))
 }
 

@@ -39,7 +39,7 @@ pub(crate) fn parse_return_with_event_timing(
             one_shot: true,
             duration: Until::Forever,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: None, source_collection_scope: None,
+            while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
         },
     )]))
 }

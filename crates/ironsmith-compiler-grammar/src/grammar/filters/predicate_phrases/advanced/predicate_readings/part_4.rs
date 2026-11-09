@@ -211,6 +211,11 @@ pub(super) fn read_demonstrative_or_descriptor(
             .any(|token| token_word_is(token, OR_WORD))
         && !contains_most_common_color_among_all_permanents_clause(predicate_tokens)
     {
+        // `it was tapped or it had <keyword>`: each pronoun clause is its own
+        // complete predicate, not one coordinated descriptor.
+        if let Some(predicate) = crate::grammar::filters::predicate_phrases::parse_repeated_pronoun_subject_or_predicate(predicate_tokens)? {
+            return Ok(Some(predicate));
+        }
         if let Some(predicate) = parse_demonstrative_or_descriptor_predicate(predicate_tokens)? {
             return Ok(Some(predicate));
         }
@@ -1062,6 +1067,9 @@ pub(super) const READINGS: &[Reading] = &[
                 // The triggering-object stat comparison owns the full
                 // "its power ... or its toughness ..." disjunction.
                 && !input.read_by("triggering-object-source-stat-predicate")
+                // "it has mana value 1 or less or if <B>": the repeated
+                // conditional introducer owns the whole disjunction.
+                && !input.read_by("repeated-if-or-predicate")
         },
         read: |input| input.outcome(read_it_demonstrative_value(input)),
     },

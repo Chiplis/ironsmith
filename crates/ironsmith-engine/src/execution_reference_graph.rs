@@ -212,6 +212,7 @@ impl ReferenceMapper<'_> {
             ReselectAttackTargetEffect,
             RestartGameEffect,
             RetainManaUntilEndOfTurnEffect,
+            RetargetStackObjectEffect,
             ReturnAllToBattlefieldEffect,
             ReturnFromGraveyardOrExileToBattlefieldEffect,
             ReturnFromGraveyardToHandEffect,

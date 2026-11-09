@@ -808,6 +808,28 @@ pub(crate) fn explicit_mixed_target_ranges(
     }).collect()
 }
 
+fn continues_lost_characteristic_family_list(
+    before: &[OwnedLexToken],
+    after: &[OwnedLexToken],
+) -> bool {
+    const FAMILY: &[&str] = &[
+        "supertypes", "card", "types", "subtypes", "abilities", "colors", "creature",
+    ];
+    let words = crate::lexer::parser_token_word_refs(before);
+    let Some(other) = words
+        .windows(3)
+        .rposition(|window| matches!(window[0], "lose" | "loses") && window[1] == "all" && window[2] == "other")
+    else {
+        return false;
+    };
+    let list = &words[other + 3..];
+    let after_words = crate::lexer::parser_token_word_refs(after);
+    let after_head = after_words.iter().find(|word| **word != "and");
+    !list.is_empty()
+        && list.iter().all(|word| *word == "and" || FAMILY.contains(word))
+        && after_head.is_some_and(|word| FAMILY.contains(word))
+}
+
 fn classify_boundary<'a>(
     candidate: BoundaryCandidate,
     before: &[OwnedLexToken],
@@ -842,6 +864,17 @@ fn classify_boundary<'a>(
     {
         // Repeated quantifiers coordinate color-qualified subsets of one
         // object operand, not separate actions.
+        return None;
+    }
+    // "... becomes a basic land named Wastes with "{T}: Add {C}" and loses
+    // all other supertypes, card types, subtypes, and abilities": a serial
+    // list of characteristic families after "loses all other" is the loss's
+    // single operand, never omitted actions.
+    if matches!(
+        candidate.operator,
+        CoordinationOperatorAst::Comma | CoordinationOperatorAst::And
+    ) && continues_lost_characteristic_family_list(before, after)
+    {
         return None;
     }
     // "Each creature that isn't an Insect, Rat, Spider, or Squirrel gets

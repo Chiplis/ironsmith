@@ -1688,7 +1688,37 @@ pub(crate) fn resolve_wide(
                         outcome.as_count().unwrap_or_else(|| {
                             outcome
                                 .explicit_objects()
-                                .map_or(0, |objects| objects.len() as i64)
+                                .map(|objects| objects.len() as i64)
+                                // "You may tap X untapped Myr you control. If
+                                // you do, ... X damage": an optional action's
+                                // result is the objects it acted on.
+                                .or_else(|| {
+                                    let mut saw = false;
+                                    let count = outcome.instruction_result().execution_facts().iter().filter_map(
+                                        |fact| match fact {
+                                            crate::effect::ExecutionFact::ActionObjects { objects, .. } => {
+                                                saw = true;
+                                                Some(objects.len() as i64)
+                                            }
+                                            _ => None,
+                                        },
+                                    ).sum::<i64>();
+                                    saw.then_some(count)
+                                })
+                                // "You may pay {X}. When you do, ... deals that
+                                // much damage": an acknowledged payment keeps
+                                // the X it paid as an execution fact.
+                                .or_else(|| {
+                                    outcome.instruction_result().execution_facts().iter().rev().find_map(
+                                        |fact| match fact {
+                                            crate::effect::ExecutionFact::ManaPaid { x_value } => {
+                                                Some(i64::from(*x_value))
+                                            }
+                                            _ => None,
+                                        },
+                                    )
+                                })
+                                .unwrap_or(0)
                         })
                     },
                 )))
@@ -1846,6 +1876,13 @@ pub(crate) fn resolve_wide(
             // Get the number of times the kicker was paid
             let paid = context.optional_costs_paid(value);
             Ok(i64::from(paid.kick_count() as i64))
+        }
+        Value::PlayerNamedActionCount { player, label, window } => {
+            let players = context.counter_player_ids(value, player)?;
+            Ok(players
+                .into_iter()
+                .map(|player| i64::from(game.player_named_action_count(player, label, *window)))
+                .sum())
         }
         Value::PlayerCounters(player_spec, counter_type) => {
             let mut player_ids = context.counter_player_ids(value, player_spec)?;

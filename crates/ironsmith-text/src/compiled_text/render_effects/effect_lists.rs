@@ -8168,7 +8168,8 @@ fn exact_aura_attached_to_permanent_target(spec: &ChooseSpec) -> bool {
 
     let mut host_remainder = host_filter.clone();
     if host_remainder.zone != Some(Zone::Battlefield)
-        || !host_remainder.has_all_permanent_card_types()
+        // CR 110.4c: a zone-only battlefield filter is also "permanent".
+        || !(host_remainder.has_all_permanent_card_types() || host_remainder.card_types.is_empty())
     {
         return false;
     }
@@ -8200,7 +8201,8 @@ pub(in crate::compiled_text) fn describe_gain_control_aura_then_chosen_legal_att
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let mut destination_remainder = choose.filter.clone();
     if destination_remainder.zone != Some(Zone::Battlefield)
-        || !destination_remainder.has_all_permanent_card_types()
+        // CR 110.4c: a zone-only battlefield filter is also "permanent".
+        || !(destination_remainder.has_all_permanent_card_types() || destination_remainder.card_types.is_empty())
         || !destination_remainder.other
         || choose.count != ChoiceCount::exactly(1)
         || choose.count_value.is_some()
@@ -9454,7 +9456,9 @@ pub(in crate::compiled_text) fn describe_phase_out_then_life_lock_and_protection
     };
     if phase.duration != crate::effects::PhaseOutDuration::UntilNextUntap
         || phase.source_surface.is_some()
-        || phase_filter != &expected_filter
+        || (phase_filter != &expected_filter
+            // CR 110.4c: the battlefield noun "permanent" may lower zone-only.
+            && phase_filter != &ObjectFilter::permanent().you_control())
     {
         return None;
     }
@@ -15836,7 +15840,9 @@ fn normalize_deterministic_same_name_reference_alias(effects: &[Effect]) -> Opti
         || alias_constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
         || alias_filter != ObjectFilter::default()
         || alias.zone != Some(Zone::Battlefield)
-        || alias.additional_zones != [Zone::Hand, Zone::Graveyard, Zone::Library, Zone::Exile]
+        || !matches!(alias.additional_zones.as_slice(),
+            [Zone::Hand, Zone::Graveyard, Zone::Library, Zone::Exile]
+            | [Zone::Hand, Zone::Graveyard, Zone::Library, Zone::Exile, Zone::Stack])
     {
         return None;
     }
@@ -15920,6 +15926,7 @@ fn describe_tagged_blocked_set_tap_then_next_untap(effects: &[Effect]) -> Option
     let mut expected_filter = ObjectFilter::creature();
     expected_filter.blocked = true;
     expected_filter.blocked_by = Some(blocker.clone());
+    expected_filter.zone = None;
     // "blocked by X this turn" already implies the creature was blocked, and
     // the battlefield is the default domain of the tapped set.
     let mut observed_filter = tagged.filter.clone();
@@ -16254,7 +16261,10 @@ fn describe_each_player_reveal_permanents_and_rest(effects: &[Effect]) -> Option
         excluded_card_types: vec![CardType::Land],
         ..ObjectFilter::default()
     };
-    if count_filter != &expected_count_filter {
+    // CR 110.4c: the battlefield noun "permanent" may lower zone-only.
+    let mut zone_only_count_filter = expected_count_filter.clone();
+    zone_only_count_filter.card_types.clear();
+    if count_filter != &expected_count_filter && count_filter != &zone_only_count_filter {
         return None;
     }
 
@@ -20108,6 +20118,11 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     for effect in effects {
         note_declared_target(effect);
     }
+    // A tagged blocked set, its tap, and the untap restriction on that set
+    // read as one distributive instruction before any generic tap wording.
+    if let Some(rendered) = describe_tagged_blocked_set_tap_then_next_untap(effects) {
+        return rendered;
+    }
     if let Some(rendered) = describe_coordinated_restriction_list(effects) {
         return rendered;
     }
@@ -23649,7 +23664,10 @@ fn describe_selected_outside_cards_shuffle(effects: &[Effect]) -> Option<String>
             ChooseSpec::Tagged(choice.tag.clone()), PlayerFilter::You,
         ) { return None; }
     let choice_text = describe_effect(choice_effect);
-    let objects = choice_text.strip_prefix("Choose ")?.trim_end_matches('.');
+    let objects = choice_text
+        .strip_prefix("Choose ")
+        .or_else(|| choice_text.strip_prefix("You choose "))?
+        .trim_end_matches('.');
     let objects = objects
         .strip_suffix(" from outside the game")
         .or_else(|| objects.strip_suffix(" outside the game"))?;
@@ -32460,9 +32478,19 @@ pub(crate) fn describe_keyword_grant_same_is_true_ladder(effects: &[Effect]) -> 
         keywords.push(keyword);
     }
     let rest = keywords[1..].iter().map(|keyword| keyword.to_string()).collect::<Vec<_>>();
+    let mut first_text = first_text?;
+    // A group recipient states the matching condition as "a creature you
+    // control has <keyword>" (Odric, Lunarch Marshal); a single recipient
+    // keeps "you control a creature with <keyword>".
+    let control_condition = format!(" if you control a creature with {}", keywords[0]);
+    if first_text.contains("creatures you control gain ")
+        && let Some(prefix) = first_text.strip_suffix(control_condition.as_str())
+    {
+        first_text = format!("{prefix} if a creature you control has {}", keywords[0]);
+    }
     Some(format!(
         "{}. The same is true for {}",
-        capitalize_first(&first_text?),
+        capitalize_first(&first_text),
         join_with_and(&rest)
     ))
 }

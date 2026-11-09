@@ -56,6 +56,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
@@ -814,8 +815,19 @@ pub(super) fn compile_subject_verb_early(
             compile_effect_for_target(target,ctx,|spec|Effect::new(ironsmith_core::RecordSourceCollectionEffect{target:spec,source_tag,name:name.clone(),source_zone:*source_zone,member_zone:*member_zone}))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::GrantExileControllerInspection {target,sources}) => {
-            let (sources,source_choices)=resolve_target_spec_with_choices(sources,&current_reference_env(ctx))?;
+            let (mut sources,source_choices)=resolve_target_spec_with_choices(sources,&current_reference_env(ctx))?;
             if !source_choices.is_empty(){return Err(CardTextError::InvariantViolation("created-object inspection cannot announce targets".into()));}
+            // "the controllers of <tokens named N> just created": the named
+            // token this instruction list created, not every object named N.
+            let named=match sources.base(){
+                ChooseSpec::Object(filter)|ChooseSpec::All(filter)=>filter.name.clone(),
+                _=>None,
+            };
+            if let Some(name)=named
+                && let Some((_,created))=ctx.created_token_names.iter().rev().find(|(created_name,_)|created_name.eq_ignore_ascii_case(&name))
+            {
+                sources=ChooseSpec::All(crate::filter::ObjectFilter::tagged(created.clone()));
+            }
             compile_effect_for_target(target,ctx,|target|Effect::new(ironsmith_core::GrantExileControllerInspectionEffect {
                 target,sources:sources.clone(),
             }))
@@ -1570,6 +1582,14 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::choose_color(subject.into_player_filter())
+            })
+        }
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { filter }) => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::new(crate::effects::ChooseColorEffect::among(
+                    subject.into_player_filter(),
+                    filter.clone(),
+                ))
             })
         }
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { options, shared_among }) => {
@@ -2931,7 +2951,12 @@ pub(super) fn compile_subject_verb_early(
             {
                 ctx.last_object_tag = Some(constraint.tag.clone());
             }
-            let mut look = crate::effects::LookAtObjectsEffect::new(resolved_filter, PlayerFilter::You, player_filter);
+            // "that player looks at the iterated object": the named player is
+            // the one who looks; the iterated object has no possessor zone.
+            let iterated_look = matches!(resolved_filter.tagged_constraints.as_slice(),
+                [constraint] if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::CurrentIteratedObject.as_str());
+            let viewer = if iterated_look { player_filter.clone() } else { PlayerFilter::You };
+            let mut look = crate::effects::LookAtObjectsEffect::new(resolved_filter, viewer, player_filter);
             look.permit_while_exiled = *permit_while_exiled;
             Ok((vec![Effect::new(look)], subject.into_choices()))
         }

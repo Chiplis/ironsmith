@@ -654,6 +654,16 @@ fn read_independent_explicit_may_coordination(
     input: &ChainEntry<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    // "you may cast it this turn, and you may cast it as though it had
+    // flash": the second permission is a timing rider of the first, not an
+    // independent instruction.
+    let words = crate::lexer::parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens));
+    if words.ends_with(&["and", "you", "may", "cast", "it", "as", "though", "it", "had", "flash"])
+        && words.starts_with(&["you", "may"])
+        && let Some(effect) = crate::permission_helpers::parse_cast_or_play_tagged_clause(tokens)?
+    {
+        return Ok(Some(vec![effect]));
+    }
     if let Some(effects) = parse_independent_explicit_may_coordination(tokens)? {
         return Ok(Some(effects));
     }

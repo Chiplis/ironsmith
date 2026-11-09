@@ -117,7 +117,7 @@ pub(crate) fn rewrite_static_model_words(
     let mut rewritten = model.clone();
     match &mut rewritten.payload {
         // Keyword names are identities, not color/type words in rules text.
-        P::CustomKeywordIdentity { .. } | P::OptionalTextFragments(_) => {},
+        P::CustomKeywordIdentity { .. } | P::OptionalTextFragments(_) | P::BattlefieldCastPermission { .. } => {},
         P::NamedActionPaymentAlternative { player, effects: body, .. } => {
             *player = rewrite_player_filter_words(player, change)?;
             effects_words(body, change)?;

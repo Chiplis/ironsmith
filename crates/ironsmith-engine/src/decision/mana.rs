@@ -1561,6 +1561,16 @@ fn spell_view_for_cost_filter_match(
         {
             changed = true;
         }
+        // CR 601.2f: the total cost is determined for the spell as it will be
+        // on the stack, including supertypes its chosen price gives it.
+        if let Some(method) = method.as_ref() {
+            for supertype in method.battlefield_instructions().casting_added_supertypes {
+                if !view.supertypes.contains(&supertype) {
+                    view.supertypes.push(supertype);
+                    changed = true;
+                }
+            }
+        }
     }
 
     if cast_from_zone.is_some() || spell.zone == Zone::Stack {
@@ -6758,6 +6768,50 @@ pub(crate) fn apply_spell_cost_modifiers(
     .apply(cost)
 }
 
+/// The play-from constraints of the permission `spell` is being cast
+/// through, or `None` when the casting method names no play permission.
+pub(crate) fn cast_permission_constraints(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> Option<crate::grant_registry::PlayFromConstraints> {
+    let (CastingMethod::PlayFrom { source, zone, .. }
+    | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
+    | CastingMethod::FaceDownPlayFrom { source, zone }) = casting_method.origin_method()
+    else {
+        return None;
+    };
+    Some(spell
+            .cast_play_from_constraints
+            .as_deref()
+            .filter(|(grant_source, grant_zone, _)| {
+                spell.zone == Zone::Stack
+                    && game.controller_of_id(spell.id) == Some(player)
+                    && grant_source == source
+                    && grant_zone == zone
+            })
+            .map(|(_, _, constraints)| constraints.clone())
+            .unwrap_or_else(|| {
+                if matches!(casting_method, CastingMethod::ExactPermission { .. }) {
+                    return crate::alternative_cast::play_permission::receipt_or_latch(game, player, spell, casting_method)
+                        .map(|receipt| receipt.constraints).unwrap_or_default();
+                }
+                if matches!(casting_method.without_exact_permission(), CastingMethod::AlternativePrice { .. }) {
+                    return crate::alternative_cast::price_routes::origin_constraints_or_latch(
+                        game,
+                        player,
+                        spell,
+                        casting_method,
+                    )
+                    .unwrap_or_default();
+                }
+                game.effect_store
+                    .grant_registry
+                    .play_from_constraints_for_card(game, spell.id, *zone, player, *source)
+            }))
+}
+
 pub(crate) fn collect_spell_cost_modifiers(
     game: &GameState,
     player: PlayerId,
@@ -6839,38 +6893,7 @@ pub(crate) fn collect_spell_cost_modifiers(
     let mut reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let mut spilling_reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let mut mana_reductions = Vec::new();
-    if let CastingMethod::PlayFrom { source, zone, .. }
-    | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
-    | CastingMethod::FaceDownPlayFrom { source, zone } = casting_method.origin_method()
-    {
-        let constraints = spell
-            .cast_play_from_constraints
-            .as_deref()
-            .filter(|(grant_source, grant_zone, _)| {
-                spell.zone == Zone::Stack
-                    && game.controller_of_id(spell.id) == Some(player)
-                    && grant_source == source
-                    && grant_zone == zone
-            })
-            .map(|(_, _, constraints)| constraints.clone())
-            .unwrap_or_else(|| {
-                if matches!(casting_method, CastingMethod::ExactPermission { .. }) {
-                    return crate::alternative_cast::play_permission::receipt_or_latch(game, player, spell, casting_method)
-                        .map(|receipt| receipt.constraints).unwrap_or_default();
-                }
-                if matches!(casting_method.without_exact_permission(), CastingMethod::AlternativePrice { .. }) {
-                    return crate::alternative_cast::price_routes::origin_constraints_or_latch(
-                        game,
-                        player,
-                        spell,
-                        casting_method,
-                    )
-                    .unwrap_or_default();
-                }
-                game.effect_store
-                    .grant_registry
-                    .play_from_constraints_for_card(game, spell.id, *zone, player, *source)
-            });
+    if let Some(constraints) = cast_permission_constraints(game, player, spell, casting_method) {
         if let Some(reduction) = constraints.spell_cost_reduction {
             reduction_pips.extend(reduction.pips().iter().cloned());
                     mana_reductions.push(ManaReductionStep::Symbols { cost: reduction.clone(), spill: false });
@@ -7821,10 +7844,13 @@ pub(crate) fn resolve_this_spell_cost_reduction_value(
 /// "This spell costs {N} less to cast for each <object> <action> this way"
 /// reduction counts once that cost is paid: sacrifices (Torgaar, Dargo) and
 /// taps (Explosive Singularity).
-const COST_PAYMENT_METRIC_ACTIONS: [ironsmith_core::PriorEffectAction; 3] = [
+const COST_PAYMENT_METRIC_ACTIONS: [ironsmith_core::PriorEffectAction; 4] = [
     ironsmith_core::PriorEffectAction::Sacrificed,
     ironsmith_core::PriorEffectAction::Tapped,
     ironsmith_core::PriorEffectAction::Exiled,
+    // "for each land affected this way": objects a characteristic-conversion
+    // cost changed (CR 601.2b announced before the total cost, 601.2f).
+    ironsmith_core::PriorEffectAction::Affected,
 ];
 
 /// The cost-payment actions ([`COST_PAYMENT_METRIC_ACTIONS`]) the spell's
@@ -8004,6 +8030,11 @@ fn max_cost_payment_sacrifice_reduction_for_selection(
     let sacrifice_metric = metric_actions.contains(&ironsmith_core::PriorEffectAction::Sacrificed);
     let tap_only_metric = !sacrifice_metric
         && metric_actions.contains(&ironsmith_core::PriorEffectAction::Tapped);
+    // A conversion cost changes characteristics; it neither sacrifices nor
+    // taps, so any matching controlled permanent is available.
+    let affected_only_metric = !sacrifice_metric
+        && !tap_only_metric
+        && metric_actions.contains(&ironsmith_core::PriorEffectAction::Affected);
     let sacrificable = choices
         .iter()
         .filter(|choose| {
@@ -8021,7 +8052,9 @@ fn max_cost_payment_sacrifice_reduction_for_selection(
                 .filter(|(id, object)| {
                     game.controller_of(object) == player
                         && choose.filter.matches(object, &filter_ctx, game)
-                        && if tap_only_metric {
+                        && if affected_only_metric {
+                            true
+                        } else if tap_only_metric {
                             // A tap cost can only use untapped permanents.
                             !game.is_tapped(*id)
                         } else {
@@ -8569,6 +8602,19 @@ pub(crate) fn spell_granted_cost_static_abilities(
         .filter_map(|grant|grant.ability_payload.as_ref())
         .filter(|ability|ability.this_spell_cost_reduction().is_some())
         .cloned().collect::<Vec<_>>();
+    // A pending "the next <spell> you cast gains <ability>" grant attaches as
+    // the card is put on the stack (CR 601.2a), before its total cost is
+    // determined; a card not yet cast is evaluated as that prospective cast.
+    let actually_cast = game.stack.iter().any(|entry| entry.object_id == spell.id)
+        || (spell.zone == crate::zone::Zone::Stack && game.cast_origin_snapshot(spell.id).is_some());
+    if !actually_cast {
+        granted.extend(game.prospective_cast_granted_spell_abilities(spell.id, caster).into_iter()
+            .filter_map(|ability| match ability.kind {
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.this_spell_cost_reduction().is_some() => Some(static_ability),
+                _ => None,
+            }));
+    }
     for &permanent in &game.battlefield {
         let Some(static_abilities) = view.static_abilities_rc(permanent) else {
             continue;

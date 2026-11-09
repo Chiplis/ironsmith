@@ -126,7 +126,7 @@ pub(super) fn open(
             permission = rest;
         }
     }
-    let Some(shape) = effect_grammar::parse_graveyard_cast_permission_shape(&permission) else {
+    let Some(mut shape) = effect_grammar::parse_graveyard_cast_permission_shape(&permission) else {
         return Ok(None);
     };
     // "If that spell doesn't target a creature you control, it costs {8}
@@ -160,6 +160,10 @@ pub(super) fn open(
     }
     let surcharge = if has_replacement { surcharge } else { None };
     let rider_words = crate::lexer::token_word_refs(&replacement_tokens);
+    // "If that spell would be put into your graveyard, exile it instead."
+    // names its owner's graveyard; the permission alone never sets it.
+    shape.replacement_to_your_graveyard = has_replacement
+        && crate::word_primitives::sequence_occurs(&rider_words, &["into", "your", "graveyard"]);
     let cast_this_way = crate::word_primitives::sequence_occurs(
         &rider_words,
         &["cast", "this", "way"],

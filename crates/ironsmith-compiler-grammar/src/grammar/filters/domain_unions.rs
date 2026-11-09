@@ -113,6 +113,8 @@ fn branch_has_explicit_object_selector(filter: &ObjectFilter) -> bool {
         || filter.token
         || filter.is_commander
         || filter.has_explicit_card_noun()
+        // The zone-only battlefield noun "permanent" (CR 110.4c).
+        || filter.zone == Some(Zone::Battlefield)
 }
 
 #[cfg(test)]

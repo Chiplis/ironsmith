@@ -109,6 +109,11 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
                     ));
                 }
 
+                // "just beneath the top X cards": X cards stay above it.
+                let top_position = match &self.top_position_value {
+                    Some(value) => u32::try_from(crate::effects::helpers::resolve_value(game, value, ctx)?.max(0)).unwrap_or(0),
+                    None => self.top_position,
+                };
                 let mut choices = std::collections::HashMap::new();
                 let mut moves = Vec::new();
                 for object_id in object_ids {
@@ -131,7 +136,7 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
                         chooser,
                         ctx.source,
                         &object_name,
-                        self.top_position,
+                        top_position,
                     );
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(CompletedEffectOutputs::aggregate_only(
@@ -143,9 +148,9 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
                         object_id,
                         (
                             match choice {
-                                LibraryPositionChoice::Top if self.top_position > 0 => {
+                                LibraryPositionChoice::Top if top_position > 0 => {
                                     crate::effects::cards::LibraryCardPosition::NthFromTop(
-                                        self.top_position as usize + 1,
+                                        top_position as usize + 1,
                                     )
                                 }
                                 LibraryPositionChoice::Top => {

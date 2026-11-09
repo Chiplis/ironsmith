@@ -365,6 +365,14 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::AttacksAlone(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::AttacksAlone(filter.clone()),
         ),
+        // "Whenever a creature you control deals damage to an opponent this
+        // turn" (An Invitation to High Rollers).
+        TriggerSpec::DealsDamageToPlayer { source, player, damaged_player_one_or_more: false, .. } => Ok(
+            ironsmith_core::DelayedTriggerSpec::DealsDamageToPlayer {
+                source: source.clone(),
+                player: player.clone(),
+            },
+        ),
         // "Until end of turn, whenever Lyra deals combat damage to a player":
         // an unwatched registration matches against its ability source, so
         // the source filter names the permanent that created it.
@@ -1652,6 +1660,7 @@ fn try_compile_timing_and_control_effect_inner(
             either_of_watched_objects,
             while_any_tagged_object_in_zone,
             source_collection_scope,
+            source_absence_state,
         }) => {
             let (mut compiled, choices) = compile_duration_scoped_delayed_trigger(
                 trigger,
@@ -1664,6 +1673,18 @@ fn try_compile_timing_and_control_effect_inner(
                     .map(|(tag, zone)| (tag.key.clone(), *zone)),
                 ctx,
             )?;
+            // CR 603.8: the state reading of a source-leave delay.
+            if *source_absence_state {
+                for effect in &mut compiled {
+                    if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+                        && schedule.watch_ability_source
+                    {
+                        let mut schedule = schedule.clone();
+                        schedule.fires_if_watched_source_absent = true;
+                        *effect = Effect::new(schedule);
+                    }
+                }
+            }
             if let Some(scope) = source_collection_scope {
                 for effect in &mut compiled {
                     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {

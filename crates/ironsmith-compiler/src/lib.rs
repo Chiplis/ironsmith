@@ -34,7 +34,9 @@ pub fn compile_card_text_with_policy(
     allow_unsupported: bool,
 ) -> Result<facade::CompiledCardText<CardDefinition>, CardTextError> {
     let text = text.into();
-    util::with_cached_parser_trace(move || {
+    // One vocabulary scope per compiled card: subtypes its own type line
+    // declares (CR 205.3) are readable in its rules text, and never leak.
+    ironsmith_core::custom_subtypes::with_compilation_scope(move || util::with_cached_parser_trace(move || {
         let mut context =
             parse_context_for_builder(&builder.card_builder, &text, allow_unsupported);
         compiler_pipeline::parse_text_with_annotations_lowered_with_facts_context(
@@ -46,7 +48,7 @@ pub fn compile_card_text_with_policy(
             definition: lowered.definition,
             annotations: lowered.annotations,
         })
-    })
+    }))
 }
 
 pub fn compile_card_text(

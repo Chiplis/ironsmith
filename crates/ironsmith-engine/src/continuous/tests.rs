@@ -3248,7 +3248,9 @@ fn optional_text_cast_selection_matches_across_all_characteristic_calculators() 
     let first=game.create_object_from_definition(&definition,player,Zone::Stack);
     let second=game.create_object_from_definition(&definition,player,Zone::Stack);
     let original=game.calculated_copiable_values(first).unwrap();
-    for id in [first,second] {let object=game.object_mut(id).unwrap();object.optional_costs_paid.pay_times(0,1);object.optional_costs_paid.set_text_fragment_choice(0,1);}
+    // Casting sizes the paid-cost record from the object's optional costs;
+    // a directly created stack object starts with an empty record.
+    for id in [first,second] {let object=game.object_mut(id).unwrap();object.optional_costs_paid=crate::cost::OptionalCostsPaid::from_costs(&object.optional_costs);object.optional_costs_paid.pay_times(0,1);object.optional_costs_paid.set_text_fragment_choice(0,1);}
     let read=|chars:&CalculatedCharacteristics| {
         let crate::snapshot::SpellProgramState::Present(program)=chars.spell_effect.as_ref() else {panic!("complete spell program")};
         program[0].0.get_target_spec().cloned()

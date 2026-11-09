@@ -195,6 +195,23 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
         return Ok(filter);
     }
+    // "lands that can produce {C}" (The Source): a trailing mana-capability
+    // clause narrows the head noun phrase. Without this the clause's words
+    // were silently left out of the filter ("seven or more lands").
+    if let Some(that) = tokens.iter().rposition(|token| token.is_word("that"))
+        && that > 0
+        && tokens.get(that + 1).is_some_and(|token| token.is_any_word(&["can", "could"]))
+        && tokens.get(that + 2).is_some_and(|token| token.is_word("produce"))
+        && that + 4 == tokens.len()
+        && let Ok(symbol) = crate::util::parse_mana_symbol(&tokens[that + 3].parser_text().to_ascii_uppercase())
+    {
+        let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[..that], other)?;
+        if filter.could_produce_mana.is_empty() {
+            filter.could_produce_mana = vec![symbol];
+            crate::word_claims::claim_tokens(&tokens[that..]);
+            return Ok(filter);
+        }
+    }
     // "Auras, Equipment, and modified creatures you control" (Silkguard):
     // the serial union owner also guards this entrypoint, which
     // parse_object_filter_lexed reaches without the lexed wrapper.
@@ -495,6 +512,41 @@ pub fn parse_spell_filter_with_grammar_entrypoint_lexed(tokens: &[OwnedLexToken]
 
 pub fn parse_spell_filter_with_grammar_entrypoint(tokens: &[OwnedLexToken]) -> ObjectFilter {
     if let Some(filter) = entry_shared_type_spell_filter(tokens) { return filter; }
+    // `spells with custom keyword "fabled"`: the quoted identity is an
+    // explicit marker operand on the same spell filter. A union over the
+    // marker ("Aura spells and spells with ...") stays with the union readers.
+    if !crate::custom_identity_filters::has_unquoted_union(tokens)
+        && let Some((base, marker, excluded)) = crate::custom_identity_filters::filter_clause(tokens)
+    {
+        let mut filter = parse_spell_filter_with_grammar_entrypoint(&base);
+        if excluded { filter.excluded_ability_markers.push(marker); } else { filter.ability_markers.push(marker); }
+        return filter;
+    }
+    // `Aura spells and spells with custom keyword "fabled"`: a union whose
+    // arm carries a quoted identity operand; each arm is its own spell filter.
+    if crate::custom_identity_filters::has_unquoted_union(tokens)
+        && crate::custom_identity_filters::filter_clause(tokens).is_some()
+    {
+        let mut arms = Vec::new();
+        let mut start = 0usize;
+        let mut quoted = false;
+        for (index, token) in tokens.iter().enumerate() {
+            if token.kind == crate::lexer::TokenKind::Quote { quoted = !quoted; continue; }
+            if !quoted && token.is_any_word(&["and", "or", "and/or"]) {
+                arms.push(&tokens[start..index]);
+                start = index + 1;
+            }
+        }
+        arms.push(&tokens[start..]);
+        if arms.len() >= 2 && arms.iter().all(|arm| !arm.is_empty()) {
+            let filters = arms.into_iter().map(parse_spell_filter_with_grammar_entrypoint).collect::<Vec<_>>();
+            if filters.iter().all(crate::object_filters::spell_filter_has_identity) {
+                let mut union = ObjectFilter::default();
+                union.any_of = filters;
+                return union;
+            }
+        }
+    }
     if let Some((base,owner))=crate::object_filters::source_noted_names::split_clause(tokens){
         let mut filter=parse_spell_filter_with_grammar_entrypoint(&base);filter.name_noted_for=Some(Box::new(owner));return filter;
     }

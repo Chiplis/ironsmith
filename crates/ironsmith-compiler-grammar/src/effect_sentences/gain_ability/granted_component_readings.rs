@@ -283,6 +283,13 @@ fn read_activated_or_triggered(
 ) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
     let clause_words = input.clause_words;
     let ability_tokens = input.tokens;
+    // "Perform the judge action as follows: ...": that colon opens a named
+    // program, never an activation cost.
+    if let Some(colon) = ability_tokens.iter().position(|token| token.kind == crate::lexer::TokenKind::Colon)
+        && crate::lexer::parser_token_word_refs(&ability_tokens[..colon]).ends_with(&["action", "as", "follows"])
+    {
+        return Ok(None);
+    }
     if let Some(granted) =
         parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
     {

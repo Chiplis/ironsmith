@@ -1613,6 +1613,18 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
         TurnHistoryCondition::TriggeringObjectWasCastFromZone(zone) => {
             format!("it was cast from your {zone}")
         }
+        TurnHistoryCondition::TriggeringObjectPaidCustomKeyword(name) => {
+            format!("it was cast using \"{name}\"")
+        }
+        TurnHistoryCondition::SourceEnteredFromZoneThisTurn(zone) => {
+            format!("it entered from a {zone} this turn")
+        }
+        TurnHistoryCondition::SourceWasCastFromZoneThisTurn(zone) => {
+            format!("it was cast from a {zone} this turn")
+        }
+        TurnHistoryCondition::SourceWasNamedActionObjectThisTurn(label) => {
+            format!("it was {}", ironsmith_core::keyword_forms::derive_participle(label))
+        }
         TurnHistoryCondition::TriggeringObjectEnteredFromZone(zone) => {
             format!("it entered from your {zone}")
         }

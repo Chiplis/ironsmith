@@ -421,9 +421,18 @@ pub(super) fn select_mode_program(
         for (index, mode) in effect.modes.iter().enumerate() {
             let program = effect.common_prefix_effects.iter().chain(&mode.effects)
                 .cloned().collect::<Vec<_>>();
+            // A mode the cost model cannot represent ("Create a Treasure
+            // token") has no feasibility answer, which is not a proven failure:
+            // the payment runs transactionally and an actual failure rolls back.
+            // A representable cost that the check rejects stays unselectable.
+            let unrepresentable = program
+                .iter()
+                .cloned()
+                .any(|effect| crate::costs::Cost::try_effect(effect).is_err());
             payable_modes[index] = match crate::costs::check_effect_cost_program(&program, game, ctx, reason) {
                 Ok(()) => true,
                 Err(crate::effects::CostValidationError::ExecutionFailed(error)) => return Err(error),
+                Err(crate::effects::CostValidationError::Other(_)) if unrepresentable => true,
                 Err(_) => false,
             };
         }

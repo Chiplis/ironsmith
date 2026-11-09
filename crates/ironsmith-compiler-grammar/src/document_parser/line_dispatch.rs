@@ -1103,7 +1103,7 @@ pub(super) fn attach_compiler_trigger_facts(
                                         one_shot: false,
                                         duration: crate::effect::Until::EndOfCombat,
                                         either_of_watched_objects: false,
-                                        while_any_tagged_object_in_zone: None, source_collection_scope: None,
+                                        while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
                                     },
                                 )],
                                 player: crate::PlayerAst::You,
@@ -1350,7 +1350,16 @@ fn dispatch_line_family_registry(
             return ParseOutcome::matched(dispatch, rule_match.span);
         }
         ParseOutcome::NoMatch => {}
-        ParseOutcome::Error(diagnostic) => return ParseOutcome::Error(diagnostic),
+        ParseOutcome::Error(diagnostic) => {
+            if let Some(outcome) = dispatch_reminder_defined_keyword_line(ctx) {
+                return outcome;
+            }
+            return ParseOutcome::Error(diagnostic);
+        }
+    }
+
+    if let Some(outcome) = dispatch_reminder_defined_keyword_line(ctx) {
+        return outcome;
     }
 
     match run_unsupported_line_family(ctx) {
@@ -1378,6 +1387,92 @@ fn dispatch_line_family_registry(
             parse_trace::event(format!("line-family: unsupported errored: {diagnostic:?}"));
             ParseOutcome::Error(diagnostic)
         }
+    }
+}
+
+/// A custom keyword whose only definition is its reminder text:
+/// "Reflected (If this creature would leave the battlefield, exile it
+/// instead.)". Reminder text is stripped from the parse stream, so no reader
+/// sees anything but the bare name. When nothing read the line, the reminder
+/// is the keyword's complete definition: it reads exactly like the labeled
+/// group "Reflected — <reminder>", whose label is the ability designation.
+fn dispatch_reminder_defined_keyword_line(
+    ctx: &LineDispatchContext<'_>,
+) -> Option<ParseOutcome<LineDispatchResult>> {
+    use crate::lexer::TokenKind;
+    let raw = ctx.line.info.raw_line.trim();
+    let authored = crate::lexer::lex_line(raw, ctx.line.info.line_index).ok()?;
+    let open = authored.iter().position(|token| token.kind == TokenKind::LParen)?;
+    if open == 0 || open > 8 || authored.last()?.kind != TokenKind::RParen {
+        return None;
+    }
+    let full_head = &authored[..open];
+    // "Wander {2}{U} (You may cast this from the battlefield for its wander
+    // cost.)": a keyword name, then optionally its mana cost.
+    let name_len = full_head.iter().position(|token| token.kind != TokenKind::Word).unwrap_or(full_head.len());
+    let head = &full_head[..name_len];
+    let cost = &full_head[name_len..];
+    let body = &authored[open + 1..authored.len() - 1];
+    if head.is_empty() || head.len() > 4
+        || !cost.iter().all(|token| token.kind == TokenKind::ManaGroup)
+        || body.is_empty()
+        || body.iter().any(|token| matches!(token.kind, TokenKind::LParen | TokenKind::RParen))
+        || !body.iter().any(|token| token.kind == TokenKind::Word)
+    {
+        return None;
+    }
+    // The parse stream must be exactly the bare name: anything else means a
+    // reader saw more than the keyword and its failure is real.
+    let words_of = |tokens: &[crate::lexer::OwnedLexToken]| tokens.iter()
+        .filter(|token| token.kind == TokenKind::Word)
+        .map(|token| token.parser_text().to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    let stream_mana = ctx.line.tokens.iter().filter(|token| token.kind == TokenKind::ManaGroup).count();
+    if words_of(&ctx.line.tokens) != words_of(head) || stream_mana != cost.len()
+        || ctx.line.tokens.iter().any(|token| !matches!(token.kind, TokenKind::Word | TokenKind::ManaGroup | TokenKind::Period))
+    {
+        return None;
+    }
+    let name_text = crate::lexer::render_token_slice(head).trim().to_string();
+    let mut body_text = crate::lexer::render_token_slice(body).trim().to_string();
+    if !cost.is_empty() {
+        // The reminder names the keyword's own cost ("its wander cost").
+        let cost_text = crate::lexer::render_token_slice(cost).replace(' ', "");
+        let lowered = body_text.to_ascii_lowercase();
+        let reference = format!("its {} cost", name_text.to_ascii_lowercase());
+        let Some(at) = lowered.find(&reference) else { return None; };
+        body_text.replace_range(at..at + reference.len(), &cost_text);
+        // "You may cast this from <zone> for <cost>." is an alternative price
+        // (CR 118.9): the spell is cast for that cost instead of its mana cost.
+        let lowered = body_text.to_ascii_lowercase();
+        if lowered.starts_with("you may cast this from ") {
+            body_text.replace_range(..23, "You may cast this spell from ");
+        }
+        let lowered = body_text.to_ascii_lowercase();
+        if lowered.starts_with("you may cast this spell from ") && !lowered.contains("rather than") {
+            let trimmed = body_text.trim_end_matches('.').to_string();
+            body_text = format!("{trimmed} rather than pay its mana cost.");
+        }
+    }
+    let text = format!("{name_text} — {body_text}");
+    let tokens = crate::lexer::lex_line(&text, ctx.line.info.line_index).ok()?;
+    let mut line = rewrite_line_tokens(ctx.line, &tokens);
+    line.info.source_tokens = tokens.clone();
+    line.info.semantic_facts =
+        crate::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);
+    let rewritten = LineDispatchContext {
+        parse: ctx.parse,
+        preprocessed: ctx.preprocessed,
+        idx: ctx.idx,
+        line: &line,
+        allow_unsupported: false,
+    };
+    match dispatch_line_family_registry(&rewritten) {
+        ParseOutcome::Match(matched) => {
+            crate::word_claims::claim_tokens(&ctx.line.tokens);
+            Some(ParseOutcome::Match(matched))
+        }
+        _ => None,
     }
 }
 

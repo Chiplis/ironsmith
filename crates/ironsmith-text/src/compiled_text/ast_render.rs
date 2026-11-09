@@ -864,8 +864,9 @@ fn exact_guided_library_category_choice(
         || !(choose_primary_zone(choose) == Some(Zone::Library)
             || (choose.filter.zone.is_none()
                 && choose.zone == Some(Zone::Battlefield)
-                && choose.additional_zones
-                    == [Zone::Hand, Zone::Graveyard, Zone::Library, Zone::Exile]))
+                && matches!(choose.additional_zones.as_slice(),
+                    [Zone::Hand, Zone::Graveyard, Zone::Library, Zone::Exile]
+                    | [Zone::Hand, Zone::Graveyard, Zone::Library, Zone::Exile, Zone::Stack])))
     {
         return false;
     }
@@ -18578,7 +18579,10 @@ fn describe_participant_choice_complement_phase_out_program(
         // That redundant execution hint does not change the selected set.
         semantic_choice.zone = None;
     }
-    if semantic_choice != expected_choice {
+    // CR 110.4c: the battlefield noun "permanent" may lower zone-only.
+    let mut zone_only_choice = expected_choice.clone();
+    zone_only_choice.filter.card_types.clear();
+    if semantic_choice != expected_choice && semantic_choice != zone_only_choice {
         return None;
     }
 
@@ -18615,6 +18619,7 @@ fn describe_participant_choice_complement_phase_out_program(
     semantic_phase_filter.set_prior_effect_action_surface(None);
     if semantic_phase_filter
         != ObjectFilter::permanent_card().in_zone(crate::zone::Zone::Battlefield)
+        && semantic_phase_filter != ObjectFilter::permanent()
     {
         return None;
     }
@@ -24211,6 +24216,11 @@ pub(super) fn describe_resolution_program(
 fn describe_resolution_program_unscoped(
     program: &crate::resolution::ResolutionProgram,
 ) -> String {
+    // A complete per-player extremum payment program is one fully typed
+    // shape; broader per-player choice renderers must not paraphrase it.
+    if let Some(rendered) = describe_each_player_extremum_unless_own_mana_cost_program(program) {
+        return rendered;
+    }
     if let Some(collapsed) = collapse_program_exiled_suspend_grant_loops(program) {
         return describe_resolution_program(&collapsed);
     }
@@ -24603,6 +24613,7 @@ fn describe_each_player_extremum_unless_own_mana_cost_program(
 mod each_player_extremum_mana_payment_tests {
     use super::*;
 
+
     #[test]
     fn complete_payment_and_tie_program_uses_chosen_object() {
         let oracle = "Each player sacrifices the creature they control with the greatest mana value unless they pay that creature's mana cost. If two or more creatures a player controls are tied for greatest, that player chooses one.";
@@ -24911,7 +24922,6 @@ fn describe_resolution_program_inner(
         return rendered;
     }
     if let Some(rendered) = describe_reciprocal_top_reveal_program(program) { return rendered; }
-    if let Some(rendered) = describe_each_player_extremum_unless_own_mana_cost_program(program) { return rendered; }
     if let Some(rendered) = describe_shared_target_greatest_exchange_program(program) { return rendered; }
     if let Some(text) = describe_attributed_target_counter_program(program) { return text; }
     if let Some(text) = describe_for_each_then_untap_same_set_program(program) { return text; }
@@ -34342,7 +34352,7 @@ fn describe_searched_exile_opponent_remainder_cast(
     let expected_pick = crate::effects::ChooseObjectsEffect::new(
         picked_filter, crate::effect::ChoiceCount::exactly(1),
         PlayerFilter::TaggedPlayer(chooser.tag.clone()), pick.tag.clone(),
-    ).in_zones(vec![Zone::Battlefield, Zone::Hand, Zone::Graveyard, Zone::Library, Zone::Exile]);
+    ).in_zones(vec![Zone::Battlefield, Zone::Hand, Zone::Graveyard, Zone::Library, Zone::Exile, Zone::Stack]);
     if *pick != expected_pick { return None; }
 
     let [shuffle_each_effect] = shuffle_segment.default_effects.as_slice() else { return None; };
@@ -40426,6 +40436,10 @@ fn describe_structural_matching_keyword_grant_ladder(
     let trigger = shared_trigger?;
     let target = shared_target?;
     let condition = shared_condition?;
+    // A group recipient reads "if a creature you control has <keyword>"
+    // (Odric, Lunarch Marshal); a single recipient reads "if you control a
+    // creature with <keyword>".
+    let group_recipient = matches!(target, MatchingKeywordGrantTarget::Filter(_));
     let (subject, singular) = match target {
         MatchingKeywordGrantTarget::Filter(target) => {
             crate::static_abilities::grant_subject_with_set_quantifier(target, None)
@@ -40436,6 +40450,7 @@ fn describe_structural_matching_keyword_grant_ladder(
     let verb = if singular { "gains" } else { "gain" };
     let condition_clause = if condition.zone == Some(Zone::Battlefield)
         && condition.controller == Some(PlayerFilter::You)
+        && !group_recipient
     {
         let mut controlled = condition.clone();
         controlled.zone = None;
@@ -40987,6 +41002,7 @@ mod pact_and_keyword_pt_ladder_tests {
 #[cfg(test)]
 mod each_combat_keyword_grant_ladder_tests {
     use super::*;
+
 
     #[test]
     fn all_matching_keyword_branches_rejoin_across_direct_and_wrapped_conditions() {

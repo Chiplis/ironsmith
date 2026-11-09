@@ -249,6 +249,14 @@ fn parse_counter_type_words_spec_word_slice(
         };
         crate::word_claims::claim_words(&descriptor[descriptor.len() - 2..]);
         counter_type
+    } else if descriptor.len() >= 2
+        && descriptor[descriptor.len() - 2] == "ward"
+        && previous.parse::<u8>().is_ok()
+    {
+        // "a ward {2} counter": a keyword counter for ward with a generic
+        // mana cost (CR 122.1b); the engine grants "ward {N}".
+        crate::word_claims::claim_words(&descriptor[descriptor.len() - 2..]);
+        CounterType::Named(intern_counter_name(&format!("ward {{{previous}}}")).into())
     } else if matches!(previous, "another" | "more" | "or")
         || leaf::parse_number_complete(previous).is_ok()
     {

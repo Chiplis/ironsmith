@@ -220,6 +220,8 @@ fn parse_equal_to_aggregate_filter_value_unclaimed(tokens: &[OwnedLexToken]) -> 
         .any(|word| matches!(*word, "permanent" | "permanents"))
         && filter.card_types.is_empty()
         && filter.all_card_types.is_empty()
+        // CR 110.4c: battlefield "permanents" stay zone-only.
+        && filter.zone != Some(crate::zone::Zone::Battlefield)
     {
         filter.card_types = ObjectFilter::permanent_card().card_types;
     }

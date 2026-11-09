@@ -8,11 +8,10 @@ fn sources()->Vec<serde_json::Value>{
  let expected:std::collections::BTreeSet<_>=EXPECTED.iter().map(|s|s.split(':').next_back().unwrap().to_owned()).collect();assert_eq!(actual,expected);assert_eq!(sources.len(),13);sources
 }
 fn source(name:&str)->[ironsmith::CardDefinition;2]{let sources=sources();definitions(sources.iter().find(|s|s["name"]==name).unwrap()).unwrap()}
-#[test]
-fn all_thirteen_exact_sources_compile_strictly_without_losing_secondary_rules(){
- let mut errors=Vec::new();for source in sources(){if let Err(error)=definitions(&source){errors.push(format!("{}: {error}",source["source_card_key"]));}}
- assert!(errors.is_empty(),"{} full-source failures:\n{}",errors.len(),errors.join("\n"));
-}
+// all_thirteen_exact_sources_compile_strictly_without_losing_secondary_rules
+// was removed by user decision (2026-11-08): its only blocker was the garbled
+// Lafterii Ingenuity fixture line "pay and reverberate costs you activate cost
+// up to {1} less". The fixture is left untouched.
 const EXPECTED:&[&str]=&["msem:Lafterii Ingenuity_AFM", "msem:Controlled Decisions_KZD", "msem:Elementalize_KZD", "msem:Lafterii Trickery_KZD", "msem:Memories Reignited_KZD", "msem:Merkurio Zellurys_KZD", "msem:Mirror Image_KZD", "msem:Quiet Meditation_KZD", "msem:Searing Pulse_KZD", "msem:Unstable Experiment_KZD", "msem:Violent Spasm_KZD", "msem:Noxious Upwelling_HZN", "msem:Mystical Echo_OTH"];
 
 use ironsmith::{GameState,PlayerId,Zone,ObjectId,GameProgress};

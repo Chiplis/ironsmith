@@ -83,6 +83,9 @@ struct RandomKindChoice {
     /// Words naming the object whose existing kinds are excluded.
     excluded_holder: Option<Vec<String>>,
     excluded_holder_tokens: Option<Vec<OwnedLexToken>>,
+    /// "you may choose a kind of counter ...": the whole choice-and-put is
+    /// optional.
+    optional: bool,
 }
 
 fn split_list_items(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
@@ -128,9 +131,14 @@ fn for_each_fixed_kind_choice(sentence: &SentenceInput) -> Option<(ObjectFilter,
 }
 
 fn random_kind_choice_tokens(tokens: &[OwnedLexToken]) -> Option<RandomKindChoice> {
+    let mut optional = false;
     let (actor, tokens) = if let Some((_, rest)) = primitives::parse_prefix(tokens,
         primitives::phrase(&["that", "player", "chooses"])) {
         (PlayerAst::That, rest)
+    } else if let Some((_, rest)) = primitives::parse_prefix(tokens,
+        primitives::phrase(&["you", "may", "choose"])) {
+        optional = true;
+        (PlayerAst::You, rest)
     } else if let Some((_, rest)) = primitives::parse_prefix(tokens,
         primitives::phrase(&["you", "choose"])) {
         (PlayerAst::You, rest)
@@ -186,6 +194,7 @@ fn random_kind_choice_tokens(tokens: &[OwnedLexToken]) -> Option<RandomKindChoic
         kinds,
         excluded_holder,
         excluded_holder_tokens,
+        optional,
     })
 }
 
@@ -209,11 +218,18 @@ fn put_random_kind(
                 .iter()
                 .zip(&recipient_words)
                 .all(|(a, b)| a.as_str() == *b);
-        if !same && !matches!(recipient_words.as_slice(), ["it"]) {
+        // "that this doesn't have on it ... on <this card's name>": both
+        // name the source (its name is normalized only in one place).
+        let self_holder = matches!(holder.as_slice(), [only] if only == "this");
+        if !same && !self_holder && !matches!(recipient_words.as_slice(), ["it"]) {
             return Ok(None);
         }
     }
-    let target: TargetAst = if matches!(crate::lexer::token_word_refs(recipient).as_slice(), ["it"])
+    let self_holder = choice.excluded_holder.as_ref().is_some_and(|holder| matches!(holder.as_slice(), [only] if only == "this"));
+    let target: TargetAst = if self_holder {
+        crate::word_claims::claim_tokens(recipient);
+        TargetAst::Source(None)
+    } else if matches!(crate::lexer::token_word_refs(recipient).as_slice(), ["it"])
         && choice.excluded_holder.as_ref().is_some_and(|holder| holder.first().is_some_and(|word| word == "target"))
     {
         crate::util::parse_target_phrase(choice.excluded_holder_tokens.as_ref().unwrap())?
@@ -230,7 +246,7 @@ fn put_random_kind(
             only_absent_kinds: choice.excluded_holder.is_some(),
         }),
     );
-    Ok(Some(if optional {
+    Ok(Some(if optional || choice.optional {
         EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May {
             effects: vec![put],
         })

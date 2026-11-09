@@ -205,7 +205,9 @@ pub fn parse_skip_action_tokens(
             if count == 0 { return None; }
             let kind = match unit {
                 ["untap", "step" | "steps"] => K::UntapStep,
-                ["combat", "phase" | "phases"] => K::CombatPhase,
+                // No combat "step" exists (CR 506.1): "their next combat
+                // step" names the combat phase.
+                ["combat", "phase" | "phases" | "step" | "steps"] => K::CombatPhase,
                 ["turn" | "turns"] => K::Turn,
                 ["draw", "step" | "steps"] => K::DrawStep,
                 _ => return None,

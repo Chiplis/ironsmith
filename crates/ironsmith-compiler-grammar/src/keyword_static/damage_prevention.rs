@@ -703,7 +703,7 @@ mod persistent_relation_tests {
         let spec = payload("Prevent all damage that would be dealt to you and permanents you control by sources with the chosen name.");
         assert_eq!(spec.source_filter.name.as_deref(), Some("{chosen name}"));
         assert_eq!(spec.target_player_filter, Some(PlayerFilter::You));
-        assert_eq!(spec.target_object_filter, Some(ObjectFilter::permanent_card().in_zone(Zone::Battlefield).you_control()));
+        assert_eq!(spec.target_object_filter, Some(ObjectFilter::permanent().you_control()));
         let spec = payload("Prevent all damage that would be dealt to this creature by creatures it's blocking.");
         assert!(spec.source_filter.blocked_by_source);
         assert!(spec.target_object_filter.unwrap().source);

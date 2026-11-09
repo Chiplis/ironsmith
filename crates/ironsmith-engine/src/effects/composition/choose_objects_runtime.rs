@@ -850,6 +850,24 @@ pub(super) fn collect_candidates(
             }
         }
     }
+    // The resolving spell itself is a tagged stack object no longer listed on
+    // the stack ("Instead of putting it into your graveyard as it resolves,
+    // ... Choose it"); the tagged pool still names it (CR 608.2n).
+    if chooses_tagged_pool && zones.contains(&Zone::Stack) {
+        let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+        for constraint in &effect.filter.tagged_constraints {
+            if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject { continue; }
+            for snapshot in ctx.get_tagged_all(constraint.tag.as_str()).into_iter().flatten() {
+                let id = snapshot.object_id;
+                if candidates.contains(&id) { continue; }
+                if game.object(id).is_some_and(|obj| obj.zone == Zone::Stack && obj.stable_id == snapshot.stable_id
+                    && effect.filter.matches(obj, &filter_ctx, game))
+                {
+                    candidates.push(id);
+                }
+            }
+        }
+    }
     Ok(candidates)
 }
 

@@ -1339,7 +1339,14 @@ pub(super) fn run_keyword_line_family(
         Err(error) => return line_family_error(ctx,RuleId::new("externally-triggered-ability"),error),
         Ok(None) => {}
     }
-    if let Ok(Some(effects)) =
+    // A triggered line keeps its trigger; its effect body reaches the same
+    // described-bundle readers through trigger parsing.
+    let leads_with_trigger = {
+        let words = crate::lexer::parser_token_word_refs(&ctx.line.tokens);
+        matches!(words.first(), Some(&"when" | &"whenever"))
+            || words.starts_with(&["at", "the", "beginning"])
+    };
+    if !leads_with_trigger && let Ok(Some(effects)) =
         crate::effect_sentences::parse_described_effect_bundle(&ctx.line.tokens).and_then(|parsed| {
             if parsed.is_some() { Ok(parsed) } else { crate::effect_sentences::parse_described_effect_bundle(&ctx.line.info.source_tokens) }
         }) {
@@ -1365,6 +1372,17 @@ pub(super) fn run_keyword_line_family(
         return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
             info: ctx.line.info.clone(), parse_tokens: ctx.line.info.source_tokens.clone(), chosen_option: None,
             parsed: Some(Box::new(LineAst::StaticAbilities(abilities))),
+        }), ctx.idx + 1));
+    }
+
+    // `You may pay an additional <cost> as you cast a spell. If you do, ...`
+    // grants an optional payment to each spell its controller casts. The
+    // broad additional-cost family would misread it as this card's own cost.
+    if let Some(ability) = line_family_try!(ctx, rule,
+        crate::keyword_static::parse_optional_spell_cost_grant_line(&ctx.line.tokens)) {
+        return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
+            info: ctx.line.info.clone(), parse_tokens: ctx.line.tokens.clone(), chosen_option: None,
+            parsed: Some(Box::new(LineAst::StaticAbilities(vec![crate::cards::builders::StaticAbilityAst::Static(ability)]))),
         }), ctx.idx + 1));
     }
 
@@ -1701,6 +1719,18 @@ pub(super) fn run_activation_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("activated-line");
+    // "Return target spell ... . If you controlled it, perform the catalyze
+    // action as follows: ...": a sentence ends before the colon, which closes
+    // a named-action program header, never an activation cost.
+    if ctx.line.tokens.iter().position(|token| token.kind == crate::lexer::TokenKind::Colon).is_some_and(|colon| {
+        let head = crate::lexer::parser_token_word_refs(&ctx.line.tokens[..colon]);
+        // "... With X equal to that creature's power, do the following: [...]"
+        // (It's Alive!) likewise opens a bracketed program, not a cost.
+        (head.ends_with(&["action", "as", "follows"]) || head.ends_with(&["do", "the", "following"]))
+            && ctx.line.tokens[..colon].iter().any(|token| token.kind == crate::lexer::TokenKind::Period)
+    }) {
+        return ParseOutcome::NoMatch;
+    }
     if (!line_starts_with_lparen_token(ctx.line) || is_fully_parenthetical_line(ctx.line))
         && let Some((cost_tokens, effect_parse_tokens)) = split_label_prefix_lexed(&ctx.line.tokens)
             .filter(|(label, _, _)| is_named_ability_label(label.as_str()))
@@ -2740,6 +2770,12 @@ pub(super) fn run_colon_nonactivation_statement_line_family(
     // This compatibility fallback must not re-advertise a different packet.
     if line_family_claimed!(rule, run_statement_probe_line_family(ctx))
         || line_family_claimed!(rule, run_activation_line_family(ctx)) {
+        return ParseOutcome::NoMatch;
+    }
+    // A complete static reading owns its colon too ("As you reveal this card
+    // ..., you may perform the <X> action ... as follows: [<program>]"). A
+    // failing static probe leaves the fallback available.
+    if matches!(run_static_line_family(ctx), ParseOutcome::Match(_)) {
         return ParseOutcome::NoMatch;
     }
 

@@ -380,6 +380,9 @@ fn inline_quoted_token_creation_sentence_with_ordinal(
                 && idx > 0
                 && tokens[idx - 1].kind == TokenKind::Period
                 && tokens.get(idx + 1).is_some()
+                // A quoted name ending in a period ("Vishanki Inc.") is
+                // followed by the token's own "with <rules>".
+                && !tokens.get(idx + 1).is_some_and(|next| next.is_word("with"))
                 && !continues_ability_list(&tokens[idx + 1..]);
             if closes_sentence {
                 if saw_create {

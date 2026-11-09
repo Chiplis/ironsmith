@@ -4401,6 +4401,39 @@ fn parse_repeated_if_or_predicate(
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
 }
 
+/// `it was tapped or it had custom keyword "accomplice"`: two complete
+/// predicates over the same pronoun subject, each with its own verb.
+fn parse_repeated_pronoun_subject_or_predicate(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let mut quoted = false;
+    for split in 1..tokens.len().saturating_sub(3) {
+        if tokens[split].kind == crate::lexer::TokenKind::Quote {
+            quoted = !quoted;
+        }
+        if quoted || !tokens[split].is_word(OR_WORD) {
+            continue;
+        }
+        let subject = &tokens[split + 1];
+        let verb = &tokens[split + 2];
+        if !subject.is_any_word(&["it", "they"])
+            || !verb.is_any_word(&["was", "is", "had", "has", "were", "are", "have"])
+            || !tokens[0].is_word(subject.parser_text())
+        {
+            continue;
+        }
+        let (Ok(left), Ok(right)) = (
+            parse_predicate(&tokens[..split]),
+            parse_predicate(&tokens[split + 1..]),
+        ) else {
+            return Ok(None);
+        };
+        crate::word_claims::claim_tokens(std::slice::from_ref(&tokens[split]));
+        return Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))));
+    }
+    Ok(None)
+}
+
 fn parse_repeated_and_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {

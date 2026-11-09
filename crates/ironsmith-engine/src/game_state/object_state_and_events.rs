@@ -746,6 +746,13 @@ impl GameState {
         self.battlefield_flags.named_action_counts.get(&performer).and_then(|labels|labels.get(&label.trim().to_ascii_lowercase()))
             .is_some_and(|entry|entry.turn==self.turn.turn_number && entry.recipients_this_turn.contains(&recipient))
     }
+    /// Whether `recipient` is one of the objects any performer completed the
+    /// `label` action with this turn ("if it was revived").
+    pub fn object_was_named_action_object_this_turn(&self,recipient:ObjectId,label:&str)->bool {
+        let label=label.trim().to_ascii_lowercase();
+        self.battlefield_flags.named_action_counts.values().filter_map(|labels|labels.get(&label))
+            .any(|entry|entry.turn==self.turn.turn_number && entry.recipients_this_turn.contains(&recipient))
+    }
     pub fn record_named_action(&mut self,id:ObjectId,label:&str)->Result<Option<u32>,crate::effects::ExecutionError>{
         self.record_named_action_with_objects(id,label,&[])
     }
@@ -2545,6 +2552,8 @@ impl GameState {
     }
     pub fn exile_preparation_grant(&self,id:ObjectId)->Option<&crate::alternative_cast::GrantSelection> {self.cast_permission_flags.exile_preparation_grants.get(&id)}
     pub(crate) fn retain_exile_preparation_grant(&mut self,id:ObjectId,grant:crate::alternative_cast::GrantSelection) {self.cast_permission_flags_mut().exile_preparation_grants.insert(id,grant);}
+    pub(crate) fn record_next_resolution_preparation_name(&mut self,id:ObjectId,name:String) {self.cast_permission_flags_mut().next_resolution_preparation_names.insert(id,name);}
+    pub(crate) fn next_resolution_preparation_name(&self,id:ObjectId)->Option<&str> {self.cast_permission_flags.next_resolution_preparation_names.get(&id).map(String::as_str)}
     pub(crate) fn selected_exile_preparation_index(&self,id:ObjectId)->Option<usize> { self.cast_permission_flags.selected_exile_preparations.get(&id).copied() }
     pub(crate) fn selected_exile_preparation_allows(&self,id:ObjectId,method:&crate::alternative_cast::AlternativeCastingMethod)->bool {
         match self.cast_permission_flags.selected_exile_preparations.get(&id) {
@@ -2927,10 +2936,15 @@ impl GameState {
             .battlefield_flags_mut()
             .battle_protectors
             .insert(battle, protector);
-        // Changing a protector is not a controller change and does not
-        // remove the battle from combat (CR 310.8f, 506.4). Its attackers'
-        // defending-player references now resolve to the new protector
-        // (CR 508.5), while the attacking tenure remains the same.
+        // CR 506.4c: a battle being attacked whose protector changes is
+        // removed from combat. Its attackers keep attacking, now attacking
+        // nothing, and the previous protector stays their defending player.
+        if let Some(previous) = previous
+            && previous != protector
+            && let Some(combat) = self.combat.as_mut()
+        {
+            combat.remove_attacked_permanent(battle, None, Some(previous));
+        }
         if previous != Some(protector) {
             self.mark_continuous_state_dirty();
         }
@@ -3151,6 +3165,7 @@ impl GameState {
             flags.descriptive_exile_preparations.remove(&id);
             flags.selected_exile_preparations.remove(&id);
             flags.exile_preparation_grants.remove(&id);
+            flags.next_resolution_preparation_names.remove(&id);
             flags.adventure_exiled.remove(&id);
         }
         // A prepare spell copy only leaves exile by being cast (or ceasing to
@@ -3779,6 +3794,15 @@ impl GameState {
     }
 
     /// Get a chosen named option for a permanent, if any.
+    /// The player's current program (custom CR 701.81a), 0 = Program A.
+    pub fn current_program(&self, player: PlayerId) -> Option<u8> {
+        self.choice_store.current_programs.get(&player).copied()
+    }
+
+    pub fn set_current_program(&mut self, player: PlayerId, program: u8) {
+        self.choice_store_mut().current_programs.insert(player, program);
+    }
+
     pub fn chosen_named_option(&self, permanent_id: ObjectId) -> Option<&str> {
         self.choice_store
             .chosen_named_options

@@ -729,7 +729,16 @@ fn parse_simple_filter_body(
     }
     filter.set_explicit_card_noun(saw_card);
 
-    if saw_permanent && filter.card_types.is_empty() && filter.all_card_types.is_empty() {
+    // CR 110.4c: on the battlefield "permanent" names a zone, so a typeless
+    // permanent still matches. A permanent card/spell elsewhere is defined by
+    // the permanent card types.
+    if saw_permanent
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && (saw_card
+            || saw_spell
+            || filter.zone.is_some_and(|zone| zone != Zone::Battlefield))
+    {
         filter.card_types = ObjectFilter::permanent_card().card_types;
     }
     if filter.zone.is_none() {

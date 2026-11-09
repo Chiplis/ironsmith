@@ -741,6 +741,17 @@ fn capture_player_tagged_object_deltas(
 ) {
     for (tag, snapshots) in current {
         let prior = baseline.get(tag);
+        // A player's instruction can also replace a binding with a smaller
+        // set ("Choose the top card of their library" with an empty library
+        // re-binds "it" to nothing): that exact set is this player's, not the
+        // loop's earlier binding.
+        let removed = prior.is_some_and(|prior| prior.iter().any(|existing|
+            !snapshots.iter().any(|snapshot| snapshot.stable_id == existing.stable_id)));
+        if removed {
+            player_tags.insert(tag.clone(), snapshots.clone());
+            loop_local_tags.insert(tag.clone());
+            continue;
+        }
         let additions = snapshots.iter().filter(|snapshot| {
             !prior.is_some_and(|prior| {
                 prior

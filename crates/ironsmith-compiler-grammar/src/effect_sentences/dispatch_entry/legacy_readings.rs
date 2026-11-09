@@ -663,7 +663,7 @@ fn leading_duration_with_recurring_delayed_trigger(
         one_shot: false,
         duration,
         either_of_watched_objects: false,
-        while_any_tagged_object_in_zone: None, source_collection_scope: None,
+        while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
     }));
     Ok(Some(effects))
 }
@@ -882,7 +882,7 @@ fn rest_of_game_delayed_trigger(
         one_shot: false,
         duration: crate::effect::Until::Forever,
         either_of_watched_objects: false,
-        while_any_tagged_object_in_zone: None, source_collection_scope: None,
+        while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
     })))
 }
 

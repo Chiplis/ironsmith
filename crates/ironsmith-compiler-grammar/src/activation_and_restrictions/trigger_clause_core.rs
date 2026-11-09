@@ -2387,6 +2387,34 @@ fn source_zone_trigger_suffix(tokens: &[OwnedLexToken]) -> Option<(usize, Zone)>
 }
 
 pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpec, CardTextError> {
+    // "Whenever you cycle this creature or it attacks" (Seraph of the Stage):
+    // two events of the same source; "it" is this source.
+    {
+        let words = crate::lexer::parser_token_word_refs(tokens);
+        if words.starts_with(&["you", "cycle"])
+            && let Some(or_word) = words.windows(2).position(|pair| pair == ["or", "it"])
+            && or_word > 2
+        {
+            let view = crate::lexer::TokenWordView::new(tokens);
+            let or_token = view.token_start_indices()[or_word];
+            let it_token = view.token_start_indices()[or_word + 1];
+            // The cycling event names this card ("you cycle this card").
+            let left_owned = if words[2..or_word].len() == 2 && words[2] == "this" {
+                crate::lexer::synthetic_word_tokens(["you", "cycle", "this", "card"])
+            } else { tokens[..or_token].to_vec() };
+            let left_tokens = left_owned.as_slice();
+            let mut right_tokens = crate::lexer::synthetic_word_tokens(["this", "creature"]);
+            right_tokens.extend_from_slice(&tokens[it_token + 1..]);
+            let probe = crate::word_claims::probe_only(|| parse_trigger_clause_lexed(left_tokens).is_ok()
+                && parse_trigger_clause_lexed(&right_tokens).is_ok());
+            if probe {
+                let left = parse_trigger_clause_lexed(left_tokens)?;
+                let right = parse_trigger_clause_lexed(&right_tokens)?;
+                crate::word_claims::claim_tokens(&tokens[..=it_token]);
+                return Ok(TriggerSpec::Either(Box::new(left), Box::new(right)));
+            }
+        }
+    }
     if let Some((at, zone)) = source_zone_trigger_suffix(tokens) {
         let alternative = split_trigger_or_index(&tokens[..at]);
         // A terminal qualification on a complete second event belongs only
@@ -2417,6 +2445,9 @@ pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpe
             });
         }
     }
+    if let Some(trigger) = parse_paired_source_tap_trigger_lexed(tokens)? {
+        return Ok(trigger);
+    }
     if let Some(trigger) = try_parse_enters_or_becomes_tapped_trigger_lexed(tokens)? {
         return Ok(trigger);
     }
@@ -2430,6 +2461,23 @@ pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpe
         && let Ok(core_spec) = parse_trigger_clause_lexed_inner(core_tokens)
         && core_spec == *full_spec
     {
+        return Ok(TriggerSpec::ConditionQualified {
+            trigger: Box::new(core_spec),
+            condition,
+            surface: surface.to_string(),
+        });
+    }
+    // "you discard a card during your turn": an event the event grammar
+    // reads only without its turn window keeps the window as an event-time
+    // qualification (claimed here; the event reads its own words).
+    if full.is_err()
+        && let Some((core_tokens, condition, surface)) = trigger_turn_window_suffix(tokens)
+        && !core_tokens.is_empty()
+        && let Ok(core_spec) = crate::word_claims::probe_only(|| parse_trigger_clause_lexed_inner(core_tokens))
+    {
+        let core_spec = parse_trigger_clause_lexed_inner(core_tokens).unwrap_or(core_spec);
+        let trimmed = trim_edge_punctuation_tokens(tokens);
+        crate::word_claims::claim_tokens(&trimmed[core_tokens.len()..]);
         return Ok(TriggerSpec::ConditionQualified {
             trigger: Box::new(core_spec),
             condition,
@@ -3525,7 +3573,8 @@ use semantic_counter_programs::{
 mod semantic_trigger_programs;
 use semantic_trigger_programs::{
     parse_ability_of_object_trigger_tail_lexed, parse_named_ability_trigger_tail_lexed,
-    parse_possessive_ability_trigger_tail_lexed, parse_trigger_clause_lexed_unstacked,
+    parse_paired_source_tap_trigger_lexed, parse_possessive_ability_trigger_tail_lexed,
+    parse_trigger_clause_lexed_unstacked,
     try_parse_combat_damage_trigger_lexed,
     try_parse_source_with_filtered_attack_count_trigger_lexed,
 };

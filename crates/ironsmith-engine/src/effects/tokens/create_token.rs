@@ -269,6 +269,12 @@ fn prepare_token_proposal(
     }
     materialize_named_creator_source_in_token(&mut resolved_token, ctx.source);
     resolved_token=ctx.bind_definition_scope_definition(resolved_token)?;
+    // "create a token with 'Whenever this creature attacks, you may cast a
+    // copy of the exiled card ...'": the token's ability is linked to the
+    // card its creator exiled (CR 607.1), captured as the token is created.
+    for ability in &mut resolved_token.abilities {
+        crate::effects::continuous::capture_ability_object_references(ability, ctx);
+    }
     // CR 122.6: counters a token "enters with" are part of its entry event;
     // their amounts are fixed as the instruction resolves.
     let mut initial_counters = Vec::with_capacity(effect.entry_counters.len());

@@ -20,7 +20,11 @@ fn definitions(name: &str, text: &str) -> [ironsmith::cards::CardDefinition; 2] 
     assert_eq!(decoded,artifact);
     [direct,ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&decoded).unwrap()]
 }
-fn card(name:&str,text:&str)->ironsmith::cards::CardDefinition { definitions(name,text).into_iter().next().unwrap() }
+/// Reference objects never author Waste, so they carry no Waste identity.
+fn card(name:&str,text:&str)->ironsmith::cards::CardDefinition {
+    let builder=ironsmith_compiler::CardDefinitionBuilder::new(ironsmith_compiler::ids::CardId::new(),name);
+    ironsmith_compiler_runtime::compile_builder_to_artifact(builder,text,false).unwrap_or_else(|e|panic!("{name}: {text}\n{e:?}")).1
+}
 fn assert_wastes(game:&GameState,id:ObjectId) {
     let view=game.current_characteristics(id).unwrap();
     assert_eq!(view.name.as_ref(),"Wastes");
@@ -49,7 +53,10 @@ fn waste_replaces_all_characteristic_families_and_preserves_unmentioned_state() 
         let mana=game.current_abilities(changed).unwrap().remove(0);
         let AbilityKind::Activated(mana)=mana.kind else {panic!("expected colorless mana activation")};
         let mut mana_ctx=EffectContext::new_default(changed,B);
-        for effect in mana.effects.all_effects() {execute_effect(&mut game,effect,&mut mana_ctx).unwrap();}
+        // A fixed "{T}: Add {C}" compiles to a direct mana output (no
+        // resolution program); a program-backed mana ability resolves its effects.
+        if let Some(output)=&mana.mana_output {for symbol in output {game.player_mut(B).unwrap().mana_pool.add(*symbol,1);}}
+        else {for effect in mana.effects.all_effects() {execute_effect(&mut game,effect,&mut mana_ctx).unwrap();}}
         assert_eq!(game.player(B).unwrap().mana_pool.colorless,1);
         assert_eq!(game.player(B).unwrap().mana_pool.green,0);
         assert_eq!(game.current_characteristics(changed).unwrap().colors,ironsmith::ColorSet::RED);

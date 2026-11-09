@@ -28,6 +28,9 @@ pub enum LeafDurationPhrase {
     /// "until that player's next turn" (Teferi's Reproach): the referenced
     /// player's next turn, not the controller's.
     UntilThatPlayersNextTurn,
+    /// "until the beginning of your next end step" (Fhinon): ends as the
+    /// controller's next end step begins.
+    UntilBeginningOfYourNextEndStep,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +86,10 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
     (
         &["until", "end", "of", "your", "next", "turn"],
         LeafDurationPhrase::UntilYourNextTurnEnd,
+    ),
+    (
+        &["until", "the", "beginning", "of", "your", "next", "end", "step"],
+        LeafDurationPhrase::UntilBeginningOfYourNextEndStep,
     ),
     (
         &["until", "your", "next", "end", "step"],
@@ -420,6 +427,7 @@ fn leaf_turn_duration_from_duration(
         | LeafDurationPhrase::PlayersNextUntapStep
         | LeafDurationPhrase::UntilThatPlayersNextTurn
         | LeafDurationPhrase::UntilNextEndStep
+        | LeafDurationPhrase::UntilBeginningOfYourNextEndStep
         | LeafDurationPhrase::Forever => None,
     }
 }

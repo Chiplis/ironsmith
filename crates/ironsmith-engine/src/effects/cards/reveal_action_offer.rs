@@ -274,8 +274,10 @@ mod tests {
             assert!(game.retained_action_observations()
                 .chain(game.effect_store.pending_trigger_events.iter()).any(|observation|
                 observation.downcast::<crate::events::zones::ZoneChangeEvent>().is_some_and(|move_event|
+                    // CR 400.7: the origin identity is the retained LKI;
+                    // `objects` may carry the destination incarnation.
                     move_event.from == origin && move_event.to == Zone::Exile
-                        && move_event.objects.contains(&first))),
+                        && move_event.original_objects().contains(&first))),
                 "the real child movement observation remains published; origin={origin:?}, original={first:?}, arrival={child_arrival:?}, observations={:?}",
                 game.retained_action_observations().chain(game.effect_store.pending_trigger_events.iter())
                     .map(|event|(event.kind(),event.provenance(),event.downcast::<crate::events::ZoneChangeEvent>().map(|change|(change.from,change.to,change.objects.clone(),change.result_objects.clone())))).collect::<Vec<_>>());

@@ -11,7 +11,9 @@ pub(crate) fn parse(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardTextE
  let (price,invocation_action)=if let Some(during)=words[without+2..].iter().position(|word|*word=="during"){
   let during=during+without+2;
   if words.last()!=Some(&"actions")||during+2>=words.len(){return Ok(None);}
-  (&words[without+2..during],Some(words[during+1..words.len()-1].join(" ")))
+  // "during making-a-pledge actions": the action's name, hyphenated as the
+  // activation exception "unless you're making a pledge" names it.
+  (&words[without+2..during],Some(words[during+1..words.len()-1].join("-")))
  }else{(&words[without+2..],None)};
  if !matches!(price,["its","cost"|"costs"]|["its","activation","cost"|"costs"]|["that","ability's"|"abilitys","cost"|"costs"]){return Ok(None);}
  let (target,designation)=match &words[..without]{

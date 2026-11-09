@@ -499,6 +499,15 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
     if !repeats_indefinite_article {
         distribute_trailing_head_noun_over_bare_subtype_arms(&mut branches);
     }
+    // CR 110.4c: the battlefield noun "permanent" is zone-only, so an arm
+    // such as `blue permanent` carries no card type but is still a typed
+    // selector beside a bare subtype arm (`an Island or blue permanent`).
+    let has_zone_only_permanent_arm = branches.iter().any(|branch| {
+        branch.zone == Some(Zone::Battlefield)
+            && branch.card_types.is_empty()
+            && branch.all_card_types.is_empty()
+            && branch.subtypes.is_empty()
+    });
     let mut union = ObjectFilter::default();
     union.colors = shared_colors;
     factor_common_domain_scope(&mut branches, &mut union);
@@ -511,9 +520,10 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
             branch.other = true;
         }
     }
-    let mixes_card_type_and_subtype = branches
+    let mixes_card_type_and_subtype = (branches
         .iter()
         .any(|branch| !branch.card_types.is_empty() || !branch.all_card_types.is_empty())
+        || has_zone_only_permanent_arm)
         && branches.iter().any(|branch| !branch.subtypes.is_empty());
     let has_ability_selector = branches.iter().any(|branch| {
         !branch.ability_markers.is_empty()

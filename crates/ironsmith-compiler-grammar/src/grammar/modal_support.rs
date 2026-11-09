@@ -221,6 +221,18 @@ pub fn parse_modal_header(
     let min = choose_spec.min;
     let max = choose_spec.max;
     let random = choose_spec.random;
+    // "Choose two or four —": only those exact counts, not the range
+    // between them.
+    let allowed_mode_counts = {
+        let tail = crate::lexer::token_word_refs(&tokens[choose_idx + 1..]);
+        match tail.as_slice() {
+            [low, "or", high, ..] => match (ironsmith_core::parse_cardinal_word(low), ironsmith_core::parse_cardinal_word(high)) {
+                (Some(low), Some(high)) if high > low + 1 => vec![low, high],
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        }
+    };
 
     let mut trigger = None;
     let mut activated = None;
@@ -368,6 +380,7 @@ pub fn parse_modal_header(
         cast_chooser,
         optional_choice,
         cost_choice_keywords: Vec::new(),
+        allowed_mode_counts,
     }))
 }
 
@@ -847,6 +860,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })

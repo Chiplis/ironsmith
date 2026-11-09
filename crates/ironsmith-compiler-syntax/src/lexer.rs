@@ -1459,6 +1459,20 @@ pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
     sentences
 }
 
+/// Lex compiler-generated rules text (a defined expansion). Every token and
+/// word piece carries the synthetic span, so no authored word is claimed or
+/// left unread through these tokens.
+pub fn lex_synthetic(text: &str) -> Result<Vec<OwnedLexToken>, CardTextError> {
+    let mut tokens = lex_line(text, 0)?;
+    for token in &mut tokens {
+        token.span = TextSpan::synthetic();
+        for piece in token.parser_word_pieces.iter_mut() {
+            piece.span = TextSpan::synthetic();
+        }
+    }
+    Ok(tokens)
+}
+
 pub fn lex_line(line: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, CardTextError> {
     let mut tokens = Vec::new();
 

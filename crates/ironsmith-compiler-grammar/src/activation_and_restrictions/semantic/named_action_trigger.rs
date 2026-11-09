@@ -42,9 +42,41 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Card
             return Ok(Some(TriggerSpec::NamedAction {label:format!("fail {}",words[fails+2..of].join(" ")),player,source_filter:ObjectFilter::default(),object_filter:Some(filter),minimum_amount:0}));
         }
     }
+    // "Whenever an opponent fails a trial": the failed named payment by
+    // that player, whatever spell it was attached to.
+    if let Some(fails)=words.iter().position(|word|matches!(*word,"fails"|"fail"))
+        && words.get(fails+1)==Some(&"a")
+        && fails+2<words.len()
+        && !words[fails+2..].contains(&"of")
+        && words[fails+2..].iter().all(|word|word.chars().all(|ch|ch.is_ascii_alphabetic()))
+        && words.len()-(fails+2)<=2
+    {
+        let player=match &words[..fails] {
+            ["an","opponent"]=>Some(PlayerFilter::Opponent),["a","player"]=>Some(PlayerFilter::Any),["you"]=>Some(PlayerFilter::You),_=>None,
+        };
+        if let Some(player)=player {
+            crate::word_claims::claim_tokens(tokens);
+            return Ok(Some(TriggerSpec::NamedAction {label:format!("fail {}",words[fails+2..].join(" ")),player,source_filter:ObjectFilter::default(),object_filter:None,minimum_amount:0}));
+        }
+    }
     let Some(at) = words.windows(2).position(|words| matches!(words, ["performs" | "perform", "the"])) else { return Ok(None); };
     let Some(end) = words[at + 2..].iter().position(|word| *word == "action").map(|offset| at + 2 + offset) else { return Ok(None); };
     if at == 0 || end == at + 2 { return Ok(None); }
+    // "Whenever you draw a card or perform the cache action with a card":
+    // the named action shares the left event's subject.
+    if words[at - 1] == "or" && at >= 3 && words[0] == "you" && words[at] == "perform" {
+        let or_index = view.token_start_indices()[at - 1];
+        let action_start = view.token_start_indices()[at];
+        let probe = crate::word_claims::probe_only(|| crate::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(&tokens[..or_index]).is_ok());
+        if probe {
+            let left = crate::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(&tokens[..or_index])?;
+            let mut right_tokens = vec![tokens[0].clone()];
+            right_tokens.extend_from_slice(&tokens[action_start..]);
+            let Some(right) = read(&right_tokens)? else { return Ok(None); };
+            crate::word_claims::claim_tokens(&tokens[or_index..or_index + 1]);
+            return Ok(Some(TriggerSpec::Either(Box::new(left), Box::new(right))));
+        }
+    }
     let source_end = view.token_index_after_words(at).unwrap_or(at);
     let label_start = view.token_index_after_words(at + 2).unwrap_or(at + 2);
     let label_end = view.token_index_after_words(end).unwrap_or(end);

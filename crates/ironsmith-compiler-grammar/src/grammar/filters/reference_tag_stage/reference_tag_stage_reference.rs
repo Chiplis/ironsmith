@@ -2671,7 +2671,10 @@ fn parse_object_filter_inner_unchecked(
         permanent_filter.any_of.clear();
         permanent_filter.zone = Some(Zone::Battlefield);
         permanent_filter.has_mana_cost = false;
-        if permanent_filter.card_types.is_empty()
+        // CR 110.4c: a battlefield "permanent" is any object there, including
+        // one with no card types; the noun is a zone, not a type list.
+        if permanent_filter.has_explicit_card_noun()
+            && permanent_filter.card_types.is_empty()
             && permanent_filter.all_card_types.is_empty()
             && permanent_filter.subtypes.is_empty()
             && permanent_filter.all_subtypes.is_empty()
@@ -2699,7 +2702,10 @@ fn parse_object_filter_inner_unchecked(
         permanent_filter.any_of.clear();
         permanent_filter.zone = Some(Zone::Battlefield);
         permanent_filter.has_mana_cost = false;
-        if permanent_filter.card_types.is_empty()
+        // CR 110.4c: a battlefield "permanent" is any object there, including
+        // one with no card types; the noun is a zone, not a type list.
+        if permanent_filter.has_explicit_card_noun()
+            && permanent_filter.card_types.is_empty()
             && permanent_filter.all_card_types.is_empty()
             && permanent_filter.subtypes.is_empty()
             && permanent_filter.all_subtypes.is_empty()
@@ -2715,7 +2721,15 @@ fn parse_object_filter_inner_unchecked(
             filter.card_types = permanent_type_defaults.clone();
         }
         filter.zone = Some(Zone::Stack);
-    } else if saw_permanent && filter.card_types.is_empty() && filter.all_card_types.is_empty() {
+    } else if saw_permanent
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        // CR 110.4c: on the battlefield "permanent" names a zone, so a
+        // typeless permanent still matches. A permanent card/spell elsewhere
+        // is defined by the permanent card types.
+        && (filter.has_explicit_card_noun()
+            || filter.zone.is_some_and(|zone| zone != Zone::Battlefield))
+    {
         filter.card_types = permanent_type_defaults.clone();
     }
 

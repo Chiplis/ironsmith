@@ -666,7 +666,7 @@ fn control_change_target_object_ids(
 // Permanent characteristic conversions can be explicit payments just like
 // controller changes. The enclosing selection cost owns exact cardinality;
 // this leaf changes only the selected, still-present objects.
-fn is_static_characteristic_change_cost(effect: &ApplyContinuousEffect) -> bool {
+pub(crate) fn is_static_characteristic_change_cost(effect: &ApplyContinuousEffect) -> bool {
     let allowed = |modification: &Modification| matches!(modification,
         Modification::SetName(_) | Modification::SetCardTypes(_)
         | Modification::AddCardTypes(_) | Modification::RemoveCardTypes(_)
@@ -999,10 +999,21 @@ fn capture_granted_cast_object_references(
     ctx: &ExecutionContext,
 ) -> Modification {
     let Modification::AddAbilityGeneric(mut ability) = modification else {return modification;};
+    capture_ability_object_references(&mut ability, ctx);
+    Modification::AddAbilityGeneric(ability)
+}
+
+/// CR 607.1: an ability created by another (a grant, or a created token's
+/// ability) is linked to the objects its creator named. Sample those
+/// references once, as the creating instruction resolves.
+pub(crate) fn capture_ability_object_references(
+    ability: &mut crate::ability::Ability,
+    ctx: &ExecutionContext,
+) {
     let program = match &mut ability.kind {
         crate::ability::AbilityKind::Triggered(triggered) => &mut triggered.effects,
         crate::ability::AbilityKind::Activated(activated) => &mut activated.effects,
-        _ => return Modification::AddAbilityGeneric(ability),
+        _ => return,
     };
     for tag in program.object_reference_imports.clone() {
         if program.captured_object_references.iter().any(|(key,_)|key==&tag) {continue;}
@@ -1018,7 +1029,6 @@ fn capture_granted_cast_object_references(
         // it cannot fall through to an unrelated tag on the new host.
         program.captured_object_references.push((tag,ids));
     }
-    Modification::AddAbilityGeneric(ability)
 }
 
 fn bind_granted_upkeep_trigger_outer_player(
@@ -1598,6 +1608,17 @@ impl ContinuousActionInputs {
                     game.turn.turn_number
                 }
             }
+            // The controller's own next end step: this turn's when it is
+            // theirs and the end step hasn't begun, else their next turn's.
+            Until::YourNextEndStep => {
+                if game.is_active_player(ctx.controller)
+                    && !matches!(game.turn.phase, crate::game_state::Phase::Ending)
+                {
+                    game.turn.turn_number
+                } else {
+                    next_turn_number_for_player(game, ctx.controller)
+                }
+            }
             _ => u32::MAX,
         };
         let mut effect = ContinuousEffect::new(
@@ -1956,6 +1977,25 @@ impl EffectExecutor for ApplyContinuousEffect {
         (is_controller_change_cost(self) || is_static_characteristic_change_cost(self)).then_some(self)
     }
 
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        // "This spell costs {1} less for each land affected this way": a
+        // permanent characteristic conversion remembers the objects it changed.
+        is_static_characteristic_change_cost(self).then_some(crate::effect::PriorEffectAction::Affected)
+    }
+
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        // "Have two lands you control ... become ...": the characteristic
+        // payment consumes the objects its preceding chooser tagged.
+        if is_static_characteristic_change_cost(self)
+            && let Some(spec) = &self.target_spec
+        {
+            return crate::effects::CostChoiceBindings::from_spec(spec);
+        }
+        self.get_target_spec()
+            .map(crate::effects::CostChoiceBindings::from_spec)
+            .unwrap_or_default()
+    }
+
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         if let Some(spec) = &self.target_spec
             && spec.is_target()
@@ -2031,6 +2071,15 @@ impl CostExecutableEffect for ApplyContinuousEffect {
         }
         if explicitly_empty_cost_binding(self, ctx) { return Ok(()); }
         let target = self.target_spec.as_ref().expect("characteristic cost has an object selector");
+        // "Have two lands you control ... become ...": the converted objects
+        // are the ones a preceding chooser in this same cost program selects.
+        // Before payment that binding does not exist yet; the chooser's own
+        // preflight is what proves enough objects are available.
+        if let ChooseSpec::Tagged(tag) = target.base()
+            && !ctx.tagged_objects.contains_key(tag)
+        {
+            return Ok(());
+        }
         let objects = resolve_non_target_continuous_objects(game, ctx, target)
             .map_err(CostValidationError::ExecutionFailed)?;
         if objects.is_empty() || objects.iter().any(|id|

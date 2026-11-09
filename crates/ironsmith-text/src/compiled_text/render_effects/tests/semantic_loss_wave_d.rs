@@ -254,16 +254,29 @@ fn declined_eligible_cast_also_goes_to_hand() {
         vec![CardType::Creature],
         "At the beginning of your end step, if you gained life this turn, exile cards from the top of your library until you exile a nonland card. You may cast that card without paying its mana cost if the spell's mana value is less than or equal to the amount of life you gained this turn. Otherwise, put it into your hand.",
     );
-    let program = format!("{:?}", definition.abilities);
-    let conditional = program
-        .split("ConditionalEffect")
-        .nth(1)
-        .expect("eligibility conditional");
-    let if_true = &conditional[..conditional.find("if_false").expect("if_false arm")];
-    assert!(if_true.contains("CastTaggedEffect"), "{if_true}");
+    // The eligibility check is the cast's own required-spell filter, so an
+    // ineligible card is simply not cast; the declined/ineligible result
+    // gate then moves the card into hand.
+    let crate::ability::AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("end-step trigger");
+    };
+    let effects = triggered.effects.flattened_default_effects();
+    let cast_index = effects
+        .iter()
+        .position(|effect| {
+            let debug = format!("{effect:?}");
+            debug.contains("CastTaggedEffect") && debug.contains("LifeGainedThisTurn")
+        })
+        .unwrap_or_else(|| panic!("eligible optional cast: {effects:?}"));
+    let fallback = effects
+        .get(cast_index + 1)
+        .and_then(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
+        .unwrap_or_else(|| panic!("fallback follows the cast: {effects:?}"));
+    assert_eq!(fallback.predicate, crate::effect::EffectPredicate::DidNotHappen);
     assert!(
-        if_true.contains("DidNotHappen") && if_true.contains("zone: Hand"),
-        "declining the eligible cast puts the card into hand: {if_true}"
+        format!("{:?}", fallback.then).contains("zone: Hand"),
+        "declining the eligible cast puts the card into hand: {:?}",
+        fallback.then
     );
 }
 
@@ -279,26 +292,24 @@ fn if_you_dont_fallback_follows_the_eligibility_check() {
         .iter()
         .flat_map(|segment| segment.default_effects.iter())
         .collect::<Vec<_>>();
+    // The eligibility check is the optional play/cast's own filter; the
+    // "If you don't" fallback follows that optional action at top level.
     let conditional_index = effects
         .iter()
         .position(|effect| {
-            effect
-                .downcast_ref::<crate::effects::ConditionalEffect>()
-                .is_some()
+            let debug = format!("{effect:?}");
+            debug.contains("MayEffect") && debug.contains("CastTaggedEffect")
         })
-        .unwrap_or_else(|| panic!("eligibility conditional: {effects:?}"));
-    let conditional = effects[conditional_index]
-        .downcast_ref::<crate::effects::ConditionalEffect>()
-        .unwrap();
+        .unwrap_or_else(|| panic!("eligible optional play or cast: {effects:?}"));
     assert!(
-        !format!("{:?}", conditional.if_true).contains("DidNotHappen"),
+        !format!("{:?}", effects[conditional_index]).contains("DidNotHappen"),
         "the fallback no longer hides inside the eligible arm: {:?}",
-        conditional.if_true
+        effects[conditional_index]
     );
     let fallback = effects
         .get(conditional_index + 1)
         .and_then(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
-        .unwrap_or_else(|| panic!("fallback follows the conditional: {effects:?}"));
+        .unwrap_or_else(|| panic!("fallback follows the optional action: {effects:?}"));
     assert_eq!(fallback.predicate, crate::effect::EffectPredicate::DidNotHappen);
     assert!(format!("{:?}", fallback.then).contains("Hand"));
 }

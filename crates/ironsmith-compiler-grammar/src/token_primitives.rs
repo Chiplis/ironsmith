@@ -44,6 +44,7 @@ fn until_from_leaf_duration(duration: LeafDurationPhrase) -> Option<Until> {
         // Only a reader that also binds the referenced player owns this.
         LeafDurationPhrase::UntilThatPlayersNextTurn => return None,
         LeafDurationPhrase::UntilNextEndStep => Until::NextEndStep,
+        LeafDurationPhrase::UntilBeginningOfYourNextEndStep => Until::YourNextEndStep,
         LeafDurationPhrase::Forever => Until::Forever,
     })
 }

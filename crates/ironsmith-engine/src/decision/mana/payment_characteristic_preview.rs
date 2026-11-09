@@ -9,10 +9,24 @@ pub(super) fn collect_tap_cost_tags(
     tags: &mut Vec<crate::tag::TagKey>,
 ) {
     if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
-        if let crate::target::ChooseSpec::Tagged(tag) = &tap.target {
-            if !tags.contains(tag) {
-                tags.push(tag.clone());
+        match &tap.target {
+            crate::target::ChooseSpec::Tagged(tag) => {
+                if !tags.contains(tag) {
+                    tags.push(tag.clone());
+                }
             }
+            // `Tap all <objects chosen for this payment>`: the tap instruction
+            // names the same choice through one exact tagged-object constraint.
+            crate::target::ChooseSpec::All(filter) => {
+                if let [constraint] = filter.tagged_constraints.as_slice()
+                    && constraint.relation
+                        == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                    && !tags.contains(&constraint.tag)
+                {
+                    tags.push(constraint.tag.clone());
+                }
+            }
+            _ => {}
         }
     }
     if let Some(inner) = effect.transparent_child_effect() {

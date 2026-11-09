@@ -45,6 +45,75 @@ pub fn parse_activated_line(
     parse_activated_line_with_raw(tokens)
 }
 
+/// A quoted activated ability with its own designation label ("Pledge —
+/// {4}: Surveil 2. Activate only as a sorcery unless you're making a
+/// pledge."), as a token or a grant carries it. The label is the ability's
+/// designation, exactly as on a printed line; a "sorcery unless you're
+/// <action>" rider is the sorcery timing with that action's exception.
+/// Labels with their own rules (keyword presentations, max speed) are read
+/// elsewhere.
+fn parse_designated_activated_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let Some(dash) = tokens.iter().position(|token| token.kind == TokenKind::EmDash) else {
+        return Ok(None);
+    };
+    let Some(colon) = tokens.iter().position(|token| token.kind == TokenKind::Colon) else {
+        return Ok(None);
+    };
+    let label = &tokens[..dash];
+    if dash == 0 || dash > colon || dash > 3
+        || !label.iter().all(|token| token.kind == TokenKind::Word)
+        || crate::grammar::activated_lowering::parse_activated_presentation_kind_tokens(tokens).is_some()
+    {
+        return Ok(None);
+    }
+    let designation = crate::lexer::token_word_refs(label).join(" ").to_ascii_lowercase();
+    if designation == "max speed" {
+        return Ok(None);
+    }
+    let body = &tokens[dash + 1..];
+    let after_colon = colon - dash;
+    let mut rewritten = body[..after_colon].to_vec();
+    let mut exceptions = Vec::new();
+    let mut rider_sentences = Vec::new();
+    for sentence in crate::lexer::split_lexed_sentences(&body[after_colon..]) {
+        let words = crate::lexer::token_word_refs(sentence);
+        let action_start = match words.as_slice() {
+            ["activate", "only", "as", "a", "sorcery", "unless", "you're" | "youre" | "you’re", ..] => Some(7),
+            ["activate", "only", "as", "a", "sorcery", "unless", "you", "are", ..] => Some(8),
+            _ => None,
+        };
+        if let Some(action_start) = action_start.filter(|start| words.len() > *start) {
+            exceptions.push(words[action_start..].join("-"));
+            rider_sentences.push(sentence);
+            rewritten.extend(crate::lexer::lex_line("Activate only as a sorcery.", 0)?);
+        } else {
+            rewritten.extend_from_slice(sentence);
+            rewritten.push(OwnedLexToken::period(crate::cards::TextSpan::synthetic()));
+        }
+    }
+    let Some(mut parsed) = parse_activated_line_with_raw(&rewritten)? else {
+        return Ok(None);
+    };
+    let crate::model::CompilerAbilityKindCore::Activated(ability) = parsed.kind_mut() else {
+        return Ok(None);
+    };
+    if !ability.effects.activation_designations.contains(&designation) {
+        ability.effects.activation_designations.push(designation.clone());
+    }
+    ability.effects.activation_sorcery_exceptions.extend(exceptions);
+    // The ability's group designation, as a printed labeled line carries it.
+    if !parsed.ability.designations.contains(&designation) {
+        parsed.ability.designations.push(designation);
+    }
+    crate::word_claims::claim_tokens(&tokens[..=dash]);
+    for sentence in rider_sentences {
+        crate::word_claims::claim_tokens(sentence);
+    }
+    Ok(Some(parsed))
+}
+
 fn subject_allows_direct_mana_output(subject: &Option<SubjectAst>) -> bool {
     matches!(
         subject,
@@ -285,6 +354,11 @@ fn parse_direct_simple_effect_ability(
 pub fn parse_activated_line_with_raw(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
+    // Every quoted-ability route (token rules, grants) reads a designation
+    // label the same way; the labeled body itself has no label left.
+    if let Some(parsed) = parse_designated_activated_line(tokens)? {
+        return Ok(Some(parsed));
+    }
     if let Some(split) = activated_line_grammar::parse_activated_line_split_tokens(tokens) {
         let mut kept = Vec::new();
         let mut surcharges = Vec::new();
@@ -1140,6 +1214,22 @@ mod activation_kind_costs;
 pub fn parse_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    let parsed = parse_cost_reduction_line_any(tokens)?;
+    // "This spell costs ... less to cast ..." reduces only this spell's own
+    // cost (ThisSpellCostReduction, read by the spell-cost modifier owner). A
+    // generic spell-filter reduction is not a reading of that subject.
+    if crate::lexer::parser_token_word_refs(tokens).starts_with(&["this", "spell"])
+        && parsed.is_some()
+        && matches!(crate::keyword_static::parse_spells_cost_modifier_line(tokens), Ok(Some(_)))
+    {
+        return Ok(None);
+    }
+    Ok(parsed)
+}
+
+fn parse_cost_reduction_line_any(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
     if let Some(ability) = activation_kind_costs::parse(tokens)? { return Ok(Some(ability)); }
     if let Some(ability) = typed_cost_modifiers::parse(tokens)? { return Ok(Some(ability)); }
     let this_ability = matches!(
@@ -1252,6 +1342,11 @@ fn parse_cost_reduction_line_inner(
             else {
                 return Ok(None);
             };
+            if remainder != ActivatedAbilitiesReductionRemainder::Unbounded {
+                // "This effect can't reduce the mana in that cost to less than
+                // one mana" is read here as the reduction's floor.
+                crate::word_claims::claim_tokens(&amount_tokens[used..]);
+            }
             let (minimum_total_mana, uses_ability_activation_cost_surface) = match remainder {
                 ActivatedAbilitiesReductionRemainder::Unbounded => (None, false),
                 ActivatedAbilitiesReductionRemainder::MinimumOneMana => (Some(1), false),
@@ -1319,6 +1414,8 @@ fn parse_cost_reduction_line_inner(
                     if filter.zone.is_none() {
                         filter.zone = Some(Zone::Battlefield);
                     }
+                    // "less to activate if it targets": the condition's words.
+                    crate::word_claims::claim_tokens(&tail_tokens);
                     Ok(Some(
                         StaticAbility::reduce_activated_ability_costs_if_targets(
                             ObjectFilter::source(),

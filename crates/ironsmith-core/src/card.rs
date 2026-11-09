@@ -384,6 +384,14 @@ impl CardBuilder {
         &self.name
     }
 
+    pub fn other_face_name_ref(&self) -> Option<&str> {
+        self.other_face_name.as_deref()
+    }
+
+    pub fn linked_face_layout_ref(&self) -> LinkedFaceLayout {
+        self.linked_face_layout
+    }
+
     pub fn first_printed_set_name_ref(&self) -> Option<&str> {
         self.first_printed_set_name.as_deref()
     }

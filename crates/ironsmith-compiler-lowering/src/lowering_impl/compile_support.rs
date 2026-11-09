@@ -3363,6 +3363,11 @@ fn build_builtin_token_definition(shape: token_grammar::BuiltinTokenShape) -> Ca
         token_grammar::BuiltinTokenShape::VirtuousRole => {
             crate::cards::tokens::virtuous_role_token_definition()
         }
+        token_grammar::BuiltinTokenShape::ClericRole => crate::cards::tokens::audition_role_token_definition("Cleric", 2, 2, crate::static_abilities::StaticAbility::lifelink(), "lifelink"),
+        token_grammar::BuiltinTokenShape::ScoutRole => crate::cards::tokens::audition_role_token_definition("Scout", 2, 3, crate::static_abilities::StaticAbility::vigilance(), "vigilance"),
+        token_grammar::BuiltinTokenShape::WarlockRole => crate::cards::tokens::audition_role_token_definition("Warlock", 2, 1, crate::static_abilities::StaticAbility::flying(), "flying"),
+        token_grammar::BuiltinTokenShape::WizardRole => crate::cards::tokens::audition_role_token_definition("Wizard", 2, 2, crate::static_abilities::StaticAbility::prowess(), "prowess"),
+        token_grammar::BuiltinTokenShape::WarriorRole => crate::cards::tokens::audition_role_token_definition("Warrior", 3, 2, crate::static_abilities::StaticAbility::trample(), "trample"),
         token_grammar::BuiltinTokenShape::Blood => crate::cards::tokens::blood_token_definition(),
         token_grammar::BuiltinTokenShape::Powerstone => {
             crate::cards::tokens::powerstone_token_definition()

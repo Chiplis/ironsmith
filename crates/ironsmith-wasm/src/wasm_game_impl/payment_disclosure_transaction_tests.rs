@@ -100,6 +100,19 @@ impl ironsmith::effects::CostExecutableEffect for FaultingDiscardCost {
 fn disclosure_command(wasm: &mut WasmGame, command: UiCommand) -> Result<JsValue, JsValue> {
     wasm.dispatch_typed_command(command, 0.0)
 }
+/// A private hand opens its owner's optional reveal window for casting
+/// permissions after each event (hand_event_reveals.rs). These fixtures
+/// reveal nothing there.
+fn decline_hand_reveal_windows(wasm: &mut WasmGame) {
+    for _ in 0..8 {
+        let open = matches!(wasm.pending_decision.as_ref(), Some(DecisionContext::SelectObjects(objects))
+            if objects.description == "You may reveal cards with a casting permission for this event");
+        if !open { return; }
+        disclosure_command(wasm, UiCommand::SelectObjects {
+            object_ids: Vec::new(), object_stable_ids: Vec::new(), object_hidden_refs: Vec::new(),
+        }).map_err(|_| "declining the hand reveal window was rejected").unwrap();
+    }
+}
 fn disclosure_confirm_mana(wasm: &mut WasmGame) {
     let Some(DecisionContext::ManaPayment(payment)) = wasm.pending_decision.as_ref() else {
         panic!("mana prompt");
@@ -298,6 +311,7 @@ fn payment_disclosure_transaction_retries_same_choice_without_double_payment_or_
     wasm.perspective = alice;
     failing.store(false, std::sync::atomic::Ordering::SeqCst);
     disclosure_command(&mut wasm, disclosure_selection(chosen)).unwrap();
+    decline_hand_reveal_windows(&mut wasm);
     assert!(matches!(
         wasm.pending_decision,
         Some(DecisionContext::Priority(_))

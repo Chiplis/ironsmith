@@ -4455,6 +4455,18 @@ pub(crate) fn normalize_search_you_own_clause(text: &str) -> Option<String> {
     Some(format!("Search your library for {selection}{tail}"))
 }
 
+/// "Choose two or four —": an exact non-contiguous set of mode counts.
+pub(crate) fn describe_allowed_mode_counts_header(counts: &[u32]) -> Option<String> {
+    if counts.is_empty() {
+        return None;
+    }
+    let words = counts
+        .iter()
+        .map(|count| number_word(*count as i32).unwrap_or_else(|| count.to_string()))
+        .collect::<Vec<_>>();
+    Some(format!("Choose {} —", words.join(" or ")))
+}
+
 pub(crate) fn describe_mode_choice_header(
     max: &Value,
     min: Option<&Value>,
@@ -4718,7 +4730,9 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
             if !matches!(&grant.target, ChooseSpec::SourceController)
                 || filter.zone != Some(Zone::Battlefield)
                 || filter.controller != Some(PlayerFilter::You)
-                || filter != &controlled_permanents
+                || (filter != &controlled_permanents
+                    // CR 110.4c: or the zone-only battlefield noun.
+                    && filter != &ObjectFilter::permanent().controlled_by(PlayerFilter::You))
                 || apply.target_spec.is_some()
                 || apply.until != Until::EndOfTurn
                 || apply.condition.is_some()
@@ -8084,6 +8098,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::BasePowerOf(spec) => format!("{} base power", describe_possessive_choose_spec(spec)),
         Value::StationContributionOf(spec) => format!("{} power", describe_possessive_choose_spec(spec)),
+        Value::PlayerNamedActionCount { player, label, window } => format!(
+            "the number of times {} performed the {label} action {}",
+            if matches!(player, PlayerFilter::You) { "you".to_string() } else { format!("{player:?}") },
+            window.surface()
+        ),
         Value::TimesPaidLabelOf {object,reference} => format!("the number of times {}'s additional {} cost was paid", describe_choose_spec(object),reference.custom_keyword.as_deref().unwrap_or("named")),
         Value::KicksPaidOf(spec) => format!("the number of times {} was kicked", describe_choose_spec(spec)),
         Value::ModeSelectionsOf(spec) => format!(

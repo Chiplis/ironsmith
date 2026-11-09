@@ -140,6 +140,13 @@ fn payment_disclosure_group_costs_reject_invalid_groups_before_commit_then_pay_e
                     wasm.pending_decision
                 );
             };
+            // A private hand opens the owner's optional hand-reveal window for
+            // each event (hand_event_reveals.rs); decline it.
+            if objects.description == "You may reveal cards with a casting permission for this event" {
+                let _ = objects;
+                disclosure_command(&mut wasm, selected(Vec::new())).unwrap();
+                continue;
+            }
             assert_eq!(objects.reveal_policy, SelectionRevealPolicy::Public);
             let ids: Vec<_> = objects
                 .candidates

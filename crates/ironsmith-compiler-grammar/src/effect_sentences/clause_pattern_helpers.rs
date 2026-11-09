@@ -1054,12 +1054,8 @@ mod copy_all_tests {
         let Value::DistinctCounterTypesAmong(filter) = count else {
             panic!("expected a distinct counter-type count: {count:#?}");
         };
-        assert_eq!(
-            filter,
-            ObjectFilter::permanent_card()
-                .in_zone(Zone::Battlefield)
-                .you_control()
-        );
+        // CR 110.4c: the battlefield noun "permanent" is zone-only.
+        assert_eq!(filter, ObjectFilter::permanent().you_control());
 
         let ordinary = crate::lexer::lex_line("Copy it for each permanent you control.", 0)
             .expect("ordinary per-permanent copy should lex");

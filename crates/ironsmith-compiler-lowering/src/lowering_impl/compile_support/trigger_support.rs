@@ -606,6 +606,12 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             );
             Trigger::permanent_becomes_tapped_one_or_more(filter).with_display_label(display)
         }
+        TriggerSpec::ThisAndOtherBecomeTapped { other } => {
+            let other_surface = other.description();
+            let other_surface = other_surface.strip_prefix("another ").map(|rest| format!("other {rest}")).unwrap_or(other_surface);
+            let display = format!("Whenever this and at least one {other_surface} become tapped");
+            Trigger::source_and_other_become_tapped(other).with_display_label(display)
+        }
         TriggerSpec::PermanentBecomesUntapped {
             filter,
             one_or_more,

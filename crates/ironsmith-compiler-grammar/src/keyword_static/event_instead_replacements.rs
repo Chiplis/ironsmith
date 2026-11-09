@@ -715,7 +715,8 @@ pub fn parse_timed_event_replacement_program(tokens:&[OwnedLexToken])
     if tail.last().is_none_or(|token|token.kind!=TokenKind::RBracket){return Ok(None);}
     let Some(event)=replaced_event(&header[..end]) else{return Ok(None);};
     if !matches!(event,ReplacedEventSpec::ZoneChange{..}|ReplacedEventSpec::ZoneChangeExcluding{..}){return Ok(None);}
-    let effects=crate::clause_support::parse_effect_sentences_lexed(&tail[6..tail.len()-1])?;
+    // The bracketed program's instructions are ';'-separated.
+    let effects=crate::effect_sentences::parse_bounded_program(&tail[6..tail.len()-1])?;
     if effects.is_empty(){return Ok(None);}
     let display=crate::lexer::render_token_slice(tokens);
     let flow=CompilerControlFlowAst::new(ControlFlowSemanticAst::Replacement,
@@ -748,7 +749,8 @@ pub fn parse_resolving_spell_replacement_program(tokens:&[OwnedLexToken])
  if tail.len()<6 || words_of(&tail[..3])!=["do","the","following"]
    || tail[3].kind!=TokenKind::Colon || tail[4].kind!=TokenKind::LBracket
    || tail.last().is_none_or(|token|token.kind!=TokenKind::RBracket){return Ok(None);}
- let effects=crate::clause_support::parse_effect_sentences_lexed(&tail[5..tail.len()-1])?;
+ // The bracketed program's instructions are ';'-separated.
+ let effects=crate::effect_sentences::parse_bounded_program(&tail[5..tail.len()-1])?;
  if effects.is_empty(){return Ok(None);}
  let flow=CompilerControlFlowAst::new(ControlFlowSemanticAst::Replacement,
    ControlFlowNodeAst::Replacement(ReplacementRelationshipAst{

@@ -34,7 +34,7 @@ fn battlefield_cast_is_a_real_costed_cast_and_new_incarnation() {
   assert_ne!(stacked,source);assert_eq!(g.object(stacked).unwrap().zone,Zone::Stack);assert_eq!(g.counter_count(stacked,ironsmith::CounterType::PlusOnePlusOne),0);assert!(!g.is_tapped(stacked));
   assert_eq!(g.cast_origin_snapshot(stacked).unwrap().zone,Zone::Battlefield);assert!(g.object_completed_cast_from(source,Zone::Battlefield));
   assert_eq!(g.player(A).unwrap().mana_pool.total(),0);
-  while !g.stack.is_empty(){resolve_stack_entry_with(&mut g,&mut SelectFirstDecisionMaker).unwrap();}
+  while {put_triggers_on_stack(&mut g,&mut ironsmith::triggers::TriggerQueue::new()).unwrap();!g.stack.is_empty()}{resolve_stack_entry_with(&mut g,&mut SelectFirstDecisionMaker).unwrap();}
   let returned=g.find_object_by_stable_id(stable).unwrap();assert_eq!(g.object(returned).unwrap().zone,Zone::Battlefield);assert_ne!(returned,stacked);
   assert_eq!(g.player(A).unwrap().life,23,"one leave trigger and one fresh enter trigger");
  }
@@ -103,7 +103,7 @@ fn external_enter_watcher_checks_entering_objects_named_price_receipt() {
    let mut source=ironsmith_compiler_runtime::compile_to_runtime_definition("Returning witness","Type: Creature\nMana cost: {5}\nPower/Toughness: 2/2\nYou may cast this spell from the battlefield for {2} rather than pay its mana cost.",false).unwrap();assert!(source.attribute_custom_keyword_payment("relocate"));
    let mut g=game();g.create_object_from_definition(&watcher,A,Zone::Battlefield);let source=g.create_object_from_definition(&source,A,if wandered{Zone::Battlefield}else{Zone::Hand});g.player_mut(A).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless,10);
    let action=compute_legal_actions(&g,A).unwrap().into_iter().find(|action|matches!(action,LegalAction::CastSpell{spell_id,..} if *spell_id==source)).unwrap();cast(&mut g,action);
-   while !g.stack.is_empty(){resolve_stack_entry_with(&mut g,&mut SelectFirstDecisionMaker).unwrap();}
+   while {put_triggers_on_stack(&mut g,&mut ironsmith::triggers::TriggerQueue::new()).unwrap();!g.stack.is_empty()}{resolve_stack_entry_with(&mut g,&mut SelectFirstDecisionMaker).unwrap();}
    assert_eq!(g.player(A).unwrap().life,if wandered{23}else{20},"watcher is not the caster or entering object");
   }
  }

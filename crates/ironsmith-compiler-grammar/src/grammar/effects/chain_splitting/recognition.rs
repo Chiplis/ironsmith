@@ -528,6 +528,14 @@ pub fn preserve_and_reason(
     {
         return Some(AndPreservation::QuotedAbility);
     }
+    // "that land becomes a basic land named Wastes ... and loses all other
+    // supertypes, card types, ...": "all other" is relative to what it just
+    // became, so the loss list is part of the same characteristic change.
+    if contains_any(current, &["become", "becomes"])
+        && starts_any(remaining, &[&["lose", "all", "other"], &["loses", "all", "other"]])
+    {
+        return Some(AndPreservation::SharedSubject);
+    }
     if extended
         && contains_any(current, &["get", "gets", "become", "becomes"])
         && first_word(remaining).is_some_and(|word| {
@@ -586,6 +594,10 @@ pub(super) fn then_followup_facts(
                     // the Lost City)
                     &["sacrifice", "it"],
                     &["sacrifices", "it"],
+                    // "perform the condemn action with that creature, then
+                    // sacrifice that creature"
+                    &["sacrifice", "that"],
+                    &["sacrifices", "that"],
                 ],
             )
             || (starts_any(after, &[&["return"], &["returns"]])

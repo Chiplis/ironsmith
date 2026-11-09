@@ -44,7 +44,12 @@ fn parse_lexed<'a>(input: &mut LexStream<'a>) -> ModalResult<CombatRequirementCl
         alt((primitives::kw("block"), primitives::kw("blocks")))
             .value(CombatRequirement::Block),
     )).parse_next(input)?;
-    primitives::phrase(&["each", "combat", "if", "able"]).parse_next(input)?;
+    // The pre-errata "<attacks|blocks> each turn if able" is the same duty
+    // (every printed card using it was updated to "each combat").
+    alt((
+        primitives::phrase(&["each", "combat", "if", "able"]),
+        primitives::phrase(&["each", "turn", "if", "able"]),
+    )).parse_next(input)?;
     opt(primitives::sentence_end()).parse_next(input)?;
     Ok(CombatRequirementClause { subject_tokens: trim_lexed_commas(subject_tokens), requirement })
 }

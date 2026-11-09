@@ -71,6 +71,28 @@ pub(crate) fn parse_conditional_have_performer(tokens: &[OwnedLexToken]) -> Resu
 /// this way.").
 pub(crate) fn parse_perform(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    // "that player performs the cache action with ...": an explicit player
+    // performer of the same atom.
+    let actor = {
+        let words = TokenWordView::new(tokens).word_refs();
+        if words.starts_with(&["that", "player", "performs", "the"]) { Some((2usize, PlayerAst::That)) }
+        else if words.starts_with(&["you", "perform", "the"]) { Some((1, PlayerAst::You)) }
+        else if words.starts_with(&["its", "controller", "performs", "the"]) { Some((2, PlayerAst::ItsController)) }
+        else if words.starts_with(&["its", "owner", "performs", "the"]) { Some((2, PlayerAst::ItsOwner)) }
+        // "that permanent's controller performs ..." inside a program over
+        // that permanent: the same controller as "its controller".
+        else if words.len() > 4 && words[0] == "that" && matches!(words[1], "permanent's" | "permanent’s" | "permanents")
+            && words[2..4] == ["controller", "performs"] { Some((3, PlayerAst::ItsController)) }
+        else { None }
+    };
+    if let Some((actor_words, player)) = actor {
+        let start = *TokenWordView::new(tokens).token_start_indices().get(actor_words)?;
+        let mut rest = tokens[start..].to_vec();
+        rest[0] = crate::lexer::synthetic_word_tokens(["perform"]).remove(0);
+        let EffectAst::SubjectVerb(parsed) = parse_perform(&rest)? else { return None; };
+        crate::word_claims::claim_tokens(&tokens[..=start]);
+        return Some(EffectAst::subject_verb(crate::model::ast::SubjectVerbRoleAst::Actor, player, parsed.action));
+    }
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     if !tokens.first().is_some_and(|token| token.is_word("perform")) || !words.starts_with(&["perform", "the"]) {
@@ -95,6 +117,9 @@ pub(crate) fn parse_perform(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let objects = if prior_action.is_some() || action + 1 == words.len() { None }
         else if words.get(action + 1) == Some(&"with") {
             let start = *view.token_start_indices().get(action + 2)?;
+            // ", then <instruction>" ends the operand: a following
+            // instruction is never part of the participant phrase.
+            if tokens[start..].iter().any(|token| token.is_word("then")) { return None; }
             Some(crate::util::parse_target_phrase(&tokens[start..]).ok()?)
         } else { return None; };
     if prior_action.is_some() { crate::word_claims::claim_tokens(tokens); }

@@ -44,6 +44,24 @@ pub(super) fn parse_permanent_tap_state_trigger(
     else {
         return Ok(None);
     };
+    // "Whenever this and at least one other creature you control become
+    // tapped" (Rapport): the source's tap paired with another in one action.
+    if *state == "tapped"
+        && !during_your_turn
+        && !during_your_untap_step
+        && let Some(and_index) = subject.iter().position(|word| *word == "and")
+        && subject[and_index + 1..].starts_with(&["at", "least", "one"])
+        && subject.len() > and_index + 4
+        && is_source_reference_words(&non_article_word_refs(&subject[..and_index]))
+    {
+        let other_start = trigger_word_token_start(tokens, and_index + 4).unwrap_or(tokens.len());
+        let end = trigger_word_token_start(tokens, subject.len()).unwrap_or(tokens.len());
+        if let Some(other) = parse_trigger_subject_filter_lexed(&tokens[other_start..end])? {
+            crate::word_claims::claim_words(&subject[..and_index + 4]);
+            crate::word_claims::claim_words(&all_words[subject.len()..]);
+            return Ok(Some(TriggerSpec::ThisAndOtherBecomeTapped { other }));
+        }
+    }
     // "this creature leaves the battlefield or becomes untapped" is a
     // compound trigger whose first event is its own verb phrase, not a
     // subject; leave it to the disjunctive-trigger split.

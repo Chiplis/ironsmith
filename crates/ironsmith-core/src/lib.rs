@@ -61,6 +61,9 @@ pub mod trigger_model;
 pub mod types;
 pub mod custom_subtypes;
 pub mod value_model;
+/// Turn-history label recorded for a player when a Subroutine they control
+/// runs (custom CR 303.9b, 701.81a).
+pub const SUBROUTINE_RUN_ACTION: &str = "run subroutine";
 pub mod zone;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

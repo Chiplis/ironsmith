@@ -91,10 +91,47 @@ fn parse_next_spell_life_alternative_sentence(
     let Ok([filter]) = <[_; 1]>::try_from(shape.filters) else {
         return Ok(None);
     };
+    crate::word_claims::claim_tokens(&tokens[..spell_start]);
+    crate::word_claims::claim_tokens(&tokens[comma..]);
     Ok(Some(vec![EffectAst::subject_verb_pay_life_for_next_spell_this_turn(
         shape.player,
         filter,
     )]))
+}
+
+/// "You may pay {0} rather than pay the mana cost for the next spell you cast
+/// this turn.": a zero alternative cost is the free-cast grant for the
+/// described next spell ("<spell> can be cast without paying its mana cost").
+fn parse_next_spell_zero_alternative_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let view = crate::lexer::TokenWordView::new(&tokens);
+    let words = view.word_refs();
+    let head_len = match words.as_slice() {
+        ["you", "may", "pay", "0" | "{0}", "rather", "than", "pay", "the", "mana", "cost", "for" | "of", ..] => 11,
+        _ => return Ok(None),
+    };
+    let Some(spell_start) = view.token_index_after_words(head_len) else {
+        return Ok(None);
+    };
+    let mut described = tokens[spell_start..].to_vec();
+    described.extend(crate::lexer::synthetic_word_tokens([
+        "can", "be", "cast", "without", "paying", "its", "mana", "cost",
+    ]));
+    let Some(shape) = parse_next_spell_grant_tokens(&described)? else {
+        return Ok(None);
+    };
+    if shape.ability
+        != super::super::grammar::effects::NextSpellGrantAbilitySurface::WithoutPayingManaCost
+    {
+        return Ok(None);
+    }
+    let Ok([filter]) = <[_; 1]>::try_from(shape.filters) else {
+        return Ok(None);
+    };
+    crate::word_claims::claim_tokens(&tokens[..spell_start]);
+    Ok(Some(vec![EffectAst::subject_verb_free_cast_next_spell_this_turn(shape.player, filter)]))
 }
 
 fn incarnation_static_ability(ability:&GrantedAbilityAst)->bool {
@@ -230,6 +267,9 @@ pub fn parse_next_spell_grant_sentence_lexed(
         &tokens[..end - qualifier.len()]
     } else { tokens };
     if let Some(effects) = parse_next_spell_life_alternative_sentence(tokens)? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = parse_next_spell_zero_alternative_sentence(tokens)? {
         return Ok(Some(effects));
     }
     if let Some(shape) = parse_next_spell_grant_tokens(tokens)?

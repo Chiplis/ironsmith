@@ -101,6 +101,9 @@ pub(super) fn read(document:&PreprocessedDocument)->Result<Option<OptionalTextVa
             _=>lines.push(None),
         }
     }
+    // A remover printed without its own fragments still removes fragments
+    // from the permanents it targets; it simply has no subset plan itself.
+    if labels.is_empty() && !casting_payment {return Ok(None);}
     if labels.is_empty(){return Err(CardTextError::ParseError("optional text removal requires a bracketed text fragment".into()));}
     let branches=(0..(1u64<<labels.len())).map(|removed|OptionalTextVariantBranch{removed,items:rewrite_document(document,&lines,removed).items}).collect();
     Ok(Some(OptionalTextVariants{labels,branches,casting_payment}))

@@ -252,6 +252,11 @@ pub fn parse_labeled_ability_prefix_tokens(
         ))
     })?;
     let prefix = &tokens[..separator_index];
+    // A dash after an opening quote labels the quoted (granted) ability,
+    // not this line: `gains "experience — Whenever ..."` keeps its grant.
+    if prefix.iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 == 1 {
+        return None;
+    }
     if effects::preserve_labeled_ability_prefix_for_parse_tokens(prefix) {
         return None;
     }

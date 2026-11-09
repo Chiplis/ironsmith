@@ -115,6 +115,15 @@ pub fn parse_discard_trigger_card_filter(
         // hand. Nouns such as "permanent" otherwise make the general object
         // parser infer Battlefield, which can never match the pre-discard
         // hand snapshot carried by CardDiscardedEvent.
+        // A discarded "permanent card" is defined by the permanent card
+        // types; the zone-only battlefield noun does not apply in a hand.
+        if filter.zone == Some(Zone::Battlefield)
+            && filter.card_types.is_empty()
+            && filter.all_card_types.is_empty()
+            && qualifier_words.iter().any(|word| matches!(*word, "permanent" | "permanents"))
+        {
+            filter.card_types = ObjectFilter::permanent_card().card_types;
+        }
         filter.zone = None;
         return Ok(Some(filter));
     }

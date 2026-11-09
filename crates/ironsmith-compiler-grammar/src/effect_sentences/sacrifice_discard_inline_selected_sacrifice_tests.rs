@@ -127,8 +127,11 @@ fn those_permanents_sacrifices_the_complete_referenced_set() {
         constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
     }));
-    assert!(
-        filter.card_types.len() > 1,
+    // CR 110.4c: the zone-only battlefield noun "permanent" survives
+    // alongside the result tag.
+    assert_eq!(
+        filter.zone,
+        Some(crate::zone::Zone::Battlefield),
         "the permanent noun should survive alongside the result tag: {filter:#?}"
     );
 }

@@ -219,7 +219,10 @@ fn parse_other_global_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult
         (
             primitives::kw("counters"),
             parse_cant,
-            primitives::phrase(&["be", "put", "on", "this", "permanent"]),
+            alt((
+                primitives::phrase(&["be", "put", "on", "this", "permanent"]),
+                primitives::phrase(&["be", "put", "on", "this", "creature"]),
+            )),
         )
             .value(DirectCantFact::CantHaveCountersPlaced),
         (

@@ -646,7 +646,9 @@ mod tests {
             .card_types(vec![CardType::Sorcery])
             .parse_text("Exile cards from the top of your library until you exile cards with total mana value 4 or greater. You may cast any number of spells from among them without paying their mana costs.")
             .unwrap();
-        let effects = &consult.spell_effect.as_ref().unwrap().segments[0].default_effects;
+        // The cast sentence may open its own resolution segment; the cast
+        // surface is judged on the program's resolving instruction order.
+        let effects = consult.spell_effect.as_ref().unwrap().flattened_default_effects();
         assert_eq!(
             find_retained_cast(effects).as_deref(),
             Some("You may cast any number of spells from among them without paying their mana costs")

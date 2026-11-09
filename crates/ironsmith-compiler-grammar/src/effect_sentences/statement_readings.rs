@@ -1031,6 +1031,13 @@ fn read_complete_simple_subject_verb(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence = input.sentence;
+    // A bracketed named program ("its owner performs the X action as
+    // follows: [draw a card]") is owned by the named-program reader.
+    if sentence.iter().any(|token| token.kind == crate::lexer::TokenKind::LBracket)
+        && crate::lexer::token_word_refs(sentence).windows(2).any(|pair| pair == ["as", "follows"])
+    {
+        return Ok(None);
+    }
     // A turn-long lockout-and-permission bundle on the referenced player owns
     // its comma list before the generic restriction reader splits it.
     if let Some(effects) = super::referenced_player_turn_lockout::parse(sentence)? {

@@ -880,12 +880,13 @@ impl WireEffectModelHooks<'_> {
         ability: wire::WireStaticAbility,
     ) -> Result<crate::static_abilities::StaticAbility, ArtifactMaterializationError> {
         let hooks = std::cell::RefCell::new(self);
-        let model = ability.try_map(
+        let mut model = ability.try_map(
             runtime_trigger_from_core_model,
             |effect| hooks.borrow_mut().effect(effect),
             |cost| hooks.borrow_mut().cost(cost),
             Ok,
         )?;
+        crate::effect_model_interpreter::prune_optional_text_variant_programs(&mut model);
         Ok(crate::static_abilities::StaticAbility::from_model(model))
     }
 
@@ -1121,6 +1122,7 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             linked_exile_class_level: spec.linked_exile_class_level,
             source_exiled_surface: spec.source_exiled_surface,
             filtered_zone_surface: spec.filtered_zone_surface,
+            cast_max_total_mana: spec.cast_max_total_mana,
             top_card_only: spec.top_card_only,
             instant_timing: spec.instant_timing,
             may_look_at_top: spec.may_look_at_top,
@@ -1340,9 +1342,9 @@ fn runtime_static_ability_model(
 fn runtime_static_ability(
     ability: wire::WireStaticAbility,
 ) -> Result<crate::static_abilities::StaticAbility, ArtifactMaterializationError> {
-    Ok(crate::static_abilities::StaticAbility::from_model(
-        runtime_static_ability_model(ability)?,
-    ))
+    let mut model = runtime_static_ability_model(ability)?;
+    crate::effect_model_interpreter::prune_optional_text_variant_programs(&mut model);
+    Ok(crate::static_abilities::StaticAbility::from_model(model))
 }
 
 fn runtime_trigger_from_core_model(
@@ -1509,6 +1511,15 @@ fn runtime_definition_from_core_model(
         remove_redundant_target_only_effects_in_program(spell_effect);
     }
     Ok(definition)
+}
+
+/// Restore one effect nested inside an already validated definition. Its
+/// real-card references may name a lexical catalog declared by an enclosing
+/// scope effect, so standalone closure is not required of it.
+pub fn materialize_nested_effect(
+    effect: wire::WireEffect,
+) -> Result<crate::effect::Effect, ArtifactMaterializationError> {
+    runtime_effect_from_core_model(effect)
 }
 
 /// Restore one canonical executable effect using the artifact interpreter.

@@ -1069,7 +1069,7 @@ pub(super) fn visit_linked_copy_cast(
             one_shot: false,
             duration: crate::effect::Until::Forever,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: Some((CompilerReferenceTag::It.bind(), Zone::Battlefield)), source_collection_scope: None,
+            while_any_tagged_object_in_zone: Some((CompilerReferenceTag::It.bind(), Zone::Battlefield)), source_collection_scope: None, source_absence_state: false,
         }),
         2,
     ))

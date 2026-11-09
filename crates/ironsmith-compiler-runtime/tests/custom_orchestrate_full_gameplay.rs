@@ -59,7 +59,7 @@ fn every_eighteen_intrinsic_sources_prepare_and_cast_after_actual_resolution_on_
 }
 #[test]
 fn exact_reytali_grant_preserves_authored_preparation_identity_for_return_to_form(){
- for (provider,recipient) in source_routes::definitions(&source("Reytali, Song of the Sand")).unwrap().into_iter().zip(source_routes::definitions(&source("Return to Form")).unwrap()){
+ for (provider,recipient) in source_routes::linked_definitions(&source("Reytali, Song of the Sand")).unwrap().remove(0).into_iter().zip(source_routes::definitions(&source("Return to Form")).unwrap()){
   let mut g=ready();fund(&mut g);materials_and_targets(&mut g);
   let donor=g.create_object_from_definition(&provider,A,Zone::Battlefield);
   let card=g.create_object_from_definition(&recipient,A,Zone::Hand);let stable=g.object(card).unwrap().stable_id;

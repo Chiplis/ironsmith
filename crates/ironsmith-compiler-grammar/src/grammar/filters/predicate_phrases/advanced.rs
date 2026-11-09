@@ -391,6 +391,64 @@ fn parse_turn_history_intervening_predicate(
             )),
         ))));
     }
+    // "if it was cast using \"relocate\"": the triggering object's cast
+    // receipt records the named custom price. The quotes make the name an
+    // explicit custom identity, never an official keyword.
+    if tokens.iter().any(|token| token.kind == crate::lexer::TokenKind::Quote)
+        && let ["it" | "that" | "they", rest @ ..] = words.as_slice()
+        && let ["was" | "were", "cast", "using", name @ ..] = rest
+        && !name.is_empty()
+    {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(Some(PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::TriggeringObjectPaidCustomKeyword(name.join(" ").to_ascii_lowercase()),
+        )));
+    }
+    // "as long as it entered from a graveyard or was cast from a graveyard
+    // this turn" (Unerring Killer): the source's own entry and cast history
+    // during this turn.
+    if let ["it", "entered", "from", "a", entered_zone, rest @ ..] = words.as_slice()
+        && let Some(entered_zone) = crate::util::parse_zone_word(entered_zone)
+    {
+        let entered = PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::SourceEnteredFromZoneThisTurn(entered_zone),
+        );
+        let predicate = match rest {
+            ["this", "turn"] => Some(entered),
+            ["or", "was", "cast", "from", "a", cast_zone, "this", "turn"] => crate::util::parse_zone_word(cast_zone)
+                .map(|cast_zone| PredicateAst::Or(
+                    Box::new(entered),
+                    Box::new(PredicateAst::TurnHistory(
+                        TurnHistoryPredicateAst::SourceWasCastFromZoneThisTurn(cast_zone),
+                    )),
+                )),
+            _ => None,
+        };
+        if let Some(predicate) = predicate {
+            crate::word_claims::claim_tokens(tokens);
+            return Ok(Some(predicate));
+        }
+    }
+    if let ["it", "was", "cast", "from", "a", cast_zone, "this", "turn"] = words.as_slice()
+        && let Some(cast_zone) = crate::util::parse_zone_word(cast_zone)
+    {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(Some(PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::SourceWasCastFromZoneThisTurn(cast_zone),
+        )));
+    }
+    // "if it was an object of the revive action this turn": preprocessing
+    // spells "if it was revived" this way only for an action the card itself
+    // declares ("Perform the revive action ..."); an undeclared participle
+    // is never guessed.
+    if let ["it", "was", "an", "object", "of", "the", label @ .., "action", "this", "turn"] = words.as_slice()
+        && !label.is_empty()
+    {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(Some(PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::SourceWasNamedActionObjectThisTurn(label.join(" ")),
+        )));
+    }
     // "If it entered from your library [or was cast from your library]"
     // (Fblthp, the Lost): the triggering entry's origin zone, or the zone
     // the entering permanent was cast from as a spell (CR 603.6a).
@@ -2440,7 +2498,24 @@ fn parse_paid_named_label_without_cost_noun(tokens: &[OwnedLexToken]) -> Option<
     let (words, this_turn) = if crate::word_primitives::ends_with(words, &["this", "turn"]) {
         (&words[..words.len() - 2], true)
     } else { (words, false) };
+    // "if you cast it for its showcase cost" (For the Court of the Queen):
+    // the referenced spell's own cast receipt names the paid cost.
+    if let ["you", "cast", "it", "for", "its", label, "cost"] = words
+        && !matches!(*label, "mana" | "life" | "alternative" | "additional")
+        && label.chars().all(|ch| ch.is_ascii_alphabetic())
+        && !this_turn
+    {
+        let filter = crate::filter::ObjectFilter {
+            cast_paid_label: Some(crate::cost::OptionalCostRef::from(named_paid_cost_label_from_word(label)?)),
+            ..Default::default()
+        };
+        crate::word_claims::claim_tokens(tokens);
+        return Some(PredicateAst::ItMatches(filter));
+    }
     let (possessive, label, negated) = match words {
+        // "If you cast this spell for its bloodprice": the same paid receipt
+        // for this spell's own named price.
+        ["you", "cast", "this", "spell", "for", "its", label] | ["you", "cast", "this", "spell", "for", "its", label, "cost"] => ("its", *label, false),
         [possessive, label, "was", "paid"] => (*possessive, *label, false),
         [possessive, label, "wasnt", "paid"] | [possessive, label, "was", "not", "paid"] => (*possessive, *label, true),
         _ => return None,
@@ -3679,6 +3754,27 @@ pub(super) fn parse_this_spell_paid_named_label_shape(
             parse_named_spell_label_action_shape(tokens, "Tribute", &["was", "not", "paid"], true)
         })
         .or_else(|| parse_behold_spell_label_shape(tokens))
+        .or_else(|| parse_named_payment_reference_shape(tokens))
+}
+
+/// "backing was collected" (custom CR 701.106c): a named payment action
+/// ("collect backing") performed as this spell's optional additional cost,
+/// referred to by its object noun and participle.
+fn parse_named_payment_reference_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(clean);
+    let [noun, "was", participle] = words.as_slice() else { return None };
+    if participle.len() <= 4 || !participle.ends_with("ed")
+        || !noun.chars().all(|ch| ch.is_ascii_alphabetic())
+        || matches!(*noun, "it" | "that" | "this" | "he" | "she" | "they" | "mana" | "damage"
+            | "life" | "something" | "anything" | "nothing" | "one" | "evidence" | "gift" | "tribute")
+    {
+        return None;
+    }
+    crate::word_claims::claim_tokens(clean);
+    Some(PredicateAst::ThisSpellPaidLabel(crate::cost::OptionalCostRef::new(
+        crate::cost::OptionalCostKind::Additional,
+    )))
 }
 
 pub(super) fn parse_this_spell_was_kicked_with_cost_shape(
@@ -6945,12 +7041,18 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         if let Some(label)=words.strip_prefix(&["the"]).and_then(|words|words.strip_suffix(&["was","failed"]))
             && !label.is_empty() && label.iter().all(|word|word.chars().all(|ch|ch.is_alphabetic()))
         {crate::word_claims::claim_tokens(tokens);return Ok(PredicateAst::NamedPaymentOutcome {label:label.join(" "),paid:false,payer:None});}
+        // "if an opponent passed the trial": the chosen player paid it.
+        if let Some(label)=words.strip_prefix(&["an","opponent","passed","the"])
+            && !label.is_empty() && label.iter().all(|word|word.chars().all(|ch|ch.is_alphabetic()))
+        {crate::word_claims::claim_tokens(tokens);return Ok(PredicateAst::NamedPaymentOutcome {label:label.join(" "),paid:true,payer:None});}
         if let Some(failed)=words.iter().position(|word|*word=="failed")
             && words.get(failed+1)==Some(&"the") && failed+2<words.len()
         {
             let payer=match &words[..failed] {
                 ["that","creature's","controller"]|["that","creatures","controller"]=>Some(PlayerAst::ItsController),
-                ["that","player"]=>Some(PlayerAst::That),
+                // "Target player discards two cards if they failed the trial":
+                // the referenced player.
+                ["that","player"]|["they"]=>Some(PlayerAst::That),
                 _=>None,
             };
             if let Some(payer)=payer {crate::word_claims::claim_tokens(tokens);return Ok(PredicateAst::NamedPaymentOutcome {label:words[failed+2..].join(" "),paid:false,payer:Some(payer)});}
@@ -7099,6 +7201,27 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
             && let Some(amount) = crate::util::parse_number_word_u32(amount_word)
         {
             return Ok(PredicateAst::ColorsOfManaSpentToActivateThisAbility { amount, exactly });
+        }
+        // "if three or more colors of mana were spent to cast it": distinct
+        // colors in the triggering spell's payment.
+        if let Some(amount_word) = amount_word
+            && matches!(
+                rest,
+                ["colors", "of", "mana", "were", "spent", "to", "cast", "it"]
+                    | ["colors", "of", "mana", "were", "spent", "to", "cast", "that", "spell"]
+            )
+            && let Some(amount) = crate::util::parse_number_word_u32(amount_word)
+        {
+            crate::word_claims::claim_tokens(tokens);
+            return Ok(PredicateAst::ValueComparison {
+                left: Value::ColorsOfManaSpentToCastTriggeringObject,
+                operator: if exactly {
+                    crate::effect::ValueComparisonOperator::Equal
+                } else {
+                    crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+                },
+                right: Value::Fixed(amount as i32),
+            });
         }
     }
     // "If that opponent's speed is greater than each other player's speed"
@@ -7272,11 +7395,21 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     // "Another" excludes the exact resolving spell, not all casts of its name.
     if let Some(named) = tokens.iter().position(|token| token.is_word("named")) {
         let prefix = crate::lexer::parser_token_word_refs(&tokens[..named]);
+        // "you've cast four or more spells named Incumbency this game": the
+        // same named-cast history with an explicit minimum count.
+        let mut count = 1u32;
         let excluding_source = match prefix.as_slice() {
             ["youve" | "you've", "cast", "another", "spell"]
             | ["you", "have", "cast", "another", "spell"] => Some(true),
             ["youve" | "you've", "cast", "a", "spell"]
             | ["you", "have", "cast", "a", "spell"] => Some(false),
+            ["youve" | "you've", "cast", amount, "or", "more", "spells"]
+            | ["you", "have", "cast", amount, "or", "more", "spells"] => {
+                crate::util::parse_number_word_u32(amount).map(|amount| {
+                    count = amount;
+                    false
+                })
+            }
             _ => None,
         };
         if let Some(excluding_source) = excluding_source
@@ -7289,8 +7422,9 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
                 None
             } else { Some(crate::lexer::render_token_slice(name_tokens).trim().to_string()) };
             if name.as_ref().is_none_or(|name| !name.is_empty()) {
+                crate::word_claims::claim_tokens(tokens);
                 return Ok(PredicateAst::Bound(Box::new(crate::ConditionExpr::YouCastSpellNamedThisGameAtLeast {
-                    name, count: 1, excluding_source,
+                    name, count, excluding_source,
                 })));
             }
         }
@@ -7802,3 +7936,4 @@ mod named_payment_word_ownership_tests {
         }
     }
 }
+

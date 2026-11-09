@@ -2896,6 +2896,8 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     // Recovering the authored name must not undo preprocessing's he/she → it
     // normalization in the effect body (for example, a named source conniving).
     let rewritten = crate::preprocess::rewrite_personal_pronouns_tokens(&rewritten);
+    // The same elided counter threshold the line normalizer completes.
+    let rewritten = crate::preprocess::rewrite_elliptical_counter_threshold_tokens(&rewritten);
 
     for candidate in this_permanent_candidates(rewritten) {
         let rewritten_line = rewrite_line_tokens(line, &candidate);
@@ -4753,7 +4755,15 @@ pub fn recognize_document_with_context(
                     idx += 1;
                     continue;
                 }
-                if let Some(effects) = crate::effect_sentences::parse_described_effect_bundle(&line.info.source_tokens)? {
+                // A triggered line keeps its trigger: its effect body reaches
+                // the same described-bundle readers through trigger parsing.
+                let leads_with_trigger = {
+                    let words = crate::lexer::parser_token_word_refs(&line.tokens);
+                    matches!(words.first(), Some(&"when" | &"whenever"))
+                        || words.starts_with(&["at", "the", "beginning"])
+                };
+                if !leads_with_trigger
+                    && let Some(effects) = crate::effect_sentences::parse_described_effect_bundle(&line.info.source_tokens)? {
                     lines.push(RecognizedLine::Statement(RecognizedStatementLine {
                         info: line.info.clone(), text: line.info.raw_line.clone(),
                         parse_tokens: line.tokens.clone(), parse_groups: vec![line.tokens.clone()],

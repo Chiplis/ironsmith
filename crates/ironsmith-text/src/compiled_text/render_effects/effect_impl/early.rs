@@ -1756,7 +1756,11 @@ if filter.zone == Some(Zone::Hand)
             && {
                 let mut bare = for_each.filter.clone();
                 bare.tagged_constraints.clear();
-                bare.zone = None;
+                // CR 110.4c: a battlefield zone is the authored noun
+                // "permanent" ("For each permanent chosen this way").
+                if bare.zone != Some(Zone::Battlefield) {
+                    bare.zone = None;
+                }
                 bare == ObjectFilter::default()
             }
         {
@@ -3717,6 +3721,10 @@ if filter.zone == Some(Zone::Hand)
     if let Some(choose_color) = effect.downcast_ref::<crate::effects::ChooseColorEffect>() {
         let chooser = describe_player_filter(&choose_color.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
+        if let Some(among) = &choose_color.among {
+            let among = pluralize_noun_phrase(strip_leading_article(&among.description()));
+            return format!("{chooser} {choose_verb} a color from among {among}");
+        }
         return format!("{chooser} {choose_verb} a color");
     }
     if let Some(choose_land_type) = effect.downcast_ref::<crate::effects::ChooseLandTypeEffect>() {
@@ -3903,6 +3911,15 @@ if filter.zone == Some(Zone::Hand)
         effect.downcast_ref::<crate::effects::MoveToLibraryTopOrBottomChoiceEffect>()
     {
         let target = describe_choose_spec(&move_choice.target);
+        if let Some(value) = &move_choice.top_position_value
+            && move_choice.chooser.is_none()
+        {
+            return format!(
+                "{} owner puts it on the bottom of their library or just beneath the top {} cards of their library",
+                describe_possessive_choose_spec(&move_choice.target),
+                describe_value(value)
+            );
+        }
         if move_choice.top_position > 0 && move_choice.chooser.is_none() {
             let position = match move_choice.top_position + 1 {
                 2 => "second".to_string(),

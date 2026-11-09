@@ -35,7 +35,7 @@ pub fn parse_delayed_next_combat_phase_this_turn_sentence(
                 one_shot: true,
                 duration: crate::effect::Until::Forever,
                 either_of_watched_objects: false,
-                while_any_tagged_object_in_zone: None, source_collection_scope: None,
+                while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
             },
         )]));
     }
@@ -630,7 +630,7 @@ fn parse_unbounded_next_cast_sentence(tokens:&[OwnedLexToken])->Result<Option<Ve
  Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration{
   trigger,effects,one_shot:true,duration:crate::effect::Until::Forever,
   either_of_watched_objects:false,while_any_tagged_object_in_zone:None,
-  source_collection_scope:None,
+  source_collection_scope:None, source_absence_state: false,
  })]))
 }
 
@@ -653,7 +653,7 @@ fn parse_unbounded_referenced_zone_event(tokens:&[OwnedLexToken])->Result<Option
  Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration{
   trigger,effects,one_shot:true,duration:crate::effect::Until::Forever,
   either_of_watched_objects:false,while_any_tagged_object_in_zone:None,
-  source_collection_scope:None,
+  source_collection_scope:None, source_absence_state: false,
  })]))
 }
 
@@ -710,7 +710,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
                 trigger, effects, one_shot: true,
                 duration: crate::effect::Until::Forever,
-                either_of_watched_objects: false, while_any_tagged_object_in_zone: None, source_collection_scope: None,
+                either_of_watched_objects: false, while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
             })]));
         }
     }
@@ -1248,6 +1248,20 @@ pub fn parse_delayed_when_that_leaves_battlefield_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some((trigger_tokens, effect_tokens)) = delayed_shapes::parse_delayed_source_leaves_shape(tokens) {
+        // "When Engulfing Incubus is no longer on the battlefield, ..." is
+        // the source's own leave (CR 603.10a): read it as the same
+        // source-leaves trigger, which watches that exact incarnation.
+        let words = crate::lexer::parser_token_word_refs(trigger_tokens);
+        let normalized;
+        let source_absence_state = words.ends_with(&["is", "no", "longer", "on", "the", "battlefield"]);
+        let trigger_tokens = if source_absence_state {
+            let keep = trigger_tokens.len().checked_sub(6).ok_or_else(|| CardTextError::ParseError("delayed source leave without a subject".into()))?;
+            crate::word_claims::claim_tokens(&trigger_tokens[keep..]);
+            let mut rewritten = trigger_tokens[..keep].to_vec();
+            rewritten.extend(crate::lexer::lex_line("leaves the battlefield", 0)?);
+            normalized = rewritten;
+            normalized.as_slice()
+        } else { trigger_tokens };
         let trigger = crate::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(trigger_tokens)?;
         let effects = parse_effect_chain(effect_tokens)?;
         return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
@@ -1257,6 +1271,7 @@ pub fn parse_delayed_when_that_leaves_battlefield_sentence(
             duration: crate::effect::Until::Forever,
             either_of_watched_objects: false,
             while_any_tagged_object_in_zone: None, source_collection_scope: None,
+            source_absence_state,
         })]));
     }
     let Some(shape) = delayed_shapes::parse_delayed_tagged_leaves_shape(tokens) else {

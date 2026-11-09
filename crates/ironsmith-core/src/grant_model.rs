@@ -620,6 +620,11 @@ pub struct GrantSpec<SA, E, C, Cond> {
     /// Execution uses the typed filter, origin, timing and use-limit fields.
     #[cfg_attr(feature = "serde", serde(default))]
     pub filtered_zone_surface: Option<String>,
+    /// "if you spend N or less mana to cast it" (custom permission rider):
+    /// this permission allows the cast only while the spell's total mana cost
+    /// is at most N once that total is determined (CR 601.2f).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub cast_max_total_mana: Option<u32>,
 }
 
 /// A filter naming exactly the cards exiled with the granting source (any
@@ -664,6 +669,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             instant_timing: false,
             may_look_at_top: false,
             filtered_zone_surface: None,
+            cast_max_total_mana: None,
         }
     }
 
@@ -711,6 +717,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             instant_timing: self.instant_timing,
             may_look_at_top: self.may_look_at_top,
             filtered_zone_surface: self.filtered_zone_surface,
+            cast_max_total_mana: self.cast_max_total_mana,
         })
     }
 
@@ -840,6 +847,7 @@ where
             instant_timing: false,
             may_look_at_top: false,
             filtered_zone_surface: None,
+            cast_max_total_mana: None,
         }
     }
 
@@ -929,6 +937,7 @@ where
             instant_timing: false,
             may_look_at_top: false,
             filtered_zone_surface: None,
+            cast_max_total_mana: None,
         }
     }
 }

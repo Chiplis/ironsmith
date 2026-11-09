@@ -6,8 +6,17 @@ pub(super) fn continuous_duration(input: &mut WordSliceInput<'_>) -> WResult<Unt
         simple_turn_duration,
         source_remains_on_battlefield,
         affected_object_tapped,
+        beginning_of_your_next_end_step,
     ))
     .parse_next(input)
+}
+
+/// "until the beginning of your next end step" (Fhinon, the Dirgechanter).
+fn beginning_of_your_next_end_step(input: &mut WordSliceInput<'_>) -> WResult<Until> {
+    for word in ["until", "the", "beginning", "of", "your", "next", "end", "step"] {
+        primitives::word_slice_exact(word).parse_next(input)?;
+    }
+    Ok(Until::YourNextEndStep)
 }
 
 fn affected_object_tapped(input: &mut WordSliceInput<'_>) -> WResult<Until> {

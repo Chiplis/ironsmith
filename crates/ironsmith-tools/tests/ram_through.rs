@@ -111,7 +111,9 @@ fn ram(trample: bool) -> (Zone, i32, u32) {
         &mut dm,
     );
     for _ in 0..16 {
-        if !game.stack.is_empty() || result.is_err() {
+        // CR 601.2a: the spell moves to the stack when announced; casting
+        // is complete only once the pending cast is gone.
+        if (state.pending_cast.is_none() && !game.stack.is_empty()) || result.is_err() {
             break;
         }
         let Ok(GameProgress::NeedsDecisionCtx(ctx)) = result else {

@@ -570,7 +570,46 @@ fn split_escapes_with_enters_this_way_line(line: &str) -> Option<Vec<String>> {
     ])
 }
 
+fn split_alternative_price_paid_label_rider(line: &str) -> Option<Vec<String>> {
+    const PRICE_END: &str = " rather than pay this spell's mana cost. ";
+    let lower = line.to_ascii_lowercase();
+    if lower.len() != line.len() || !lower.starts_with("you may pay ") {
+        return None;
+    }
+    let end = lower.find(PRICE_END)?;
+    let rest = &line[end + PRICE_END.len()..];
+    let rest_lower = rest.to_ascii_lowercase();
+    let label = rest_lower.strip_prefix("if its ")?.split_once(" cost was paid, ")?.0;
+    if label.is_empty() || label.contains(' ') || line[..end].contains('.') {
+        return None;
+    }
+    Some(vec![format!("{}.", line[..end + PRICE_END.len() - 2].trim()), rest.trim().to_string()])
+}
+
+/// "You may <payment> as an additional cost to cast this spell." is the
+/// postposed wording of "As an additional cost to cast this spell, you may
+/// <payment>." (an optional additional cost, CR 601.2b). A following "It
+/// costs {1} less ..." names this spell.
+fn front_postposed_optional_additional_cost(line: &str) -> Option<String> {
+    const TAIL: &str = " as an additional cost to cast this spell.";
+    let rest = line.strip_prefix("You may ")?;
+    let at = rest.find(TAIL)?;
+    let payment = &rest[..at];
+    if payment.is_empty() || payment.contains(". ") {
+        return None;
+    }
+    let follow = &rest[at + TAIL.len()..];
+    let follow = follow
+        .strip_prefix(" It costs ")
+        .map_or_else(|| follow.to_string(), |tail| format!(" This spell costs {tail}"));
+    Some(format!("As an additional cost to cast this spell, you may {payment}.{follow}"))
+}
+
 fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<String> {
+    if let Some(rewritten) = front_postposed_optional_additional_cost(line) {
+        let tokens = stage_tokens(&rewritten).unwrap_or_default();
+        return split_parse_line_variants(&rewritten, &tokens);
+    }
     // An actual-action receipt belongs to its selected optional cost. Ask
     // the same typed reader used by cost materialization before the ordinary
     // additional-cost / resolution-sentence splitter discards that scope.
@@ -626,6 +665,13 @@ fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<S
         return vec![rewritten];
     }
     if let Some(lines) = split_escapes_with_enters_this_way_line(line) {
+        return lines;
+    }
+    // "You may pay {C} rather than pay this spell's mana cost. If its <label>
+    // cost was paid, <instructions>" (custom Showcase): the alternative
+    // price is a casting permission; the paid-label sentence is the spell's
+    // own resolution rider, exactly as when it is printed on its own line.
+    if let Some(lines) = split_alternative_price_paid_label_rider(line) {
         return lines;
     }
     // Separate the static tapped-entry ability from a following entry program.
@@ -2469,6 +2515,143 @@ fn rewrite_trailing_trigger_only_if_line(text: &str) -> (String, bool) {
     (format!("{intro}, if {condition}, {body}."), true)
 }
 
+/// `Distribute N counters among permanents you control. If they aren't
+/// creatures, tap them and they become 0/0 creatures in addition to their
+/// other types.` (Rouse): the condition and instructions apply to each
+/// recipient separately, the per-object form the complete reader owns.
+/// `cards exiled by it` / `exiled by <this card>`: the custom spelling of
+/// the linked-exile relation `exiled with <source>` (CR 607.2a).
+fn rewrite_exiled_by_source_line(text: &str, names: &[&str]) -> String {
+    let lower = text.to_ascii_lowercase();
+    if !lower.contains("exiled by ") {
+        return text.to_string();
+    }
+    let mut referents: Vec<String> = vec!["it".into(), "this ".into()];
+    for name in names {
+        let name = name.trim().to_ascii_lowercase();
+        if !name.is_empty() { referents.push(name); }
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.to_ascii_lowercase().find("exiled by ") {
+        let after = &rest[at + "exiled by ".len()..];
+        let after_lower = after.to_ascii_lowercase();
+        let source_ref = referents.iter().any(|referent| {
+            after_lower.starts_with(referent.as_str())
+                && (referent.ends_with(' ')
+                    || after_lower[referent.len()..].chars().next().is_none_or(|ch| !ch.is_alphanumeric()))
+        });
+        out.push_str(&rest[..at]);
+        out.push_str(if source_ref { "exiled with " } else { &rest[at..at + "exiled by ".len()] });
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Custom CR 701.101: "audition for <quality> [or for <quality>]" creates a
+/// 1/1 colorless Construct Actor creature token or one of that quality's
+/// Role tokens. Written as the named audition program whose original menu
+/// the "perform its mode numbered N" modifiers read.
+pub(crate) fn rewrite_audition_line(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    if !lower.contains("audition for ") { return text.to_string(); }
+    fn roles(quality: &str) -> Option<&'static [&'static str]> {
+        Some(match quality {
+            "white" => &["Cleric", "Scout"],
+            "blue" => &["Warlock", "Wizard"],
+            "black" => &["Cleric", "Warlock"],
+            "red" => &["Wizard", "Warrior"],
+            "green" => &["Scout", "Warrior"],
+            _ => return None,
+        })
+    }
+    let mut out = String::with_capacity(text.len() * 2);
+    let mut rest = text;
+    loop {
+        let rest_lower = rest.to_ascii_lowercase();
+        let Some(at) = rest_lower.find("audition for ") else { out.push_str(rest); break; };
+        // Only the instruction, never a quoted name or "auditions for".
+        if at > 0 && rest_lower.as_bytes()[at - 1].is_ascii_alphanumeric() {
+            out.push_str(&rest[..at + 1]);
+            rest = &rest[at + 1..];
+            continue;
+        }
+        let after = &rest_lower[at + "audition for ".len()..];
+        let first: String = after.chars().take_while(|ch| ch.is_ascii_alphabetic()).collect();
+        let Some(mut kinds) = roles(&first).map(|roles| roles.to_vec()) else {
+            out.push_str(&rest[..at + 1]);
+            rest = &rest[at + 1..];
+            continue;
+        };
+        let mut consumed = "audition for ".len() + first.len();
+        let tail = &after[first.len()..];
+        if let Some(second_tail) = tail.strip_prefix(" or for ") {
+            let second: String = second_tail.chars().take_while(|ch| ch.is_ascii_alphabetic()).collect();
+            if let Some(more) = roles(&second) {
+                for role in more { if !kinds.contains(role) { kinds.push(role); } }
+                consumed += " or for ".len() + second.len();
+            }
+        }
+        kinds.sort_unstable();
+        // The Construct Actor's "Actor" is the audition rules' creature type.
+        let _ = ironsmith_core::custom_subtypes::declare_type_line_subtype(
+            "actor", ironsmith_core::types::SubtypeFamily::Creature);
+        let mut modes = vec!["[create a 1/1 colorless Construct Actor creature token]".to_string()];
+        modes.extend(kinds.iter().map(|role| format!("[create a {role} Role token attached to a creature you control]")));
+        out.push_str(&rest[..at]);
+        out.push_str(&format!("perform the audition action as follows: [choose one of the following: {}]", modes.join(" or ")));
+        rest = &rest[at + consumed..];
+        // "audition for green, then audition for green": each operation is
+        // its own complete instruction.
+        if rest.to_ascii_lowercase().starts_with(", then audition for ") {
+            out.push_str(". ");
+            rest = &rest[", then ".len()..];
+        }
+    }
+    out
+}
+
+fn rewrite_distributed_recipients_type_condition_line(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    if !lower.contains("distribute ") {
+        return text.to_string();
+    }
+    let Some(start) = ["if they aren't creatures, ", "if they aren’t creatures, ", "if they arent creatures, "]
+        .iter()
+        .find_map(|marker| lower.find(marker).map(|index| (index, marker.len())))
+    else {
+        return text.to_string();
+    };
+    let (index, marker_len) = start;
+    let end = lower[index..].find('.').map_or(lower.len(), |offset| index + offset);
+    let body = &lower[index + marker_len..end];
+    let mut rewritten = format!(" {body} ");
+    for (from, to) in [
+        (" them ", " it "),
+        (" they become ", " it becomes "),
+        (" they get ", " it gets "),
+        (" they gain ", " it gains "),
+        (" creatures in addition to their other types ", " creature in addition to its other types "),
+        (" their ", " its "),
+    ] {
+        rewritten = rewritten.replace(from, to);
+    }
+    // "they become 0/0 creatures" -> "it becomes a 0/0 creature".
+    let rewritten = match rewritten.find(" it becomes ") {
+        Some(at) if rewritten[at + " it becomes ".len()..].starts_with(|ch: char| ch.is_ascii_digit()) => {
+            format!("{} it becomes a {}", &rewritten[..at], &rewritten[at + " it becomes ".len()..])
+        }
+        _ => rewritten,
+    };
+    format!(
+        "{}for each of those permanents that isn't a creature, {}{}",
+        &text[..index],
+        rewritten.trim(),
+        &text[end..]
+    )
+}
+
 fn rewrite_trailing_instead_if_spell_label_line(text: &str) -> String {
     const MARKER: &str = " instead if this spell ";
     let Some(marker_idx) = text.find(MARKER) else {
@@ -2675,6 +2858,9 @@ fn resized_char_map_for_rewrite(original_map: &[usize], previous: &str, normaliz
     if let Some(mapped) = word_substitution_char_map(original_map, &before, &after) {
         return mapped;
     }
+    if let Some(mapped) = separate_insertions_char_map(original_map, &before, &after) {
+        return mapped;
+    }
     let mut prefix = 0;
     while prefix < before.len().min(after.len()) && before[prefix] == after[prefix] { prefix += 1; }
     let mut suffix = 0;
@@ -2705,6 +2891,53 @@ fn resized_char_map_for_rewrite(original_map: &[usize], previous: &str, normaliz
     let source_suffix = before.len() - suffix;
     mapped.extend((source_suffix..before.len()).map(|i| original_map.get(i).copied().unwrap_or(fill)));
     mapped
+}
+
+/// The char map for a rewrite that edits short runs at two or more separate
+/// places (a card name replaced by "this", spaced closing quotes). A single
+/// prefix/suffix diff would fill everything between the first and last edit
+/// with one position; aligning each run keeps the text between edits at its
+/// authored positions, and a replaced run maps onto the run it replaced.
+/// `None` when an edit is not short, and when there is only one edit (the
+/// caller's diff is exact then).
+fn separate_insertions_char_map(original_map: &[usize], before: &[char], after: &[char]) -> Option<Vec<usize>> {
+    const MAX_RUN: usize = 24;
+    const RESYNC: usize = 4;
+    if before == after || original_map.len() != before.len() {
+        return None;
+    }
+    let resyncs = |i: usize, j: usize| {
+        let len = RESYNC.min(before.len() - i).min(after.len() - j);
+        (i + len == before.len() && j + len == after.len() || len == RESYNC)
+            && before[i..i + len] == after[j..j + len]
+    };
+    let (mut i, mut j, mut edits) = (0, 0, 0);
+    let mut mapped = Vec::with_capacity(after.len());
+    while j < after.len() || i < before.len() {
+        if i < before.len() && j < after.len() && before[i] == after[j] {
+            mapped.push(original_map[i]);
+            i += 1;
+            j += 1;
+            continue;
+        }
+        // The smallest edit (removed, inserted) after which both sides agree.
+        let (removed, inserted) = (1..=2 * MAX_RUN).find_map(|total| {
+            (0..=total.min(MAX_RUN)).find_map(|inserted| {
+                let removed = total - inserted;
+                (removed <= MAX_RUN && i + removed <= before.len() && j + inserted <= after.len()
+                    && resyncs(i + removed, j + inserted))
+                    .then_some((removed, inserted))
+            })
+        })?;
+        edits += 1;
+        let fill = original_map.get(i).or(original_map.last()).copied().unwrap_or(0);
+        mapped.extend((0..inserted).map(|k| {
+            if removed == 0 { fill } else { original_map[i + k.min(removed - 1)] }
+        }));
+        i += removed;
+        j += inserted;
+    }
+    (edits > 1).then_some(mapped)
 }
 
 /// The char map for a rewrite that only substitutes whole words in place:
@@ -2930,11 +3163,51 @@ pub fn preprocess_document(
     preprocess_document_with_provenance(card, text, provenance)
 }
 
+thread_local! {
+    /// The named actions the card being preprocessed declares ("Perform the
+    /// revive action ..."), lowercase labels.
+    static DECLARED_NAMED_ACTIONS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The labels of every "perform the <label> action" in `text`.
+fn declared_named_action_labels(text: &str) -> Vec<String> {
+    let lower = text.to_ascii_lowercase();
+    let mut labels = Vec::new();
+    let mut rest = lower.as_str();
+    while let Some(at) = rest.find("perform the ") {
+        rest = &rest[at + "perform the ".len()..];
+        if let Some(end) = rest.find(" action") {
+            let label = &rest[..end];
+            let words = label.split(' ').count();
+            if !label.is_empty() && words <= 3 && label.chars().all(|ch| ch.is_ascii_alphabetic() || ch == ' ' || ch == '-')
+                && !labels.iter().any(|known| known == label)
+            {
+                labels.push(label.to_string());
+            }
+        }
+    }
+    labels
+}
+
+/// Restores the enclosing document's declared actions when a nested
+/// preprocessing pass ends.
+struct DeclaredNamedActionsScope(Vec<String>);
+impl Drop for DeclaredNamedActionsScope {
+    fn drop(&mut self) {
+        let previous = std::mem::take(&mut self.0);
+        DECLARED_NAMED_ACTIONS.with(|labels| *labels.borrow_mut() = previous);
+    }
+}
+
 pub fn preprocess_document_with_provenance(
     mut card: CardBuilder,
     text: &str,
     mut provenance: ProvenanceStore,
 ) -> Result<PreprocessedDocument, CardTextError> {
+    let declared = declared_named_action_labels(text);
+    let _declared_scope = DeclaredNamedActionsScope(
+        DECLARED_NAMED_ACTIONS.with(|labels| std::mem::replace(&mut *labels.borrow_mut(), declared)),
+    );
     let cst =
         crate::front_end::parse_document_cst(provenance.source().id, text, card.name_ref().trim())?;
     for node in cst.lines.iter().flat_map(|line| &line.nodes) {
@@ -3022,9 +3295,161 @@ pub fn preprocess_document_with_provenance(
         short_name: &SelfReferenceName,
         preserve_source_surfaces: bool,
         typed_subject: &str,
+        sibling_face_name: Option<(&str, &str)>,
         annotations: &mut ParseAnnotations,
         provenance: &mut ProvenanceStore,
     ) -> Result<Option<PreprocessedLine>, CardTextError> {
+        // A linked face naming its sibling face in full ("put a loyalty
+        // counter on Reytali, Song of the Sand" on Reytali of Endless Muses)
+        // names this same object (CR 711.4b: one object, two faces). Every
+        // stream of the line, authored and normalized, reads the one name.
+        let sibling_rewrite = sibling_face_name
+            .filter(|(other, _)| raw_line.contains(*other))
+            .map(|(other, own)| raw_line.replace(other, own));
+        let raw_line = sibling_rewrite.as_deref().unwrap_or(raw_line);
+        // A quoted rule that already ends its own sentence closes the outer
+        // one too: 'with "...: Draw a card.".' reads as 'with "...: Draw a
+        // card."' (the doubled period is punctuation, not an empty sentence).
+        // Only a mid-line occurrence separates two sentences; a line-final
+        // '".' keeps its authored surface.
+        // When the line has such a mid-line boundary, its final '".' closes
+        // the last sentence the same way.
+        let closed_quote = (raw_line.contains(".\". ") || raw_line.contains(".\u{201d}. "))
+            .then(|| {
+                let line = raw_line.replace(".\". ", ".\" ").replace(".\u{201d}. ", ".\u{201d} ");
+                let trimmed = line.trim_end();
+                if let Some(head) = trimmed.strip_suffix(".\".").or_else(|| trimmed.strip_suffix(".\u{201d}.")) {
+                    let close = if trimmed.ends_with(".\".") { ".\"" } else { ".\u{201d}" };
+                    format!("{head}{close}")
+                } else { line }
+            });
+        let raw_line = closed_quote.as_deref().unwrap_or(raw_line);
+        // "When you cast this spell for its pursuit cost, copy it." names the
+        // casting method by its alternative-cost name: the cast trigger with
+        // the intervening receipt condition 'if it was cast using "Pursuit"'.
+        let named_cast_trigger = raw_line.find("When you cast this spell for its ").and_then(|start| {
+            let after = &raw_line[start + "When you cast this spell for its ".len()..];
+            let (name, rest) = after.split_once(" cost, ")?;
+            (!name.is_empty() && name.chars().all(|ch| ch.is_alphabetic() || ch == '-'))
+                .then(|| format!("{}When you cast this spell, if it was cast using \"{name}\", {rest}", &raw_line[..start]))
+        });
+        let raw_line = named_cast_trigger.as_deref().unwrap_or(raw_line);
+        // "Untap that permanent unless it's a creature. If it is, tap it."
+        // (Migu's Totem): the elliptical "If it is," restates the preceding
+        // "unless it's <noun phrase>" test as its own condition.
+        let elliptical_if = raw_line.find(" unless it's ").and_then(|start| {
+            let after = &raw_line[start + " unless it's ".len()..];
+            let (noun, rest) = after.split_once(". If it is, ")?;
+            (!noun.is_empty() && noun.split(' ').count() <= 4 && !noun.contains(['.', ',']))
+                .then(|| format!("{} unless it's {noun}. If it's {noun}, {rest}", &raw_line[..start]))
+        });
+        let raw_line = elliptical_if.as_deref().unwrap_or(raw_line);
+        // "Once each turn, when you discard a card ..., <effect>." is the
+        // trigger with its once-each-turn limit (CR 603.2h).
+        let once_each_turn = raw_line.trim_start().strip_prefix("Once each turn, when ").and_then(|rest| {
+            let rest = rest.trim_end();
+            rest.ends_with('.').then(|| format!("When {rest} This ability triggers only once each turn."))
+        });
+        let raw_line = once_each_turn.as_deref().unwrap_or(raw_line);
+        // "<this> gets +2/+1 and is a Beast ... while it's tapped." is the
+        // static condition "As long as it's tapped, <this> gets ..." of one
+        // statement, not a duration on its last clause.
+        let trailing_while_state = ["tapped", "untapped"].iter().find_map(|state| {
+            let body = raw_line.trim_end().strip_suffix(&format!(" while it's {state}."))?;
+            let plain_static = !body.contains([':', '"', '.'])
+                && !["When", "Whenever", "At ", "As long"].iter().any(|head| body.starts_with(head));
+            plain_static.then(|| format!("As long as it's {state}, {body}."))
+        });
+        let raw_line = trailing_while_state.as_deref().unwrap_or(raw_line);
+        // "teach target creature [you control] <keyword>" is the keyword
+        // action its reminder text defines: choose the creature; if it has
+        // the keyword it gets a +1/+1 counter, otherwise a keyword counter;
+        // and a creature given a +1/+1 counter this way can't be blocked
+        // this turn.
+        let taught = ["Teach target creature ", "teach target creature "].iter().find_map(|head| {
+            let at = raw_line.find(head)?;
+            let rest = &raw_line[at + head.len()..];
+            let (scope, rest) = rest.strip_prefix("you control ").map_or(("", rest), |rest| (" you control", rest));
+            let keyword_end = rest.find(|ch: char| !ch.is_ascii_alphabetic()).unwrap_or(rest.len());
+            let keyword = &rest[..keyword_end];
+            let tail = &rest[keyword_end..];
+            (!keyword.is_empty() && (tail.is_empty() || tail.starts_with('.'))).then(|| {
+                let choose = if head.starts_with('T') { "Choose" } else { "choose" };
+                format!(
+                    "{}{choose} target creature{scope}. If it has {keyword}, put a +1/+1 counter on it. Otherwise, put a {keyword} counter on it. If you put a +1/+1 counter on it this way, it can't be blocked this turn{}",
+                    &raw_line[..at], tail
+                )
+            })
+        });
+        let raw_line = taught.as_deref().unwrap_or(raw_line);
+        // "Whenever you spend three or more colors of mana to cast a spell,
+        // <effect>": the cast trigger whose condition is that spell's payment.
+        let colors_spent_trigger = raw_line.strip_prefix("Whenever you spend ").and_then(|rest| {
+            let (amount, rest) = rest.split_once(" or more colors of mana to cast a spell, ")?;
+            (!amount.contains(' ')).then(|| format!(
+                "Whenever you cast a spell, if {amount} or more colors of mana were spent to cast it, {rest}"
+            ))
+        });
+        let raw_line = colors_spent_trigger.as_deref().unwrap_or(raw_line);
+        // "if it was revived": the participle of a named action this card
+        // declares is membership among that action's objects. Spell it
+        // explicitly so no reader guesses at an undeclared participle.
+        let declared_participle = DECLARED_NAMED_ACTIONS.with(|labels| {
+            labels.borrow().iter().find_map(|label| {
+                let participle = ironsmith_core::keyword_forms::derive_participle(label);
+                ["if it was ", "If it was "].iter().find_map(|head| {
+                    let phrase = format!("{head}{participle},");
+                    raw_line.contains(&phrase).then(|| raw_line.replacen(
+                        &phrase,
+                        &format!("{head}an object of the {label} action this turn,"),
+                        1,
+                    ))
+                })
+            })
+        });
+        let raw_line = declared_participle.as_deref().unwrap_or(raw_line);
+        // "Draw a card, gain 3 life, then If you control a Clique, <A>.
+        // Otherwise, <B>.": a capitalized "If" after "then" begins an inlined
+        // conditional program (a materialized mechanic), its own sentences
+        // after the instructions before it.
+        let spliced_conditional = raw_line.find(", then If ").map(|at| {
+            format!("{}. If {}", &raw_line[..at], &raw_line[at + ", then If ".len()..])
+        });
+        let raw_line = spliced_conditional.as_deref().unwrap_or(raw_line);
+        // "Look at the top three cards ... You may reveal a creature card and
+        // put it into your hand.": the revealed card is one of the cards
+        // looked at, as "from among them" says explicitly.
+        let elided_among = raw_line.contains("ook at the top ").then(|| {
+            raw_line.find(". You may reveal a ").and_then(|at| {
+                let rest = &raw_line[at + ". You may reveal a ".len()..];
+                let end = rest.find('.').unwrap_or(rest.len());
+                let sentence = &rest[..end];
+                let join = sentence.find(" card and put it into ")?;
+                (!sentence.contains(" from among ")).then(|| {
+                    let split = at + ". You may reveal a ".len() + join + " card".len();
+                    format!("{} from among them{}", &raw_line[..split], &raw_line[split..])
+                })
+            })
+        }).flatten();
+        let raw_line = elided_among.as_deref().unwrap_or(raw_line);
+        // "Activate this ability only <when>" is the older wording of the
+        // activation restriction "Activate only <when>" (CR 602.5b).
+        let older_activate_only = raw_line.contains("Activate this ability only ")
+            .then(|| raw_line.replace("Activate this ability only ", "Activate only "));
+        let raw_line = older_activate_only.as_deref().unwrap_or(raw_line);
+        // "onto the battlefield tapped and under your control" is the single
+        // entry state "tapped under your control", not a second instruction.
+        let tapped_and_under = raw_line.contains(" the battlefield tapped and under ")
+            .then(|| raw_line.replace(" the battlefield tapped and under ", " the battlefield tapped under "));
+        let raw_line = tapped_and_under.as_deref().unwrap_or(raw_line);
+        // "<it> must be blocked if able and must be blocked by two or more
+        // creatures if able" is two blocking requirements of one subject.
+        let paired_block_requirement = raw_line.find(" must be blocked if able and must be blocked ").map(|at| {
+            let subject = raw_line[..at].trim();
+            let rest = &raw_line[at + " must be blocked if able and must be blocked ".len()..];
+            format!("{subject} must be blocked if able. {subject} must be blocked {rest}")
+        });
+        let raw_line = paired_block_requirement.as_deref().unwrap_or(raw_line);
         let source_tokens = authored_rules_tokens(raw_line.trim(), line_index)?;
         // The source lexer is authoritative about layout-only lines. Some
         // exported layout characters (such as U+200B) are skipped tokens but
@@ -3084,6 +3509,43 @@ pub fn preprocess_document_with_provenance(
         let expanded_normalized =
             rewrite_trailing_instead_if_spell_label_line(expanded_normalized.as_str());
         let expanded_normalized =
+            rewrite_distributed_recipients_type_condition_line(expanded_normalized.as_str());
+        // "Until end of turn, if <objects> would die, instead exile it and
+        // <instruction>." (That Fateful Tuesday): the timed replacement
+        // program form ("if ... would die this turn, do the following
+        // instead: [exile it; <instruction>]").
+        let expanded_normalized = {
+            let lower = expanded_normalized.to_ascii_lowercase();
+            let head = "until end of turn, if ";
+            if let Some(start) = lower.find(head)
+                && let Some(would) = lower[start..].find(" would die, instead exile it and ").map(|at| start + at)
+            {
+                let subject = &expanded_normalized[start + head.len()..would];
+                let rest_start = would + " would die, instead exile it and ".len();
+                let rest_end = lower[rest_start..].find('.').map(|at| rest_start + at).unwrap_or(lower.len());
+                format!("{}if {subject} would die this turn, do the following instead: [exile it; {}]{}",
+                    &expanded_normalized[..start], &expanded_normalized[rest_start..rest_end], &expanded_normalized[rest_end..])
+            } else { expanded_normalized }
+        };
+        // "non-Angel, non-God creatures": a comma between stacked "non-"
+        // modifiers of one noun is not a clause boundary.
+        let expanded_normalized = join_stacked_non_modifiers(expanded_normalized.as_str());
+        // "you lose 1 life, then audition for black": the audition is its
+        // own sequential instruction (custom CR 701.101).
+        let expanded_normalized = expanded_normalized.replace(", then audition for ", ". audition for ");
+        // "you may copy the exiled card and cast the copy without paying its
+        // mana cost" (custom Showcase's Bard): one optional instruction that
+        // casts a copy of that card, the same as "you may cast a copy of the
+        // exiled card without paying its mana cost".
+        let expanded_normalized = expanded_normalized.replace(
+            "you may copy the exiled card and cast the copy without paying its mana cost",
+            "you may cast a copy of the exiled card without paying its mana cost",
+        );
+        let expanded_normalized = rewrite_exiled_by_source_line(
+            expanded_normalized.as_str(),
+            &[full_name.text.as_str(), short_name.text.as_str()],
+        );
+        let expanded_normalized =
             rewrite_control_all_listed_line(expanded_normalized.as_str());
         let (expanded_normalized, trigger_only_intervening_if) =
             rewrite_trailing_trigger_only_if_line(expanded_normalized.as_str());
@@ -3124,6 +3586,18 @@ pub fn preprocess_document_with_provenance(
                 && authored.eq_ignore_ascii_case(&token.slice)
             {
                 token.set_literal_surface(authored);
+            }
+        }
+        // "Activate this ability only once per turn." is the activation limit
+        // "... only once each turn" (CR 602.5b); one spelling reaches readers.
+        for index in 1..tokens.len().saturating_sub(1) {
+            if tokens[index].is_word("per")
+                && tokens[index - 1].is_word("once")
+                && tokens[index + 1].is_word("turn")
+                && tokens[..index].iter().any(|token| token.is_word("activate"))
+            {
+                let span = tokens[index].span;
+                tokens[index] = OwnedLexToken::word("each", span);
             }
         }
         if crate::word_claims::line_audit_enabled() {
@@ -3204,6 +3678,12 @@ pub fn preprocess_document_with_provenance(
     }
 
     let card_name = card.name_ref().to_string();
+    // Only a transform-like sibling is the same object under another face;
+    // split halves and adventures name genuinely different spells.
+    let sibling_face_name = card.other_face_name_ref()
+        .filter(|other| card.linked_face_layout_ref() == crate::card::LinkedFaceLayout::TransformLike
+            && other.contains(' ') && !card_name.contains(*other))
+        .map(str::to_owned);
     let front_face_name = card_name
         .split(" // ")
         .next()
@@ -3443,6 +3923,7 @@ pub fn preprocess_document_with_provenance(
                 &short_name,
                 preserve_source_surfaces,
                 typed_subject,
+                sibling_face_name.as_deref().map(|other| (other, front_face_name.as_str())),
                 &mut annotations,
                 &mut provenance,
             )? {
@@ -3964,4 +4445,76 @@ mod opaque_status_name_alias_tests {
             assert_eq!(normalized.matches(&format!("the {label} status")).count(),2,"{normalized}");
         }
     }
+}
+
+/// "put a <kind> counter on <it>. Then if it has <N> or more, <rest>" =
+/// "... Then if it has <N> or more <kind> counters on it, <rest>" (Mina,
+/// Jeweled Minnow), on the authored tokens a named-source trigger rebuilds.
+pub(crate) fn rewrite_elliptical_counter_threshold_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let word = |index: usize| tokens.get(index).and_then(OwnedLexToken::as_word).map(str::to_ascii_lowercase);
+    for period in 0..tokens.len() {
+        if !tokens[period].is_period() { continue; }
+        // "then if it has <amount> or more ,"
+        let lead = period + 1;
+        let expected = ["then", "if", "it", "has"];
+        if !(0..4).all(|offset| word(lead + offset).as_deref() == Some(expected[offset])
+            || (offset == 2 && matches!(word(lead + 2).as_deref(), Some("she" | "he")))) { continue; }
+        let amount = lead + 4;
+        if word(amount).is_none() || word(amount + 1).as_deref() != Some("or") || word(amount + 2).as_deref() != Some("more") { continue; }
+        let comma = amount + 3;
+        if !tokens.get(comma).is_some_and(OwnedLexToken::is_comma) { continue; }
+        // "... put a|an <kind> counter on <object> ."
+        if period < 4 { continue; }
+        let object = word(period - 1);
+        if !matches!(object.as_deref(), Some("it" | "her" | "him" | "this")) { continue; }
+        if word(period - 2).as_deref() != Some("on") || word(period - 3).as_deref() != Some("counter") { continue; }
+        let Some(put) = (0..period).rev().find(|index| word(*index).as_deref() == Some("put")) else { continue };
+        if !matches!(word(put + 1).as_deref(), Some("a" | "an")) { continue; }
+        let kind: Vec<String> = (put + 2..period - 3).filter_map(|index| word(index)).collect();
+        if kind.is_empty() || kind.len() > 2 || kind.len() != period - 3 - (put + 2) { continue; }
+        let end = (comma..tokens.len()).find(|index| tokens[*index].is_period()).unwrap_or(tokens.len());
+        let mut out = tokens[..comma].to_vec();
+        // The counter's recipient is the same object the threshold reads.
+        if matches!(object.as_deref(), Some("her" | "him")) {
+            out[period - 1] = OwnedLexToken::word("it", tokens[period - 1].span);
+            crate::word_claims::claim_tokens(std::slice::from_ref(&tokens[period - 1]));
+        }
+        // The completed noun phrase repeats the preceding sentence's own
+        // words, so it carries their authored spans.
+        out.extend_from_slice(&tokens[put + 2..period - 3]);
+        out.push(OwnedLexToken::word("counters", tokens[period - 3].span));
+        out.push(tokens[period - 2].clone());
+        out.push(OwnedLexToken::word("it", tokens[period - 1].span));
+        for token in &tokens[comma..end] {
+            if token.as_word().is_some_and(|word| matches!(word.to_ascii_lowercase().as_str(), "her" | "him")) {
+                // The personal pronoun is read as that same object.
+                crate::word_claims::claim_tokens(std::slice::from_ref(token));
+                out.push(OwnedLexToken::word("it", token.span));
+            } else {
+                out.push(token.clone());
+            }
+        }
+        out.extend_from_slice(&tokens[end..]);
+        return out;
+    }
+    tokens.to_vec()
+}
+
+/// "non-angel, non-god creatures" = "non-angel non-god creatures".
+fn join_stacked_non_modifiers(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(", non-") {
+        let before = &rest[..at];
+        let previous_word = before.rsplit(' ').next().unwrap_or("");
+        out.push_str(before);
+        if previous_word.to_ascii_lowercase().starts_with("non-") {
+            out.push(' ');
+        } else {
+            out.push_str(", ");
+        }
+        rest = &rest[at + 2..];
+    }
+    out.push_str(rest);
+    out
 }

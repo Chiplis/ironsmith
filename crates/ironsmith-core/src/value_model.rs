@@ -1248,6 +1248,9 @@ pub enum Value {
     },
     /// Count a named optional payment on the exact referenced object receipt.
     TimesPaidLabelOf { object: Box<ChooseSpec>, reference: OptionalCostRef },
+    /// How many times matching players completed the named action in the
+    /// window ("for each time you catalyzed this turn"). Appended.
+    PlayerNamedActionCount { player: PlayerFilter, label: String, window: PlayerActionWindow },
 }
 
 impl Value {
@@ -2836,6 +2839,20 @@ pub enum TurnHistoryCondition {
         subject: String,
         producer: String,
     },
+    /// Append-only. "if it was cast using \"relocate\"": the triggering
+    /// object's cast receipt records the named custom price.
+    TriggeringObjectPaidCustomKeyword(String),
+    /// Append-only. "as long as it entered from a graveyard this turn": the
+    /// source's current incarnation entered the battlefield from that zone
+    /// during this turn (CR 400.7: a later zone change is a new object).
+    SourceEnteredFromZoneThisTurn(Zone),
+    /// Append-only. "... or was cast from a graveyard this turn": the source
+    /// object was cast from that zone during this turn.
+    SourceWasCastFromZoneThisTurn(Zone),
+    /// Append-only. "if it was revived": the source object is one of the
+    /// objects a completed custom named action (here "revive") was performed
+    /// with this turn.
+    SourceWasNamedActionObjectThisTurn(String),
 }
 
 /// Selects which captured representation of a tagged object is used when a

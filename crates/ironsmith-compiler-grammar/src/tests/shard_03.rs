@@ -703,17 +703,8 @@ pub(super) fn rewrite_typed_replacement_predicate_regression_shapes_preserve_sem
     };
     assert_eq!(filter.zone, Some(Zone::Battlefield));
     assert_eq!(filter.controller, Some(crate::filter::PlayerFilter::You));
-    assert_eq!(
-        filter.card_types,
-        vec![
-            CardType::Artifact,
-            CardType::Creature,
-            CardType::Enchantment,
-            CardType::Land,
-            CardType::Planeswalker,
-            CardType::Battle,
-        ]
-    );
+    // CR 110.4c: the battlefield noun "permanent" is zone-only.
+    assert!(filter.card_types.is_empty(), "{filter:#?}");
     assert_eq!(*player_filter, None);
     assert_eq!(*counter_type, Some(CounterType::PlusOnePlusOne));
     assert_eq!(*additional, 1);

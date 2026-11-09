@@ -38,6 +38,22 @@ impl GameState {
             })
     }
 
+    /// Fail-safe prefilter for `library_top_is_publicly_revealed`: false only
+    /// when no battlefield permanent prints either top-of-library reveal
+    /// ability and no continuous effect could grant, copy or rewrite one in.
+    fn library_top_reveal_sources_may_exist(&self) -> bool {
+        use crate::static_abilities::StaticAbilityId as Id;
+        const REVEALS: [Id; 2] = [Id::AllPlayersLookAtTopCardsOfLibraries, Id::AllPlayersLookAtYourTopLibraryCard];
+        let printed = self.battlefield.iter().any(|source| self.object(*source).is_some_and(|object| {
+            object.abilities.iter().any(|ability| matches!(&ability.kind,
+                crate::ability::AbilityKind::Static(static_ability) if REVEALS.contains(&static_ability.id())))
+        }));
+        // A dirty state regenerates here once, where each per-permanent read
+        // in the full scan would regenerate on its own.
+        printed || self.all_continuous_effects_arc().iter().any(|effect| REVEALS.iter()
+            .any(|&id| Self::modification_may_grant_static_ability_id(&effect.modification, id)))
+    }
+
     pub(super) fn revealed_library_top_before_shuffle(&mut self, player: PlayerId) -> Option<ObjectId> {
         self.reconcile_library_top_identity();
         self.runtime_cache.library_top_identity.revealed.get(&player).copied()
@@ -57,9 +73,15 @@ impl GameState {
         self.runtime_cache.library_top_identity.reconciling = true;
         let reordered = std::mem::take(&mut self.runtime_cache.library_top_identity.pending_reorders);
         for card in reordered { self.reidentify_reordered_library_card(card); }
+        // This runs after every mana ability, including each one the payment
+        // planner simulates. The per-permanent reveal scan below reads
+        // calculated characteristics, which a just-tapped (dirty) state
+        // recomputes from scratch for every permanent and every player.
+        let reveal_sources_may_exist = self.library_top_reveal_sources_may_exist();
         let mut revealed = self.players.iter().filter_map(|player| {
             let top = player.library.last().copied()?;
-            self.library_top_is_publicly_revealed(player.id).then_some((player.id, top))
+            (reveal_sources_may_exist && self.library_top_is_publicly_revealed(player.id))
+                .then_some((player.id, top))
         }).collect::<BTreeMap<_, _>>();
         let previous = std::mem::take(&mut self.runtime_cache.library_top_identity.revealed);
         for (player, id) in previous {

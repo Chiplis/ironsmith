@@ -244,6 +244,9 @@ fn is_structural_action(word: &str) -> bool {
         word,
         "blight"
             | "blights"
+            // "Target player skips their next turn": a scheduled skip is a
+            // player action the subject-verb Skip reader owns.
+            | "skips"
             | "adapt"
             | "adapts"
             | "airbend"

@@ -9,7 +9,9 @@ pub(super) fn parse_attachment_transition_trigger(
     let Some(index) = words.word_windows(3).position(|words| {
         matches!(
             words,
-            ["become" | "becomes", "attached", "to"] | ["become" | "becomes", "unattached", "from"]
+            // "when an Aura is attached to <this>" (Prop Custodian): the
+            // attaching event, as "becomes attached to".
+            ["become" | "becomes" | "is", "attached", "to"] | ["become" | "becomes", "unattached", "from"]
         )
     }) else {
         return Ok(None);

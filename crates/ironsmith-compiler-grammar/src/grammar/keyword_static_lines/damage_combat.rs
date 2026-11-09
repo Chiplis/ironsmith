@@ -993,9 +993,11 @@ fn parse_permanent_damage_prevention_lexed<'a>(
         .parse_next(input)?.is_some()
     {
         let damaged: &'a [OwnedLexToken] = if opt(primitives::kw("to")).parse_next(input)?.is_some() {
+            // "creatures in group owned by <source>": that "by" belongs to
+            // the recipient's relation, not a damage source.
             repeat_till::<_, _, (), _, _, _, _>(
-                1.., any.void(), peek(alt((primitives::kw("by").void(),
-                    primitives::sentence_end().void()))),
+                1.., alt((primitives::phrase(&["owned", "by"]).void(), any.void())),
+                peek(alt((primitives::kw("by").void(), primitives::sentence_end().void()))),
             ).map(|((), _)| ()).take().parse_next(input)?
         } else { &[] };
         let source = if opt(primitives::kw("by")).parse_next(input)?.is_some() {

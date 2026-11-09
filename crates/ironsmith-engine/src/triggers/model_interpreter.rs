@@ -352,6 +352,7 @@ pub(crate) fn interpret_trigger_model(
                 crate::triggers::Trigger::permanent_becomes_tapped(filter)
             }
         }
+        TriggerKind::SourceAndOtherBecomeTapped { other } => crate::triggers::Trigger::new(crate::triggers::other::SourceAndOtherBecomeTappedTrigger { other }),
         TriggerKind::BecomesUntapped => crate::triggers::Trigger::becomes_untapped(),
         TriggerKind::PermanentBecomesUntapped { filter, one_or_more } => {
             crate::triggers::Trigger::permanent_becomes_untapped(filter, one_or_more)
@@ -1277,6 +1278,9 @@ impl super::Trigger {
             }
             ironsmith_core::DelayedTriggerSpec::DealsDamageTo { source, target } => {
                 Self::deals_damage_to(source, target)
+            }
+            ironsmith_core::DelayedTriggerSpec::DealsDamageToPlayer { source, player } => {
+                Self::deals_damage_to_player(source, player)
             }
             ironsmith_core::DelayedTriggerSpec::AttacksAlone(filter) => Self::attacks_alone(filter),
             ironsmith_core::DelayedTriggerSpec::SpellCastThroughPreviousPermission => {

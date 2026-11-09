@@ -1850,6 +1850,21 @@ fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // "audition for <quality>" reached as a chain body ("you may audition
+    // for white"): the same named audition program as the sentence reader.
+    if let Some(effects) = super::dispatch_inner::parse_audition_sentence(tokens)? {
+        return Ok(effects);
+    }
+    // "Create Sulmina, the Final Age, a legendary ... token with "<rule>",
+    // then attach ...": once the quoted rule is lifted out of the sentence
+    // its ", then" boundary is gone, so the named appositive is read here
+    // before any comma splitter separates the name from its description.
+    if tokens.first().is_some_and(|token| token.is_word("create"))
+        && tokens.iter().any(|token| token.is_word("then"))
+        && let Some(effects) = chain_readings::parse_named_token_appositive_tokens(tokens)?
+    {
+        return Ok(effects);
+    }
     // Copy exceptions may contain quoted triggers with their own verbs.
     // Keep the complete outer action ahead of damage and chain readers.
     if let Some(effect) = super::dispatch_entry::parse_complete_become_statement(tokens)? {

@@ -41,6 +41,9 @@ fn biting_palm_reflexive_requires_counter_removal_and_uses_damaged_hand() {
     let definition =
         crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Biting-Palm Ninja")
             .card_types(vec![CardType::Creature])
+            // Printed 3/3: a 0-toughness fixture dies to state-based actions
+            // (CR 704.5f) before its trigger resolves.
+            .power_toughness(crate::card::PowerToughness::fixed(3, 3))
             .parse_text(TEXT)
             .unwrap();
     for (initial, accept) in [(1, true), (1, false), (0, true)] {

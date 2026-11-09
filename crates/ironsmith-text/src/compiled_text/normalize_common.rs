@@ -2853,6 +2853,12 @@ pub(super) fn normalize_sacrifice_implied_choice(sentence: &str) -> Option<Strin
     if body_lower.starts_with("all ") {
         return None;
     }
+    // "the creature they control with the greatest mana value" names one
+    // definite object (ties are resolved by an authored follow-up), not an
+    // arbitrary choice.
+    if body_lower.starts_with("the ") {
+        return None;
+    }
 
     for suffix in [
         " that player controls",

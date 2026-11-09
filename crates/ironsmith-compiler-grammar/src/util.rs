@@ -2423,6 +2423,12 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
         crate::word_claims::claim_tokens(tokens);
         return Ok(TargetAst::Tagged(crate::tag::TagRef::of(ironsmith_core::tag::LAST_EXILED_RESULT_TAG),span_from_tokens(tokens)));
     }
+    // The object a bounded `For each ..., do the following: [...]` program
+    // is currently iterating.
+    if matches!(crate::lexer::token_word_refs(tokens).as_slice(), ["the","iterated","object"|"card"]) {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(TargetAst::Tagged(crate::tag::CompilerReferenceTag::CurrentIteratedObject.bind(),span_from_tokens(tokens)));
+    }
     if crate::lexer::token_word_refs(tokens)==["the","proposed","objects"] {
         crate::word_claims::claim_tokens(tokens);
         return Ok(TargetAst::Tagged(crate::tag::TagRef::of(crate::tag::TagKey::from("__proposed_action_objects")),span_from_tokens(tokens)));

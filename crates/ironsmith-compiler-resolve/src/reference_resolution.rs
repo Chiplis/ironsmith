@@ -2547,6 +2547,13 @@ fn advance_reference_frame_for_effect(
                                 && let [constraint] = filter.tagged_constraints.as_slice()
                                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                                 && filter.any_of.is_empty()
+                                // "exile a creature card from among the cards
+                                // milled this way" selects from the pool; the
+                                // exiled card, not the pool, is the antecedent.
+                                && filter.card_types.is_empty()
+                                && filter.all_card_types.is_empty()
+                                && filter.subtypes.is_empty()
+                                && filter.colors.is_none()
                             {
                                 // "exile it from your graveyard" (Leonardo da
                                 // Vinci): a zone-qualified pronoun still names
@@ -6590,6 +6597,13 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                     ..
                 })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. })
+                // "Search your library for a basic land card, reveal it, ...
+                // If a card named Wastes was revealed this way, ..." reads the
+                // revealing search's found cards.
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                    reveal: true,
+                    ..
+                })
         ),
         PriorEffectAction::Sacrificed => matches!(
             producer_action,
@@ -8514,6 +8528,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
@@ -9886,6 +9901,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })

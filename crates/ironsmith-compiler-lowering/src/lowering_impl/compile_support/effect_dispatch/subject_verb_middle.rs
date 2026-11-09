@@ -3303,12 +3303,17 @@ pub(super) fn compile_subject_verb_middle(
         SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
             target,
             top_position,
+            top_position_value,
         }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let top_position_value = top_position_value.as_ref()
+                .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
+                .transpose()?;
             let mut move_effect =
                 crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(spec.clone())
-                    .with_top_position(*top_position);
+                    .with_top_position(*top_position)
+                    .with_top_position_value(top_position_value);
             if !matches!(player, PlayerAst::ItsOwner) {
                 let chooser = match player {
                     PlayerAst::Implicit | PlayerAst::You => PlayerFilter::You,

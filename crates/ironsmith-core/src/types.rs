@@ -8,6 +8,42 @@ pub enum Supertype {
     Ongoing,
     Snow,
     World,
+    /// Append-only. A custom card's own supertype word ("Totemic
+    /// Enchantment — Aura"), declared by its type line (CR 205.4).
+    Custom(CustomSupertype),
+}
+
+/// An authored supertype name, stored inline so the type stays `Copy`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub struct CustomSupertype {
+    name: [u8; 32],
+}
+
+impl CustomSupertype {
+    /// A lowercase alphabetic (or hyphenated) word of at most 32 bytes.
+    pub fn new(name: &str) -> Option<Self> {
+        let name = name.trim().to_ascii_lowercase();
+        if name.is_empty() || name.len() > 32
+            || !name.chars().all(|ch| ch.is_ascii_alphabetic() || ch == '-') {
+            return None;
+        }
+        let mut bytes = [0; 32];
+        bytes[..name.len()].copy_from_slice(name.as_bytes());
+        Some(Self { name: bytes })
+    }
+
+    /// The interned spelling: custom names are few and live for the program.
+    pub fn name(&self) -> &'static str {
+        use std::collections::HashMap;
+        use std::sync::{Mutex, OnceLock};
+        static NAMES: OnceLock<Mutex<HashMap<[u8; 32], &'static str>>> = OnceLock::new();
+        let mut names = NAMES.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap_or_else(|poison| poison.into_inner());
+        *names.entry(self.name).or_insert_with(|| {
+            let end = self.name.iter().position(|byte| *byte == 0).unwrap_or(self.name.len());
+            Box::leak(String::from_utf8_lossy(&self.name[..end]).into_owned().into_boxed_str())
+        })
+    }
 }
 
 impl Supertype {
@@ -18,6 +54,7 @@ impl Supertype {
             Supertype::Ongoing => "ongoing",
             Supertype::Snow => "snow",
             Supertype::World => "world",
+            Supertype::Custom(custom) => custom.name(),
         }
     }
 }
@@ -1165,6 +1202,10 @@ impl Subtype {
             Subtype::Q,
             Subtype::Ferengi,
             Subtype::Romulan,
+            // A current creature type (CR 205.3m) missing from the family
+            // list. Hound, Viashino and Rukh are retired (now Dog, Lizard and
+            // Bird) and stay out.
+            Subtype::Naga,
         ]
     }
 

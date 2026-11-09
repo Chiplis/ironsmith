@@ -192,6 +192,13 @@ pub(super) fn recognize_statement_line(
     }
     if (crate::effect_sentences::bounded_source_programs::has_bounded_header(&line.tokens)
         || words.starts_with(&["repeat", "the", "following", "process"])
+        // "Return target spell ... . If you controlled it, perform the
+        // catalyze action as follows: ...": the colon closes a named-action
+        // program header, never an activation cost.
+        || line.tokens.iter().position(|token| token.kind == TokenKind::Colon).is_some_and(|colon| {
+            crate::lexer::parser_token_word_refs(&line.tokens[..colon]).ends_with(&["action", "as", "follows"])
+                && line.tokens[..colon].iter().any(|token| token.kind == TokenKind::Period)
+        })
         || words.starts_with(&["perform", "the"]) && (words.windows(3).any(|part| part == ["action", "as", "follows"]) || words.windows(2).any(|part| part == ["action", "on"]) && words.windows(2).any(|part| part == ["as", "follows"]) || words.windows(6).any(|part| part == ["tokens", "created", "this", "way", "as", "follows"]) || words.windows(8).any(|part| part == ["tokens", "created", "this", "way", "if", "any", "are", "created"]) || words.windows(4).any(|part| part == ["following", "cost", "is", "paid"])))
         && line.tokens.iter().any(|token| token.kind == TokenKind::Colon)
     {

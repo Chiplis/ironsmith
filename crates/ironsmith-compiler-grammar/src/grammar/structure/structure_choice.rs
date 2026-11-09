@@ -63,10 +63,25 @@ pub(super) fn parse_modal_header_choose_spec_inner<'a>(
 
     for choose_idx in choose_indices.iter().copied() {
         let choose_tail = &tokens[choose_idx + 1..];
-        let Some((Some(min), max)) =
+        // "choose two or four —": a non-contiguous count set; its range is
+        // the two counts (the header keeps the exact set).
+        let count_set = match crate::lexer::token_word_refs(choose_tail).as_slice() {
+            [low, "or", high, ..] => match (ironsmith_core::parse_cardinal_word(low), ironsmith_core::parse_cardinal_word(high)) {
+                (Some(low), Some(high)) if high > low + 1 => Some((
+                    Some(Value::Fixed(low as i32)),
+                    Some(Value::Fixed(high as i32)),
+                )),
+                _ => None,
+            },
+            _ => None,
+        };
+        if count_set.is_some() {
+            crate::word_claims::claim_tokens(&choose_tail[..3.min(choose_tail.len())]);
+        }
+        let Some((Some(min), max)) = count_set.or_else(|| {
             crate::grammar::primitives::probe_shape(values::parse_modal_choose_range(choose_tail))
                 .flatten()
-        else {
+        }) else {
             continue;
         };
         let x_clause_start = primitives::find_phrase_start(choose_tail, &["x", "is"])

@@ -122,6 +122,7 @@ impl EffectExecutor for ChooseModeEffect {
                 .disallow_previously_chosen_modes_this_turn,
             distinct_player_targets_per_mode: self.distinct_player_targets_per_mode,
             conditional_mode_range: self.conditional_mode_range.as_ref(),
+            allowed_mode_counts: &self.allowed_mode_counts,
         })
     }
 }

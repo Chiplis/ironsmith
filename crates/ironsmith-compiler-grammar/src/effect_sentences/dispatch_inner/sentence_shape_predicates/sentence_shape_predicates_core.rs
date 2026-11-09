@@ -103,6 +103,30 @@ fn parse_distinct_color_representatives(tokens: &[OwnedLexToken]) -> Result<Opti
     })]))
 }
 
+/// "Choose a color from among other permanents you control" (Mellan,
+/// Defense Attorney): a color choice limited to the colors those objects have.
+fn parse_choose_color_from_among(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let end = tokens.iter().rposition(|token| !token.is_period()).map_or(0, |index| index + 1);
+    let body = &tokens[..end];
+    let view = crate::lexer::TokenWordView::new(body);
+    let words = view.word_refs();
+    if words.len() < 6 || !words.starts_with(&["choose", "a", "color", "from", "among"]) {
+        return Ok(None);
+    }
+    let start = view.token_start_indices()[5];
+    let filter = crate::object_filters::parse_object_filter(&body[start..], false)?;
+    crate::word_claims::claim_tokens(&body[..start]);
+    Ok(Some(EffectAst::subject_verb(
+        crate::cards::builders::SubjectVerbRoleAst::Chooser,
+        crate::cards::builders::PlayerAst::You,
+        crate::cards::builders::SubjectVerbActionAst::Choices(
+            crate::cards::builders::ChoiceActionAst::ChooseColorAmong { filter },
+        ),
+    )))
+}
+
 #[inline(never)]
 fn parse_effect_sentence_lexed_uncached(
     tokens: &[OwnedLexToken],
@@ -110,7 +134,17 @@ fn parse_effect_sentence_lexed_uncached(
     if let Some(program) = crate::effect_sentences::dispatch_entry::parse_persistent_player_rule_instruction(tokens)? {
         return Ok(program);
     }
+    // An explicit instruction menu owns its whole sentence, each branch with
+    // its own quoted token rules, before any reader sees one branch's words.
+    if let Some(menu) = crate::instruction_menu::parse(tokens)? {
+        return Ok(menu);
+    }
+    if let Some(effect) = parse_choose_color_from_among(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(effect)=crate::keyword_static::parse_resolving_spell_replacement_program(tokens)? {return Ok(vec![effect]);}
+    if let Some(effect)=parse_owner_bottom_or_beneath_top_x(tokens)? {return Ok(vec![effect]);}
+    if let Some(effects)=parse_audition_sentence(tokens)? {return Ok(effects);}
     if let Some(effect)=crate::keyword_static::parse_timed_event_replacement_program(tokens)? {return Ok(vec![effect]);}
     if let Some(effect) = crate::effect_sentences::for_each_helpers::parse_for_each_participant_you_clause(tokens)? {
         return Ok(vec![effect]);
@@ -138,6 +172,13 @@ fn parse_effect_sentence_lexed_uncached(
         return Ok(vec![EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::MayPay { player, effects, payment_receipt: None })]);
     }
     if let Some(effects) = parse_distinct_color_representatives(tokens)? { return Ok(effects); }
+    // "<target> gains <keyword> until end of turn if <source> had <keyword>"
+    // copies that keyword family from the source's last known state. The
+    // trailing condition is part of the copy; a generic keyword-grant or
+    // trailing-if reading must not claim the sentence first.
+    if let Some(effect) = crate::effect_sentences::gain_ability::parse_conditional_keyword_snapshot_grant(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(effects) = crate::effect_sentences::parse_described_effect_bundle(tokens)? {
         return Ok(effects);
     }
@@ -1637,4 +1678,61 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
         return Ok(prelude_effects);
     }
     Ok(effects)
+}
+
+
+/// "Target nonland permanent's owner puts it on the bottom of their library
+/// or just beneath the top X cards of their library, where X is ...": the
+/// owner's library-position choice whose upper option leaves X cards above.
+fn parse_owner_bottom_or_beneath_top_x(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some(owner) = tokens.iter().position(|token| token.is_word("owner")) else { return Ok(None); };
+    if owner == 0 || !tokens.get(owner + 1).is_some_and(|token| token.is_word("puts")) { return Ok(None); }
+    let Some(comma) = tokens.iter().position(|token| token.is_comma()) else { return Ok(None); };
+    let body = crate::lexer::parser_token_word_refs(&tokens[owner + 1..comma]);
+    if body.as_slice() != ["puts", "it", "on", "the", "bottom", "of", "their", "library", "or", "just", "beneath",
+        "the", "top", "x", "cards", "of", "their", "library"] { return Ok(None); }
+    let Some(value) = crate::keyword_static::parse_value_binding_clause(&tokens[comma + 1..]) else { return Ok(None); };
+    let mut subject = tokens[..owner].to_vec();
+    let Some(last) = subject.last_mut() else { return Ok(None); };
+    let Some(possessor) = last.parser_text().strip_suffix("'s").or_else(|| last.parser_text().strip_suffix("’s")).map(str::to_string) else { return Ok(None); };
+    last.replace_word(&possessor);
+    let target = crate::util::parse_target_phrase(&subject)?;
+    crate::word_claims::claim_tokens(tokens);
+    Ok(Some(EffectAst::subject_verb(
+        crate::cards::builders::SubjectVerbRoleAst::Actor,
+        crate::cards::builders::PlayerAst::ItsOwner,
+        crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::MoveToLibraryTopOrBottomChoice {
+            target, top_position: 0, top_position_value: Some(value),
+        }),
+    )))
+}
+
+
+/// "audition for <quality> [or for <quality>]" reached without the line
+/// preprocessor (a named-source trigger re-lexes its body): the same named
+/// audition program (custom CR 701.101).
+pub(crate) fn parse_audition_sentence(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let colors = ["white", "blue", "black", "red", "green"];
+    // "audition for blue, then audition for blue again": sequential
+    // operations, each its own named program.
+    let mut operations = Vec::new();
+    for segment in words.split(|word| *word == "then") {
+        let segment = segment.strip_suffix(&["again"]).unwrap_or(segment);
+        let shape = match segment {
+            ["audition", "for", color] if colors.contains(color) => true,
+            ["audition", "for", first, "or", "for", second] if colors.contains(first) && colors.contains(second) => true,
+            _ => false,
+        };
+        if !shape { return Ok(None); }
+        operations.push(segment.join(" "));
+    }
+    let program = operations.iter().map(|operation| crate::preprocess::rewrite_audition_line(operation))
+        .collect::<Vec<_>>().join(". ");
+    let lexed = crate::lexer::lex_line(&program, 0)?;
+    let effects = crate::clause_support::parse_effect_sentences_lexed(&lexed)?;
+    crate::word_claims::claim_tokens(tokens);
+    Ok(Some(effects))
 }

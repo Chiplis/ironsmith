@@ -872,6 +872,18 @@ impl TurnHistory {
             .last()
     }
 
+    /// Whether the object with this stable identity entered the battlefield
+    /// from `zone` this turn.
+    pub fn object_entered_battlefield_from_zone(&self, stable_id: StableId, zone: Zone) -> bool {
+        self.projected_records().any(|record| {
+            record.event.downcast::<crate::events::zones::ZoneChangeEvent>().is_some_and(|change| {
+                change.from == zone && change.to == Zone::Battlefield
+                    && (change.snapshots().iter().any(|snapshot| snapshot.stable_id == stable_id)
+                        || record.object_snapshot.as_ref().is_some_and(|snapshot| snapshot.stable_id == stable_id))
+            })
+        })
+    }
+
     /// Whether the object with this stable identity was cast from `zone` this turn.
     pub fn object_was_cast_from_zone(&self, stable_id: StableId, zone: Zone) -> bool {
         self.object_was_cast_from_zone_by(stable_id, zone, None)

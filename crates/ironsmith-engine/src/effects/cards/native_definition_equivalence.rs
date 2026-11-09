@@ -77,6 +77,7 @@ macro_rules! with_native_scalar_types {
     ($consumer:ident) => {
         $consumer!(
             crate::effects::AddManaEffect,
+            crate::effects::AdditionalLandPlaysEffect,
             crate::effects::AddManaFromCommanderColorIdentityEffect,
             crate::effects::AddManaOfAnyColorEffect,
             crate::effects::AddManaOfAnyOneColorEffect,
@@ -257,6 +258,7 @@ macro_rules! with_native_scalar_types {
             crate::effects::ControlVotesThisTurnEffect,
             crate::effects::PutCounterOfKindChosenFromEffect,
             crate::effects::PutCounterOfRandomKindEffect,
+            crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect,
             crate::effects::ShuffleLibraryEffect,
             crate::effects::ShuffleObjectsIntoLibraryEffect,
             crate::effects::SneakCostEffect,

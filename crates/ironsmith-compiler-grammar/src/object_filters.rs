@@ -784,7 +784,11 @@ fn parse_subtype_or_colored_permanent_disjunction(
     });
     let has_colored_permanent_arm = union.any_of.iter().any(|branch| {
         branch.colors.is_some()
-            && (!branch.card_types.is_empty() || !branch.all_card_types.is_empty())
+            && (!branch.card_types.is_empty()
+                || !branch.all_card_types.is_empty()
+                // The zone-only battlefield noun "permanent" (CR 110.4c).
+                || branch.zone == Some(Zone::Battlefield)
+                || union.zone == Some(Zone::Battlefield))
     });
     (has_subtype_arm && has_colored_permanent_arm).then_some(union)
 }
@@ -1485,6 +1489,9 @@ pub(crate) fn parse_terminal_same_name_filter(
             &["with", "same", "name", "as"],
             &["which", "have", "the", "same", "name", "as"],
             &["that", "has", "the", "same", "name", "as"],
+            // "that shares a name with it": the same comparison (CR 201.2).
+            &["that", "shares", "a", "name", "with"],
+            &["that", "share", "a", "name", "with"],
         ])
     }) else {
         return Ok(None);
@@ -2334,6 +2341,21 @@ fn parse_object_filter_unaudited(
         filter.sector = Some(sector);
         return Ok(filter);
     }
+    // "the creature it enchants" (Hope Spot, after a Role is created): the
+    // host the referenced Aura is attached to.
+    if tokens.len() > 2
+        && tokens[tokens.len() - 2].is_word("it")
+        && tokens[tokens.len() - 1].is_any_word(&["enchants", "equips"])
+    {
+        let head = &tokens[..tokens.len() - 2];
+        let mut filter = parse_object_filter(head, other)?;
+        claim_outside(tokens, head);
+        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+            relation: TaggedOpbjectRelation::WasHostOfTaggedObject,
+        });
+        return Ok(filter);
+    }
     if let Some(head) = split_it_can_enchant_suffix(tokens) {
         // "another permanent it can enchant" (Aura Graft): a legal new host
         // for the referenced Aura (CR 303.4).
@@ -2782,6 +2804,20 @@ fn parse_object_filter_words_unaudited(
         if let Some(filter) = related_exile::read(&tokens, other)? { return Ok(filter); }
     }
     if let Some(result)=parse_text_addition_source_filter(word_refs,other){return result;}
+    // Word streams have lost the quotes of an explicit custom identity
+    // ("card with custom keyword \"pursuit\" you own in exile"); a
+    // one-word name is still exactly delimited.
+    if let Some(start)=word_refs.windows(3).position(|words|matches!(words,["with"|"without","custom","keyword"]))
+        && let Some(name)=word_refs.get(start+3)
+        && start>0
+        && !matches!(*name,"and"|"or"|"you"|"your"|"in"|"from"|"that"|"they"|"on"|"among")
+    {
+        let negative=word_refs[start]=="without";
+        let mut base=word_refs[..start].to_vec();base.extend_from_slice(&word_refs[start+4..]);
+        let name=name.to_ascii_lowercase();
+        crate::word_claims::claim_words(&word_refs[start..start+4]);
+        return parse_object_filter_words(&base,other).map(|filter|if negative{filter.without_ability_marker(name)}else{filter.with_ability_marker(name)});
+    }
     for (phrase,same) in [(&["in","group","owned","by"][..],false),(&["in","the","same","group","as"][..],true)] {
         if let Some(split)=word_refs.windows(phrase.len()).rposition(|words|words==phrase) {
             if split==0||split+phrase.len()==word_refs.len(){continue}
@@ -2914,10 +2950,65 @@ pub fn parse_object_filter_lexed(
     crate::word_claims::audit_filter(tokens, caller, || parse_object_filter_lexed_unaudited(tokens, other))
 }
 
+fn split_cast_for_named_cost_suffix(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], String)> {
+    let [base @ .., for_word, its, label, cost] = tokens else { return None; };
+    if !for_word.is_word("for") || !its.is_word("its") || !cost.is_word("cost")
+        || label.kind != crate::lexer::TokenKind::Word
+        || label.is_any_word(&["mana", "life", "alternative", "total", "additional", "full"])
+        || !label.parser_text().chars().all(|ch| ch.is_ascii_alphabetic())
+        || !base.iter().any(|token| token.is_any_word(&["spell", "spells"]))
+    {
+        return None;
+    }
+    crate::word_claims::claim_tokens(&tokens[base.len()..]);
+    let word = label.parser_text();
+    let mut chars = word.chars();
+    let first = chars.next()?;
+    Some((base, format!("{}{}", first.to_ascii_uppercase(), chars.as_str().to_ascii_lowercase())))
+}
+
+/// A count or word route rebuilds its filter from words, losing the quotes
+/// of an explicit custom identity ("each creature you control with custom
+/// keyword \"chronicle\""). A one-word name is still exactly delimited.
+fn parse_unquoted_custom_keyword_filter(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Option<Result<ObjectFilter, CardTextError>> {
+    if tokens.iter().any(|token| token.kind == crate::lexer::TokenKind::Quote) {
+        return None;
+    }
+    let start = tokens.windows(3).position(|window| {
+        window[0].is_any_word(&["with", "without"]) && window[1].is_word("custom") && window[2].is_word("keyword")
+    })?;
+    let name = tokens.get(start + 3)?;
+    if start == 0
+        || name.kind != crate::lexer::TokenKind::Word
+        || name.is_any_word(&["and", "or", "you", "your", "in", "from", "that", "they", "on", "among"])
+    {
+        return None;
+    }
+    let negative = tokens[start].is_word("without");
+    let marker = name.parser_text().to_ascii_lowercase();
+    let mut base = tokens[..start].to_vec();
+    base.extend_from_slice(&tokens[start + 4..]);
+    crate::word_claims::claim_tokens(&tokens[start..start + 4]);
+    Some(parse_object_filter_lexed(&base, other).map(|filter| {
+        if negative { filter.without_ability_marker(marker) } else { filter.with_ability_marker(marker) }
+    }))
+}
+
 fn parse_object_filter_lexed_unaudited(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    // "a spell for its showcase cost" (Budding Couturier): the spell's own
+    // cast receipt names the paid cost, including a custom-named
+    // alternative cost (CR 601.2b, 118.9).
+    if let Some((base, label)) = split_cast_for_named_cost_suffix(tokens) {
+        let mut filter = parse_object_filter_lexed(base, other)?;
+        filter.cast_paid_label = Some(crate::cost::OptionalCostRef::from(label));
+        return Ok(filter);
+    }
     if let Some((base,owner))=source_noted_names::split_clause(tokens){
         let mut filter=if base.is_empty(){ObjectFilter::default()}else{parse_object_filter_lexed(&base,other)?};
         filter.name_noted_for=Some(Box::new(owner));return Ok(filter);
@@ -2927,6 +3018,7 @@ fn parse_object_filter_lexed_unaudited(
         filter.shares_name_with_named_action_objects=Some(history);
         return Ok(filter);
     }
+    if let Some(result)=parse_unquoted_custom_keyword_filter(tokens,other){return result;}
     if let Some(filter)=parse_named_action_role_filter(tokens){return Ok(filter);}
     if let Some(filter)=related_exile::read(tokens,other)? {return Ok(filter);}
     if let Some(result)=parse_custom_identity_filter(tokens,other){return result;}
@@ -3653,7 +3745,9 @@ mod tests {
         let permanent_tokens = tokenize_line("permanent with fading you control", 0);
         let permanent = parse_object_filter(&permanent_tokens, false)
             .expect("postpositive permanent ability filter should parse");
-        assert!(permanent.has_all_permanent_card_types(), "{permanent:#?}");
+        // CR 110.4c: the battlefield noun "permanent" is zone-only.
+        assert!(permanent.card_types.is_empty(), "{permanent:#?}");
+        assert_eq!(permanent.zone, Some(Zone::Battlefield), "{permanent:#?}");
         assert_eq!(permanent.ability_markers, ["fading".to_string()]);
         assert!(
             permanent.has_controller_after_qualifiers_surface(),
@@ -4703,7 +4797,8 @@ mod tests {
             );
             assert!(
                 filter.any_of.iter().any(|arm| arm.colors == Some(color)
-                    && !arm.card_types.is_empty()
+                    && (arm.zone == Some(crate::zone::Zone::Battlefield)
+                        || filter.zone == Some(crate::zone::Zone::Battlefield))
                     && arm.subtypes.is_empty()),
                 "{text}: {filter:#?}"
             );

@@ -3244,6 +3244,11 @@ pub struct ObjectFilter {
     /// Exact copy-of-card/spell identity, not merely an uncast stack object.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
     pub spell_copy: bool,
+    /// "a spell for its showcase cost": the candidate's own cast receipt
+    /// records this paid cost label, including custom-named alternative
+    /// costs (CR 601.2b, 118.9).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub cast_paid_label: Option<crate::cost_model::OptionalCostRef>,
 }
 
 /// Which audited object-filter parse produced a filter, for the compiler's
@@ -3547,6 +3552,7 @@ impl std::fmt::Debug for ObjectFilter {
             physical_card,
             not_cast,
             spell_copy,
+            cast_paid_label,
             match_captured_public_destination,
             castable_face_match,
             excluded_rules,
@@ -3786,6 +3792,7 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("physical_card", physical_card);
         out.field("not_cast", not_cast);
         out.field("spell_copy", spell_copy);
+        out.field("cast_paid_label", cast_paid_label);
         out.field("match_captured_public_destination", match_captured_public_destination);
         out.field("castable_face_match", castable_face_match);
         out.field("excluded_rules", excluded_rules);
@@ -4531,6 +4538,7 @@ impl ObjectFilter {
             || self.physical_card
             || self.not_cast
             || self.spell_copy
+            || self.cast_paid_label.is_some()
             || self.has_phyrexian_mana_symbol
             || !self.could_produce_mana.is_empty()
             || self.has_tap_activated_ability
@@ -6274,6 +6282,9 @@ impl ObjectFilter {
             post_noun_qualifiers.push(format!("that wasn't cast from {origin}"));
         }
         if self.spell_copy {post_noun_qualifiers.push("that is a copy".to_string());}
+        if let Some(label) = &self.cast_paid_label {
+            post_noun_qualifiers.push(format!("cast for its {} cost", label.display_label().to_ascii_lowercase()));
+        }
         if self.not_cast {
             post_noun_qualifiers.push("that wasn't cast".to_string());
         }
@@ -10706,6 +10717,11 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 )
             }
             Value::CountersOnFilterCandidate(None) => "the number of counters on it".to_string(),
+            Value::PlayerNamedActionCount { player, label, window } => format!(
+                "the number of times {} performed the {label} action {}",
+                match player { PlayerFilter::You => "you".to_string(), other => format!("{other:?}") },
+                window.surface()
+            ),
             Value::PlayerCounters(player, counter_type) => {
                 let holder = match player {
                     PlayerFilter::You => "you have".to_string(),

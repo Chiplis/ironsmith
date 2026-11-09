@@ -1349,10 +1349,13 @@ pub(super) fn describe_target_source_damage_unless_referential_sacrifice(
     }
 
     let with_source = damage_effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+    // The damage source is either the declared tag or the same single target
+    // the declaration announced.
     if !matches!(
         with_source.source.base(),
         ChooseSpec::Tagged(tag) if tag == source_tag
-    ) {
+    ) && with_source.source != target_only.target
+    {
         return None;
     }
     let damage = with_source

@@ -129,6 +129,7 @@ fn until_from_leaf(duration: leaf::LeafDurationPhrase) -> Option<Until> {
         leaf::LeafDurationPhrase::PlayersNextUntapStep => return None,
         leaf::LeafDurationPhrase::UntilThatPlayersNextTurn => return None,
         leaf::LeafDurationPhrase::UntilNextEndStep => Until::NextEndStep,
+        leaf::LeafDurationPhrase::UntilBeginningOfYourNextEndStep => Until::YourNextEndStep,
         leaf::LeafDurationPhrase::Forever => Until::Forever,
     })
 }

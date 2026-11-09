@@ -236,7 +236,11 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         [_] => None,
         [_, minimum] if direction == "less" && matches!(words(minimum).as_slice(),
             ["this", "effect", "can't" | "cant", "reduce", "the", "mana", "in", "that", "cost", "to", "less", "than", "one", "mana"]
-        ) => Some(1),
+        ) => {
+            // The minimum is read here, as the reduction's floor.
+            crate::word_claims::claim_tokens(minimum);
+            Some(1)
+        }
         _ => return Err(error(tokens, "trailing sentence")),
     };
     if optional && (direction != "less" || per_objects.is_some() || minimum.is_some()

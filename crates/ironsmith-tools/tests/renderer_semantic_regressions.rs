@@ -30,7 +30,14 @@ fn on_big_stack(test: impl FnOnce() + Send + 'static) {
 #[test]
 fn status_db_revealed_partition_moves_matching_permanents_tapped() {
     on_big_stack(|| {
-        let def = compile("Branching Timeline");
+        // Branching Timeline left the card catalog; its printed text is kept
+        // here so the regression still exercises the same revealed partition.
+        let def = ironsmith_registry::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Branching Timeline")
+            .card_types(vec![T::Sorcery])
+            .parse_text(
+                "Strange new worlds — Reveal the top X cards of your library, where X is the number of differently named lands you control. Put all permanent cards revealed this way onto the battlefield tapped and the rest on the bottom of your library in a random order.",
+            )
+            .expect("Branching Timeline text compiles");
         let audit = ironsmith::compiled_text::semantic_audit_lines(&def).join("\n");
         assert!(audit.contains("permanent cards") && audit.contains("battlefield tapped"), "{audit}");
         let p = PlayerId::from_index(0);

@@ -2241,9 +2241,8 @@ fn parse_predicate_independent_control_and_hand_conditions_preserve_polarity()
     let predicate_tokens = predicate_tokens_after_if(&tokens);
 
     let parsed = parse_predicate(&predicate_tokens)?;
-    let mut permanent_filter = ObjectFilter::permanent_card()
-        .in_zone(Zone::Battlefield)
-        .controlled_by(PlayerFilter::You);
+    // CR 110.4c: the battlefield noun "permanent" is zone-only.
+    let mut permanent_filter = ObjectFilter::permanent().controlled_by(PlayerFilter::You);
     permanent_filter.other = true;
     permanent_filter.source_surface = Some(
         crate::target::SourceReferenceSurface::ThisPermanentType("this enchantment".to_string()),

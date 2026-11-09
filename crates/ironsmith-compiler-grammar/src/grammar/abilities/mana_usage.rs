@@ -37,6 +37,10 @@ const SPEND_MANA_RESTRICTION_PREFIXES: &[&[&str]] = &[
     &["that", "mana", "can't", "be", "spent", "to", "cast"],
     &["this", "mana", "cant", "be", "spent", "to", "pay"],
     &["this", "mana", "can't", "be", "spent", "to", "pay"],
+    &["you", "cant", "spend", "this", "mana", "to", "cast"],
+    &["you", "can't", "spend", "this", "mana", "to", "cast"],
+    &["you", "cant", "spend", "that", "mana", "to", "cast"],
+    &["you", "can't", "spend", "that", "mana", "to", "cast"],
 ];
 const SPEND_MANA_CAST_PREFIXES: &[&[&str]] = &[
     &["spend", "this", "mana", "only", "to", "cast"],
@@ -785,6 +789,11 @@ fn parse_cant_be_spent_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsage
         &["this", "mana", "can't", "be", "spent", "to", "cast"],
         &["that", "mana", "cant", "be", "spent", "to", "cast"],
         &["that", "mana", "can't", "be", "spent", "to", "cast"],
+        // "You can't spend this mana to cast <spells>." (the active form).
+        &["you", "cant", "spend", "this", "mana", "to", "cast"],
+        &["you", "can't", "spend", "this", "mana", "to", "cast"],
+        &["you", "cant", "spend", "that", "mana", "to", "cast"],
+        &["you", "can't", "spend", "that", "mana", "to", "cast"],
     ];
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
@@ -815,7 +824,13 @@ fn parse_cant_be_spent_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsage
             .in_zone(Zone::Hand)
             .owned_by(PlayerFilter::You)
     } else {
-        return None;
+        // Any other described spells ("spells with mana value 3 or
+        // greater"), read by the ordinary spell filter grammar.
+        let filter = parse_spell_filter_with_grammar_entrypoint(spec);
+        if filter == ObjectFilter::default() {
+            return None;
+        }
+        filter
     };
     Some(ManaUsageRestriction::PaymentTransaction {
         restriction: Some(ManaPaymentPredicate::Not(Box::new(

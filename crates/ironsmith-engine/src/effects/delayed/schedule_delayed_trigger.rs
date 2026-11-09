@@ -64,6 +64,9 @@ pub struct ScheduleDelayedTriggerEffect {
     /// Player whose turns bound a next-turn duration, resolved at
     /// registration and also tagged as `DELAYED_DURATION_PLAYER_TAG`.
     pub duration_player: Option<PlayerFilter>,
+    /// CR 603.8 state delay ("is no longer on the battlefield"): an already
+    /// absent watched source triggers the ability at registration.
+    pub fires_if_watched_source_absent: bool,
 }
 
 impl ScheduleDelayedTriggerEffect {
@@ -98,6 +101,7 @@ impl ScheduleDelayedTriggerEffect {
             prepayment: None,
             event_value_from_prior_prevention: false,
             duration_player: None,
+            fires_if_watched_source_absent: false,
         }
     }
 
@@ -139,6 +143,7 @@ impl ScheduleDelayedTriggerEffect {
             prepayment: None,
             event_value_from_prior_prevention: false,
             duration_player: None,
+            fires_if_watched_source_absent: false,
         }
     }
 
@@ -530,6 +535,28 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
 
         let mut tagged_objects = tagged_objects;
         crate::effects::helpers::pin_tagged_objects_to_current(game, ctx, &mut tagged_objects);
+        // CR 603.8: "When <this> is no longer on the battlefield" is a state.
+        // If the watched source has already left (a phased-out permanent is
+        // still on the battlefield), it is true now, so the ability triggers
+        // at once and is put on the stack the next time a player would
+        // receive priority, rather than waiting for a leave that happened.
+        if self.fires_if_watched_source_absent
+            && self.watch_ability_source
+            && game.object(ability_source).is_none_or(|object| object.zone != crate::zone::Zone::Battlefield)
+        {
+            let effects = ctx
+                .bind_definition_scope_program(self.effects.clone())
+                .flattened_default_effects()
+                .to_vec();
+            crate::effects::composition::queue_reflexive_trigger(
+                game,
+                ability_source,
+                controller_id,
+                effects,
+                tagged_objects,
+            );
+            return Ok(EffectOutcome::count(1));
+        }
         let delayed = DelayedTriggerTemplate::new(
             bound_trigger.clone(),
             ctx.bind_definition_scope_program(self.effects.clone()),

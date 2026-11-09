@@ -10,6 +10,9 @@ pub(super) fn parse(tokens:&[OwnedLexToken])->Result<Option<StaticAbility>,CardT
  let named=&words[rather+4..cost];
  // Official upkeep and equip alternatives remain under their existing owners.
  if named==["echo"] || named==["equip"] {return Ok(None)}
+ // "rather than pay the mana cost for <spells>" replaces the spells' mana
+ // cost: an alternative price grant (CR 118.9), not a named optional cost.
+ if named==["mana"] {return Ok(None)}
  let named=named.strip_prefix(&["optional","additional"]).unwrap_or(named);
  if named.is_empty(){return Ok(None)}
  let starts=view.token_start_indices();

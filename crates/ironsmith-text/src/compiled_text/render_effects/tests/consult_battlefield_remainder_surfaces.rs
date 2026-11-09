@@ -219,7 +219,21 @@ fn removed_creatures_controller_reveals_moves_and_shuffles_their_own_cards() {
             assert_eq!(game.player(alice).unwrap().library, vec![untouched]);
             let library = &game.player(bob).unwrap().library;
             assert_eq!(library.len(), if has_match { 2 } else { 3 });
-            assert!(library.contains(&second) && library.contains(&above));
+            // A revealed card shuffled back into its library is a new hidden
+            // library object, so the remainder is identified by name.
+            let mut names = library
+                .iter()
+                .map(|id| game.object(*id).unwrap().name.to_string())
+                .collect::<Vec<_>>();
+            names.sort();
+            let _ = above;
+            assert_eq!(
+                names,
+                if has_match { vec!["Creature", "Land"] } else { vec!["Land", "Land", "Land"] }
+            );
+            if has_match {
+                assert!(library.contains(&second), "the unrevealed card keeps its identity");
+            }
             assert_eq!(game.irreversible_random_count(), before + 1);
         }
     }
@@ -286,7 +300,16 @@ fn chosen_type_consult_uses_resolution_choice_after_source_is_sacrificed() {
     );
     let library = &game.player(alice).unwrap().library;
     assert_eq!(library.len(), 2);
-    assert!(library.contains(&later_demon) && library.contains(&first_elf));
+    // The unrevealed card keeps its identity; the revealed remainder is a new
+    // hidden library object once it is shuffled back.
+    assert!(library.contains(&later_demon));
+    let _ = first_elf;
+    let mut names = library
+        .iter()
+        .map(|id| game.object(*id).unwrap().name.to_string())
+        .collect::<Vec<_>>();
+    names.sort();
+    assert_eq!(names, vec!["Demon", "Elf"]);
 }
 
 #[test]
@@ -422,7 +445,12 @@ fn sacrificed_source_consult_keeps_gate_and_new_creature_damage() {
             assert_eq!(game.battlefield.len(), usize::from(sacrifice_available));
             assert_eq!(game.player(alice).unwrap().graveyard.len(), 1);
             if sacrifice_available {
-                assert_eq!(game.player(alice).unwrap().library, vec![land_id]);
+                // The revealed land shuffled back is a new hidden library
+                // object; identify it by name.
+                let library = &game.player(alice).unwrap().library;
+                let _ = land_id;
+                assert_eq!(library.len(), 1);
+                assert_eq!(game.object(library[0]).unwrap().name.as_str(), "Revealed Land");
             } else {
                 assert_eq!(game.player(alice).unwrap().library.len(), 2);
             }

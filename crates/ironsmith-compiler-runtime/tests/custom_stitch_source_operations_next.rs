@@ -124,8 +124,9 @@ fn linked_members_and_owner_do_not_follow_later_incarnations() {
         assert_eq!(game.source_collection_objects(token,"assembled").len(),1);
         let left=game.move_object_by_effect(token,Zone::Graveyard).unwrap();
         assert_eq!(game.source_collection_objects(token,"assembled").len(),1,"queued old-source abilities retain exact old-owner membership");
-        let returned=game.move_object_by_effect(left,Zone::Battlefield).unwrap();
-        assert!(game.source_collection_objects(returned,"assembled").is_empty());
+        // CR 111.8: a token that left the battlefield can't come back, so no
+        // later incarnation exists to inherit the old token's members.
+        assert!(game.move_object_by_effect(left,Zone::Battlefield).is_none());
     }
 }
 #[test]

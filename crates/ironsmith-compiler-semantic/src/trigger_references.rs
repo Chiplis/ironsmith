@@ -264,6 +264,7 @@ fn watched_permanent(trigger: &TriggerSpec) -> Option<WatchedPermanent> {
     let filter = match trigger {
         TriggerSpec::WithIntro { trigger, .. } => return watched_permanent(trigger),
         TriggerSpec::ThisBecomesTapped
+        | TriggerSpec::ThisAndOtherBecomeTapped { .. }
         | TriggerSpec::ThisBecomesUntapped
         | TriggerSpec::ThisAttacks
         | TriggerSpec::ThisAttacksPlayerWithMostLife

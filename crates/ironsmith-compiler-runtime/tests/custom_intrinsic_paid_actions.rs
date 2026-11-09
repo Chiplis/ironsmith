@@ -142,7 +142,11 @@ fn supplied_source_vocabulary_is_transported_on_both_routes_and_stays_local() {
         "custom_subtypes":[{"singular":"PrivatePerformer","plural":"PrivatePerformers","family":"Creature"}]});
     for definition in source_definitions(&source) { assert_eq!(definition.card.subtypes.len(),1); }
     let mut undeclared=source;undeclared.as_object_mut().unwrap().remove("custom_subtypes");
-    assert!(source_support::definitions(&undeclared).is_err(),"a previous source's vocabulary must not become process-global admission");
+    // The prior source's explicit vocabulary is not process-global. Its own
+    // type line still declares the word for that card alone (CR 205.3).
+    assert!(ironsmith_core::custom_subtypes::lookup("PrivatePerformer").is_none(),"a previous source's vocabulary must not become process-global admission");
+    let _ = source_support::definitions(&undeclared);
+    assert!(ironsmith_core::custom_subtypes::lookup("PrivatePerformer").is_none(),"an implicit type-line declaration must stay local to its compilation");
 }
 
 #[test]

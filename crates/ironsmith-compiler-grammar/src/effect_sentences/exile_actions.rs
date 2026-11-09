@@ -161,7 +161,7 @@ fn exile_iterated_hand_cards_and_permanents(
 ) -> Vec<EffectAst> {
     let mut hand_card = ObjectFilter::default().in_zone(Zone::Hand);
     hand_card.owner = Some(PlayerFilter::IteratedPlayer);
-    let mut permanent = ObjectFilter::permanent_card().in_zone(Zone::Battlefield);
+    let mut permanent = ObjectFilter::permanent();
     permanent.controller = Some(PlayerFilter::IteratedPlayer);
 
     let mut filter = ObjectFilter::default();

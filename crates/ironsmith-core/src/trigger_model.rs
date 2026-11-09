@@ -875,6 +875,10 @@ pub enum TriggerKind {
     /// Append-only: a continuing permanent acquires an actual characteristic.
     CharacteristicGained(CharacteristicGainTrigger),
     SpellResolves { controller: PlayerFilter },
+    /// Append-only. "Whenever this and at least one other <filter> become
+    /// tapped": the source's own tap, when the same simultaneous action
+    /// (CR 603.2c) also tapped another matching permanent.
+    SourceAndOtherBecomeTapped { other: ObjectFilter },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -1413,6 +1417,9 @@ impl Trigger {
             "permanent_becomes_tapped",
             TriggerKind::PermanentBecomesTapped { filter, one_or_more: true },
         )
+    }
+    pub fn source_and_other_become_tapped(other: ObjectFilter) -> Self {
+        Self::typed("source_and_other_become_tapped", TriggerKind::SourceAndOtherBecomeTapped { other })
     }
     pub fn permanent_becomes_untapped(filter: ObjectFilter, one_or_more: bool) -> Self {
         Self::typed(

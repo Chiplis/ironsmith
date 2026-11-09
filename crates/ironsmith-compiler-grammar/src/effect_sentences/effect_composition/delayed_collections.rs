@@ -69,7 +69,7 @@ pub(super) fn parse_exile_collection_each_upkeep_return_bundle(
             one_shot: false,
             duration: crate::effect::Until::Forever,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: Some((exiled_tag, Zone::Exile)), source_collection_scope: None,
+            while_any_tagged_object_in_zone: Some((exiled_tag, Zone::Exile)), source_collection_scope: None, source_absence_state: false,
         }),
     ]))
 }
@@ -252,7 +252,7 @@ pub(super) fn parse_retained_spell_copy_bundle(
             one_shot: false,
             duration: crate::effect::Until::Forever,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: Some((exiled_tag, Zone::Exile)), source_collection_scope: None,
+            while_any_tagged_object_in_zone: Some((exiled_tag, Zone::Exile)), source_collection_scope: None, source_absence_state: false,
         }),
     ]))
 }

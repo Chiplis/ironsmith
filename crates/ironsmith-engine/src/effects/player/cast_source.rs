@@ -160,17 +160,44 @@ impl EffectExecutor for CastSourceEffect {
             zone: from_zone,
             use_alternative: suspend_alternative_index,
         };
-        let result = match crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
-            game,
-            source_id,
-            from_zone,
-            ctx.controller,
-            &casting_method,
-            self.without_paying_mana_cost,
-            None,
-            ctx.provenance,
-            &mut ctx.decision_maker,
-        ) {
+        // A completed "when you next resolve a spell" preparation owns this
+        // cast: its selected method's identity is the cast's price receipt.
+        let preparation_name = (from_zone == Zone::Exile && self.without_paying_mana_cost)
+            .then(|| game.next_resolution_preparation_name(source_id).map(str::to_owned))
+            .flatten();
+        let cast_result = if let Some(name) = preparation_name.as_deref() {
+            crate::game_loop::cast_spell_from_resolving_effect_with_named_price_lock_and_outputs(
+                game,
+                source_id,
+                from_zone,
+                ctx.controller,
+                &casting_method,
+                true,
+                Some(&crate::cost::TotalCost::free()),
+                Some(name),
+                None,
+                None,
+                ironsmith_core::value_model::ManaSpendMode::Normal,
+                false,
+                std::collections::HashMap::new(),
+                ctx.provenance,
+                &mut ctx.decision_maker,
+                None,
+            )
+        } else {
+            crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
+                game,
+                source_id,
+                from_zone,
+                ctx.controller,
+                &casting_method,
+                self.without_paying_mana_cost,
+                None,
+                ctx.provenance,
+                &mut ctx.decision_maker,
+            )
+        };
+        let result = match cast_result {
             Ok(result) => result,
             Err(error) => {
                 if self.cast_other_face {

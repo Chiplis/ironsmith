@@ -503,6 +503,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 f.write_str("ReorderGraveyardAtRandom")
             }
             Self::Choices(ChoiceActionAst::ChooseColor) => f.write_str("ChooseColor"),
+            Self::Choices(ChoiceActionAst::ChooseColorAmong { filter }) => {
+                f.debug_struct("ChooseColorAmong").field("filter", filter).finish()
+            }
             Self::Choices(ChoiceActionAst::ChooseCardType { options, shared_among }) => {
                 let mut debug = f.debug_tuple("ChooseCardType");
                 debug.field(options);
@@ -1631,6 +1634,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
                 target,
                 top_position,
+                ..
             }) => f
                 .debug_struct("MoveToLibraryTopOrBottomChoice")
                 .field("target", target)

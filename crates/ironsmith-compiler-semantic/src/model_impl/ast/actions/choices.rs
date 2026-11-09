@@ -53,4 +53,7 @@ pub enum ChoiceActionAst {
         filter: ObjectFilter,
         tag: TagRef,
     },
+    /// "Choose a color from among other permanents you control": a color
+    /// some object matching `filter` has.
+    ChooseColorAmong { filter: ObjectFilter },
 }

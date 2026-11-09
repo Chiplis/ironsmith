@@ -124,9 +124,25 @@ pub(crate) fn source_effect(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     if words(tokens).starts_with(&["allow","the","controllers","of"])
         && words(tokens).ends_with(&inspection_suffix) {
         let split=(4..tokens.len()).find(|start|words(&tokens[*start..tokens.len().min(*start+5)])==["just","created","to","look","at"])?;
-        let mut source_phrase=crate::lexer::synthetic_word_tokens(["those"]);
-        source_phrase.extend_from_slice(&tokens[4..split]);
-        let sources=crate::util::parse_target_phrase(&source_phrase).ok()?;
+        // "the controllers of <tokens> just created": the tokens this
+        // program just created, not an earlier antecedent ("those ...").
+        let created=words(&tokens[4..split]).iter().any(|word|matches!(*word,"token"|"tokens"));
+        let named=created && tokens[4..split].iter().any(|token|token.is_word("named"));
+        let sources=if named {
+            // "tokens named Memory just created": lowering binds the name to
+            // the token this instruction list created.
+            let named_at=(4..split).find(|index|tokens[*index].is_word("named"))?;
+            let name=tokens.get(named_at+1..split)?.iter().map(|token|token.parser_text()).collect::<Vec<_>>().join(" ");
+            if name.is_empty(){return None;}
+            crate::cards::builders::TargetAst::Object(ObjectFilter::default().token().named(name),None,None)
+        } else if created {
+            crate::util::parse_target_phrase(&crate::lexer::synthetic_word_tokens(["the","tokens","created","this","way"])).ok()?
+        } else {
+            let mut source_phrase=crate::lexer::synthetic_word_tokens(["those"]);
+            source_phrase.extend_from_slice(&tokens[4..split]);
+            crate::util::parse_target_phrase(&source_phrase).ok()?
+        };
+        if created { crate::word_claims::claim_tokens(&tokens[4..split]); }
         let end=tokens.len().checked_sub(inspection_suffix.len())?;
         let target=crate::util::parse_target_phrase(tokens.get(split+5..end)?).ok()?;
         crate::word_claims::claim_tokens(&tokens[..4]);crate::word_claims::claim_tokens(&tokens[split..split+5]);crate::word_claims::claim_tokens(&tokens[end..]);
@@ -164,7 +180,15 @@ pub(crate) fn source_effect(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     if !tokens.first().is_some_and(|token| token.is_word("give")) {
         return None;
     }
-    let at = tokens.iter().position(|t| words(std::slice::from_ref(t)) == ["the"])?;
+    // The status operand's article is the last unquoted "the" before the
+    // status word: the recipient phrase may contain its own ("Give the most
+    // recently exiled card the cached status").
+    let first_status = tokens.iter().position(|t| words(std::slice::from_ref(t)) == ["status"]);
+    let at = match first_status {
+        Some(status) if !tokens[..status].iter().any(|token| token.kind == TokenKind::Quote) =>
+            tokens[..status].iter().rposition(|t| words(std::slice::from_ref(t)) == ["the"])?,
+        _ => tokens.iter().position(|t| words(std::slice::from_ref(t)) == ["the"])?,
+    };
     let end = if tokens.get(at + 1).is_some_and(|token| token.kind == TokenKind::Quote) {
         let close = (at + 2..tokens.len()).find(|index| tokens[*index].kind == TokenKind::Quote)?;
         let end = close + 1;

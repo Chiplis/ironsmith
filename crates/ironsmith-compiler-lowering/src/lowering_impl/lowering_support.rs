@@ -4865,13 +4865,36 @@ fn effect_produces_mana(effect: &crate::effect::Effect) -> bool {
 }
 
 pub fn lower_parsed_ability(parsed: ParsedAbility) -> Result<Ability, CardTextError> {
-    lower_parsed_ability_internal(parsed, None)
+    lower_parsed_ability_internal(parsed, None).map(stamp_ability_designations_on_segments)
 }
 
 pub fn lower_prepared_ability(
     normalized: NormalizedParsedAbility,
 ) -> Result<Ability, CardTextError> {
     lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
+        .map(stamp_ability_designations_on_segments)
+}
+
+/// An ability's authored group designations classify every instruction it
+/// resolves (CR-neutral provenance), even after its program was rebuilt from
+/// a prepared payload.
+fn stamp_ability_designations_on_segments(mut ability: Ability) -> Ability {
+    let designations = ability.designations.clone();
+    let program = match &mut ability.kind {
+        AbilityKind::Triggered(triggered) => Some(&mut triggered.effects),
+        AbilityKind::Activated(activated) => Some(&mut activated.effects),
+        AbilityKind::Static(_) => None,
+    };
+    if let Some(program) = program {
+        for designation in &designations {
+            for segment in &mut program.segments {
+                if !segment.ability_designations.contains(designation) {
+                    segment.ability_designations.push(designation.clone());
+                }
+            }
+        }
+    }
+    ability
 }
 
 /// The tag of an ability's last instruction when that single instruction
@@ -7036,6 +7059,9 @@ pub(crate) fn lower_compiler_ability_core(
     imports: Option<&crate::model::reference_state::ReferenceImports>,
 ) -> Result<Ability, CardTextError> {
     let functional_zones = ability.functional_zones;
+    // Authored group designations (a quoted `"experience — ..."` grant's
+    // label) belong to the ability through lowering, as on a printed line.
+    let designations = ability.designations;
     let kind = match ability.kind {
         crate::model::CompilerAbilityKindCore::Static(static_ability) => {
             AbilityKind::Static(lower_compiler_static_ability_core(static_ability)?)
@@ -7047,9 +7073,24 @@ pub(crate) fn lower_compiler_ability_core(
             AbilityKind::Activated(lower_compiler_activated_ability_core(activated)?)
         }
     };
+    let mut kind = kind;
+    let program = match &mut kind {
+        AbilityKind::Triggered(triggered) => Some(&mut triggered.effects),
+        AbilityKind::Activated(activated) => Some(&mut activated.effects),
+        AbilityKind::Static(_) => None,
+    };
+    if let Some(program) = program {
+        for designation in &designations {
+            for segment in &mut program.segments {
+                if !segment.ability_designations.contains(designation) {
+                    segment.ability_designations.push(designation.clone());
+                }
+            }
+        }
+    }
     Ok(Ability {
         kind,
-        designations: Default::default(),
+        designations,
         functional_zones,
     })
 }
@@ -8602,10 +8643,27 @@ mod tests {
 }
 
 fn bind_cast_spell_future_entry_counters(trigger: &TriggerSpec, lowered: &mut LoweredEffects) {
-    if !trigger_is_spell_cast(trigger) {
+    // "Whenever an opponent fails a trial of a creature spell, that creature
+    // enters with an additional +1/+1 counter": a named action whose object
+    // is a spell names that spell's future entry exactly as a cast trigger.
+    fn names_spell_action(trigger: &TriggerSpec) -> Option<&crate::filter::ObjectFilter> {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => names_spell_action(trigger),
+            TriggerSpec::NamedAction { object_filter: Some(filter), .. }
+                if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+                    || filter.zone == Some(Zone::Stack) => Some(filter),
+            _ => None,
+        }
+    }
+    if !trigger_is_spell_cast(trigger) && names_spell_action(trigger).is_none() {
         return;
     }
     fn reference_type(trigger: &TriggerSpec) -> Option<crate::types::CardType> {
+        if let Some(filter) = names_spell_action(trigger)
+            && filter.card_types.len() == 1
+        {
+            return filter.card_types.first().copied();
+        }
         match trigger {
             TriggerSpec::WithIntro { trigger, .. } => reference_type(trigger),
             TriggerSpec::SpellCast {

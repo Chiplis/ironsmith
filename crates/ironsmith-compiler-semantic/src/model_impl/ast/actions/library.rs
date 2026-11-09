@@ -60,6 +60,9 @@ pub enum LibraryActionAst {
         surface: ironsmith_core::LibraryRemainderSurface,
     },
     MoveToLibraryTopOrBottomChoice {
+        /// A dynamic number of cards left above the "top" option ("just
+        /// beneath the top X cards"); overrides `top_position`.
+        top_position_value: Option<Value>,
         target: TargetAst,
         /// Where the "top" option puts the card, counted from the top
         /// starting at 0 ("second from the top or on the bottom" is 1).

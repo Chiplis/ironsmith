@@ -5646,6 +5646,7 @@ pub(crate) fn describe_until(until: &Until) -> String {
         Until::YourNextUpkeep => "until your next upkeep".to_string(),
         Until::YourNextUpkeepEnd => "until the end of your next upkeep".to_string(),
         Until::NextEndStep => "until the next end step".to_string(),
+        Until::YourNextEndStep => "until the beginning of your next end step".to_string(),
         Until::ControllersNextUntapStep => "during its controller's next untap step".to_string(),
         Until::YourNextUntapStep => "during your next untap step".to_string(),
         Until::UntilControllersNextUntapStep { .. } => "until its controller's next untap step".to_string(),

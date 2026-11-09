@@ -324,6 +324,45 @@ impl EffectExecutor for AttachObjectsEffect {
             return Ok(EffectOutcome::count(attached_count));
         }
 
+        // "attached to a creature you control" (an untargeted host): the
+        // attachment's controller chooses among every current legal host as
+        // the attachment happens, after earlier instructions created theirs.
+        if let ChooseSpec::Object(filter) = self.target.base()
+            && !self.target.is_target()
+            && ctx.target_assignments.iter().all(|assignment| assignment.spec.base() != self.target.base())
+        {
+            let object_ids = resolve_objects_for_effect(game, ctx, &self.objects)?;
+            let candidates = crate::effects::helpers::resolve_objects_from_spec(
+                game, &ChooseSpec::All(filter.clone()), ctx)?;
+            let mut attached_count = 0i32;
+            for object_id in object_ids {
+                let legal = candidates.iter().copied().filter(|candidate| {
+                    *candidate != object_id
+                        && super::attachment_can_attach_during_effect(game, ctx, object_id, AttachmentTarget::Object(*candidate))
+                        && !crate::targeting::has_protection_from_source(game, *candidate, object_id)
+                }).collect::<Vec<_>>();
+                let chosen = match legal.as_slice() {
+                    [] => None,
+                    [only] => Some(*only),
+                    _ => {
+                        let name = game.object(object_id).map(|object| object.name.to_string()).unwrap_or_else(|| "attachment".into());
+                        let chosen = crate::effects::composition::captured_selection::choose_captured_object(
+                            game, ctx, game.controller_of_id(object_id).unwrap_or(ctx.controller), &legal,
+                            &format!("Choose what to attach {name} to"),
+                            crate::effects::composition::captured_selection::CapturedChoicePolicy::EXPLICIT_FIRST)?;
+                        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                        chosen
+                    }
+                };
+                if let Some(target) = chosen
+                    && super::attach_battlefield_object_during_effect(game, ctx, object_id, AttachmentTarget::Object(target))
+                {
+                    choose_color_as_becomes_attached(game, ctx, object_id, AttachmentTarget::Object(target));
+                    attached_count += 1;
+                }
+            }
+            return Ok(EffectOutcome::count(attached_count));
+        }
         let destinations = match attachment_destinations(game, &self.target, ctx) {
             Ok(targets) => targets,
             Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),

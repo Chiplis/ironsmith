@@ -1928,7 +1928,7 @@ fn parse_named_player_turn_end_trailing_trigger_clause(
         one_shot: false,
         duration: crate::effect::Until::PlayersNextTurnEnd { player },
         either_of_watched_objects: false,
-        while_any_tagged_object_in_zone: None, source_collection_scope: None,
+        while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
     })))
 }
 
@@ -1960,6 +1960,7 @@ pub fn parse_until_duration_triggered_clause(
                 zone: Zone::Exile, capture_from: crate::effect::EffectId::PENDING_PRIOR_ACTION,
                 capture_action: ironsmith_core::PriorEffectAction::Exiled,
             }),
+            source_absence_state: false,
         })));
     }
     if let Some(effect) = parse_named_player_turn_end_trailing_trigger_clause(tokens)? {
@@ -2131,7 +2132,7 @@ pub fn parse_until_duration_triggered_clause(
         one_shot: false,
         duration,
         either_of_watched_objects,
-        while_any_tagged_object_in_zone: None, source_collection_scope: None,
+        while_any_tagged_object_in_zone: None, source_collection_scope: None, source_absence_state: false,
     });
     Ok(Some(match declared_subject_target {
         Some(declaration) => EffectAst::Sequence {

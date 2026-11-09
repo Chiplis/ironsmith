@@ -32,6 +32,12 @@ pub enum BuiltinTokenShape {
     RoyalRole,
     CursedRole,
     VirtuousRole,
+    /// Custom audition Roles (custom CR 701.101c-g).
+    ClericRole,
+    ScoutRole,
+    WarlockRole,
+    WizardRole,
+    WarriorRole,
     Blood,
     Powerstone,
     Heartwood,
@@ -51,7 +57,8 @@ impl BuiltinTokenShape {
             Self::Mutavault => vec![CardType::Land],
             Self::Shard | Self::WickedRole | Self::YoungHeroRole | Self::MonsterRole
             | Self::SorcererRole | Self::RoyalRole | Self::CursedRole
-            | Self::VirtuousRole => vec![CardType::Enchantment],
+            | Self::VirtuousRole | Self::ClericRole | Self::ScoutRole | Self::WarlockRole
+            | Self::WizardRole | Self::WarriorRole => vec![CardType::Enchantment],
             Self::Treasure | Self::Clue | Self::Map | Self::Lander | Self::Junk
             | Self::Mutagen | Self::Gold | Self::Food | Self::Blood | Self::Powerstone
             | Self::Heartwood | Self::Vibranium => vec![CardType::Artifact],
@@ -72,7 +79,8 @@ impl BuiltinTokenShape {
             Self::Vibranium => vec![Subtype::Vibranium],
             Self::WickedRole | Self::YoungHeroRole | Self::MonsterRole
             | Self::SorcererRole | Self::RoyalRole | Self::CursedRole
-            | Self::VirtuousRole => vec![Subtype::Aura, Subtype::Role],
+            | Self::VirtuousRole | Self::ClericRole | Self::ScoutRole | Self::WarlockRole
+            | Self::WizardRole | Self::WarriorRole => vec![Subtype::Aura, Subtype::Role],
             Self::Gingerbrute => vec![Subtype::Food, Subtype::Golem],
             Self::Mutavault => Vec::new(), Self::SpellgorgerWeird => vec![Subtype::Weird],
             Self::Tarmogoyf => vec![Subtype::Lhurgoyf],
@@ -90,6 +98,11 @@ impl BuiltinTokenShape {
             Self::RoyalRole => Some("Royal"),
             Self::CursedRole => Some("Cursed"),
             Self::VirtuousRole => Some("Virtuous"),
+            Self::ClericRole => Some("Cleric"),
+            Self::ScoutRole => Some("Scout"),
+            Self::WarlockRole => Some("Warlock"),
+            Self::WizardRole => Some("Wizard"),
+            Self::WarriorRole => Some("Warrior"),
             Self::Gingerbrute => Some("Gingerbrute"),
             Self::Mutavault => Some("Mutavault"),
             Self::SpellgorgerWeird => Some("Spellgorger Weird"),

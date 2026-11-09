@@ -735,11 +735,43 @@ impl RuleRestriction {
     ) -> Option<CantEffectTracker> {
         let (attackers, condition) = self.conditional_be_blocked_parts()?;
         let filter_ctx = game.filter_context_for_combat(controller, Some(source), None, None);
+        let players = game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.id)
+            .collect::<Vec<_>>();
+        // A condition that holds whichever player defends (for example "if you
+        // control an artifact") is an ordinary can't-be-blocked restriction, so
+        // it is visible outside combat as well.
+        let holds_for_every_defender = !players.is_empty()
+            && players.iter().all(|&defending_player| {
+                crate::condition_eval::evaluate_condition_external(
+                    game,
+                    condition,
+                    &crate::condition_eval::ExternalEvaluationContext {
+                        controller,
+                        source,
+                        defending_player: Some(defending_player),
+                        attacking_player: Some(controller),
+                        filter_source: Some(source),
+                        iterated_player: None,
+                        triggering_event: None,
+                        trigger_identity: None,
+                        ability_index: None,
+                        options: Default::default(),
+                    },
+                )
+            });
         let mut tracker = CantEffectTracker::default();
         for &attacker in &game.battlefield {
             if let Some(object) = game.object(attacker)
                 && attackers.matches(object, &filter_ctx, game)
             {
+                if holds_for_every_defender {
+                    tracker.cant_be_blocked.insert(attacker);
+                    continue;
+                }
                 tracker.conditional_cant_be_blocked.push(
                     crate::game_state::ConditionalBeBlockedRestriction {
                         attacker,

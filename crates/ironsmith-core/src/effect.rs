@@ -346,6 +346,10 @@ pub enum Until {
     /// as an active player begins. Extra turns and shared team turns are actual
     /// turn boundaries, not a predicted turn-order position. Appended.
     OpponentsNextTurn,
+    /// "until the beginning of your next end step": ends as the effect
+    /// controller's next end step begins (this turn's, when it is the
+    /// controller's turn and that end step hasn't begun). Appended.
+    YourNextEndStep,
 }
 
 impl Until {
@@ -944,6 +948,12 @@ pub enum DelayedTriggerSpec {
     CharacteristicGained(crate::trigger_model::CharacteristicGainTrigger),
     /// Append-only. A fully typed zone change, including event provenance restrictions.
     ZoneChange(crate::trigger_model::ZoneChangeTrigger),
+    /// Append-only. "Whenever [source] deals damage to [player]" for the
+    /// registration's lifetime, combat or noncombat alike (CR 120.1).
+    DealsDamageToPlayer {
+        source: ObjectFilter,
+        player: PlayerFilter,
+    },
 }
 
 /// Lifetime policy for a delayed trigger registration.
@@ -1060,7 +1070,13 @@ pub struct ScheduleDelayedTriggerEffect<E> {
     pub persistent_player_rule: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub intervening_if: Option<crate::Condition>,
-
+    /// "When <source> is no longer on the battlefield, ...": a state, not an
+    /// event (CR 603.8). When the watched ability source is already absent
+    /// as the registration happens, the ability triggers at once instead of
+    /// waiting for a leave that already occurred. "Leaves the battlefield"
+    /// is an event and never sets this.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub fires_if_watched_source_absent: bool,
 }
 
 /// Tagged-player key under which a delayed trigger exposes its resolved
@@ -1100,6 +1116,7 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
             intro_surface: None,
             persistent_player_rule: None,
             intervening_if: None,
+            fires_if_watched_source_absent: false,
         }
     }
 
@@ -2485,6 +2502,11 @@ pub struct ChooseModeEffect<E> {
     /// Casting choices owned by this modal instruction, including spliced text.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub announced_modes: Option<Vec<usize>>,
+    /// "Choose two or four —": the exact mode counts allowed inside the
+    /// `min_choose_count..=choose_count` range. Empty means every count in
+    /// the range. Appended.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub allowed_mode_counts: Vec<u32>,
 }
 
 impl<E> ChooseModeEffect<E> {
@@ -2534,6 +2556,7 @@ impl<E> ChooseModeEffect<E> {
             optional_choice: false,
             cost_choice_keywords: Vec::new(),
             announced_modes: None,
+            allowed_mode_counts: Vec::new(),
         }
     }
 
@@ -3512,6 +3535,11 @@ pub struct MoveToLibraryTopOrBottomChoiceEffect {
     /// at 0 ("second from the top or on the bottom" is 1).
     #[cfg_attr(feature = "serde", serde(default))]
     pub top_position: u32,
+    /// A dynamic "top" option ("just beneath the top X cards of their
+    /// library"): the number of cards left above it, resolved as the effect
+    /// executes. Overrides `top_position` when present.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub top_position_value: Option<Value>,
 }
 
 impl MoveToLibraryTopOrBottomChoiceEffect {
@@ -3520,7 +3548,13 @@ impl MoveToLibraryTopOrBottomChoiceEffect {
             target,
             chooser: None,
             top_position: 0,
+            top_position_value: None,
         }
+    }
+
+    pub fn with_top_position_value(mut self, value: Option<Value>) -> Self {
+        self.top_position_value = value;
+        self
     }
 
     pub fn with_top_position(mut self, top_position: u32) -> Self {

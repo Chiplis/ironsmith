@@ -172,7 +172,8 @@ fn effect_in(
         }
     }
     if !trusted_native_program_effect(effect) {
-        return Err("opaque native executor has no complete graph ownership visitor".into());
+        return Err(format!("opaque native executor has no complete graph ownership visitor: {}",
+            format!("{effect:?}").chars().take(160).collect::<String>()));
     }
     let mut result = Ok(());
     effect.visit_child_effects(&mut |child| {

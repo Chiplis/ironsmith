@@ -553,9 +553,30 @@ fn move_entry_options(
         && game
             .object(object)
             .is_some_and(|candidate| candidate.zone != Zone::Battlefield);
+    // "That player puts that card onto the battlefield": the named actor is
+    // the player instructed to put it there (CR 110.2a).
+    let instructed_actor = (matches!(effect.battlefield_controller, BattlefieldController::Preserve)
+        && effect.verb_surface == ironsmith_core::MoveToZoneVerbSurface::Put
+        && game
+            .object(object)
+            .is_some_and(|candidate| candidate.zone != Zone::Battlefield))
+        .then(|| effect.actor_surface.as_ref())
+        .flatten()
+        .and_then(|actor| {
+            resolve_player_filter(game, actor, ctx)
+                .ok()
+                .or_else(|| crate::effects::helpers::resolve_player_filter_as_chooser(game, actor, ctx).ok())
+                // An actor named through a departed object ("that
+                // creature's controller") still names a player; the card
+                // it puts was in that player's own zone.
+                .or_else(|| game.object(object).map(|candidate| candidate.owner))
+        });
     let options = match effect.battlefield_controller {
         BattlefieldController::Preserve if instructed_put => {
             BattlefieldEntryOptions::specific(ctx.controller, enters_tapped)
+        }
+        BattlefieldController::Preserve if instructed_actor.is_some() => {
+            BattlefieldEntryOptions::specific(instructed_actor.unwrap_or(ctx.controller), enters_tapped)
         }
         BattlefieldController::Preserve => BattlefieldEntryOptions::preserve(enters_tapped),
         BattlefieldController::Owner => BattlefieldEntryOptions::owner(enters_tapped),

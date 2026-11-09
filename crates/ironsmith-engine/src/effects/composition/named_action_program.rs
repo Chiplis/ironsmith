@@ -48,6 +48,15 @@ impl EffectExecutor for NamedActionProgramEffect {
                     let snapshots: Vec<_> = context.event.inner().snapshot().cloned().into_iter().collect();
                     let objects=context.event.inner().as_any().downcast_ref::<NamedActionProposalEvent>().map(|proposal|proposal.objects.clone()).unwrap_or_default();
                     let tags = vec![("it".into(), snapshots.clone()), ("__it__".into(), snapshots.clone()), ("__named_action_source".into(), snapshots), ("__proposed_action_objects".into(),objects)];
+                    // "catalyze twice instead": performing the replaced
+                    // action again is a new proposal of the same original
+                    // program (CR 614.5 keeps this replacement off it), not a
+                    // bare completion receipt.
+                    let effects: Vec<Effect> = effects.iter().map(|effect| match effect.downcast_ref::<crate::effects::PerformNamedActionEffect>() {
+                        Some(repeat) if repeat.label.trim().eq_ignore_ascii_case(&label) && repeat.performer.is_none()
+                            && repeat.objects.is_none() && repeat.prior_objects.is_none() => Effect::new(self.clone()),
+                        _ => effect.clone(),
+                    }).collect();
                     let replacement = crate::effects::replacement::execute_replacement_payload_with_outputs(
                         game, ctx, &effects, source, controller, &context, None, None, tags)?;
                     let aggregate = EffectOutcome::aggregate_replacement_outcomes(EffectOutcome::replaced(), [replacement.outcome.clone()]);

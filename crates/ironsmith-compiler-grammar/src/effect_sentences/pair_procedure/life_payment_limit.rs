@@ -31,6 +31,56 @@ pub(crate) fn read(sentences: &[SentenceInput], index: usize) -> Option<Vec<Effe
     )])
 }
 
+/// "Pay any amount of life. Create an X/X black Demon creature token, where X
+/// is the amount of life paid.": the follow-up's amount is the completed
+/// payment's published amount, and only a preceding variable life payment
+/// can supply it (an ordinary life loss never does).
+pub(crate) fn read_paid_amount_followup(sentences: &[SentenceInput], index: usize) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(first) = sentences.get(index) else { return Ok(None); };
+    let first_words = crate::lexer::parser_token_word_refs(first.lowered());
+    if first_words != ["pay", "any", "amount", "of", "life"]
+        && first_words != ["you", "pay", "any", "amount", "of", "life"] {
+        return Ok(None);
+    }
+    let Some(second) = sentences.get(index + 1) else { return Ok(None); };
+    let tokens = second.lowered();
+    const PHRASES: &[&[&str]] = &[
+        &["the", "amount", "of", "life", "you", "paid", "this", "way"],
+        &["the", "amount", "of", "life", "paid", "this", "way"],
+        &["the", "amount", "of", "life", "you", "paid"],
+        &["the", "amount", "of", "life", "paid"],
+    ];
+    let mut found = None;
+    'search: for start in 0..tokens.len() {
+        for phrase in PHRASES {
+            if tokens.len() >= start + phrase.len()
+                && tokens[start..start + phrase.len()].iter().zip(phrase.iter()).all(|(token, word)| token.is_word(word))
+            {
+                found = Some((start, phrase.len()));
+                break 'search;
+            }
+        }
+    }
+    let Some((start, len)) = found else { return Ok(None); };
+    let mut rewritten = tokens[..start].to_vec();
+    rewritten.push(crate::lexer::OwnedLexToken::synthetic_word("that"));
+    rewritten.push(crate::lexer::OwnedLexToken::synthetic_word("much"));
+    rewritten.extend_from_slice(&tokens[start + len..]);
+    let followup = crate::effect_sentences::parse_effect_sentences_lexed(&rewritten)?;
+    if followup.is_empty() { return Ok(None); }
+    crate::word_claims::claim_tokens(first.lowered());
+    crate::word_claims::claim_tokens(&tokens[start..start + len]);
+    let mut effects = vec![EffectAst::subject_verb(
+        SubjectVerbRoleAst::AffectedPlayer,
+        PlayerAst::You,
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife {
+            min_amount: 0, maximum: None, source_owned: false,
+        }),
+    )];
+    effects.extend(followup);
+    Ok(Some(effects))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -28,7 +28,9 @@ pub(super) fn capture(tokens:&[OwnedLexToken],tag:crate::tag::TagRef)->Result<Ve
         let mut filter=ObjectFilter::default().in_zone(Zone::Library);
         filter.library_boundary=Some(ironsmith_core::filter_model::LibraryBoundary{from_top,count:Box::new(shape.count)});
         let player=match shape.player {
-            crate::grammar::effects::ExileLibraryPlayerShape::Player(player)=>{filter.owner=Some(PlayerFilter::IteratedPlayer);player},
+            // The library's owner is the filter's; a player-subject wrapper
+            // would scope the capture's result tag away from its readers.
+            crate::grammar::effects::ExileLibraryPlayerShape::Player(player)=>{filter.owner=Some(PlayerFilter::IteratedPlayer);if matches!(player,PlayerAst::That){PlayerAst::Implicit}else{player}},
             crate::grammar::effects::ExileLibraryPlayerShape::EachPlayer=>{filter.owner=Some(PlayerFilter::Any);PlayerAst::Implicit},
             crate::grammar::effects::ExileLibraryPlayerShape::EachOpponent=>{filter.owner=Some(PlayerFilter::Opponent);PlayerAst::Implicit},
             crate::grammar::effects::ExileLibraryPlayerShape::EachOfThosePlayers=>return Err(crate::CardTextError::UnsupportedLine("proposed library set needs its retained player collection".into())),

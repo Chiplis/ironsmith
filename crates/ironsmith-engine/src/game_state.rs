@@ -634,6 +634,10 @@ struct CastPermissionFlags {
     descriptive_exile_preparations: HashSet<ObjectId>,
     selected_exile_preparations: HashMap<ObjectId, usize>,
     exile_preparation_grants: HashMap<ObjectId, crate::alternative_cast::GrantSelection>,
+    /// Face-up "when you next resolve a spell, cast this card" preparations:
+    /// the selected method's name, which the delayed cast records as its
+    /// completed price identity (a custom keyword's payment receipt).
+    next_resolution_preparation_names: HashMap<ObjectId, String>,
     /// Cards exiled after resolving as Adventure spells, with the player who
     /// controlled the Adventure spell (CR 715.3d: "that player may cast it").
     adventure_exiled: HashMap<ObjectId, PlayerId>,
@@ -1619,6 +1623,9 @@ pub struct ChoiceStore {
     pub chosen_objects: HashMap<ObjectId, crate::snapshot::ObjectSnapshot>,
     /// Chosen named options for permanents ("as this enters, choose A or B").
     pub chosen_named_options: HashMap<ObjectId, String>,
+    /// Each player's current program (custom CR 701.81a): 0 = Program A,
+    /// 1 = Program B, 2 = Program C. Absent until the player first runs one.
+    pub current_programs: HashMap<PlayerId, u8>,
     /// Named options chosen by each player for a permanent ("As this
     /// creature enters, each player chooses war or peace"), in APNAP order.
     /// Filter contexts expose each option's players as
@@ -9205,6 +9212,30 @@ impl GameState {
         let Some(spell_obj) = self.object(spell_id).cloned() else {
             return Vec::new();
         };
+        self.temporary_granted_spell_abilities_for(spell_id, spell_obj, player, false)
+    }
+
+    /// The pending next-spell grants a card not yet cast would receive as it
+    /// is put on the stack (CR 601.2a): the card is evaluated as that spell.
+    pub(crate) fn prospective_cast_granted_spell_abilities(
+        &self,
+        spell_id: ObjectId,
+        player: PlayerId,
+    ) -> Vec<crate::ability::Ability> {
+        let Some(mut spell_obj) = self.object(spell_id).cloned() else {
+            return Vec::new();
+        };
+        spell_obj.zone = crate::zone::Zone::Stack;
+        self.temporary_granted_spell_abilities_for(spell_id, spell_obj, player, true)
+    }
+
+    fn temporary_granted_spell_abilities_for(
+        &self,
+        spell_id: ObjectId,
+        spell_obj: crate::object::Object,
+        player: PlayerId,
+        prospective: bool,
+    ) -> Vec<crate::ability::Ability> {
         let current_turn = self.turn.turn_number;
         let ctx = crate::filter::FilterContext::new(player)
             .with_source(spell_id)
@@ -9229,12 +9260,26 @@ impl GameState {
                             | ironsmith_core::NextSpellGrantMode::IncarnationAbility
                     )
                     && !effect.is_expired(current_turn)
-                    && self.temporary_spell_filter_matches(
-                        &effect.filter,
-                        spell_id,
-                        &spell_obj,
-                        &ctx,
-                    )
+                    && if prospective {
+                        // The card is not on the stack yet: the stack
+                        // placement and the caster are the prospective cast's.
+                        let mut ctx = ctx.clone();
+                        ctx.prospective_cast = Some(spell_id);
+                        let mut filter = effect.filter.clone();
+                        if filter.cast_by.as_ref().is_some_and(|caster| matches!(caster, crate::target::PlayerFilter::You)) {
+                            filter.cast_by = None;
+                        }
+                        filter.stack_kind = None;
+                        filter.zone = None;
+                        filter.matches(&spell_obj, &ctx, self)
+                    } else {
+                        self.temporary_spell_filter_matches(
+                            &effect.filter,
+                            spell_id,
+                            &spell_obj,
+                            &ctx,
+                        )
+                    }
             })
             .map(|effect| effect.ability.clone())
             .collect()

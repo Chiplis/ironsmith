@@ -3469,6 +3469,14 @@ impl TurnRunner {
         }
         *game = hypothetical;
         *tq = hypothetical_queue;
+        // Custom CR 505.6: fourth, the active player runs their next program
+        // if they control a Subroutine (no stack). Subroutines that ran are
+        // matched as events before priority.
+        if game.turn.phase == Phase::FirstMain {
+            crate::subroutines::run_next_program_turn_based_action(game)
+                .map_err(GameLoopError::ExecutionFailed)?;
+            crate::game_loop::drain_pending_trigger_events(game, tq);
+        }
         self.state = TurnState::FirstMainPriority;
         Ok(TurnAction::RunPriority)
     }

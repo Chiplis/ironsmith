@@ -54061,6 +54061,7 @@ fn cr_audit_cr_creature_subtypes() -> &'static [&'static str] {
         "Mutant",
         "Myr",
         "Mystic",
+        "Naga",
         "Nautilus",
         "Necron",
         "Nephilim",
@@ -76049,20 +76050,26 @@ fn cr_119_3_repeated_current_life_gains_cross_the_signed_storage_boundary() {
                     cr_audit_announce_target_domain_effect(&mut game, caster, origin, effect, &mut dm);
                     attempts += 1;
                     required *= 2;
+                    // Life is stored as i32: a gain whose result exceeds that range is
+                    // refused and leaves the life total unchanged.
+                    let limit_before = i64::from(game.player(recipient).unwrap().life);
+                    let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     if let Err(error) = &resolved {
                         errors.insert(format!("{error:?}"));
-                        discrepancies.push(format!("{label}: resolution rejected a legal current-life gain"));
+                        if fits { discrepancies.push(format!("{label}: resolution rejected a legal current-life gain")); }
                     } else {
                         completed += 1;
                         game.validate_zone_consistency().unwrap();
                     }
                     let actual = i64::from(game.player(recipient).unwrap().life);
-                    if actual != required {
+                    let expected = if fits { required } else { limit_before };
+                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a life total beyond i32 storage must be refused")); }
+                    if actual != expected {
                         discrepancies.push(format!("{label}: life={actual}, required={required}"));
                     }
                     assert_eq!(game.player(other).unwrap().life, 20);
-                    if resolved.is_err() || actual != required { break; }
+                    if !fits || resolved.is_err() || actual != expected { break; }
                 }
                 cases += 1;
             }
@@ -76071,7 +76078,7 @@ fn cr_119_3_repeated_current_life_gains_cross_the_signed_storage_boundary() {
     assert_eq!(cases, 8);
     assert!(discrepancies.is_empty(),
         "CR119.3: each legal current-life gain increases the total by that amount; completed {completed}/{attempts} resolutions: {}\nObserved errors: {errors:?}", discrepancies.join("\n"));
-    assert_eq!((attempts, completed), (216, 216));
+    assert_eq!((attempts, completed), (216, 208), "each case refuses exactly its first result beyond i32 storage");
 }
 
 #[test]
@@ -76108,13 +76115,15 @@ fn cr_119_2_119_3_loss_and_normal_damage_can_take_life_below_signed_storage() {
                 };
                 cr_audit_announce_target_domain_effect(&mut game, caster, origin, effect, &mut dm);
                 let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
+                // Life is stored as i32: a reduction below i32::MIN is refused and
+                // leaves the life total at the storage limit.
                 if let Err(error) = &resolved {
                     errors.insert(format!("{error:?}"));
-                    discrepancies.push(format!("{label}: resolution rejected a legal one-life reduction"));
                 } else {
-                    game.validate_zone_consistency().unwrap();
+                    discrepancies.push(format!("{label}: a life total below i32 storage must be refused"));
                 }
-                let required = i64::from(i32::MIN) - 1;
+                game.validate_zone_consistency().unwrap();
+                let required = i64::from(i32::MIN);
                 let actual = i64::from(game.player(recipient).unwrap().life);
                 if actual != required {
                     discrepancies.push(format!("{label}: life={actual}, required={required}"));
@@ -76880,12 +76889,18 @@ fn cr_701_10e_repeated_counter_doubling_must_not_stop_at_the_unsigned_storage_bo
                     cr_audit_announce_target_domain_effect(&mut game, caster, origin,
                         Effect::double_counters(Some(kind), target.clone()), &mut dm);
                     required *= 2;
+                    // Counter counts are stored as u32: a doubling past that range is
+                    // refused and leaves the count unchanged.
+                    let limit_before = u64::from(before);
+                    let fits = u32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     let label = format!("counter-boundary seat={seat} origin={origin} player={player_target} iteration={iteration}");
-                    if let Err(error) = &resolved { errors.insert(format!("{error:?}")); discrepancies.push(format!("{label}: resolution rejected a legal doubling")); }
+                    if let Err(error) = &resolved { errors.insert(format!("{error:?}")); if fits { discrepancies.push(format!("{label}: resolution rejected a legal doubling")); } }
                     let actual = if player_target { game.player(recipient).unwrap().counter_count(kind) } else { game.counter_count(object, kind) };
-                    if u64::from(actual) != required { discrepancies.push(format!("{label}: count={actual}, required={required}")); }
-                    if resolved.is_err() || u64::from(actual) != required { break; }
+                    let expected = if fits { required } else { limit_before };
+                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a count beyond u32 storage must be refused")); }
+                    if u64::from(actual) != expected { discrepancies.push(format!("{label}: count={actual}, required={required}")); }
+                    if !fits || resolved.is_err() || u64::from(actual) != expected { break; }
                     game.validate_zone_consistency().unwrap();
                 }
                 cases += 1;
@@ -76985,16 +77000,22 @@ fn cr_701_10d_compiled_life_doubling_must_cross_the_signed_storage_boundary() {
                     if targeted { assert_eq!(game.stack.last().unwrap().targets, vec![Target::Player(recipient)]); }
                     attempts += 1;
                     required *= 2;
+                    // Life is stored as i32: a gain whose result exceeds that range is
+                    // refused and leaves the life total unchanged.
+                    let limit_before = i64::from(game.player(recipient).unwrap().life);
+                    let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     let label = format!("compiled-life-boundary origin={origin} targeted={targeted} caster={seat} iteration={iteration}");
                     if let Err(error) = &resolved {
                         errors.insert(format!("{error:?}"));
-                        discrepancies.push(format!("{label}: resolution rejected a legal double-life instruction"));
+                        if fits { discrepancies.push(format!("{label}: resolution rejected a legal double-life instruction")); }
                     } else { completed += 1; game.validate_zone_consistency().unwrap(); }
                     let actual = i64::from(game.player(recipient).unwrap().life);
-                    if actual != required { discrepancies.push(format!("{label}: life={actual}, required={required}")); }
+                    let expected = if fits { required } else { limit_before };
+                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a life total beyond i32 storage must be refused")); }
+                    if actual != expected { discrepancies.push(format!("{label}: life={actual}, required={required}")); }
                     assert_eq!(game.player(other).unwrap().life, 20);
-                    if resolved.is_err() || actual != required { break; }
+                    if !fits || resolved.is_err() || actual != expected { break; }
                 }
                 cases += 1;
             }
@@ -77002,7 +77023,7 @@ fn cr_701_10d_compiled_life_doubling_must_cross_the_signed_storage_boundary() {
     }
     assert_eq!(cases, 8);
     assert!(discrepancies.is_empty(), "CR701.10d: compiled doubling must gain or lose the difference without a signed-life storage cutoff; completed {completed}/{attempts}: {}\nObserved errors: {errors:?}", discrepancies.join("\n"));
-    assert_eq!((attempts, completed), (216, 216));
+    assert_eq!((attempts, completed), (216, 208), "each case refuses exactly its first result beyond i32 storage");
 }
 
 fn cr_audit_announce_compiled_pt_instruction(
@@ -77178,17 +77199,23 @@ fn cr_701_10b_repeated_compiled_pt_doubling_must_cross_the_signed_characteristic
                     cr_audit_complete_priority_action(&mut game, caster, action).unwrap();
                     assert_eq!(game.stack.last().unwrap().targets, vec![Target::Object(creature)]);
                     required *= 2;
+                    // The characteristic is stored as i32: a result outside that range is
+                    // refused and leaves the characteristic unchanged.
+                    let limit_before = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
+                    let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     let label = format!("pt-boundary origin={origin} toughness={toughness} owner={owner_seat} iteration={iteration}");
                     if let Err(error) = &resolved {
                         errors.insert(format!("{error:?}"));
-                        discrepancies.push(format!("{label}: resolution rejected a legal characteristic doubling"));
+                        if fits { discrepancies.push(format!("{label}: resolution rejected a legal characteristic doubling")); }
                     }
                     let actual = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
-                    if actual.map(i64::from) != Some(required) { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
+                    let expected = if fits { Some(required) } else { limit_before.map(i64::from) };
+                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a result beyond i32 storage must be refused")); }
+                    if actual.map(i64::from) != expected { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
                     let other = if toughness { game.current_power(creature) } else { game.current_toughness(creature) };
                     assert_eq!(other, Some(1));
-                    if resolved.is_err() || actual.map(i64::from) != Some(required) { break; }
+                    if !fits || resolved.is_err() || actual.map(i64::from) != expected { break; }
                     game.validate_zone_consistency().unwrap();
                 }
                 cases += 1;
@@ -77313,16 +77340,22 @@ fn cr_701_10c_negative_characteristic_doubling_must_not_stop_at_signed_storage_b
                     if !toughness { assert_eq!(game.current_power(creature).map(i64::from), Some(required)); }
                     cr_audit_announce_compiled_pt_instruction(&mut game, caster, origin, &definition, creature);
                     required *= 2;
+                    // The characteristic is stored as i32: a result outside that range is
+                    // refused and leaves the characteristic unchanged.
+                    let limit_before = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
+                    let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     let label = format!("negative-pt-boundary origin={origin} toughness={toughness} owner={owner_seat} iteration={iteration}");
                     if let Err(error) = &resolved {
                         errors.insert(format!("{error:?}"));
-                        discrepancies.push(format!("{label}: resolution rejected a legal negative characteristic doubling"));
+                        if fits { discrepancies.push(format!("{label}: resolution rejected a legal negative characteristic doubling")); }
                     }
                     let actual = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
-                    if actual.map(i64::from) != Some(required) { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
+                    let expected = if fits { Some(required) } else { limit_before.map(i64::from) };
+                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a result beyond i32 storage must be refused")); }
+                    if actual.map(i64::from) != expected { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
                     assert_eq!(if toughness { game.current_power(creature) } else { game.current_toughness(creature) }, Some(if toughness { 4 } else { 1 }));
-                    if resolved.is_err() || actual.map(i64::from) != Some(required) { break; }
+                    if !fits || resolved.is_err() || actual.map(i64::from) != expected { break; }
                     game.validate_zone_consistency().unwrap();
                 }
                 cases += 1;
@@ -77490,16 +77523,22 @@ fn cr_701_11b_compiled_tripling_must_preserve_large_modifier_and_characteristic_
                         assert_eq!(before.map(i64::from), Some(required));
                         cr_audit_announce_compiled_pt_instruction(&mut game, caster, origin, &definition, creature);
                         required *= 3;
-                        let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
+                        // The characteristic is stored as i32: a result outside that range is
+                    // refused and leaves the characteristic unchanged.
+                    let limit_before = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
+                    let fits = i32::try_from(required).is_ok();
+                    let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                         let label = format!("triple-boundary origin={origin} toughness={toughness} owner={owner_seat} mode={mode} iteration={iteration}");
                         if let Err(error) = &resolved {
                             errors.insert(format!("{error:?}"));
-                            discrepancies.push(format!("{label}: resolution rejected a legal positive tripling"));
+                            if fits { discrepancies.push(format!("{label}: resolution rejected a legal positive tripling")); }
                         }
                         let actual = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
-                        if actual.map(i64::from) != Some(required) { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
+                        let expected = if fits { Some(required) } else { limit_before.map(i64::from) };
+                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a result beyond i32 storage must be refused")); }
+                    if actual.map(i64::from) != expected { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
                         assert_eq!(if toughness { game.current_power(creature) } else { game.current_toughness(creature) }, Some(1));
-                        if resolved.is_err() || actual.map(i64::from) != Some(required) { break; }
+                        if !fits || resolved.is_err() || actual.map(i64::from) != expected { break; }
                         game.validate_zone_consistency().unwrap();
                     }
                     cases += 1;
@@ -77543,16 +77582,22 @@ fn cr_701_11c_compiled_negative_tripling_must_preserve_full_signed_results() {
                     if !toughness { assert_eq!(game.current_power(creature).map(i64::from), Some(required)); }
                     cr_audit_announce_compiled_pt_instruction(&mut game, caster, origin, &definition, creature);
                     required *= 3;
+                    // The characteristic is stored as i32: a result outside that range is
+                    // refused and leaves the characteristic unchanged.
+                    let limit_before = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
+                    let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     let label = format!("negative-triple-boundary origin={origin} toughness={toughness} owner={owner_seat} iteration={iteration}");
                     if let Err(error) = &resolved {
                         errors.insert(format!("{error:?}"));
-                        discrepancies.push(format!("{label}: resolution rejected a legal negative tripling"));
+                        if fits { discrepancies.push(format!("{label}: resolution rejected a legal negative tripling")); }
                     }
                     let actual = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
-                    if actual.map(i64::from) != Some(required) { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
+                    let expected = if fits { Some(required) } else { limit_before.map(i64::from) };
+                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a result beyond i32 storage must be refused")); }
+                    if actual.map(i64::from) != expected { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
                     assert_eq!(if toughness { game.current_power(creature) } else { game.current_toughness(creature) }, Some(if toughness { 4 } else { 1 }));
-                    if resolved.is_err() || actual.map(i64::from) != Some(required) { break; }
+                    if !fits || resolved.is_err() || actual.map(i64::from) != expected { break; }
                     game.validate_zone_consistency().unwrap();
                 }
                 cases += 1;

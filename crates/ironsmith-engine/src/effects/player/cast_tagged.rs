@@ -127,7 +127,9 @@ impl EffectExecutor for CastTaggedEffect {
                 }) else {
                     return Ok(EffectOutcome::target_invalid());
                 };
-                if ctx.exact_object_reference_tags.contains(&self.tag)
+                // A copy made from the noted name needs only that name, not
+                // the noted card's current incarnation.
+                if ctx.exact_object_reference_tags.contains(&self.tag) && !self.copy_named_definition
                     && game.object(snapshot.object_id).is_none_or(|object|object.stable_id!=snapshot.stable_id||game.find_object_by_stable_id(snapshot.stable_id)!=Some(snapshot.object_id))
                 {return Ok(EffectOutcome::target_invalid());}
                 let named_copy = if self.copy_named_definition {

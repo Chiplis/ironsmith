@@ -1264,17 +1264,9 @@ mod filtered_prior_action_counter_tests {
             Some(ironsmith_core::PriorEffectAction::Destroyed)
         );
         let filter = query.filter.expect("metric should retain permanent scope");
+        // CR 110.4c: the battlefield noun "permanent" is zone-only.
         assert_eq!(filter.zone, Some(Zone::Battlefield));
-        for card_type in [
-            crate::types::CardType::Artifact,
-            crate::types::CardType::Creature,
-            crate::types::CardType::Enchantment,
-            crate::types::CardType::Land,
-            crate::types::CardType::Planeswalker,
-            crate::types::CardType::Battle,
-        ] {
-            assert!(filter.card_types.contains(&card_type));
-        }
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
     }
 
     #[test]

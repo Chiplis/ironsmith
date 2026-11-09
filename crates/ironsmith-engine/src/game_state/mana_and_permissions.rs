@@ -207,6 +207,20 @@ impl GameState {
         self.update_replacement_effects()
     }
 
+    /// Whether a full continuous refresh has completed for the current state
+    /// and nothing it reads has changed since: every refresh procedure would
+    /// reproduce the current derived state exactly.
+    fn continuous_state_is_refreshed_fixed_point(&self) -> bool {
+        let revision = self.effect_store.continuous_effects.revision();
+        self.continuous_state_is_clean()
+            && !self.battlefield_flags.control_transition_pending
+            && self
+                .runtime_cache
+                .static_effects_cache
+                .borrow()
+                .has_refreshed_snapshot(revision)
+    }
+
     /// Prepare a complete read-only query view without performing game rules
     /// procedures such as day/night transformations, ascend or zone changes.
     pub fn continuous_query_snapshot(
@@ -217,6 +231,13 @@ impl GameState {
         // that infallible adapter as well.
         crate::static_ability_processor::validate_mana_scalar_domain(self)?;
         let mut snapshot = self.clone();
+        // A completed refresh is the fixed point of these same procedures
+        // (`refresh_continuous_state` skips them under this predicate), so
+        // re-running them would rebuild every static effect for nothing.
+        // Priority analysis takes this snapshot once per candidate source.
+        if self.continuous_state_is_refreshed_fixed_point() {
+            return Ok(snapshot);
+        }
         snapshot.update_cant_effects();
         snapshot.update_static_ability_effects()?;
         snapshot.update_cant_effects();
@@ -240,15 +261,7 @@ impl GameState {
         &mut self,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         crate::static_ability_processor::validate_mana_scalar_domain(self)?;
-        let revision = self.effect_store.continuous_effects.revision();
-        if self.continuous_state_is_clean()
-            && !self.battlefield_flags.control_transition_pending
-            && self
-                .runtime_cache
-                .static_effects_cache
-                .borrow()
-                .has_refreshed_snapshot(revision)
-        {
+        if self.continuous_state_is_refreshed_fixed_point() {
             self.publish_completed_control_transitions();
             return Ok(());
         }
@@ -993,7 +1006,10 @@ impl GameState {
         &self,
         f: impl FnMut(ObjectId, PlayerId, &crate::static_abilities::StaticAbility) -> Option<T>,
     ) -> Option<T> {
-        let all_effects = self.all_continuous_effects();
+        // The shared snapshot, not a copy: on a clean state it is the same
+        // allocation the characteristics cache was built from, which lets each
+        // permanent's lookup below hit that cache instead of rerunning layers.
+        let all_effects = self.all_continuous_effects_arc();
         self.with_active_battlefield_static_abilities_with_effects(&all_effects, f)
     }
 
@@ -1006,10 +1022,16 @@ impl GameState {
             let Some(object) = self.object(perm_id) else {
                 continue;
             };
-            let static_abilities = self
-                .calculated_characteristics_with_effects(perm_id, all_effects)
-                .map(|chars| chars.static_abilities)
-                .unwrap_or_default();
+            // Asked once per permanent by permission checks that every legal-
+            // action query makes; an uncached read reruns the layer system for
+            // each permanent, every query.
+            let static_abilities = match self.cached_characteristics_for_effects(perm_id, all_effects) {
+                Some(cached) => cached.static_abilities.clone(),
+                None => self
+                    .calculated_characteristics_with_effects(perm_id, all_effects)
+                    .map(|chars| chars.static_abilities)
+                    .unwrap_or_default(),
+            };
             for static_ability in static_abilities {
                 if !static_ability.is_active(self, perm_id) {
                     continue;
@@ -1538,7 +1560,7 @@ impl GameState {
         })
     }
 
-    fn modification_may_grant_static_ability_id(
+    pub(crate) fn modification_may_grant_static_ability_id(
         modification: &Modification,
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
@@ -1546,7 +1568,11 @@ impl GameState {
             Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
-            | Modification::SetTextBox(_) => true,
+            | Modification::SetTextBox(_)
+            // Copies another object's static abilities / rewrites printed
+            // text: either can bring any static ability along (fail-safe).
+            | Modification::CopyStaticAbilityVariants { .. }
+            | Modification::RemoveOptionalTextFragments(_) => true,
             Modification::AddAbility(static_ability) => static_ability.id() == ability_id,
             Modification::AddAbilityGeneric(ability) => {
                 Self::ability_may_grant_static_ability_id(ability, ability_id)
@@ -4905,21 +4931,29 @@ impl GameState {
             return true;
         }
 
+        let subscribes = |object: &crate::object::Object, ability: &crate::ability::Ability| {
+            if !ability.functions_in(&object.zone) {
+                return false;
+            }
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return false;
+            };
+            triggered
+                .trigger
+                .subscribed_kinds()
+                .is_none_or(|kinds| kinds.contains(&event_kind))
+        };
         self.objects.values().any(|object| {
-            object.abilities.iter().chain(object.counters.occurrence_abilities()).any(|ability| {
-                if !matches!(ability.kind, AbilityKind::Triggered(_))
-                    || !ability.functions_in(&object.zone)
-                {
-                    return false;
-                }
-                let AbilityKind::Triggered(triggered) = &ability.kind else {
-                    return false;
-                };
-                triggered
-                    .trigger
-                    .subscribed_kinds()
-                    .is_none_or(|kinds| kinds.contains(&event_kind))
-            })
+            object.abilities.iter().chain(object.counters.occurrence_abilities())
+                .any(|ability| subscribes(object, ability))
+                // A triggered ability an object acquired through its own
+                // incarnation grant (a paid granted optional cost's "when you
+                // cast this spell" rider) subscribes like a printed one.
+                || object.temporary_static_ability_grants.iter()
+                    .filter(|grant| !grant.is_expired(self.turn.turn_number))
+                    .filter_map(|grant| grant.materialize())
+                    .any(|grant| grant.granted_inline_ability().is_some_and(|ability| subscribes(object, ability))
+                        || grant.source_granted_inline_abilities().into_iter().any(|ability| subscribes(object, ability)))
         })
     }
 

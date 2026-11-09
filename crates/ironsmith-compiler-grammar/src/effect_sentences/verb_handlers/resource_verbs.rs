@@ -642,6 +642,18 @@ pub fn parse_look(
             exiled,
         ));
     }
+    // "Look at the iterated object" inside a bounded for-each program: a
+    // private look at the object currently being iterated.
+    if matches!(
+        crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens)).as_slice(),
+        ["at", "the", "iterated", "object" | "card"]
+    ) {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(EffectAst::subject_verb_look_at_objects(
+            subject_player.unwrap_or(PlayerAst::You),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::CurrentIteratedObject.bind()),
+        ));
+    }
     // "look at each face-down creature that's attacking or blocking"
     // (Revealing Wind): a one-shot private look at every face-down permanent
     // the filter selects, whoever controls it (CR 708.5 lets only the

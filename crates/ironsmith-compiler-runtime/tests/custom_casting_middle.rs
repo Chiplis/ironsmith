@@ -265,3 +265,48 @@ fn land_allowance_price_has_own_turn_instant_timing_and_resets_without_land_hist
         assert!(alternate_cast(&game,source).is_some());
     }
 }
+
+#[test]
+fn showcase_bard_token_copy_casts_the_card_its_spell_exiled() {
+    use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_priority_response_with_dm, apply_decision_context_with_dm};
+    let text = "Mana cost: {1}{U}\nType: Instant\nDraw a card.\nYou may pay {3}{U} rather than pay this spell's mana cost. If its showcase cost was paid, exile this card, then create a 1/1 red Bard creature token with \"This creature can't block\" and \"Whenever this creature attacks, you may copy the exiled card and cast the copy without paying its mana cost.\"";
+    for definition in definitions(text) {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        game.turn.active_player = A; game.turn.priority_player = Some(A);
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        let filler = body("");
+        for _ in 0..4 { game.create_object_from_definition(&filler, A, Zone::Library); }
+        let source = game.create_object_from_definition(&definition, A, Zone::Hand);
+        let stable = game.object(source).unwrap().stable_id;
+        game.player_mut(A).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Blue, 4);
+        let action = alternate_cast(&game, source).expect("the showcase price is castable");
+        let mut state = PriorityLoopState::new(2);
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state, &PriorityResponse::PriorityAction(action), &mut dm).unwrap();
+        for _ in 0..64 {
+            if !state.has_pending_action() { break; }
+            let ironsmith::GameProgress::NeedsDecisionCtx(ctx) = progress else { panic!("{progress:?}") };
+            progress = apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm).unwrap();
+        }
+        while !game.stack.is_empty() { ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap(); }
+        let exiled = game.find_object_by_stable_id(stable).unwrap();
+        assert_eq!(game.object(exiled).unwrap().zone, Zone::Exile, "a paid showcase cost exiles the resolving card");
+        let bard = game.battlefield.iter().copied().find(|id| game.object(*id).is_some_and(|object|
+            object.kind == ironsmith::object::ObjectKind::Token && object.name.as_str().contains("Bard"))).expect("the Bard token");
+        let hand_before = game.player(A).unwrap().hand.len();
+        // CR 607.1: the Bard's attack trigger names the card its creating spell
+        // exiled, so it copy-casts that card when it resolves.
+        let trigger = game.object(bard).unwrap().abilities_vec().into_iter().find_map(|ability| match ability.kind {
+            ironsmith::ability::AbilityKind::Triggered(trigger) => Some(trigger), _ => None,
+        }).expect("the attack trigger");
+        game.push_to_stack(ironsmith::game_state::StackEntry::ability(bard, A, trigger.effects.clone()));
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert!(game.stack.iter().any(|entry| game.object(entry.object_id).is_some_and(|object|
+            object.kind == ironsmith::object::ObjectKind::SpellCopy && object.name == game.object(exiled).unwrap().name)),
+            "the copy of the exiled card is cast");
+        while !game.stack.is_empty() { ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap(); }
+        assert_eq!(game.player(A).unwrap().hand.len(), hand_before + 1, "the cast copy resolves and draws a card");
+        assert_eq!(game.object(exiled).unwrap().zone, Zone::Exile, "only a copy is cast; the card stays exiled");
+    }
+}

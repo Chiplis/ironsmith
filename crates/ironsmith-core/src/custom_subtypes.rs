@@ -132,6 +132,9 @@ fn parser_surfaces(name: &str) -> Vec<String> {
 #[derive(Default)]
 struct Vocabulary {
     aliases: Vec<(String, Subtype)>,
+    /// Set inside an explicit compilation scope; implicit type-line
+    /// declarations never leak into the thread's unscoped vocabulary.
+    scoped: bool,
 }
 thread_local! { static VOCABULARY: RefCell<Vocabulary> = RefCell::default(); }
 struct Guard(Option<Vocabulary>);
@@ -145,7 +148,7 @@ pub fn with_vocabulary<T>(
     definitions: &[CustomSubtypeDefinition],
     f: impl FnOnce() -> T,
 ) -> Result<T, String> {
-    let mut next = Vocabulary::default();
+    let mut next = Vocabulary { scoped: true, ..Vocabulary::default() };
     let mut types: Vec<(String, String, CustomSubtype)> = Vec::new();
     for def in definitions {
         let singular = normalize_name(&def.singular)?;
@@ -171,6 +174,68 @@ pub fn with_vocabulary<T>(
     let _guard = Guard(Some(previous));
     Ok(f())
 }
+/// Whether an explicit compilation vocabulary scope is active.
+pub fn in_scope() -> bool {
+    VOCABULARY.with(|v| v.borrow().scoped)
+}
+
+/// Run `f` inside a per-compilation vocabulary scope that inherits any
+/// enclosing explicit vocabulary and discards declarations made inside it.
+pub fn with_compilation_scope<T>(f: impl FnOnce() -> T) -> T {
+    // The card's own implicit declarations live only for this compilation:
+    // the enclosing explicit vocabulary is inherited and restored afterwards.
+    let inherited = VOCABULARY.with(|v| v.borrow().aliases.clone());
+    let previous = VOCABULARY.with(|v| v.replace(Vocabulary { aliases: inherited, scoped: true }));
+    let _guard = Guard(Some(previous));
+    f()
+}
+
+/// A custom card's type line names its own supertypes the same way: an
+/// unknown word before its card types declares that supertype (CR 205.4).
+/// `None` outside a compilation scope.
+pub fn declare_type_line_supertype(word: &str) -> Option<crate::Supertype> {
+    if !in_scope() {
+        return None;
+    }
+    crate::types::CustomSupertype::new(word).map(crate::Supertype::Custom)
+}
+
+/// A custom card's type line names its own subtypes (CR 205.3): an unknown
+/// word after the dash declares a subtype of that card's type family for the
+/// rest of the current compilation scope. Returns `None` outside a scope or
+/// for a spelling that cannot be a subtype name.
+pub fn declare_type_line_subtype(word: &str, family: SubtypeFamily) -> Option<Subtype> {
+    if !in_scope() {
+        return None;
+    }
+    let singular = normalize_name(word).ok()?;
+    if let Some(Subtype::Custom(existing)) = lookup(&singular) {
+        let merged = existing.with_family(family);
+        if merged.families().count() != existing.families().count() {
+            VOCABULARY.with(|v| {
+                for (_, subtype) in v.borrow_mut().aliases.iter_mut() {
+                    if *subtype == Subtype::Custom(existing) { *subtype = Subtype::Custom(merged); }
+                }
+            });
+        }
+        return Some(Subtype::Custom(merged));
+    }
+    let custom = CustomSubtype::new(&singular, family).ok()?;
+    let subtype = Subtype::Custom(custom);
+    let plural = if singular.ends_with('s') { format!("{singular}es") } else { format!("{singular}s") };
+    VOCABULARY.with(|v| {
+        let mut v = v.borrow_mut();
+        for form in [singular.clone(), plural] {
+            for alias in parser_surfaces(&form) {
+                if !v.aliases.iter().any(|(existing, _)| existing == &alias) {
+                    v.aliases.push((alias, subtype));
+                }
+            }
+        }
+    });
+    Some(subtype)
+}
+
 pub fn lookup(word: &str) -> Option<Subtype> {
     let word = normalize_name(word).ok()?;
     VOCABULARY.with(|v| {

@@ -856,8 +856,15 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
 /// Parse a complete `where X is ...` binding whose value is backed by turn
 /// history. This deliberately runs before generic object-count parsing: words
 /// such as `graveyard`, `hand`, and `battlefield` describe event provenance in
-/// these clauses, not the current zones of objects to count.
+/// these clauses, not the current zones of objects to count. The binding is
+/// read whole, so a match reads every word of it.
 pub fn parse_turn_history_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let value = read_turn_history_value_binding(tokens)?;
+    crate::word_claims::claim_tokens(tokens);
+    Some(value)
+}
+
+fn read_turn_history_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation(tokens);
     let word_view = TokenWordView::new(&tokens);
     let words = word_view.to_word_refs();

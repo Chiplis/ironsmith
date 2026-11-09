@@ -904,6 +904,7 @@ fn parse_put_destination_choice(
             (&["onto", "battlefield"], (Zone::Battlefield, false)),
             (&["into", "exile"], (Zone::Exile, false)),
             (&["on", "bottom", "library"], (Zone::Library, false)),
+            (&["on", "top", "library"], (Zone::Library, true)),
         ],
     ) else {
         return Ok(None);

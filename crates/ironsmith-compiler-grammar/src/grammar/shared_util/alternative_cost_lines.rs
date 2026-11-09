@@ -215,7 +215,8 @@ pub fn parse_self_zone_alternative_cost(
         })));
     }
     if let Some((price, optional_cast)) = described_resolution_preparation(&prose) {
-        let preparation_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&lex_line(price, 0)?)?;
+        let price_text = distribute_tap_price_verb(price);
+        let preparation_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&lex_line(&price_text, 0)?)?;
         let price = preparation_cost.mana_cost().cloned().unwrap_or_default();
         // Both independent instructions and the complete payment have been
         // consumed into typed preparation/followup facts.
@@ -325,6 +326,52 @@ pub fn parse_self_zone_alternative_cost(
             tap_creature_reduces_generic: true, exile_on_stack_exit: true, ..Default::default()
         })));
     }
+    // "You may cast this card from your graveyard if the resulting spell is
+    // an instant or sorcery spell by putting a -1/-1 counter on a creature
+    // you control as an additional cost to cast it. If this spell was cast
+    // using its <label> ability, exile it instead of putting it anywhere else
+    // any time it would leave the stack." (custom Agonize, 702.262): a
+    // graveyard permission for the printed cost plus that payment, limited to
+    // an instant or sorcery card, whose cast spell is exiled on leaving.
+    if sentences.len() == 2
+        && matches!(first_words.get(..19), Some(["you", "may", "cast", "this", "card" | "spell", "from", "your", "graveyard",
+            "if", "the", "resulting", "spell", "is", "an", "instant", "or", "sorcery", "spell", "by"]))
+        && first_words.ends_with(&["as", "an", "additional", "cost", "to", "cast", "it"])
+        && matches!(TokenWordView::new(sentences[1]).word_refs().as_slice(),
+            ["if", "this", "spell", "was", "cast", "using", "its", _, "ability", "exile", "it", "instead", "of", "putting",
+             "it", "anywhere", "else", "any", "time", "it", "would", "leave", "the", "stack"])
+    {
+        let start = first_view.token_start_indices()[18] + 1;
+        let end = first_view.token_start_indices()[first_words.len() - 7];
+        let mut payment = first[start..end].to_vec();
+        if let Some(head) = payment.first_mut() {
+            for (gerund, verb) in [("discarding", "discard"), ("sacrificing", "sacrifice"), ("exiling", "exile"),
+                ("returning", "return"), ("paying", "pay"), ("tapping", "tap"), ("putting", "put"), ("removing", "remove")] {
+                if head.is_word(gerund) { head.replace_word(verb); }
+            }
+        }
+        // Counter placement ("put a -1/-1 counter on a creature you
+        // control") is an activation-cost atom rather than a payment clause.
+        let total_cost = match parse_payment_clause_as_total_cost(&payment) {
+            Ok(Some(total_cost)) => total_cost,
+            _ => crate::activation_and_restrictions::parse_compiler_activation_cost(&payment)?,
+        };
+        crate::word_claims::claim_tokens(&first[..start]);
+        crate::word_claims::claim_tokens(&first[end..]);
+        crate::word_claims::claim_tokens(sentences[1]);
+        let condition = ThisSpellCostCondition::ConditionExpr {
+            condition: crate::effect::Condition::SourceMatches(crate::target::ObjectFilter {
+                card_types: vec![crate::types::CardType::Instant, crate::types::CardType::Sorcery],
+                ..Default::default()
+            }),
+            display: "the resulting spell is an instant or sorcery spell".into(),
+        };
+        return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+            GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Graveyard, total_cost, Some(condition), false,
+        ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+            add_printed_mana_cost: true, exile_on_stack_exit: true, ..Default::default()
+        })));
+    }
     // A condition on this exact graveyard card is independent of keyword
     // identity. The timing reminder restates the ordinary casting window.
     if (sentences.len() == 1 || (sentences.len() == 2
@@ -402,6 +449,12 @@ pub fn parse_self_zone_alternative_cost(
                 // costs always apply to an alternative price.
                 let end = if first_words.ends_with(&["and", "any", "additional", "costs"]) {
                     first_view.token_start_indices()[first_words.len() - 4]
+                } else if first_words.ends_with(&["rather", "than", "pay", "its", "mana", "cost"])
+                    || first_words.ends_with(&["rather", "than", "paying", "its", "mana", "cost"])
+                {
+                    // "for {1} rather than pay its mana cost": the tail only
+                    // restates that the price is an alternative cost.
+                    first_view.token_start_indices()[first_words.len() - 6]
                 } else { first.len() };
                 let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&first[start..end])?;
                 if sentences.len() == 3 && !validates_cost_explanation(sentences[2], &total_cost) {
@@ -463,7 +516,22 @@ pub fn parse_self_zone_alternative_cost(
     let after_cost_word = rather + 2 + cost_tail_len;
     let exile_rider = &words[after_cost_word..];
     let mut entry_counters = Vec::new();
-    let exiles_after_resolution = if exile_rider.is_empty() {
+    // Reconstruct-style riders: "If its <label> cost was paid, this spell
+    // costs X less to cast, where X is the mana value of the permanent
+    // sacrificed to pay <price>. If its <label> cost was paid, exile this
+    // card instead of putting it anywhere else any time it would leave the
+    // stack." Both riders name this permission's own payment.
+    let mut sacrifice_reduced_exile_on_exit = false;
+    let exiles_after_resolution = if let Some(label) = exile_rider.get(2).copied()
+        && exile_rider.starts_with(&["if", "its", label, "cost", "was", "paid", "this", "spell", "costs", "x", "less", "to", "cast",
+            "where", "x", "is", "the", "mana", "value", "of", "the", "permanent", "sacrificed", "to", "pay"])
+        && exile_rider.ends_with(&["if", "its", label, "cost", "was", "paid", "exile", "this", "card", "instead", "of", "putting",
+            "it", "anywhere", "else", "any", "time", "it", "would", "leave", "the", "stack"])
+        && words[subject_start..rather].contains(&"sacrificing")
+    {
+        sacrifice_reduced_exile_on_exit = true;
+        false
+    } else if exile_rider.is_empty() {
         false
     } else if exile_rider == ["if", "you", "cast", "this", "card", "this", "way", "and", "it", "would", "be", "put", "into", "your", "graveyard", "exile", "it", "instead"] {
         true
@@ -508,16 +576,22 @@ pub fn parse_self_zone_alternative_cost(
     // exile rider are read here.
     let frame_start = view.token_start_indices()[subject_start];
     crate::word_claims::claim_tokens(&tokens[frame_start..cost_start]);
-    let rider_end = if exiles_after_resolution {
+    let rider_end = if exiles_after_resolution || sacrifice_reduced_exile_on_exit {
         tokens.len()
     } else {
         view.token_start_indices().get(after_cost_word).copied().unwrap_or(tokens.len())
     };
     crate::word_claims::claim_tokens(&tokens[cost_end..rider_end]);
-    Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+    let method = AlternativeCastingMethod::cast_from_zone_with_total_cost(
         GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Graveyard,
         total_cost, condition, exiles_after_resolution,
-    ).with_entry_counters(entry_counters)))
+    );
+    let method = if sacrifice_reduced_exile_on_exit {
+        method.with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+            sacrifice_reduces_generic_by_mana_value: true, exile_on_stack_exit: true, ..Default::default()
+        })
+    } else { method };
+    Ok(Some(method.with_entry_counters(entry_counters)))
 }
 
 /// A literal alternative price optionally gated by an independently parsed
@@ -1185,6 +1259,17 @@ mod intrinsic_zone_alternative_tests {
         parse_self_zone_alternative_cost(&tokens)
     }
     #[test]
+    fn agonize_reminder_is_a_conditional_graveyard_permission_with_counter_payment_and_exile() {
+        for end in ["", "."] {
+            let text = format!("You may cast this card from your graveyard if the resulting spell is an instant or sorcery spell by putting a -1/-1 counter on a creature you control as an additional cost to cast it. If this spell was cast using its agonize ability, exile it instead of putting it anywhere else any time it would leave the stack{end}");
+            let method = parse(&text).unwrap().expect("agonize permission");
+            assert_eq!(method.cast_from_zone(), crate::zone::Zone::Graveyard);
+            assert!(method.cast_condition().is_some(), "instant-or-sorcery restriction");
+            assert!(method.exiles_after_resolution(), "exiled when it leaves the stack");
+            assert!(method.total_cost().is_some_and(|cost| !cost.costs().is_empty()), "the counter payment");
+        }
+    }
+    #[test]
     fn intrinsic_zone_reader_preserves_price_condition_and_exile_rider() {
         for text in [
             "You may cast this card from your graveyard by paying {2}{W} rather than paying its mana cost.",
@@ -1509,6 +1594,42 @@ mod composed_price_tail_tests {
 
 /// A payment and hand-exile instruction owns its cost and timing, leaving
 /// subsequent instructions to their own readers.
+/// "tap an untapped red and white creature you control or an untapped red
+/// creature you control and untapped white creature you control": the one
+/// verb distributes over both alternatives and over both conjoined
+/// materials of the second, exactly as "tap A or tap B and an untapped C".
+fn distribute_tap_price_verb(price: &str) -> String {
+    let Some(body) = price.strip_prefix("tap ") else { return price.to_string(); };
+    let alternatives = body.split(" or ").collect::<Vec<_>>();
+    if alternatives.len() < 2 { return price.to_string(); }
+    alternatives.iter().map(|alternative| {
+        let alternative = alternative.trim();
+        let alternative = alternative.strip_prefix("tap ").unwrap_or(alternative);
+        let materials = alternative.split(" and untapped ").collect::<Vec<_>>();
+        let mut alternative = if materials.len() > 1 {
+            // Each material is its own tap ("tap a red creature and tap a
+            // white creature"): two distinct objects, not one of either color.
+            materials.join(" and tap an untapped ")
+        } else { alternative.to_string() };
+        // The first alternative's "red and white creature" is one material
+        // with both colors, contrasted with the second alternative's red
+        // creature and white creature.
+        if materials.len() == 1 {
+            const COLORS: [&str; 5] = ["white", "blue", "black", "red", "green"];
+            'pairs: for left in COLORS {
+                for right in COLORS {
+                    let pair = format!("{left} and {right} creature");
+                    if left != right && alternative.contains(&pair) {
+                        alternative = alternative.replace(&pair, &format!("both {left} and {right} creature"));
+                        break 'pairs;
+                    }
+                }
+            }
+        }
+        format!("tap {alternative}")
+    }).collect::<Vec<_>>().join(" or ")
+}
+
 fn described_sorcery_preparation_payment(prose: &str) -> Option<(&str, &str)> {
     let body = prose.strip_prefix("you may ")?;
     let (price, rider) = body.split_once(" and exile this card from your hand as a sorcery. ")?;

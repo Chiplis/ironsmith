@@ -31,10 +31,8 @@ fn parses_dynamic_creation_counts() {
         query.action,
         Some(ironsmith_core::PriorEffectAction::Exiled)
     );
-    assert_eq!(
-        query.filter.expect("permanent filter").card_types,
-        ObjectFilter::permanent_card().card_types
-    );
+    // CR 110.4c: the battlefield noun "permanent" is zone-only.
+    assert!(query.filter.expect("permanent filter").card_types.is_empty());
 
     let tokens = lex_line("mana from a Cave spent to cast it", 0).unwrap();
     let spent_mana = parse_creation_for_each_dynamic_count_tokens(&tokens)

@@ -63,7 +63,7 @@ pub use expend::ExpendTrigger;
 pub use keyword_action::KeywordActionTrigger;
 pub use mana_added::ManaAddedTrigger;
 pub use player_changes_tap_state::PlayerChangesTapStateTrigger;
-pub use permanent_becomes_tapped::PermanentBecomesTappedTrigger;
+pub use permanent_becomes_tapped::{PermanentBecomesTappedTrigger, SourceAndOtherBecomeTappedTrigger};
 pub use permanent_becomes_untapped::PermanentBecomesUntappedTrigger;
 pub use permanent_sacrificed_or_destroyed::{
     PermanentDestroyedTrigger, PermanentSacrificedTrigger,
