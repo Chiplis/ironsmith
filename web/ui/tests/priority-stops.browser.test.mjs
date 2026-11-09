@@ -105,17 +105,10 @@ test('real provider uses persistent stops and Ctrl hold without countdowns', { t
     // This compact fixture omits the table divider that separates these HUDs
     // in the app. Hide its overlapping action dock while exercising the track.
     await page.locator('.battlefield-human-action-dock').evaluate(el => { el.style.display = 'none'; });
-    const lock = page.getByRole('button', { name: 'Lock stops', exact: true });
-    assert.equal(await lock.evaluate(el => getComputedStyle(el).pointerEvents), 'auto');
-    const upkeep = page.locator('[data-stop-phase="Upkeep"]').first();
+    const upkeep = page.locator('[data-stop-phase="Upkeep"][data-stop-player]').first();
     const originalStop = await upkeep.getAttribute('data-stop');
-    await lock.click({ timeout: 3000 });
-    await page.getByRole('button', { name: 'Unlock stops', exact: true }).waitFor();
     await upkeep.click();
-    assert.equal(await upkeep.getAttribute('data-stop'), originalStop, 'locked stops ignore edits');
-    await page.getByRole('button', { name: 'Unlock stops', exact: true }).click();
-    await upkeep.click();
-    assert.notEqual(await upkeep.getAttribute('data-stop'), originalStop, 'unlocked stops accept edits');
+    assert.notEqual(await upkeep.getAttribute('data-stop'), originalStop, 'clicking a stop dot edits it');
     await load(priority(1));
     await page.waitForTimeout(2200);
     assert.equal(await page.evaluate(()=>window.submissions.length),0,'main stop has no timeout');

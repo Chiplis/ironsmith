@@ -15,10 +15,11 @@ test('priority controls, keyboard, ability rules, stops and mobile layout', {tim
   // clicks must use the three-state cycle, not the binary set-stop shortcut.
   const aliceStop = page.locator('[data-stop-player="0"][data-stop-phase="Upkeep"]');
   const bobStop = page.locator('[data-stop-player="1"][data-stop-phase="Upkeep"]');
-  for (const [mode, fill] of [['can_act', 'rgb(255, 255, 255)'], ['always', 'rgb(246, 214, 74)'], ['off', 'none']]) {
+  const aliceAccent = await aliceStop.evaluate(el => getComputedStyle(el, '::before').borderTopColor);
+  for (const [mode, fill] of [['can_act', 'rgb(255, 255, 255)'], ['always', aliceAccent], ['off', 'rgba(0, 0, 0, 0)']]) {
     await aliceStop.click();
     assert.equal(await aliceStop.getAttribute('data-stop'), mode);
-    assert.equal(await aliceStop.locator('svg').evaluate(el => getComputedStyle(el).fill), fill);
+    assert.equal(await aliceStop.evaluate(el => getComputedStyle(el, '::before').backgroundColor), fill);
     assert.equal(await bobStop.getAttribute('data-stop'), 'off');
   }
   await bobStop.press('Enter');
@@ -53,12 +54,8 @@ test('priority controls, keyboard, ability rules, stops and mobile layout', {tim
   assert.equal(await page.evaluate(()=>window.__priorityFixture.status().yield.key),'phase:End');
   await page.screenshot({path:`${output}/06-grouped-turns.png`});
   await page.setViewportSize({width:390,height:844});
-  const turnBoxes = await page.locator('.phase-track-player').evaluateAll(nodes => nodes.map(node => {
-    const box = node.getBoundingClientRect();
-    return { top: box.top, bottom: box.bottom, right: box.right };
-  }));
-  assert.ok(turnBoxes[0].bottom <= turnBoxes[1].top, 'turn groups stack in sequence on mobile');
-  assert.ok(turnBoxes.every(box => box.right <= 390), 'turn groups fit the narrow viewport');
+  const trackBox = await page.locator('.phase-track--sequence:not(.phase-track--combat)').boundingBox();
+  assert.ok(trackBox.x >= 0 && trackBox.x + trackBox.width <= 390, 'the shared track fits the narrow viewport');
   await page.screenshot({path:`${output}/07-grouped-turns-mobile.png`});
   await page.getByRole('button',{name:'Priority and yields',exact:true}).click();
   await page.screenshot({path:`${output}/04-mobile-controls.png`});

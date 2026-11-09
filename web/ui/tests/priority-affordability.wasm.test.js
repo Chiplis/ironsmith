@@ -29,7 +29,7 @@ test('real WASM retains previous mana availability while timing masks sorceries 
       for (let i = 0; i < 1000; i++) {
         const decision = game.stepPriorityAnalysis(token, 8);
         assert.notEqual(decision, false);
-        if (decision.analysis_complete) return decision;
+        if (decision?.analysis_complete) return decision;
       }
       throw new Error('analysis did not finish');
     };

@@ -12,7 +12,6 @@ import { FX, BACK_FX } from "./flags.js";
 export { FX, BACK_FX };
 
 const ATLAS_WIDTH = 2048;
-const TAU = Math.PI * 2;
 const entries = new Set();
 let canvas = null;
 let renderer = null;
@@ -75,15 +74,29 @@ function pixelScale() {
   return quality === "low" ? 0.6 : Math.min(1.5, dpr);
 }
 
-// A flying card wanders on a slow, irregular path: incommensurate sine pairs
-// per axis, phased by the card's seed, so no two cards move in step and the
-// path never visibly repeats. Returns {x, y} with y as height above the table.
+// Smooth 1D value noise in [-1, 1]: random heights at integer points, eased
+// between, so the path wanders without ever repeating.
+function hash1(n) {
+  const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+function noise1(t) {
+  const i = Math.floor(t), f = t - i, u = f * f * (3 - 2 * f);
+  return (hash1(i) * (1 - u) + hash1(i + 1) * u) * 2 - 1;
+}
+
+// A flying card drifts on its own random path: every card gets its own noise
+// streams and its own pace from its seed, so no two cards move together.
+// Returns {x, y} with y as height above the table.
 function flyingMotion(entry, time, still) {
-  if (still) return { x: 0, y: 7 };
-  const p = entry.spec.seed * TAU;
+  const seed = entry.spec.seed;
+  if (still) return { x: 0, y: 9 };
+  const k = seed * 9973;
+  const pace = 0.8 + 0.4 * hash1(k + 3.1);
+  const t = time * pace;
   return {
-    x: 2.4 * Math.sin(time * 0.71 + p * 3.0) + 1.3 * Math.sin(time * 1.63 + p * 5.0),
-    y: 7 + 1.9 * Math.sin(time * 1.13 + p) + 1.0 * Math.sin(time * 2.07 + p * 7.0),
+    x: 5.5 * noise1(t * 0.32 + k) + 1.5 * noise1(t * 0.9 + k * 1.7 + 40),
+    y: 9 + 3.6 * noise1(t * 0.38 + k * 2.3 + 80) + 1.0 * noise1(t * 1.1 + k * 0.6 + 120),
   };
 }
 
@@ -137,7 +150,9 @@ function tick(now) {
   let x = 0, y = 0, row = 0;
   for (const job of jobs) {
     const { entry, width, height } = job;
-    const margin = Math.round(Math.min(26, Math.max(12, Math.min(width, height) * 0.2)));
+    // Flying needs room for a shadow that drifts and blurs with the lift.
+    const flying = entry.spec.flags & FX.flying;
+    const margin = flying ? 42 : Math.round(Math.min(26, Math.max(12, Math.min(width, height) * 0.2)));
     const size = [width + margin * 2, height + margin * 2];
     const w = Math.max(1, Math.round(size[0] * scale)), h = Math.max(1, Math.round(size[1] * scale));
     const motion = entry.spec.flags & FX.flying ? flyingMotion(entry, time, still) : { x: 0, y: 0 };

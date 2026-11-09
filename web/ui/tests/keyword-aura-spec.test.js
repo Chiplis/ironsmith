@@ -35,3 +35,9 @@ test("cards without auras and face-down cards get none", () => {
   assert.equal(keywordAuraSpec({ id: 3, oracle_text: "Trample", summoning_sick: true }), null);
   assert.equal(keywordAuraSpec({ id: 4, face_down: true, summoning_sick: true, oracle_text: "Flying" }), null);
 });
+
+test("neighbouring objects get unrelated aura seeds", () => {
+  const seeds = [70, 71, 72, 73].map(id => keywordAuraSpec({ id, stable_id: id, oracle_text: "Flying" }).seed);
+  for (const seed of seeds) assert.ok(seed >= 0 && seed < 1);
+  for (let i = 1; i < seeds.length; i++) assert.ok(Math.abs(seeds[i] - seeds[i - 1]) > 0.01, `seeds ${seeds.join(", ")}`);
+});

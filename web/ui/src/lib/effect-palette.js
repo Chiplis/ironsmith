@@ -69,6 +69,17 @@ const AURA_KEYWORD_BITS = {
   indestructible: FX.indestructible, protection: FX.protection,
 };
 
+// A well-mixed [0, 1) seed per object: neighbouring ids ("70", "71") must land
+// far apart, or their animations run in lockstep.
+export function auraSeed(key) {
+  let h = 0x811c9dc5;
+  for (const char of String(key)) h = Math.imul(h ^ char.charCodeAt(0), 0x01000193);
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
 // What a battlefield card's keyword aura shows, or null when nothing.
 export function keywordAuraSpec(card, combat) {
   if (!card || card.face_down) return null;
@@ -81,8 +92,5 @@ export function keywordAuraSpec(card, combat) {
   if ((combat?.attackers || []).some(entry => ids.has(String(entry?.creature)))) flags |= FX.attacking;
   if ((combat?.blockers || []).some(entry => ids.has(String(entry?.blocker)))) flags |= FX.blocking;
   if (!flags) return null;
-  const key = String(card.stable_id ?? card.id ?? "");
-  let seed = 0;
-  for (let i = 0; i < key.length; i++) seed = (seed * 31 + key.charCodeAt(i)) % 9973;
-  return { flags, seed: seed / 9973, protection: flags & FX.protection ? protectionTint(card) : null };
+  return { flags, seed: auraSeed(card.stable_id ?? card.id ?? ""), protection: flags & FX.protection ? protectionTint(card) : null };
 }

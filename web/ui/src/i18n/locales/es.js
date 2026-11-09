@@ -2475,7 +2475,6 @@ export const ui = {
   "{0} ×{1}, positions unknown": "{0} ×{1}, posiciones desconocidas",
   "{0}, position unknown": "{0}, posición desconocida",
   "Your mana pool": "Tu reserva de maná",
-  "Lock phase stops against accidental clicks": "Bloquear las paradas de fase contra clics accidentales",
   "Ability automation": "Automatización de habilidad",
   "Original post · {0}": "Publicación original · {0}",
   "Open original post on {0}": "Abrir la publicación original en {0}",
@@ -2486,8 +2485,6 @@ export const ui = {
   "the selected player": "el jugador seleccionado",
   "selected stop": "la parada seleccionada",
   "Combat steps": "Pasos de combate",
-  "Lock stops": "Bloquear paradas",
-  "Unlock stops": "Desbloquear paradas",
 };
 
 export { rules } from './es.rules.js';

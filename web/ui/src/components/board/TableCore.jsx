@@ -256,15 +256,13 @@ export default function TableCore({
       table.style.setProperty('--middle-brand-width', `${brand.getBoundingClientRect().width}px`);
       // Align the logo itself with a local phase icon, leaving its links below.
       // Measure the rendered icon so its upward offset and font sizing count.
-      const icon = divider.querySelector('.phase-track-player--self .phase-track-stop-icon')
-        || divider.querySelector('.phase-track-group--duel .phase-track-player-stop:first-child .phase-track-stop-icon');
+      const icon = divider.querySelector('.phase-track--sequence:not(.phase-track--combat) .phase-track-stop-icon');
       if (icon && logo) {
         const iconRect = icon.getBoundingClientRect();
         const top = iconRect.top + iconRect.height / 2 - divider.getBoundingClientRect().top
           - logo.getBoundingClientRect().height / 2;
         table.style.setProperty('--phase-brand-top', `${top}px`);
-        const label = icon.closest('button')?.querySelector('.phase-track-step-label')
-          || icon.closest('.phase-track-cell')?.querySelector('.phase-track-step-label');
+        const label = icon.closest('.phase-track-cell')?.querySelector('.phase-track-step-label');
         if (label && links) {
           const labelRect = label.getBoundingClientRect();
           const linksTop = labelRect.top + labelRect.height / 2 - divider.getBoundingClientRect().top

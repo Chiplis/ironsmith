@@ -2299,7 +2299,6 @@ export const ui = {
   "{0} ×{1}, positions unknown": "{0} ×{1}, positions unknown",
   "{0}, position unknown": "{0}, position unknown",
   "Your mana pool": "Your mana pool",
-  "Lock phase stops against accidental clicks": "Lock phase stops against accidental clicks",
   "Ability automation": "Ability automation",
   "Original post · {0}": "Original post · {0}",
   "Open original post on {0}": "Open original post on {0}",
@@ -2310,8 +2309,6 @@ export const ui = {
   "the selected player": "the selected player",
   "selected stop": "selected stop",
   "Combat steps": "Combat steps",
-  "Lock stops": "Lock stops",
-  "Unlock stops": "Unlock stops",
 };
 
 export const optionalMarkers = /\byou\s+may\b|\bmay\b/iu;
