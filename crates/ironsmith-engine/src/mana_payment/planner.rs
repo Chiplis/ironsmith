@@ -171,6 +171,23 @@ pub fn plan_prompt_mana_payment(
     }
 }
 
+/// A negative-only answer for priority menus: false only when the cost
+/// certainly cannot be paid. It never simulates an activation or copies the
+/// game. Unknown production (triggers, replacements, reusable sources,
+/// keyword resources) is always "maybe"; the payment itself is validated
+/// when the action is announced.
+pub fn payment_may_be_possible(game: &GameState, request: &ManaPaymentRequest) -> bool {
+    let Some(payer) = game.player(request.payer) else {
+        return false;
+    };
+    // Restricted mana already in the pool is judged against the proposed
+    // spell on the stack, which a menu bound does not build.
+    if !payer.restricted_mana.is_empty() || can_pay_request(game, request) {
+        return true;
+    }
+    !affordability_rules_out_payment(game, request)
+}
+
 /// Check for one valid payment without ranking plans for display or execution.
 /// Existence checks first try projected sources without simulating siblings,
 /// then follow one lazy search line. Both stop at the first legal completion.
@@ -1129,7 +1146,12 @@ fn remaining_mana_is_unpayable(game: &GameState, request: &ManaPaymentRequest) -
     {
         return false;
     }
-    !crate::decision::can_pay_mana_cost_with_available_sources(
+    // A permanent this same cost taps cannot also be tapped for mana: the
+    // search never offers its tap abilities, so the solver must not count
+    // them. Counting them sent every unaffordable "{N}, {T}: ..." ability
+    // whose own mana made the difference into an exhaustive search.
+    let reserved = tap_only_reserved_sources(game, request, &view);
+    !crate::decision::can_pay_mana_cost_with_available_sources_except(
         game,
         request.payer,
         Some(request.source),
@@ -1139,7 +1161,40 @@ fn remaining_mana_is_unpayable(game: &GameState, request: &ManaPaymentRequest) -
         &request.spend_policy,
         request.allow_black_life,
         &view,
+        &reserved,
     )
+}
+
+/// Reserved permanents whose every mana ability taps them. A reserved source
+/// that can also make mana without tapping still counts in full.
+fn tap_only_reserved_sources(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    view: &DerivedGameView<'_>,
+) -> Vec<ObjectId> {
+    if request.reserved_tap_sources.is_empty() {
+        return Vec::new();
+    }
+    let analysis = view.simple_battlefield_mana_analysis(request.payer);
+    request
+        .reserved_tap_sources
+        .iter()
+        .copied()
+        .filter(|&source| {
+            let Some(abilities) = view
+                .abilities_rc(source)
+                .or_else(|| game.object(source).map(|object| std::sync::Arc::new(object.abilities_vec())))
+            else {
+                return false;
+            };
+            analysis.mana_ability_indices_for(source).iter().all(|&index| {
+                matches!(
+                    abilities.get(index).map(|ability| &ability.kind),
+                    Some(AbilityKind::Activated(activated)) if activated.has_tap_cost()
+                )
+            })
+        })
+        .collect()
 }
 
 /// A quantity-only upper bound, after keyword resources have been allocated.
@@ -1300,7 +1355,9 @@ fn finite_fixed_production_is_insufficient(
             }
             largest = largest.max(count);
         }
-        if !game.is_tapped(source) {
+        // Every ability counted here taps its source, and a source this cost
+        // itself taps is never offered to the search.
+        if !game.is_tapped(source) && !request.reserved_tap_sources.contains(&source) {
             let Some(total) = available.checked_add(largest) else {
                 return false;
             };
@@ -1677,10 +1734,13 @@ impl ManaPaymentPlanner {
                 let assigned = if deferred {
                     // This immutable selection already failed its cheap checks.
                     None
-                } else if self.sliced && self.lazy_candidates && !self.preview_assignment {
-                    // Replaying an entire assignment is not a sliced work unit.
-                    None
                 } else if self.lazy_candidates {
+                    // A sliced existence check takes this too. Replaying one
+                    // assignment costs at most one activation per pip, the
+                    // same work the search's best line spends, and it answers
+                    // without the search's sibling orderings. Skipping it sent
+                    // every priority-analysis affordability query straight to
+                    // the cloning search.
                     super::analytic::try_projected_candidates(&staged, &payment_request)
                 } else {
                     super::analytic::try_candidates(&staged, &payment_request)
@@ -1688,6 +1748,15 @@ impl ManaPaymentPlanner {
                 if let Some(candidates) = assigned {
                     self.visited_nodes = 0;
                     self.analytic_selections += 1;
+                    if self.sliced {
+                        // Charge the replayed activations to this slice.
+                        let replayed = candidates
+                            .iter()
+                            .map(|(_, steps)| steps.len())
+                            .max()
+                            .unwrap_or(0);
+                        self.remaining = self.remaining.saturating_sub(replayed);
+                    }
                     for (final_game, steps) in candidates {
                         let pool_after = final_game
                             .player(request.payer)
@@ -3636,6 +3705,16 @@ pub(super) fn collect_search_choices(
 ) -> Vec<ActivationChoice> {
     let mut choices = collect_activation_choices_inner(game, request, true);
     let missing = game.uncovered_mana_payment_pips(request);
+    // A colour-choice ability is offered once per colour and once more with
+    // the colour left to the chooser. The open variant is scored as though it
+    // produced every colour at once, so it used to sort ahead of the variant
+    // that names the colour the cost needs; the chooser then took its first
+    // colour and the search explored every ordering beneath that mistake.
+    let colour_variants: HashSet<(ObjectId, usize)> = choices
+        .iter()
+        .filter(|choice| choice.color_restriction.is_some())
+        .map(|choice| (choice.source, choice.ability_index))
+        .collect();
     // Ordering only: uncertain production never removes a legal branch. In
     // particular triggers, replacements and filter dependencies still execute
     // through prepare_activation when their branch is selected.
@@ -3679,7 +3758,20 @@ pub(super) fn collect_search_choices(
                             })
                             .then_some(index)
                     })
-                    .collect()
+                    .collect::<Vec<_>>()
+            })
+            .map(|mut pips: Vec<usize>| {
+                // Try coloured pips first. Left in pip order, a unit took the
+                // first generic pip it met, so three black mana scored no
+                // better against {3}{U}{B}{B} than three white: the search then
+                // spent a colour-choice source on the wrong colour and worked
+                // through every ordering beneath it before coming back.
+                pips.sort_by_key(|&index| {
+                    missing[index]
+                        .iter()
+                        .any(|symbol| matches!(symbol, ManaSymbol::Generic(_)))
+                });
+                pips
             })
             .collect();
         fn assign(
@@ -3713,12 +3805,15 @@ pub(super) fn collect_search_choices(
             })
             .count();
         let costly = activation_consumes_resources(game, choice);
+        let open_colour_choice = choice.color_restriction.is_none()
+            && colour_variants.contains(&(choice.source, choice.ability_index));
         (
             preference.0,
             preference.1,
             preference.2,
             u8::from(useful_pips == 0),
             costly,
+            open_colour_choice,
             std::cmp::Reverse(constrained),
             std::cmp::Reverse(useful_pips),
             preference.3,

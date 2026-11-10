@@ -7382,6 +7382,10 @@ mod copy_source_replay_tests;
 mod blazing_shoal_tests;
 
 #[cfg(test)]
+#[path = "tests/port_payment_probe.rs"]
+mod port_payment_probe_tests;
+
+#[cfg(test)]
 #[path = "tests/viewed_card_acknowledgement.rs"]
 mod viewed_card_acknowledgement_tests;
 

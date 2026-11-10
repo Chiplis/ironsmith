@@ -89,7 +89,9 @@ impl GameState {
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         // Replacement sources' conditions can read tapped state.
         self.enter_derived_tap_reads();
+        self.forget_dirty_characteristics();
         let result = self.update_replacement_effects_inner();
+        self.forget_dirty_characteristics();
         self.exit_derived_tap_reads();
         result
     }

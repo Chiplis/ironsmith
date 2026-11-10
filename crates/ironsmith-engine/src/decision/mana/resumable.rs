@@ -215,6 +215,8 @@ pub struct ManaAnalysisSession {
     suspensions: u64,
     /// Node pops consumed by the most recent slice.
     last_slice_nodes: usize,
+    /// A priority-menu session: affordability is a negative-only bound.
+    bound_payments: bool,
 }
 
 thread_local! {
@@ -242,6 +244,14 @@ thread_local! {
 }
 
 impl ManaAnalysisSession {
+    /// A session for a priority menu. The menu does not prove payments:
+    /// announcing an action validates its payment authoritatively, so the
+    /// menu only leaves out what certainly cannot be paid. Every other
+    /// session keeps the exact, resumable search.
+    pub fn menu_bound() -> Self {
+        Self { bound_payments: true, ..Self::default() }
+    }
+
     pub fn run<T>(&mut self, budget: usize, compute: impl FnOnce() -> T) -> (T, bool) {
         self.run_with_root(None, budget, compute)
     }
@@ -254,7 +264,9 @@ impl ManaAnalysisSession {
 
     fn run_with_root<T>(&mut self, root: Option<usize>, budget: usize, compute: impl FnOnce() -> T) -> (T, bool) {
         if root.is_some() && self.bound_root != root {
+            let bound_payments = self.bound_payments;
             *self = Self::default();
+            self.bound_payments = bound_payments;
             self.bound_root = root;
         }
         self.active_root = root;
@@ -436,11 +448,37 @@ pub(crate) fn analysis_failure() -> Option<crate::effects::ExecutionError> {
     SESSION.with(|slot| slot.borrow().as_ref().and_then(|session| session.failure.clone()))
 }
 
+/// Whether a priority-menu session is running on this thread. Its
+/// affordability answers are upper bounds; every other caller stays exact.
+pub(super) fn bounding_payments() -> bool {
+    SESSION.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .is_some_and(|session| session.bound_payments && session.active_root.is_some())
+    })
+}
+
 /// Use the authoritative planner's resumable search for a query against the
 /// bound root. Pending remains provisional and prevents publishing a complete
 /// menu. Other games retain the synchronous oracle, never a cached root answer.
 pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::ManaPaymentRequest) -> bool {
     if mana_payment_is_assumed() { return true; }
+    // A priority menu does not prove payments. Announcing an action validates
+    // its payment authoritatively, so the menu only has to leave out what
+    // certainly cannot be paid: a negative-only bound, never a search. This
+    // keeps menu analysis independent of how hard a payment is to find, and
+    // of the hypothetical games an exact search has to simulate.
+    if bounding_payments() {
+        if crate::mana_payment::payment_may_be_possible(game, request) {
+            return true;
+        }
+        // A bound that failed to calculate proved nothing. Surface the
+        // failure as an incomplete query instead of a negative answer.
+        return match game.token_resource_failure() {
+            Some(error) => failed_calculation(game, error),
+            None => false,
+        };
+    }
     let bound = SESSION.with(|slot| slot.borrow().as_ref().is_some_and(|session|
         session.active_root == Some(game as *const GameState as usize)));
     // Nested affordability checks inside one planner work unit must remain

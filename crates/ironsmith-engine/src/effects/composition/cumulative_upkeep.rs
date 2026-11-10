@@ -112,6 +112,55 @@ fn echo_cost_alternative(
     best
 }
 
+/// A payment that is one plain mana cost, repeated: paying it `count` times
+/// in a row is paying the combined cost once, because mana left in the pool
+/// carries from one payment to the next. One existence check then replaces
+/// `count` simulated payments on a copy of the game, each of which planned and
+/// executed a full payment. `None` leaves the question to that simulation: X,
+/// a referenced mana cost, or a cost adjustment that applies per payment.
+fn repeated_mana_payment_can_complete(
+    effects: &[Effect],
+    count: usize,
+    reason: crate::costs::PaymentReason,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<Option<bool>, ExecutionError> {
+    use crate::effects::{CostExecutableEffect, CostValidationError, PayManaEffect};
+    let [effect] = effects else {
+        return Ok(None);
+    };
+    let Some(pay) = effect.downcast_ref::<PayManaEffect>() else {
+        return Ok(None);
+    };
+    if count == 0
+        || pay.mana_cost_of.is_some()
+        || pay.x_value.is_some()
+        || pay.x_maximum.is_some()
+        || pay.cost.has_x()
+    {
+        return Ok(None);
+    }
+    let mut simulated_dm = SelectFirstDecisionMaker;
+    let mut simulated_ctx = ExecutionContext::new_default(ctx.source, ctx.controller)
+        .with_decision_maker(&mut simulated_dm);
+    crate::effects::ExecutionContextCheckpoint::capture(ctx).restore(&mut simulated_ctx);
+    simulated_ctx.mana.payment_reason = Some(reason);
+    simulated_ctx.prospective_cost_payment = true;
+    let player = crate::effects::helpers::resolve_player_from_spec(game, &pay.player, &simulated_ctx)?;
+    if game.adjust_mana_cost_for_payment_reason(player, Some(ctx.source), &pay.cost, reason) != pay.cost {
+        return Ok(None);
+    }
+    let mut combined = pay.clone();
+    for _ in 1..count {
+        combined.cost = combined.cost.combined_with(&pay.cost);
+    }
+    match combined.can_execute_as_cost_with_context(game, &mut simulated_ctx, reason) {
+        Ok(()) => Ok(Some(true)),
+        Err(CostValidationError::ExecutionFailed(error)) => Err(error),
+        Err(_) => Ok(Some(false)),
+    }
+}
+
 fn payment_can_complete(
     effects: &[Effect],
     count: usize,
@@ -121,6 +170,9 @@ fn payment_can_complete(
 ) -> Result<bool, ExecutionError> {
     if let Some(action) = action_costs::ActionCost::read(effects) {
         return action.can_pay(game, ctx, count);
+    }
+    if let Some(answer) = repeated_mana_payment_can_complete(effects, count, reason, game, ctx)? {
+        return Ok(answer);
     }
     let mut simulated_game = game.clone();
     let query =

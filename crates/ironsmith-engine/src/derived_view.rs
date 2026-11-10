@@ -36,6 +36,8 @@ pub(crate) struct DerivedGameView<'a> {
     all_effects: Arc<Vec<ContinuousEffect>>,
     battlefield_characteristic_scope: OnceCell<BattlefieldCharacteristicScope>,
     use_game_characteristics_cache: bool,
+    /// Built over a dirty game from that game's own regenerated effects.
+    shares_game_effects: bool,
     characteristics: RefCell<FxMap<ObjectId, Option<Arc<CalculatedCharacteristics>>>>,
     /// Battlefield misses so far on a view without the game cache; the second
     /// one derives the rest of the battlefield in one layer pass.
@@ -416,7 +418,13 @@ impl<'a> DerivedGameView<'a> {
         if game.continuous_state_is_clean() {
             Self::from_refreshed_state(game)
         } else {
-            Self::from_effects(game, game.all_continuous_effects())
+            // The dirty state's own regenerated effects, shared rather than
+            // copied: characteristic reads then go through the game's
+            // dirty-state memo, so the several views one payment query builds
+            // over the same hypothetical game share one board pass.
+            let mut view = Self::from_shared_effects(game, game.all_continuous_effects_arc());
+            view.shares_game_effects = true;
+            view
         }
     }
 
@@ -437,6 +445,7 @@ impl<'a> DerivedGameView<'a> {
             battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
             use_game_characteristics_cache: true,
+            shares_game_effects: false,
             characteristics: RefCell::new(FxMap::default()),
             battlefield_misses: Cell::new(0),
             abilities_cache: RefCell::new(FxMap::default()),
@@ -470,8 +479,11 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn from_effects(game: &'a GameState, all_effects: Vec<ContinuousEffect>) -> Self {
+        Self::from_shared_effects(game, Arc::new(all_effects))
+    }
+
+    fn from_shared_effects(game: &'a GameState, all_effects: Arc<Vec<ContinuousEffect>>) -> Self {
         game.count_derived_view_rebuild();
-        let all_effects = Arc::new(all_effects);
         Self {
             game,
             target_reference_bindings: Default::default(),
@@ -482,6 +494,7 @@ impl<'a> DerivedGameView<'a> {
             battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
             use_game_characteristics_cache: false,
+            shares_game_effects: false,
             characteristics: RefCell::new(FxMap::default()),
             battlefield_misses: Cell::new(0),
             abilities_cache: RefCell::new(FxMap::default()),
@@ -594,7 +607,10 @@ impl<'a> DerivedGameView<'a> {
             return cached.clone();
         }
 
-        let calculated = if self.use_game_characteristics_cache {
+        let calculated = if self.use_game_characteristics_cache
+            || (self.shares_game_effects
+                && crate::continuous::characteristic_memo_context(self.game).is_none())
+        {
             self.game.calculated_characteristics_arc(object_id)
         } else {
             if self.derive_battlefield_batch_on_miss(object_id)

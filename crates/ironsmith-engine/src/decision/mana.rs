@@ -20,7 +20,7 @@ pub(crate) use resumable::mana_payment_is_assumed;
 
 pub use mechanics::*;
 
-pub(super) fn check_scoped_mana_payment(game: &GameState, request: &crate::mana_payment::ManaPaymentRequest) -> bool {
+pub(crate) fn check_scoped_mana_payment(game: &GameState, request: &crate::mana_payment::ManaPaymentRequest) -> bool {
     resumable::check_payment(game, request)
 }
 
@@ -2133,6 +2133,23 @@ fn every_payable_proposal_violates_cant_cast(
     if !violates_any_cant_cast_restriction(game, player, spell) {
         return false;
     }
+    // A prohibition on every spell ("Your opponents can't cast spells during
+    // your turn") or on this exact card cannot be escaped by any X or optional
+    // cost, so there is nothing to search. Enumerating the proposals anyway
+    // copied and refreshed the game once per payable X for each such spell.
+    if game.hand_card_cant_be_played_until_owners_next_turn(spell.id)
+        || game
+            .effect_store
+            .cant_effects
+            .cast_filters_for_player(player)
+            .is_some_and(|filters| {
+                filters
+                    .iter()
+                    .any(|restriction| restriction.filter == crate::target::ObjectFilter::default())
+            })
+    {
+        return true;
+    }
 
     !any_payable_optional_cost_proposal(
         game,
@@ -3952,6 +3969,11 @@ fn mana_cost_can_be_paid_with_view_at_x(
         )
         .with_spend_policy(game.mana_spend_policy_for_cast(player, Some(spell_id)));
         request.x_value = x_value;
+        // A menu bound overestimates spending permissions anyway, so it needs
+        // no proposal on the stack and therefore no copy of the game.
+        if resumable::bounding_payments() {
+            return resumable::check_payment(game, &request);
+        }
         // CR 601.2a: spending restrictions inspect the proposed spell on the
         // stack. The real card stays in its origin zone during menu analysis.
         // Give the payment planner that proposal too, rather than a hand card
@@ -4024,12 +4046,23 @@ pub(crate) fn mana_cost_with_locked_x_and_generic_reduction(
 }
 
 
+/// Whether this payment query is a priority-menu bound for an ordinary cast,
+/// which needs no proposed spell. Every other casting method carries a face,
+/// a price or a spending permission that only the proposal records.
+pub(super) fn menu_bound_skips_proposal(method: &CastingMethod) -> bool {
+    // The presentation pass assumes mana outright, so its answer never reads
+    // the proposal either.
+    matches!(method, CastingMethod::Normal)
+        && (resumable::bounding_payments() || resumable::mana_payment_is_assumed())
+}
+
 /// Build the selected face once for every payment route, including explicit
 /// requests that reserve a Harmonize resource. Arbitrary supplied views are
 /// legitimate hypotheses, but never inherit the immutable root's cache entry.
 fn with_cast_payment_proposal(
     game: &GameState, caster: PlayerId, spell_id: ObjectId,
     spell: &crate::object::Object, method: &CastingMethod,
+    payment_only: bool,
     compute: impl FnOnce(&GameState) -> bool,
 ) -> bool {
     let Some(physical) = game.object(spell_id) else { return false; };
@@ -4086,6 +4119,12 @@ fn with_cast_payment_proposal(
         face.cast_grant_usage_identity = Some(Box::new(receipt.identity.clone()));
         face.cast_play_permission = Some(Box::new(receipt));
     }
+    // The presentation pass assumes mana, so a query that only asks whether
+    // the proposal can be paid is answered once the proposal is known to be
+    // constructible. Copying and refreshing the game for it bought nothing.
+    if payment_only && resumable::mana_payment_is_assumed() {
+        return true;
+    }
     let mut proposed = game.clone();
     proposed.project_spell_for_payment(spell_id);
     face.zone = Zone::Stack;
@@ -4116,8 +4155,17 @@ fn mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
     view: &DerivedGameView<'_>,
     declaration: Option<(&crate::object::Object, &CastingMethod)>,
 ) -> bool {
-    if let Some((spell, method)) = declaration {
-        return with_cast_payment_proposal(game, caster, spell_id, spell, method, |proposed| {
+    // A menu bound for an ordinary cast reads nothing the proposal adds (the
+    // spell on the stack, a refreshed copy of the game): spending permissions
+    // are overestimated, and the cost was derived by the caller. Building and
+    // refreshing that copy per spell and per payment route was most of what a
+    // menu cost on a large board.
+    // A supplied spell view (an optional-cost hypothesis) is skipped as well:
+    // the view only narrows what may be spent, which a bound overestimates.
+    if let Some((spell, method)) = declaration
+        && !menu_bound_skips_proposal(method)
+    {
+        return with_cast_payment_proposal(game, caster, spell_id, spell, method, true, |proposed| {
             let proposed_view = DerivedGameView::new(proposed);
             mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
                 proposed, caster, spell_id, cost, x_value, &proposed_view, None,
@@ -4471,7 +4519,7 @@ pub(crate) fn can_cast_spell_with_context(
                 total_cost, ..
             }) if total_cost.costs().is_empty())
         && !with_cast_payment_proposal(
-            game, player, spell.id, spell_for_checks, casting_method, |proposed| {
+            game, player, spell.id, spell_for_checks, casting_method, false, |proposed| {
                 let Some(proposed_spell) = proposed.object(spell.id) else { return false; };
                 match spell_x_minimum_allows_zero(proposed, player, proposed_spell) {
                     Ok(allowed) => allowed,
@@ -5206,8 +5254,12 @@ pub(crate) fn can_cast_with_cost_with_context(
                     )
                     .with_spend_policy(crate::alternative_cast::play_permission::casting_spend_policy(game, player, spell_for_checks, casting_method));
                     request.reserved_tap_sources = resource.into_iter().collect();
-                    with_cast_payment_proposal(game, player, spell_id, spell_for_checks, casting_method,
-                        |proposed| resumable::check_payment(proposed, &request))
+                    if menu_bound_skips_proposal(casting_method) {
+                        resumable::check_payment(game, &request)
+                    } else {
+                        with_cast_payment_proposal(game, player, spell_id, spell_for_checks, casting_method, true,
+                            |proposed| resumable::check_payment(proposed, &request))
+                    }
                 })
         } else {
             mana_cost_can_be_paid_by_caster_or_assist_with_view(
@@ -8776,6 +8828,35 @@ pub(crate) fn can_pay_mana_cost_with_available_sources(
     allow_black_life: bool,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    can_pay_mana_cost_with_available_sources_except(
+        game,
+        player,
+        source,
+        cost,
+        x_value,
+        reason,
+        mana_spend_policy,
+        allow_black_life,
+        view,
+        &[],
+    )
+}
+
+/// `can_pay_mana_cost_with_available_sources` when `reserved` permanents must
+/// stay untapped for the same cost ("{3}{U}, {T}, Sacrifice this land") and so
+/// cannot also be tapped for mana.
+pub(crate) fn can_pay_mana_cost_with_available_sources_except(
+    game: &GameState,
+    player: PlayerId,
+    source: Option<ObjectId>,
+    cost: &crate::mana::ManaCost,
+    x_value: u32,
+    reason: crate::costs::PaymentReason,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
+    allow_black_life: bool,
+    view: &DerivedGameView<'_>,
+    reserved: &[ObjectId],
+) -> bool {
     if resumable::mana_payment_is_assumed() {
         return true;
     }
@@ -8795,6 +8876,10 @@ pub(crate) fn can_pay_mana_cost_with_available_sources(
                 .with_x(x_value)
                 .with_spend_policy(mana_spend_policy.clone());
         request.allow_black_life = allow_black_life;
+        request.reserved_tap_sources = reserved.to_vec();
+        if resumable::bounding_payments() {
+            return resumable::check_payment(game, &request);
+        }
         let mut prospective;
         let payment_game = if reason == crate::costs::PaymentReason::CastSpell
             && game
@@ -8829,7 +8914,16 @@ pub(crate) fn can_pay_mana_cost_with_available_sources(
         0
     };
 
-    let sources = available_mana_sources_for_payment(game, player, view);
+    let mut sources = available_mana_sources_for_payment(game, player, view);
+    if sources.iter().any(|candidate| reserved.contains(&candidate.source_id)) {
+        sources = Rc::new(
+            sources
+                .iter()
+                .filter(|candidate| !reserved.contains(&candidate.source_id))
+                .cloned()
+                .collect(),
+        );
+    }
     let snow_pool = snow_mana_pool(game, player, source, reason);
     let source_policies = sources
         .iter()

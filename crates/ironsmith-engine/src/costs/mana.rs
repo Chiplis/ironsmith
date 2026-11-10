@@ -321,14 +321,30 @@ impl CostPayer for ManaPaymentCost {
                 Some(ctx.source),
                 ctx.reason,
             );
-            return crate::mana_payment::check_mana_payment(game, &request).map_err(|failure| {
-                match failure {
-                    crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => {
-                        CostPaymentError::ExecutionFailed(error)
-                    }
-                    _ => CostPaymentError::InsufficientMana,
-                }
-            });
+            // A cost that also taps its own source ("{3}{U}, {T}, Sacrifice")
+            // reserves that source, so it cannot use the view's source summary.
+            // It is still an ordinary affordability query: inside a sliced
+            // priority analysis it must suspend like every other one instead
+            // of running the whole search inside a single slice.
+            if query.payment.is_some() {
+                // A mana ability's own mana cost, asked while a payment planner
+                // gathers its candidate sources. The planner then performs the
+                // activation and drops it if this cost cannot be paid, so a
+                // negative-only bound is enough here; an exact answer ran a
+                // whole nested payment search per such source, per expansion.
+                return if crate::mana_payment::payment_may_be_possible(game, &request) {
+                    Ok(())
+                } else {
+                    Err(CostPaymentError::InsufficientMana)
+                };
+            }
+            if crate::decision::check_scoped_mana_payment(game, &request) {
+                return Ok(());
+            }
+            if let Some(error) = game.token_resource_failure() {
+                return Err(CostPaymentError::ExecutionFailed(error));
+            }
+            return Err(CostPaymentError::InsufficientMana);
         }
         if !query.view.can_potentially_pay_with_reason(
             ctx.payer,

@@ -3430,27 +3430,10 @@ pub fn calculate_characteristics_with_effects(
     // one-object pass instead answered each such read with a full pass of its
     // own, whose dependency baseline re-ran every permanent and re-read the same
     // condition: a 10-permanent board took thousands of passes per action.
-    if object.zone == Zone::Battlefield && battlefield.len() > 1 {
-        return calculate_characteristics_layer_batch_with_effects(
-            &[object_id],
-            objects,
-            effects,
-            battlefield,
-            commanders,
-            game,
-        )
-        .remove(&object_id);
-    }
-
-    Some(calculate_with_layers_direct_internal(
-        object,
-        objects,
-        effects,
-        battlefield,
-        commanders,
-        game,
-        DependencySortMode::Baseline,
-        true,
+    // A card off the battlefield takes the board pass as well whenever its own
+    // one-object pass would have to build those baselines.
+    Some(calculate_single_with_board_pass(
+        object, objects, effects, battlefield, commanders, game,
     ))
 }
 
@@ -3515,15 +3498,8 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
                 let object = objects
                     .get(&id)
                     .expect("pending batch id should have an object");
-                let chars = calculate_with_layers_direct_internal(
-                    object,
-                    objects,
-                    effects,
-                    battlefield,
-                    commanders,
-                    game,
-                    DependencySortMode::Baseline,
-                    true,
+                let chars = calculate_single_with_board_pass(
+                    object, objects, effects, battlefield, commanders, game,
                 );
                 calculated.insert(id, chars);
             }
@@ -3543,20 +3519,74 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
         };
         calculated.insert(
             id,
-            calculate_with_layers_direct_internal(
-                object,
-                objects,
-                effects,
-                battlefield,
-                commanders,
-                game,
-                DependencySortMode::Baseline,
-                true,
+            calculate_single_with_board_pass(
+                object, objects, effects, battlefield, commanders, game,
             ),
         );
     }
 
     calculated
+}
+
+/// One requested object of a batch. A permanent takes the same board pass as
+/// `calculate_characteristics_with_effects`: every permanent is then an
+/// in-progress calculation, so a value that counts over the battlefield
+/// (domain, "for each creature you control") reads each permanent's current
+/// layer view. The one-object pass answered each such read with a full pass
+/// of its own, and two such permanents nested those passes inside each other.
+fn calculate_single_with_board_pass(
+    object: &Object,
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+) -> CalculatedCharacteristics {
+    if let Some(chars) = game.characteristicless_face_down_characteristics(object.id) {
+        return chars;
+    }
+    let board_pass = if object.zone == Zone::Battlefield {
+        battlefield.len() > 1
+    } else {
+        // Off the battlefield the one-object pass is the cheap one, unless a
+        // layer that may reach this card needs a dependency baseline. That
+        // baseline derives every covered object, each with baselines of its
+        // own for the earlier layers; the board pass builds one per layer.
+        !battlefield.is_empty() && {
+            let mut by_layer: HashMap<Layer, Vec<&ContinuousEffect>> = HashMap::with_capacity(7);
+            for effect in effects {
+                by_layer.entry(effect.modification.layer()).or_default().push(effect);
+            }
+            let started = HashSet::new();
+            by_layer.values().any(|layer_effects| {
+                layer_effects_may_reach_object(layer_effects, &started, object, objects)
+                    && crate::dependency::needs_baseline_dependency_sort(layer_effects, game)
+            })
+        }
+    };
+    if board_pass
+        && let Some(chars) = calculate_characteristics_layer_batch_with_effects(
+            &[object.id],
+            objects,
+            effects,
+            battlefield,
+            commanders,
+            game,
+        )
+        .remove(&object.id)
+    {
+        return chars;
+    }
+    calculate_with_layers_direct_internal(
+        object,
+        objects,
+        effects,
+        battlefield,
+        commanders,
+        game,
+        DependencySortMode::Baseline,
+        true,
+    )
 }
 
 fn calculate_characteristics_layer_batch_with_effects(
@@ -3580,6 +3610,10 @@ fn calculate_characteristics_layer_batch_internal(
     copy_only: bool,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
     let _tap_reads = game.derived_tap_read_scope();
+    // Only an outermost pass computes final values for everything it covers.
+    let capture_extras = !copy_only
+        && characteristic_memo_context(game).is_none()
+        && BOARD_PASS_EXTRAS.with(|slot| slot.borrow().as_ref().is_some_and(HashMap::is_empty));
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
     use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
@@ -4121,13 +4155,45 @@ fn calculate_characteristics_layer_batch_internal(
     }
 
     let mut calculated = HashMap::with_capacity(requested.len());
-    for id in requested {
+    for &id in &requested {
         if let Some(chars) = chars_by_id.get(&id) {
             calculated.insert(id, chars.clone());
         }
     }
+    if capture_extras {
+        BOARD_PASS_EXTRAS.with(|slot| {
+            if let Some(extras) = slot.borrow_mut().as_mut() {
+                extras.extend(
+                    chars_by_id
+                        .into_iter()
+                        .filter(|(id, _)| !requested.contains(id)),
+                );
+            }
+        });
+    }
 
     calculated
+}
+
+thread_local! {
+    /// Filled by one outermost board pass with the objects it computed but
+    /// was not asked for. See `capture_board_pass_extras`.
+    static BOARD_PASS_EXTRAS: RefCell<Option<HashMap<ObjectId, CalculatedCharacteristics>>> =
+        const { RefCell::new(None) };
+}
+
+/// Run `calculate` and also return what its first outermost board pass
+/// derived beyond the requested objects. A board pass runs every object an
+/// effect can reach through the layers (cards in graveyards and libraries
+/// under a zoneless filter) and then returned only the permanents asked for;
+/// a later read of one of those cards repeated the whole pass for it.
+pub(crate) fn capture_board_pass_extras<T>(
+    calculate: impl FnOnce() -> T,
+) -> (T, HashMap<ObjectId, CalculatedCharacteristics>) {
+    let outer = BOARD_PASS_EXTRAS.with(|slot| slot.borrow_mut().replace(HashMap::new()));
+    let result = calculate();
+    let extras = BOARD_PASS_EXTRAS.with(|slot| std::mem::replace(&mut *slot.borrow_mut(), outer));
+    (result, extras.unwrap_or_default())
 }
 
 pub(crate) fn calculate_characteristics_with_effects_simple(

@@ -1750,6 +1750,7 @@ struct RuntimeCacheState {
     static_effects_cache: RefCell<crate::static_ability_processor::StaticEffectsCache>,
     trigger_registry: RefCell<Option<Arc<crate::triggers::check::TriggerRegistry>>>,
     object_snapshot_cache: RefCell<ObjectSnapshotCache>,
+    dirty_characteristics_memo: RefCell<DirtyCharacteristicsMemo>,
     sba_candidates: RefCell<Box<crate::rules::state_based::SbaCandidateCache>>,
     characteristics_cache: CharacteristicsCache,
     work_counters: WorkCounters,
@@ -1814,6 +1815,8 @@ impl Clone for RuntimeCacheState {
             static_effects_cache: RefCell::new(self.static_effects_cache.borrow().clone()),
             trigger_registry: RefCell::new(self.trigger_registry.borrow().clone()),
             object_snapshot_cache: RefCell::new(self.object_snapshot_cache.borrow().clone()),
+            // A clone is usually mutated at once; it rebuilds on first read.
+            dirty_characteristics_memo: RefCell::new(DirtyCharacteristicsMemo::default()),
             sba_candidates: RefCell::new(self.sba_candidates.borrow().clone()),
             characteristics_cache: CharacteristicsCache::cloned_from(&self.characteristics_cache),
             work_counters: WorkCounters::default(),
@@ -1868,11 +1871,42 @@ impl RuntimeCacheState {
             ),
             trigger_registry: RefCell::new(None),
             object_snapshot_cache: RefCell::new(ObjectSnapshotCache::default()),
+            dirty_characteristics_memo: RefCell::new(DirtyCharacteristicsMemo::default()),
             sba_candidates: RefCell::new(Default::default()),
             characteristics_cache: CharacteristicsCache::default(),
             work_counters: WorkCounters::default(),
         }
     }
+}
+
+/// Every revision a dirty-state characteristic read can observe. Two reads
+/// under the same key see the same objects, zones, effects, players, stack,
+/// combat context and turn position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DirtyStateKey {
+    mutation_revision: u64,
+    zone_revision: u64,
+    effect_revision: u64,
+    context_revision: u64,
+    turn_number: u32,
+    active_player: PlayerId,
+    phase: Phase,
+    step: Option<Step>,
+}
+
+/// Regenerated effects and whole-board characteristics for one dirty state.
+///
+/// A dirty read cannot use the clean caches, so each one used to regenerate
+/// every static effect and run a full board pass to answer for one object.
+/// A refresh, a state-based-action check or a hand-reveal scan makes one such
+/// read per permanent (or per filter candidate) without changing anything in
+/// between, which made those scans quadratic in the board.
+#[derive(Debug, Default)]
+struct DirtyCharacteristicsMemo {
+    key: Option<DirtyStateKey>,
+    effects: Option<Arc<Vec<ContinuousEffect>>>,
+    characteristics:
+        HashMap<ObjectId, Option<Arc<crate::continuous::CalculatedCharacteristics>>>,
 }
 
 /// LKI snapshot memo scoped to mutation, continuous-context and effect revisions.

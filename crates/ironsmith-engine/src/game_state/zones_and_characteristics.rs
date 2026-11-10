@@ -5749,9 +5749,133 @@ retain_original_types: false, retain_original_name: false,
                 crate::static_ability_processor::get_all_continuous_effects(self)
             });
         }
-        Arc::new(crate::static_ability_processor::get_all_continuous_effects(
+        let key = self.dirty_state_key();
+        if let Some(effects) = self.dirty_memo_effects(key) {
+            return effects;
+        }
+        let marker = crate::continuous::provisional_condition_marker();
+        let effects = Arc::new(crate::static_ability_processor::get_all_continuous_effects(
             self,
-        ))
+        ));
+        if !crate::continuous::computed_provisionally(marker) && key == self.dirty_state_key() {
+            let mut memo = self.runtime_cache.dirty_characteristics_memo.borrow_mut();
+            if memo.key != Some(key) {
+                memo.key = Some(key);
+                memo.characteristics.clear();
+            }
+            memo.effects = Some(Arc::clone(&effects));
+        }
+        effects
+    }
+
+    fn dirty_state_key(&self) -> DirtyStateKey {
+        DirtyStateKey {
+            mutation_revision: self.mutation_revision,
+            zone_revision: self.zone_revisions.all,
+            effect_revision: self.effect_store.continuous_effects.revision(),
+            context_revision: self.continuous_context_revision(),
+            turn_number: self.turn.turn_number,
+            active_player: self.turn.active_player,
+            phase: self.turn.phase,
+            step: self.turn.step,
+        }
+    }
+
+    fn dirty_memo_effects(&self, key: DirtyStateKey) -> Option<Arc<Vec<ContinuousEffect>>> {
+        let memo = self.runtime_cache.dirty_characteristics_memo.borrow();
+        (memo.key == Some(key)).then(|| memo.effects.clone()).flatten()
+    }
+
+    /// State the revisions do not cover is about to change (the prohibition
+    /// tracker a control-changing layer reads, published replacements).
+    pub(crate) fn forget_dirty_characteristics(&self) {
+        let mut memo = self.runtime_cache.dirty_characteristics_memo.borrow_mut();
+        memo.key = None;
+        memo.effects = None;
+        memo.characteristics.clear();
+    }
+
+    /// A characteristic read on a dirty state outside any calculation. One
+    /// board pass answers every permanent, exactly as each single read would.
+    fn dirty_calculated_characteristics(
+        &self,
+        id: ObjectId,
+    ) -> Option<Arc<crate::continuous::CalculatedCharacteristics>> {
+        let key = self.dirty_state_key();
+        {
+            let memo = self.runtime_cache.dirty_characteristics_memo.borrow();
+            if memo.key == Some(key)
+                && let Some(cached) = memo.characteristics.get(&id)
+            {
+                self.runtime_cache
+                    .work_counters
+                    .bump_characteristics_cache_hits();
+                return cached.clone();
+            }
+        }
+        let all_effects = self.all_continuous_effects_arc();
+        self.runtime_cache
+            .work_counters
+            .bump_characteristics_full_recomputes();
+        self.runtime_cache
+            .work_counters
+            .add_effects_considered(all_effects.len() as u64);
+        let marker = crate::continuous::provisional_condition_marker();
+        let board: Vec<_> = if self
+            .object(id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
+            self.battlefield
+                .iter()
+                .copied()
+                .filter(|&candidate| candidate == id || !self.is_phased_out(candidate))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let (mut calculated, extras) = crate::continuous::capture_board_pass_extras(|| -> Vec<(ObjectId, Option<Arc<crate::continuous::CalculatedCharacteristics>>)> {
+            if board.len() > 1 {
+                // More than one requested permanent takes the same layer batch
+                // a single read takes; it only returns the others as well.
+                let mut batch =
+                    self.calculated_characteristics_batch_with_effects(&board, &all_effects);
+                board
+                    .iter()
+                    .map(|candidate| (*candidate, batch.remove(candidate).map(Arc::new)))
+                    .collect()
+            } else {
+                vec![(
+                    id,
+                    self.calculated_characteristics_with_effects(id, &all_effects)
+                        .map(Arc::new),
+                )]
+            }
+        });
+        // Whatever else that pass derived is final for this state as well.
+        for (extra, chars) in extras {
+            if calculated.iter().all(|(known, _)| *known != extra)
+                && self.characteristicless_face_down_characteristics(extra).is_none()
+                && !(self.object(extra).is_some_and(|object| object.zone == Zone::Battlefield)
+                    && self.is_phased_out(extra))
+            {
+                calculated.push((extra, Some(Arc::new(chars))));
+            }
+        }
+        let position = calculated
+            .iter()
+            .position(|(candidate, _)| *candidate == id)
+            .expect("the requested object is always calculated");
+        let requested = calculated[position].1.clone();
+        if !crate::continuous::computed_provisionally(marker) && key == self.dirty_state_key() {
+            let mut memo = self.runtime_cache.dirty_characteristics_memo.borrow_mut();
+            if memo.key != Some(key) {
+                memo.key = Some(key);
+                memo.effects = None;
+                memo.characteristics.clear();
+            }
+            memo.characteristics.extend(calculated.drain(..));
+        }
+        requested
     }
 
     /// Combine registered and cached static-ability continuous effects.
@@ -6045,6 +6169,9 @@ retain_original_types: false, retain_original_name: false,
                 self.calculated_characteristics_with_effects(id, &all_effects)
             });
         }
+        if !self.continuous_state_is_clean() {
+            return self.dirty_calculated_characteristics(id);
+        }
         let all_effects = self.all_continuous_effects_arc();
         self.runtime_cache
             .work_counters
@@ -6071,12 +6198,31 @@ retain_original_types: false, retain_original_name: false,
                 .collect();
             if !missing.is_empty() {
                 let marker = crate::continuous::provisional_condition_marker();
-                let calculated_batch =
-                    self.calculated_characteristics_batch_with_effects(&missing, &all_effects);
+                let (calculated_batch, extras) = crate::continuous::capture_board_pass_extras(|| {
+                    self.calculated_characteristics_batch_with_effects(&missing, &all_effects)
+                });
                 // A self-dependent condition an enclosing evaluation treated
                 // provisionally (CR 613.8) makes these results unfit to cache.
                 if crate::continuous::computed_provisionally(marker) {
                     return calculated_batch.get(&id).cloned().map(Arc::new);
+                }
+                // Cards the same pass derived off the battlefield are final
+                // too; keep them so a later read does not repeat the pass.
+                for (extra, chars) in extras {
+                    if self.object(extra).is_some_and(|object| object.zone != Zone::Battlefield)
+                        && self.characteristicless_face_down_characteristics(extra).is_none()
+                        && !crate::continuous::characteristics_calculation_in_progress(self, extra)
+                        && !self
+                            .runtime_cache
+                            .characteristics_cache
+                            .contains_valid_entry(extra, effects_revision)
+                    {
+                        self.runtime_cache.characteristics_cache.insert(
+                            extra,
+                            effects_revision,
+                            Some(chars),
+                        );
+                    }
                 }
                 let mut calculated = None;
                 for candidate in missing {
@@ -6880,12 +7026,14 @@ retain_original_types: false, retain_original_name: false,
     pub fn update_cant_effects(&mut self) {
         // Restriction sources' conditions can read tapped state.
         self.enter_derived_tap_reads();
+        self.forget_dirty_characteristics();
         let prior_prohibitions = self.effect_store.cant_effects.cant_gain_control.clone();
         let prior_scan = self.effect_store.cant_effects.control_prohibitions_during_scan.replace(prior_prohibitions);
         self.update_cant_effects_inner();
         // A nested derived query must restore its caller's retained map,
         // rather than expose a partially rebuilt tracker to the outer scan.
         self.effect_store.cant_effects.control_prohibitions_during_scan = prior_scan;
+        self.forget_dirty_characteristics();
         self.exit_derived_tap_reads();
     }
 

@@ -25,6 +25,11 @@ struct PriorityCandidate {
     presentation_checked: bool,
 }
 
+/// Search units one candidate may spend before its payment is left unknown.
+/// Ordinary boards settle a candidate in a handful of units; a search that
+/// has not found a payment by now is proving a negative the slow way.
+const PRIORITY_CANDIDATE_WORK_CAP: usize = 128;
+
 /// Passing and making mana never count as something to do at a stop.
 pub(super) fn priority_action_is_meaningful(action: &LegalAction) -> bool {
     !matches!(action, LegalAction::PassPriority | LegalAction::ActivateManaAbility { .. })
@@ -89,7 +94,10 @@ impl WasmGame {
         });
         restore_id_counters(id_counters);
         self.last_analysis_slice_nodes = candidate.session.last_slice_nodes();
-        candidate.work_units = candidate.work_units.saturating_add(self.last_analysis_slice_nodes);
+        // A suspended slice that popped no node still counts, so a candidate
+        // that never settles reaches the cap below.
+        candidate.work_units = candidate.work_units.saturating_add(
+            if complete { self.last_analysis_slice_nodes } else { self.last_analysis_slice_nodes.max(1) });
         if let Some(error) = candidate.session.failure().cloned() {
             // A failed candidate cannot become a completed negative entry or
             // a permanently pending retry. Leave the published menu explicitly
@@ -106,6 +114,18 @@ impl WasmGame {
         if complete {
             if !job.candidates.iter().any(|other| other.source == candidate.source) {
                 job.provisional_actions.retain(|action| ironsmith::decision::legal_action_source(action) != candidate.source);
+            }
+        } else if candidate.work_units >= PRIORITY_CANDIDATE_WORK_CAP {
+            // An unfinished payment search is unknown, never unaffordable.
+            // Offer what this source could do if its mana were available and
+            // let the payment prompt decide when the player announces it, so
+            // one unbounded search cannot keep the whole menu incomplete.
+            for action in &job.presentation_actions {
+                if ironsmith::decision::legal_action_source(action) == candidate.source
+                    && !job.actions.contains(action)
+                {
+                    job.actions.push(action.clone());
+                }
             }
         } else {
             // Rotate unresolved cards: one search cannot consume every slice.
@@ -373,9 +393,9 @@ impl WasmGame {
         let mut candidates = std::collections::VecDeque::new();
         for player in self.game.priority_team_players() {
             for source in ironsmith::decision::priority_analysis_sources(&self.game, player) {
-                candidates.push_back(PriorityCandidate { player, source: Some(source), session: Default::default(), work_units: 0, presentation_checked: false });
+                candidates.push_back(PriorityCandidate { player, source: Some(source), session: ironsmith::decision::ManaAnalysisSession::menu_bound(), work_units: 0, presentation_checked: false });
             }
-            candidates.push_back(PriorityCandidate { player, source: None, session: Default::default(), work_units: 0, presentation_checked: false });
+            candidates.push_back(PriorityCandidate { player, source: None, session: ironsmith::decision::ManaAnalysisSession::menu_bound(), work_units: 0, presentation_checked: false });
         }
         self.priority_analysis_job = Some(Box::new(PriorityAnalysisJob {
             token,
@@ -817,6 +837,8 @@ mod priority_analysis_tests {
             wasm.pending_decision = Some(DecisionContext::Priority(context));
             wasm.priority_analysis_job = Some(Box::new(PriorityAnalysisJob {
                 token: "resource".into(), key: wasm.priority_analysis_key(), game: wasm.game.clone(), player,
+                // An exact session: a menu-bound one never simulates the
+                // activation whose resource failure this test surfaces.
                 candidates: std::collections::VecDeque::from([PriorityCandidate { player, source: Some(spell), session: Default::default(), work_units: 0, presentation_checked: false }]),
                 actions: vec![LegalAction::PassPriority],
                 provisional_actions: Vec::new(),
@@ -967,7 +989,7 @@ mod priority_analysis_tests {
         });
     }
     #[test]
-    fn keyword_payment_analysis_obeys_budget_and_preserves_exact_final_menu() {
+    fn keyword_payment_analysis_obeys_budget_and_never_hides_a_payable_spell() {
         with_fixture_stack(|| {
             let _ids = crate::test_id_counter_guard();
             for amount in [2, 3] {
@@ -998,8 +1020,11 @@ mod priority_analysis_tests {
                 let retained = wasm.priority_analysis_job.as_ref().unwrap().candidates.iter().any(|candidate| candidate.source == Some(spell));
                 let Some(DecisionContext::Priority(first)) = &wasm.pending_decision else { panic!() };
                 let first_has_spell = first.actions.iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell));
-                assert!(retained || first_has_spell == (amount == 2),
-                    "unfinished queries must retain their frontier; a completed shortcut must already be exact");
+                // The menu is an upper bound on what can be paid (payment is
+                // validated on announcement): it may offer a spell the exact
+                // planner refuses, never the reverse.
+                assert!(retained || first_has_spell || amount != 2,
+                    "a payable spell is never published as unavailable");
                 assert!(wasm.last_analysis_slice_nodes <= 1);
                 let mut completed = false;
                 for _ in 0..1000 {
@@ -1010,7 +1035,6 @@ mod priority_analysis_tests {
                 assert!(completed);
                 let Some(DecisionContext::Priority(ctx)) = &wasm.pending_decision else { panic!() };
                 assert!(ctx.analysis_complete);
-                assert_eq!(ctx.actions.len(), expected.len());
                 assert!(expected.iter().all(|action| ctx.actions.contains(action)));
                 assert_eq!(wasm.game.player(alice).unwrap().life, 20);
             }
@@ -1097,7 +1121,6 @@ pub(super) struct InspectorAnalysisJob {
     key: SnapshotCacheKey,
     object_id: u64,
     ability: Option<usize>,
-    searches: Vec<ironsmith::mana_payment::ManaPaymentAnalysis>,
     counters: ironsmith::ids::IdCountersSnapshot,
 }
 
@@ -1115,7 +1138,6 @@ impl WasmGame {
             key: self.priority_analysis_key(),
             object_id,
             ability,
-            searches: Vec::new(),
             counters: snapshot_id_counters(),
         }));
     }
@@ -1123,9 +1145,8 @@ impl WasmGame {
     pub fn step_inspector_analysis(
         &mut self,
         token: String,
-        budget: usize,
+        _budget: usize,
     ) -> Result<JsValue, JsValue> {
-        use ironsmith::mana_payment::{ManaPaymentAnalysis, ManaPaymentFailure};
         let Some(mut job) = self.inspector_analysis_job.take() else {
             return Ok(JsValue::FALSE);
         };
@@ -1134,37 +1155,16 @@ impl WasmGame {
         }
         let counters = snapshot_id_counters();
         restore_id_counters(job.counters);
-        let mut index = 0;
-        let mut pending = false;
-        let mut slice_units = 0usize;
+        // The inspector greys out what certainly cannot be paid, like the
+        // priority menu. Proving an awkward cost unpayable exactly (a five
+        // colour cost beside a mana trigger) has no bound, and the panel would
+        // spin on it for as long as it stayed open.
         let result = self.inspector_actions_with(job.object_id, job.ability, &mut |request| {
-            if pending {
-                return None;
-            }
-            if index == job.searches.len() {
-                job.searches
-                    .push(ManaPaymentAnalysis::check(&self.game, request.clone()));
-            }
-            let outcome = job.searches[index].step(budget.clamp(1, 64));
-            slice_units = slice_units.saturating_add(job.searches[index].last_slice_units());
-            index += 1;
-            match outcome {
-                None => {
-                    pending = true;
-                    None
-                }
-                Some(Ok(_)) => Some(true),
-                Some(Err(ManaPaymentFailure::NoLegalPlan)) => Some(false),
-                Some(Err(_)) => None,
-            }
+            Some(ironsmith::mana_payment::payment_may_be_possible(&self.game, request))
         });
         job.counters = snapshot_id_counters();
         restore_id_counters(counters);
-        self.last_analysis_slice_nodes = slice_units;
-        if pending {
-            self.inspector_analysis_job = Some(job);
-            return Ok(JsValue::NULL);
-        }
+        self.last_analysis_slice_nodes = 0;
         result
     }
 }
@@ -1178,7 +1178,16 @@ pub(super) struct PaymentAnalysisJob {
     request: ironsmith::mana_payment::ManaPaymentRequest,
     score: ironsmith::mana_payment::ManaPaymentScore,
     payable: bool,
+    /// Search units spent so far on this optional ranking.
+    units: usize,
 }
+
+/// Search units an optional ranking may spend improving a proposal that can
+/// already be paid. Ranking only ever replaces the proposal at its very end,
+/// so a long search shows "Improving" for its whole run and usually changes
+/// nothing. An unfunded proposal is never cut off: the search is then the
+/// only way the prompt gets a payable plan without manual taps.
+const PAYABLE_RANKING_WORK_CAP: usize = 256;
 
 #[wasm_bindgen]
 impl WasmGame {
@@ -1197,6 +1206,7 @@ impl WasmGame {
             request: ctx.request.clone(),
             score: ctx.plan.score,
             payable: ctx.plan.payable,
+            units: 0,
         }));
         true
     }
@@ -1225,7 +1235,12 @@ impl WasmGame {
         let counters = snapshot_id_counters();
         let result = job.analysis.step(budget.clamp(1, 8));
         restore_id_counters(counters);
+        job.units = job.units.saturating_add(job.analysis.last_slice_units().max(1));
         let Some(result) = result else {
+            if job.payable && job.units >= PAYABLE_RANKING_WORK_CAP {
+                // Keep the proposal the prompt already shows.
+                return Ok(JsValue::FALSE);
+            }
             self.payment_analysis_job = Some(job);
             return Ok(JsValue::NULL);
         };

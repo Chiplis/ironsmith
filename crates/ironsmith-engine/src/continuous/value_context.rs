@@ -68,6 +68,49 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         }
         filter_ctx
     }
+    /// A permanent candidate of a directly evaluated count, from one pass
+    /// over the board shared by every candidate of that count. Each candidate
+    /// otherwise took a one-object pass of its own, dependency baselines
+    /// included, and a candidate with a count of its own (two domain
+    /// creatures) nested those passes inside each other.
+    fn board_candidate(
+        &self,
+        board: &mut Option<HashMap<ObjectId, CalculatedCharacteristics>>,
+        object: &Object,
+        candidates: &[ObjectId],
+    ) -> Option<CalculatedCharacteristics> {
+        let (effects, commanders) = self.direct_counts?;
+        let ctx = self.calculation;
+        if characteristics_calculation_in_progress(ctx.game, object.id) {
+            return None;
+        }
+        let board = board.get_or_insert_with(|| {
+            // The count's own candidates ride along: cards in a graveyard or
+            // in exile otherwise each rebuilt the dependency baseline.
+            let mut ids: Vec<ObjectId> = ctx
+                .battlefield
+                .iter()
+                .copied()
+                .filter(|&id| !ctx.game.is_phased_out(id))
+                .chain(candidates.iter().copied().filter(|id| !ctx.battlefield.contains(id)))
+                .filter(|&id| !characteristics_calculation_in_progress(ctx.game, id))
+                .collect();
+            ids.sort_unstable();
+            ids.dedup();
+            if ids.len() < 2 {
+                return HashMap::new();
+            }
+            calculate_characteristics_batch_with_effects(
+                &ids,
+                ctx.objects,
+                effects,
+                ctx.battlefield,
+                commanders,
+                ctx.game,
+            )
+        });
+        board.get(&object.id).cloned()
+    }
     pub fn count(&self, filter: &ObjectFilter) -> i32 {
         let ctx = self.calculation;
         let filter_ctx = self.filter_context_for_count(filter);
@@ -80,15 +123,31 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         let mut count = 0;
         let set_constrained = filter.has_selection_set_constraint();
         let mut members = Vec::new();
+        let mut board = None;
+        let mut candidates = Vec::new();
+        for_each_filter_candidate(ctx, filter, |object| candidates.push(object.id));
         for_each_filter_candidate(ctx, filter, |object| {
-            if let Some(chars) = calculate_characteristics_with_effects_simple(
-                object.id,
-                ctx.objects,
-                effects,
-                ctx.battlefield,
-                commanders,
-                ctx.game,
-            ) && filter_matches_with_characteristics_in_context(
+            let cached = if characteristics_calculation_in_progress(ctx.game, object.id)
+                || !std::ptr::eq(ctx.objects, ctx.game.objects_map())
+            {
+                None
+            } else {
+                ctx.game
+                    .cached_characteristics_for_effects(object.id, effects)
+                    .map(|chars| chars.as_ref().clone())
+            };
+            if let Some(chars) = cached
+                .or_else(|| self.board_candidate(&mut board, object, &candidates))
+                .or_else(|| {
+                calculate_characteristics_with_effects_simple(
+                    object.id,
+                    ctx.objects,
+                    effects,
+                    ctx.battlefield,
+                    commanders,
+                    ctx.game,
+                )
+            }) && filter_matches_with_characteristics_in_context(
                 filter,
                 object,
                 &chars,
@@ -132,13 +191,64 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         filter: &ObjectFilter,
         visitor: impl FnMut(&Object, &CalculatedCharacteristics),
     ) {
-        for_each_matching_continuous_object(
-            self.calculation,
-            filter,
-            self.controller,
-            self.source,
-            visitor,
-        )
+        let Some((effects, _)) = self.direct_counts else {
+            return for_each_matching_continuous_object(
+                self.calculation,
+                filter,
+                self.controller,
+                self.source,
+                visitor,
+            );
+        };
+        // Evaluated against the clean state's own effects, a candidate's
+        // characteristics are what the cache already holds. A domain count on
+        // a card outside the battlefield otherwise reran a one-object pass,
+        // dependency baseline included, for every permanent it looked at.
+        let ctx = self.calculation;
+        let mut visitor = visitor;
+        let mut board = None;
+        let mut candidates = Vec::new();
+        for_each_filter_candidate(ctx, filter, |object| candidates.push(object.id));
+        for_each_filter_candidate(ctx, filter, |object| {
+            let cached = if characteristics_calculation_in_progress(ctx.game, object.id)
+                || !std::ptr::eq(ctx.objects, ctx.game.objects_map())
+            {
+                None
+            } else {
+                ctx.game.cached_characteristics_for_effects(object.id, effects)
+            };
+            let owned;
+            let chars: &CalculatedCharacteristics = match &cached {
+                Some(chars) => chars,
+                None => {
+                    let Some(chars) = self
+                        .board_candidate(&mut board, object, &candidates)
+                        .or_else(|| {
+                            ctx.effects.calculate_characteristics(
+                                object.id,
+                                ctx.objects,
+                                ctx.battlefield,
+                                ctx.game,
+                            )
+                        })
+                    else {
+                        return;
+                    };
+                    owned = chars;
+                    &owned
+                }
+            };
+            if filter_matches_with_characteristics(
+                filter,
+                object,
+                chars,
+                ctx.game,
+                self.controller,
+                self.source,
+            ) {
+                visitor(object, chars);
+            }
+        });
     }
     /// Numeric aggregates have an explicit empty-set identity, unlike a
     /// scalar player reference that must designate an available player.
