@@ -1688,8 +1688,10 @@ fn parse_owner_bottom_or_beneath_top_x(tokens: &[OwnedLexToken]) -> Result<Optio
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let Some(owner) = tokens.iter().position(|token| token.is_word("owner")) else { return Ok(None); };
     if owner == 0 || !tokens.get(owner + 1).is_some_and(|token| token.is_word("puts")) { return Ok(None); }
-    let Some(comma) = tokens.iter().position(|token| token.is_comma()) else { return Ok(None); };
-    let body = crate::lexer::parser_token_word_refs(&tokens[owner + 1..comma]);
+    // The binding comma follows the owner's action; an earlier comma (in the
+    // subject or a leading clause) is not the one that introduces "where X is".
+    let Some(comma) = tokens[owner + 1..].iter().position(|token| token.is_comma()).map(|offset| owner + 1 + offset) else { return Ok(None); };
+    let body =crate::lexer::parser_token_word_refs(&tokens[owner + 1..comma]);
     if body.as_slice() != ["puts", "it", "on", "the", "bottom", "of", "their", "library", "or", "just", "beneath",
         "the", "top", "x", "cards", "of", "their", "library"] { return Ok(None); }
     let Some(value) = crate::keyword_static::parse_value_binding_clause(&tokens[comma + 1..]) else { return Ok(None); };
