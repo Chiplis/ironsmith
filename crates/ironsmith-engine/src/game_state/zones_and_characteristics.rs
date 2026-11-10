@@ -5752,20 +5752,33 @@ retain_original_types: false, retain_original_name: false,
             }
         }
         let marker = crate::continuous::provisional_condition_marker();
-        let effects = Arc::new(crate::static_ability_processor::try_get_all_continuous_effects(
-            self,
-            self.static_effect_discovery_limits(),
-        )?);
+        // `try_get_all_continuous_effects`, keeping the discovered part.
+        let statics = Arc::new(
+            crate::static_ability_processor::try_generate_continuous_effects_from_static_abilities(
+                self,
+                self.static_effect_discovery_limits(),
+            )?,
+        );
+        let mut effects = self
+            .effect_store
+            .continuous_effects
+            .effects_sorted()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        effects.extend(statics.iter().cloned());
+        let effects = Arc::new(effects);
         if !crate::continuous::computed_provisionally(marker) && key == self.dirty_state_key() {
             let mut memo = self.runtime_cache.dirty_characteristics_memo.borrow_mut();
             if memo.key != Some(key) {
                 memo.key = Some(key);
-                memo.characteristics.clear();
+                memo.characteristics = Arc::default();
             }
             // Characteristics memoized from an unchecked list of the same
             // state were derived from equal effects; they stay valid.
             memo.effects = Some(Arc::clone(&effects));
             memo.effects_checked = true;
+            memo.static_effects = Some(statics);
         }
         Ok(effects)
     }
@@ -5796,10 +5809,11 @@ retain_original_types: false, retain_original_name: false,
             let mut memo = self.runtime_cache.dirty_characteristics_memo.borrow_mut();
             if memo.key != Some(key) {
                 memo.key = Some(key);
-                memo.characteristics.clear();
+                memo.characteristics = Arc::default();
             }
             memo.effects = Some(Arc::clone(&effects));
             memo.effects_checked = false;
+            memo.static_effects = None;
         }
         effects
     }
@@ -5829,7 +5843,87 @@ retain_original_types: false, retain_original_name: false,
         memo.key = None;
         memo.effects = None;
         memo.effects_checked = false;
-        memo.characteristics.clear();
+        memo.static_effects = None;
+        memo.characteristics = Arc::default();
+    }
+
+    /// The checked static discovery already made for this exact dirty state,
+    /// with the characteristics derived from it (`effects` = registered
+    /// effects followed by exactly these statics).
+    pub(crate) fn dirty_memo_checked_statics(
+        &self,
+    ) -> Option<(
+        Arc<Vec<ContinuousEffect>>,
+        Vec<(ObjectId, Option<Arc<crate::continuous::CalculatedCharacteristics>>)>,
+    )> {
+        if self.continuous_state_is_clean()
+            || crate::continuous::nested_regeneration_context(self).is_some()
+        {
+            return None;
+        }
+        let key = self.dirty_state_key();
+        let memo = self.runtime_cache.dirty_characteristics_memo.borrow();
+        if memo.key != Some(key) || !memo.effects_checked {
+            return None;
+        }
+        let statics = memo.static_effects.clone()?;
+        Some((
+            statics,
+            memo.characteristics
+                .iter()
+                .map(|(id, chars)| (*id, chars.clone()))
+                .collect(),
+        ))
+    }
+
+    /// Publish characteristics derived on the dirty state a refresh just
+    /// settled: the clean effect list is the list they were derived from.
+    pub(crate) fn seed_characteristics_cache(
+        &self,
+        characteristics: Vec<(ObjectId, Option<Arc<crate::continuous::CalculatedCharacteristics>>)>,
+    ) {
+        if !self.continuous_state_is_clean() {
+            return;
+        }
+        let effects_revision = self.effect_store.continuous_effects.revision();
+        for (id, chars) in characteristics {
+            let Some(object) = self.object(id) else {
+                continue;
+            };
+            if (object.zone == Zone::Battlefield && self.is_phased_out(id))
+                || self.characteristicless_face_down_characteristics(id).is_some()
+                || self
+                    .runtime_cache
+                    .characteristics_cache
+                    .contains_valid_entry(id, effects_revision)
+            {
+                continue;
+            }
+            self.runtime_cache.characteristics_cache.insert_arc(id, effects_revision, chars);
+        }
+    }
+
+    /// Before copying a dirty state for a read-only query: derive here what
+    /// the copy's refresh derives first (the checked static discovery and
+    /// the board under it). The copy inherits both, and so does every later
+    /// copy of this same state.
+    pub(crate) fn prewarm_dirty_derivations_for_query_snapshot(&self) {
+        if self.continuous_state_is_clean()
+            || crate::continuous::nested_regeneration_context(self).is_some()
+        {
+            return;
+        }
+        if self.try_all_continuous_effects_arc().is_err() {
+            return;
+        }
+        if let Some(first) = self
+            .battlefield
+            .iter()
+            .copied()
+            .find(|id| !self.is_phased_out(*id))
+        {
+            let _ = self.dirty_calculated_characteristics(first);
+        }
     }
 
     /// A characteristic read on a dirty state outside any calculation. One
@@ -5909,9 +6003,10 @@ retain_original_types: false, retain_original_name: false,
                 memo.key = Some(key);
                 memo.effects = None;
                 memo.effects_checked = false;
-                memo.characteristics.clear();
+                memo.static_effects = None;
+                memo.characteristics = Arc::default();
             }
-            memo.characteristics.extend(calculated.drain(..));
+            Arc::make_mut(&mut memo.characteristics).extend(calculated.drain(..));
         }
         requested
     }
@@ -6162,13 +6257,85 @@ retain_original_types: false, retain_original_name: false,
             return;
         }
 
-        let effects = self.cached_continuous_effects_snapshot();
+        let effects = self.cached_continuous_effects_snapshot_arc();
+        // With every permanent already cached, a batch is a whole-board pass
+        // run only for cards outside the battlefield. Keep it for the cards
+        // whose own read would take that pass; the rest are one-object reads.
+        let missing = if missing.iter().all(|id| {
+            self.object(*id).is_none_or(|object| object.zone != Zone::Battlefield)
+        }) {
+            let needing = crate::continuous::off_battlefield_objects_needing_board_pass(
+                &missing,
+                &self.objects,
+                &effects,
+                &self.battlefield,
+                self,
+            );
+            if needing.len() < 2 {
+                return;
+            }
+            needing
+        } else {
+            missing
+        };
         let marker = crate::continuous::provisional_condition_marker();
         let calculated = self.calculated_characteristics_batch_with_effects(&missing, &effects);
         if crate::continuous::computed_provisionally(marker) {
             return;
         }
         for id in missing {
+            self.runtime_cache.characteristics_cache.insert(
+                id,
+                effects_revision,
+                calculated.get(&id).cloned(),
+            );
+        }
+    }
+
+    /// Before reading each of `ids` (cards outside the battlefield) on a clean
+    /// state: derive in one batch those whose single read would each take a
+    /// whole-board pass. The others are left to their cheap one-object pass.
+    pub(crate) fn prewarm_off_battlefield_characteristics(&self, ids: &[ObjectId]) {
+        if !self.continuous_state_is_clean()
+            || crate::continuous::nested_regeneration_context(self).is_some()
+        {
+            return;
+        }
+        let effects_revision = self.effect_store.continuous_effects.revision();
+        let missing: Vec<_> = ids
+            .iter()
+            .copied()
+            .filter(|id| {
+                self.object(*id).is_some_and(|object| object.zone != Zone::Battlefield)
+                    && self.characteristicless_face_down_characteristics(*id).is_none()
+                    && !crate::continuous::characteristics_calculation_in_progress(self, *id)
+                    && !self
+                        .runtime_cache
+                        .characteristics_cache
+                        .contains_valid_entry(*id, effects_revision)
+            })
+            .collect();
+        if missing.len() < 2 {
+            return;
+        }
+        let effects = self.cached_continuous_effects_snapshot_arc();
+        let needing = crate::continuous::off_battlefield_objects_needing_board_pass(
+            &missing,
+            &self.objects,
+            &effects,
+            &self.battlefield,
+            self,
+        );
+        if needing.len() < 2 {
+            return;
+        }
+        crate::perf_probe::add("off-battlefield prewarm", 1);
+        let marker = crate::continuous::provisional_condition_marker();
+        let calculated = self.calculated_characteristics_batch_with_effects(&needing, &effects);
+        if crate::continuous::computed_provisionally(marker) || !self.continuous_state_is_clean() {
+            return;
+        }
+        for id in needing {
             self.runtime_cache.characteristics_cache.insert(
                 id,
                 effects_revision,
@@ -6495,6 +6662,21 @@ retain_original_types: false, retain_original_name: false,
                 .has_checked_snapshot(revision)
         {
             let mut chars = self.calculated_characteristics_arc(id)
+                .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?
+                .as_ref().clone();
+            chars.validate_numeric_range()?;
+            self.normalize_current_characteristic_subtypes(object, &mut chars);
+            return Ok(Some(chars));
+        }
+        // A dirty state outside any calculation: the memoized board pass for
+        // this state (derived from this same effect list) answers every
+        // permanent. A protection check per legal target otherwise ran one
+        // whole-board pass per candidate.
+        if !self.continuous_state_is_clean()
+            && crate::continuous::nested_regeneration_context(self).is_none()
+            && self.dirty_memo_effects(self.dirty_state_key()).is_some_and(|memoized| Arc::ptr_eq(&memoized, &effects))
+        {
+            let mut chars = self.dirty_calculated_characteristics(id)
                 .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?
                 .as_ref().clone();
             chars.validate_numeric_range()?;
@@ -7188,7 +7370,10 @@ retain_original_types: false, retain_original_name: false,
         let all_effects = if self.continuous_state_is_clean() {
             self.cached_continuous_effects_snapshot_arc()
         } else {
-            self.all_continuous_effects_arc()
+            // The checked discovery is the one a refresh publishes next; made
+            // here, it is memoized for this state and not repeated there.
+            self.try_all_continuous_effects_arc()
+                .unwrap_or_else(|_| self.all_continuous_effects_arc())
         };
         if self.cant_effects_static_scan_can_stay_empty(all_effects.as_slice()) {
             return;

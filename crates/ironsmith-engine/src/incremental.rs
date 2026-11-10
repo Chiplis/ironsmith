@@ -181,10 +181,46 @@ impl Eq for ChangeCursor {}
 /// An opaque identity for public mutable containers whose clients need a broad
 /// invalidation rather than individual deltas. Mutable access always advances
 /// identity, including direct slice/index mutation through `DerefMut`.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TrackedValue<T: Clone> {
     value: Arc<T>,
     cursor: ChangeCursor,
+    /// Whether a retained derivation read this value (see
+    /// `GameState::derived_tap_read_scope`). Never cleared by a read.
+    derived_read: std::sync::atomic::AtomicBool,
+}
+
+thread_local! {
+    /// Depth of running derivations whose results may be retained, across
+    /// every game on this thread. A read of any tracked value while one runs
+    /// is recorded on that value; a nested or cloned game only over-records.
+    static DERIVED_READ_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+pub(crate) fn enter_derived_reads() {
+    DERIVED_READ_DEPTH.with(|depth| depth.set(depth.get().saturating_add(1)));
+}
+
+pub(crate) fn exit_derived_reads() {
+    DERIVED_READ_DEPTH.with(|depth| depth.set(depth.get().saturating_sub(1)));
+}
+
+fn derived_read_in_progress() -> bool {
+    DERIVED_READ_DEPTH.with(|depth| depth.get() > 0)
+}
+
+impl<T: Clone> Clone for TrackedValue<T> {
+    fn clone(&self) -> Self {
+        // A copy taken inside a derivation can be read in place of this value.
+        if derived_read_in_progress() {
+            self.derived_read.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        Self {
+            value: Arc::clone(&self.value),
+            cursor: self.cursor.clone(),
+            derived_read: std::sync::atomic::AtomicBool::new(self.derived_read()),
+        }
+    }
 }
 impl<T: Clone + Default> Default for TrackedValue<T> {
     fn default() -> Self {
@@ -196,10 +232,21 @@ impl<T: Clone> From<T> for TrackedValue<T> {
         Self {
             value: Arc::new(value),
             cursor: ChangeCursor(Arc::new(())),
+            derived_read: std::sync::atomic::AtomicBool::new(false),
         }
     }
 }
 impl<T: Clone> TrackedValue<T> {
+    /// Whether a derivation has read this value since the flag was last taken.
+    pub(crate) fn derived_read(&self) -> bool {
+        self.derived_read.load(std::sync::atomic::Ordering::Relaxed)
+    }
+    pub(crate) fn take_derived_read(&self) -> bool {
+        self.derived_read.swap(false, std::sync::atomic::Ordering::Relaxed)
+    }
+    pub(crate) fn note_derived_read(&self) {
+        self.derived_read.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     pub fn cursor(&self) -> ChangeCursor {
         self.cursor.clone()
     }
@@ -212,11 +259,17 @@ impl<T: Clone> TrackedValue<T> {
 impl<T: Clone> std::ops::Deref for TrackedValue<T> {
     type Target = T;
     fn deref(&self) -> &T {
+        if derived_read_in_progress() {
+            self.derived_read.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         &self.value
     }
 }
 impl<T: Clone> std::ops::DerefMut for TrackedValue<T> {
     fn deref_mut(&mut self) -> &mut T {
+        if derived_read_in_progress() {
+            self.derived_read.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         self.cursor = ChangeCursor(Arc::new(()));
         Arc::make_mut(&mut self.value)
     }

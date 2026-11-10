@@ -1743,6 +1743,11 @@ struct RuntimeCacheState {
     /// (`retain_continuous_state_after_mana_activation`).
     derived_tap_reads_before_dirty: Cell<bool>,
     derived_mana_reads_before_dirty: Cell<bool>,
+    /// Same, for reads of the stack's entries (`TrackedValue::derived_read`
+    /// on `GameState::stack` holds the reads since the last invalidation).
+    /// While neither is set, no retained derived result depends on what is on
+    /// the stack, so a stack change invalidates nothing derived.
+    derived_stack_reads_before_dirty: Cell<bool>,
     effects_snapshot: RefCell<Option<(u64, Arc<Vec<ContinuousEffect>>)>>,
     controller_cache: RefCell<Option<ControllerCache>>,
     payment_restriction_presence: Cell<Option<PaymentRestrictionPresenceCache>>,
@@ -1800,6 +1805,7 @@ impl Clone for RuntimeCacheState {
             derived_state_read_mana: Cell::new(self.derived_state_read_mana.get()),
             derived_tap_reads_before_dirty: Cell::new(self.derived_tap_reads_before_dirty.get()),
             derived_mana_reads_before_dirty: Cell::new(self.derived_mana_reads_before_dirty.get()),
+            derived_stack_reads_before_dirty: Cell::new(self.derived_stack_reads_before_dirty.get()),
             continuous_state_active_player: Cell::new(self.continuous_state_active_player.get()),
             continuous_state_phase: Cell::new(self.continuous_state_phase.get()),
             continuous_state_step: Cell::new(self.continuous_state_step.get()),
@@ -1815,8 +1821,11 @@ impl Clone for RuntimeCacheState {
             static_effects_cache: RefCell::new(self.static_effects_cache.borrow().clone()),
             trigger_registry: RefCell::new(self.trigger_registry.borrow().clone()),
             object_snapshot_cache: RefCell::new(self.object_snapshot_cache.borrow().clone()),
-            // A clone is usually mutated at once; it rebuilds on first read.
-            dirty_characteristics_memo: RefCell::new(DirtyCharacteristicsMemo::default()),
+            // The copy is the same state under the same revisions, so what
+            // was derived for it holds until either side changes. A query
+            // snapshot of a dirty game otherwise re-derived the whole board
+            // for every snapshot taken of that one state.
+            dirty_characteristics_memo: RefCell::new(self.dirty_characteristics_memo.borrow().clone()),
             sba_candidates: RefCell::new(self.sba_candidates.borrow().clone()),
             characteristics_cache: CharacteristicsCache::cloned_from(&self.characteristics_cache),
             work_counters: WorkCounters::default(),
@@ -1858,6 +1867,7 @@ impl RuntimeCacheState {
             derived_state_read_mana: Cell::new(false),
             derived_tap_reads_before_dirty: Cell::new(false),
             derived_mana_reads_before_dirty: Cell::new(false),
+            derived_stack_reads_before_dirty: Cell::new(false),
             continuous_state_active_player: Cell::new(active_player),
             continuous_state_phase: Cell::new(Phase::Beginning),
             continuous_state_step: Cell::new(Some(Step::Untap)),
@@ -1901,15 +1911,18 @@ struct DirtyStateKey {
 /// A refresh, a state-based-action check or a hand-reveal scan makes one such
 /// read per permanent (or per filter candidate) without changing anything in
 /// between, which made those scans quadratic in the board.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct DirtyCharacteristicsMemo {
     key: Option<DirtyStateKey>,
     effects: Option<Arc<Vec<ContinuousEffect>>>,
     /// Whether `effects` came from the limit-checked discovery. A fallible
     /// caller reuses only that; an unchecked list could hide its error.
     effects_checked: bool,
+    /// The static-ability part of a checked `effects`, as discovery returned
+    /// it. A refresh publishes exactly this list for the same state.
+    static_effects: Option<Arc<Vec<ContinuousEffect>>>,
     characteristics:
-        HashMap<ObjectId, Option<Arc<crate::continuous::CalculatedCharacteristics>>>,
+        Arc<HashMap<ObjectId, Option<Arc<crate::continuous::CalculatedCharacteristics>>>>,
 }
 
 /// LKI snapshot memo scoped to mutation, continuous-context and effect revisions.
@@ -2067,6 +2080,7 @@ pub(crate) struct DerivedTapReadScope<'a> {
 
 impl Drop for DerivedTapReadScope<'_> {
     fn drop(&mut self) {
+        crate::incremental::exit_derived_reads();
         self.depth.set(self.depth.get().saturating_sub(1));
     }
 }
@@ -7246,6 +7260,7 @@ impl GameState {
     pub(crate) fn derived_tap_read_scope(&self) -> DerivedTapReadScope<'_> {
         let depth = &self.runtime_cache.derived_tap_read_depth;
         depth.set(depth.get().saturating_add(1));
+        crate::incremental::enter_derived_reads();
         DerivedTapReadScope { depth }
     }
 
@@ -7254,11 +7269,13 @@ impl GameState {
     pub(crate) fn enter_derived_tap_reads(&self) {
         let depth = &self.runtime_cache.derived_tap_read_depth;
         depth.set(depth.get().saturating_add(1));
+        crate::incremental::enter_derived_reads();
     }
 
     pub(crate) fn exit_derived_tap_reads(&self) {
         let depth = &self.runtime_cache.derived_tap_read_depth;
         depth.set(depth.get().saturating_sub(1));
+        crate::incremental::exit_derived_reads();
     }
 
     pub(crate) fn note_tapped_state_read(&self) {
@@ -7283,7 +7300,9 @@ impl GameState {
         self.player(player).map(|player| &player.mana_pool)
     }
 
+    #[track_caller]
     pub(crate) fn mark_continuous_state_dirty(&self) {
+        crate::perf_probe::hit("dirty", std::panic::Location::caller());
         let counter = &self
             .runtime_cache
             .work_counters
@@ -7306,6 +7325,8 @@ impl GameState {
             before.set(before.get() | self.runtime_cache.derived_state_read_tapped.replace(false));
             let before = &self.runtime_cache.derived_mana_reads_before_dirty;
             before.set(before.get() | self.runtime_cache.derived_state_read_mana.replace(false));
+            let before = &self.runtime_cache.derived_stack_reads_before_dirty;
+            before.set(before.get() | self.stack.take_derived_read());
         }
         // A characteristic query can populate the cache while another refresh
         // is pending. Every later context mutation must invalidate that view.
@@ -7323,8 +7344,30 @@ impl GameState {
         let changed = self.runtime_cache.observed_stack.borrow().as_ref() != Some(&cursor);
         if changed {
             *self.runtime_cache.observed_stack.borrow_mut() = Some(cursor);
-            self.mark_continuous_state_dirty();
+            if self.runtime_cache.continuous_state_dirty.get() || self.derived_state_read_stack() {
+                self.mark_continuous_state_dirty();
+            } else {
+                // Every retained derivation records whether it read the
+                // stack. None did, so characteristics, static effects and the
+                // published restrictions are unchanged by this stack change.
+                // Caches keyed by the context revision are computed outside
+                // those tracked derivations; they still rebuild.
+                crate::perf_probe::add("stack change kept clean", 1);
+                self.runtime_cache.payment_restriction_presence.set(None);
+                self.runtime_cache.continuous_context_revision.set(
+                    self.runtime_cache
+                        .continuous_context_revision
+                        .get()
+                        .saturating_add(1),
+                );
+            }
         }
+    }
+
+    /// Whether a retained derivation read the stack's entries, so a stack
+    /// change must invalidate it.
+    pub(crate) fn derived_state_read_stack(&self) -> bool {
+        self.stack.derived_read() || self.runtime_cache.derived_stack_reads_before_dirty.get()
     }
 
     fn observe_player_mutations(&self) {
@@ -7358,6 +7401,7 @@ impl GameState {
     /// peers' cached values is not equivalent to a full layer pass when
     /// objects' characteristics depend on each other (a mutual ability-copy
     /// loop, CR 613.8b), so every such change rebuilds the whole state.
+    #[track_caller]
     fn mark_object_changed_and_continuous_state_dirty(&mut self, id: ObjectId) {
         self.object_store.changes.record(id);
         self.object_store.render_changes.record(id);
@@ -7559,6 +7603,7 @@ impl GameState {
         // was cleared by the invalidation, so earlier reads are gone.
         self.runtime_cache.derived_tap_reads_before_dirty.set(false);
         self.runtime_cache.derived_mana_reads_before_dirty.set(false);
+        self.runtime_cache.derived_stack_reads_before_dirty.set(false);
         self.runtime_cache
             .continuous_state_revision
             .set(self.effect_store.continuous_effects.revision());
@@ -7869,6 +7914,9 @@ impl GameState {
         let before = self.runtime_cache.derived_mana_reads_before_dirty.replace(false);
         let read = &self.runtime_cache.derived_state_read_mana;
         read.set(read.get() | before);
+        if self.runtime_cache.derived_stack_reads_before_dirty.replace(false) {
+            self.stack.note_derived_read();
+        }
         true
     }
 
@@ -7894,11 +7942,21 @@ impl GameState {
     /// invalidate history-reading conditions, selectors, and numeric modifiers
     /// at publication as well. Fixed bonuses can still depend on turn history.
     fn invalidate_continuous_history_modifiers(&self) {
+        if !self.runtime_cache.continuous_state_dirty.get() {
+            for effect in self.cached_continuous_effects_snapshot_arc().iter() {
+                if let Some(c) = effect.condition.as_ref().filter(|c| Self::condition_may_read_turn_history(c)) {
+                    let d = format!("{c:?}"); crate::perf_probe::add(&format!("hist cond {}", &d[..d.len().min(70)]), 1);
+                }
+            }
+        }
         if !self.runtime_cache.continuous_state_dirty.get()
             && (self
                 .cached_continuous_effects_snapshot_arc()
                 .iter()
-                .any(|effect| effect.condition.is_some()
+                .any(|effect| effect
+                    .condition
+                    .as_ref()
+                    .is_some_and(Self::condition_may_read_turn_history)
                     || Self::effect_target_is_turn_context_sensitive(&effect.applies_to)
                     || Self::modification_is_turn_context_sensitive(&effect.modification))
                 // A lasting static designation may read history without
@@ -7916,6 +7974,91 @@ impl GameState {
                 }))
         {
             self.mark_continuous_state_dirty();
+        }
+    }
+
+    /// Whether publishing a turn-history record can change `condition`.
+    /// Fails safe: only conditions known to read nothing but current game
+    /// state (zones, counters, designations, tapped/attached status, whose
+    /// turn it is) answer `false`; every other condition stays a dependency.
+    fn condition_may_read_turn_history(condition: &crate::ConditionExpr) -> bool {
+        use crate::ConditionExpr;
+        match condition {
+            ConditionExpr::And(left, right) | ConditionExpr::Or(left, right) => {
+                Self::condition_may_read_turn_history(left)
+                    || Self::condition_may_read_turn_history(right)
+            }
+            ConditionExpr::Not(inner) => Self::condition_may_read_turn_history(inner),
+            ConditionExpr::PlayerHasCardTypesInGraveyardOrMore { player, .. }
+            | ConditionExpr::PlayerHasCitysBlessing { player, .. }
+            | ConditionExpr::PlayerCardsInHandOrMore { player, .. }
+            | ConditionExpr::PlayerCardsInHandOrFewer { player, .. }
+            | ConditionExpr::PlayerHasPoisonCountersOrMore { player, .. } => {
+                Self::player_filter_is_turn_context_sensitive(player)
+            }
+            ConditionExpr::PlayerGraveyardHasCardsAtLeast { .. }
+            | ConditionExpr::YourTurn
+            | ConditionExpr::LifeTotalOrLess(_)
+            | ConditionExpr::LifeTotalOrGreater(_)
+            | ConditionExpr::CardsInHandOrMore(_)
+            | ConditionExpr::SourceIsTapped
+            | ConditionExpr::SourceIsUntapped
+            | ConditionExpr::SourceIsEquipped
+            | ConditionExpr::SourceIsEnchanted
+            | ConditionExpr::SourceIsFaceDown
+            | ConditionExpr::SourceIsInZone(_)
+            | ConditionExpr::SourceHasNoCounter(_)
+            | ConditionExpr::SourceHasCounterAtLeast { .. }
+            | ConditionExpr::SourceHasCountersAtLeast(_)
+            | ConditionExpr::SourceClassLevelAtLeast(_)
+            | ConditionExpr::EnchantedPermanentIsCreature
+            | ConditionExpr::EnchantedPermanentIsLand
+            | ConditionExpr::EnchantedPermanentIsEquipment
+            | ConditionExpr::EnchantedPermanentIsVehicle
+            | ConditionExpr::EquippedCreatureTapped
+            | ConditionExpr::EquippedCreatureUntapped
+            | ConditionExpr::YouControlCommander
+            // The source's own casting receipt, kept on the object (or its
+            // last-known snapshot) and compared with the turn number.
+            | ConditionExpr::ThisSpellPaidLabel(_)
+            | ConditionExpr::ThisSpellWasKicked => false,
+            ConditionExpr::ValueComparison { left, right, .. } => {
+                Self::value_may_read_turn_history(left) || Self::value_may_read_turn_history(right)
+            }
+            ConditionExpr::YouControl(filter)
+            | ConditionExpr::OpponentControls(filter)
+            | ConditionExpr::SourceMatches(filter)
+            | ConditionExpr::AttachedToSourceMatches(filter) => {
+                Self::object_filter_is_turn_context_sensitive(filter)
+            }
+            _ => true,
+        }
+    }
+
+    /// `condition_may_read_turn_history` for a value: only values known to
+    /// be computed from current zones, life totals and counters answer `false`.
+    fn value_may_read_turn_history(value: &crate::effect::Value) -> bool {
+        use crate::effect::Value;
+        match value {
+            Value::Fixed(_) => false,
+            Value::SurfaceHinted { value, .. }
+            | Value::Scaled(value, _)
+            | Value::DividedRoundedDown(value, _)
+            | Value::HalfRoundedDown(value) => Self::value_may_read_turn_history(value),
+            Value::Add(left, right) | Value::Min(left, right) => {
+                Self::value_may_read_turn_history(left) || Self::value_may_read_turn_history(right)
+            }
+            Value::Count(filter) | Value::CountScaled(filter, _) => {
+                Self::object_filter_is_turn_context_sensitive(filter)
+            }
+            Value::LifeTotal(player)
+            | Value::CardsInHand(player)
+            | Value::CardsInLibrary(player)
+            | Value::CardsInGraveyard(player)
+            | Value::CardTypesInGraveyard(player) => {
+                Self::player_filter_is_turn_context_sensitive(player)
+            }
+            _ => true,
         }
     }
 

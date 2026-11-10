@@ -2305,16 +2305,44 @@ fn prepare_and_apply_state_based_actions(
     // Per Rule 704.8, pre-capture snapshots for all dying creatures BEFORE
     // any state-based actions are applied. This ensures LKI is derived from
     // the game state before any SBAs were performed.
+    // One layer batch answers every permanent; a capture per permanent ran
+    // that same whole-board pass once for each of them.
+    let batch_ids: Vec<ObjectId> = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id).is_some()
+                && !game.is_phased_out(*id)
+                && game.characteristicless_face_down_characteristics(*id).is_none()
+                && !crate::continuous::characteristics_calculation_in_progress(game, *id)
+        })
+        .collect();
+    let mut batch = if batch_ids.len() > 1
+        && game.cached_characteristics_for_effects(batch_ids[0], all_effects).is_none()
+    {
+        game.calculated_characteristics_batch_with_effects(&batch_ids, all_effects)
+    } else {
+        HashMap::new()
+    };
     let pre_captured_snapshots: HashMap<ObjectId, ObjectSnapshot> = game
         .battlefield
         .iter()
         .filter_map(|id| {
             game.object(*id).map(|object| {
-                ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(
-                    object,
-                    game,
-                    all_effects,
-                )
+                match batch.remove(id) {
+                    Some(calculated) => ObjectSnapshot::try_from_object_with_known_characteristics_and_effects(
+                        object,
+                        game,
+                        Some(&calculated),
+                        all_effects,
+                    ),
+                    None => ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(
+                        object,
+                        game,
+                        all_effects,
+                    ),
+                }
                 .map(|snapshot| (*id, snapshot))
             })
         })

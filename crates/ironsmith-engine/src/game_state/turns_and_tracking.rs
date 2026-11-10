@@ -3995,7 +3995,8 @@ impl GameState {
         // source snapshot above may have cached characteristics before this
         // entry existed. Invalidate before regenerating replacement abilities.
         self.bump_mutation_revision();
-        self.mark_continuous_state_dirty();
+        // The push itself is observed as a stack change: it invalidates the
+        // continuous state exactly when a retained derivation read the stack.
         if let Err(error) = self.refresh_continuous_state() {
             self.restore_execution_checkpoint(checkpoint, false);
             return Err(error);

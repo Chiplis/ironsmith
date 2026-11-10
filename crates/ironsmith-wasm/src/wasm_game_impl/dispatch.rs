@@ -3777,6 +3777,11 @@ impl WasmGame {
             .map_err(|e| JsValue::from_str(&format!("lastDispatchPerf encode failed: {e}")))
     }
 
+    #[wasm_bindgen(js_name = debugPerfProbe)]
+    pub fn debug_perf_probe_js(&self) -> String {
+        ironsmith::perf_probe::take().into_iter().map(|(k, v)| format!("{v}\t{k}")).collect::<Vec<_>>().join("\n")
+    }
+
     #[wasm_bindgen(js_name = lastWorkCounters)]
     pub fn last_work_counters_js(&self) -> Result<JsValue, JsValue> {
         serde_wasm_bindgen::to_value(&self.game.work_counters())

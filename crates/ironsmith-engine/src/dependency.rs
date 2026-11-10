@@ -160,7 +160,7 @@ fn source_controller_context_changes_output(
     if !a.has_source_controller_context() || b.modification.layer() != Layer::Control {
         return false;
     }
-    let after = apply_effect_to_baseline(b, baseline, objects, game);
+    let after = applied_baseline(b, baseline, objects, game);
     let rebound_a = crate::continuous::bind_effect_controller_to_layer_frame(a, &after);
     if rebound_a.controller == a.controller { return false; }
     if matches!(a.modification, Modification::ChangeControllerToEffectController)
@@ -425,6 +425,10 @@ fn effect_output_changed(
         ..
     } = &a.modification
     {
+        // B changes nothing it does not apply to: the copied set is the same.
+        if !effect_applies_to_any_object(b, baseline, objects, game) {
+            return false;
+        }
         let before = collect_activated_ability_signatures(
             filter,
             *counter,
@@ -437,7 +441,7 @@ fn effect_output_changed(
             objects,
             game,
         );
-        let baseline_after = apply_effect_to_baseline(b, baseline, objects, game);
+        let baseline_after = applied_baseline(b, baseline, objects, game);
         let after = collect_activated_ability_signatures(
             filter,
             *counter,
@@ -460,6 +464,10 @@ fn effect_output_changed(
         ..
     } = &a.modification
     {
+        // B changes nothing it does not apply to: the copied set is the same.
+        if !effect_applies_to_any_object(b, baseline, objects, game) {
+            return false;
+        }
         let before = collect_static_ability_variant_signatures(
             filter,
             selectors,
@@ -469,7 +477,7 @@ fn effect_output_changed(
             objects,
             game,
         );
-        let baseline_after = apply_effect_to_baseline(b, baseline, objects, game);
+        let baseline_after = applied_baseline(b, baseline, objects, game);
         let after = collect_static_ability_variant_signatures(
             filter,
             selectors,
@@ -489,6 +497,10 @@ fn effect_output_changed(
         ..
     } = &a.modification
     {
+        // B changes nothing it does not apply to: the copied set is the same.
+        if !effect_applies_to_any_object(b, baseline, objects, game) {
+            return false;
+        }
         let before = collect_triggered_ability_signatures(
             filter,
             *exclude_source_name,
@@ -498,7 +510,7 @@ fn effect_output_changed(
             objects,
             game,
         );
-        let baseline_after = apply_effect_to_baseline(b, baseline, objects, game);
+        let baseline_after = applied_baseline(b, baseline, objects, game);
         let after = collect_triggered_ability_signatures(
             filter,
             *exclude_source_name,
@@ -535,7 +547,7 @@ fn effect_output_changed(
     if !effect_applies_to_any_object(b, baseline, objects, game) {
         return false;
     }
-    let baseline_after = apply_effect_to_baseline(b, baseline, objects, game);
+    let baseline_after = applied_baseline(b, baseline, objects, game);
 
     for value in [a_power_value, a_toughness_value].into_iter().flatten() {
         let before = evaluate_value(value, a.source, a.controller, baseline, objects, game);
@@ -1345,6 +1357,87 @@ fn collect_static_ability_variant_signatures(
         }
     }
     signatures
+}
+
+type AppliedBaseline = std::rc::Rc<HashMap<ObjectId, CalculatedCharacteristics>>;
+
+/// The baselines already derived by applying one effect during the current
+/// round of a dependency sort. Within a round the baseline is fixed, and
+/// every effect A asks what the same effect B does to it.
+struct AppliedBaselineRound {
+    baseline: usize,
+    entries: Vec<(usize, AppliedBaseline)>,
+}
+
+thread_local! {
+    static APPLIED_BASELINES: std::cell::RefCell<Option<AppliedBaselineRound>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Opens a round over `baseline`; restores the enclosing round (a sort
+/// nested inside a probe's game query) when dropped.
+struct AppliedBaselineRoundGuard(Option<AppliedBaselineRound>);
+
+impl AppliedBaselineRoundGuard {
+    fn begin(baseline: &HashMap<ObjectId, CalculatedCharacteristics>) -> Self {
+        Self(APPLIED_BASELINES.with(|slot| {
+            slot.replace(Some(AppliedBaselineRound {
+                baseline: baseline as *const _ as usize,
+                entries: Vec::new(),
+            }))
+        }))
+    }
+}
+
+impl Drop for AppliedBaselineRoundGuard {
+    fn drop(&mut self) {
+        let previous = self.0.take();
+        APPLIED_BASELINES.with(|slot| *slot.borrow_mut() = previous);
+    }
+}
+
+/// `apply_effect_to_baseline`, shared within the current sort round. Only an
+/// effect without a source-controller context is shared: it is never rebound
+/// to a copy, so its address is the sorted effect's own for the whole round.
+fn applied_baseline(
+    effect: &ContinuousEffect,
+    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+    objects: &ObjectMap,
+    game: &GameState,
+) -> AppliedBaseline {
+    let effect_key = effect as *const ContinuousEffect as usize;
+    let baseline_key = baseline as *const _ as usize;
+    let shareable = !effect.has_source_controller_context();
+    if shareable {
+        let cached = APPLIED_BASELINES.with(|slot| {
+            slot.borrow().as_ref().and_then(|round| {
+                (round.baseline == baseline_key)
+                    .then(|| {
+                        round
+                            .entries
+                            .iter()
+                            .find(|(key, _)| *key == effect_key)
+                            .map(|(_, after)| std::rc::Rc::clone(after))
+                    })
+                    .flatten()
+            })
+        });
+        if let Some(after) = cached {
+            return after;
+        }
+    }
+    let after = std::rc::Rc::new(apply_effect_to_baseline(effect, baseline, objects, game));
+    if shareable {
+        APPLIED_BASELINES.with(|slot| {
+            if let Some(round) = slot.borrow_mut().as_mut()
+                && round.baseline == baseline_key
+                && round.entries.iter().all(|(key, _)| *key != effect_key)
+            {
+                round.entries.push((effect_key, std::rc::Rc::clone(&after)));
+            }
+        });
+    }
+    after
 }
 
 fn apply_effect_to_baseline(
@@ -3308,6 +3401,7 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
     let mut result = Vec::with_capacity(effects.len());
 
     while !remaining.is_empty() {
+        let round = AppliedBaselineRoundGuard::begin(&current_baseline);
         let representatives = chars_class_representatives(&current_baseline, objects, game);
         // CDAs (CR 613.3) and then the CR 305.7 land-type ability loss go
         // first; dependencies order effects within the earliest class.
@@ -3374,7 +3468,11 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
         let starts_group = effect.group.is_some()
             && crate::continuous::continuous_effect_duration_and_condition_are_active(effect, game)
             && effect_applies_to_any_object(effect, &current_baseline, objects, game);
-        current_baseline = apply_effect_to_baseline(effect, &current_baseline, objects, game);
+        let next_baseline = applied_baseline(effect, &current_baseline, objects, game);
+        // Closing the round releases its shares, so the chosen effect's
+        // result is usually taken, not copied.
+        drop(round);
+        current_baseline = std::rc::Rc::try_unwrap(next_baseline).unwrap_or_else(|shared| (*shared).clone());
         if starts_group && let Some(group) = effect.group {
             current_started_groups.insert(group);
         }

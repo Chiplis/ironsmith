@@ -63,14 +63,28 @@ impl GameState {
             return Ok(());
         }
         self.count_static_ability_regen();
-        let effects =
-            crate::static_ability_processor::try_generate_continuous_effects_from_static_abilities(
-                self, limits,
-            )?;
+        // The prohibition scan that opens a refresh already ran this checked
+        // discovery for this exact state, and derived the board from it.
+        let memoized = (limits == self.static_effect_discovery_limits())
+            .then(|| self.dirty_memo_checked_statics())
+            .flatten();
+        let (effects, derived) = match memoized {
+            Some((statics, derived)) => {
+                crate::perf_probe::add("static discovery reused", 1);
+                (statics.as_ref().clone(), derived)
+            }
+            None => (
+                crate::static_ability_processor::try_generate_continuous_effects_from_static_abilities(
+                    self, limits,
+                )?,
+                Vec::new(),
+            ),
+        };
         self.effect_store
             .continuous_effects
             .set_static_ability_effects(effects);
         self.mark_continuous_state_clean();
+        self.seed_characteristics_cache(derived);
         let revision = self.effect_store.continuous_effects.revision();
         self.runtime_cache
             .static_effects_cache
@@ -245,6 +259,7 @@ impl GameState {
         // fallible static refresh. Reject out-of-range mana before entering
         // that infallible adapter as well.
         crate::static_ability_processor::validate_mana_scalar_domain(self)?;
+        self.prewarm_dirty_derivations_for_query_snapshot();
         let mut snapshot = self.clone();
         // A completed refresh is the fixed point of these same procedures
         // (`refresh_continuous_state` skips them under this predicate), so
@@ -272,6 +287,7 @@ impl GameState {
     /// - Static ability continuous effects (anthems, etc.)
     /// - Replacement effects from static abilities
     /// - "Can't" effect tracking
+    #[track_caller]
     pub fn refresh_continuous_state(
         &mut self,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
@@ -280,14 +296,23 @@ impl GameState {
             self.publish_completed_control_transitions();
             return Ok(());
         }
+        crate::perf_probe::hit("refresh", std::panic::Location::caller());
         let checkpoint = self.clone();
+        // Everything published below is retained until the next invalidation;
+        // record what it reads (tapped state, mana, the stack).
+        self.enter_derived_tap_reads();
         let result = (|| {
             // Refresh prohibitions before discovering or committing new
             // controller assignments; source tap-state changes are live now.
+            crate::perf_probe::set_phase("cant1");
             self.update_cant_effects();
+            crate::perf_probe::set_phase("static");
             self.update_static_ability_effects()?;
+            crate::perf_probe::set_phase("cant2");
             self.update_cant_effects();
+            crate::perf_probe::set_phase("reconcile");
             self.reconcile_continuous_control_changes();
+            crate::perf_probe::set_phase("after-reconcile");
 
             // A continuous effect may itself inspect summoning-sickness state.
             // Rebuild once after a controller transition so those predicates see
@@ -299,10 +324,13 @@ impl GameState {
             }
 
             // Update replacement effects from static abilities
+            crate::perf_probe::set_phase("repl");
             self.update_replacement_effects()?;
 
             // Update "can't" effect tracking
+            crate::perf_probe::set_phase("cant3");
             self.update_cant_effects();
+            crate::perf_probe::set_phase("tail");
 
             if self.apply_day_nightbound_transformations_with_current_restrictions() {
                 self.update_static_ability_effects()?;
@@ -354,6 +382,8 @@ impl GameState {
                 .mark_refreshed_snapshot(revision);
             Ok(())
         })();
+        crate::perf_probe::set_phase("-");
+        self.exit_derived_tap_reads();
         if result.is_err() {
             self.restore_execution_checkpoint(checkpoint, false);
         }

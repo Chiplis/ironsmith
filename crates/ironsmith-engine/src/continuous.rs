@@ -3534,6 +3534,44 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
 /// (domain, "for each creature you control") reads each permanent's current
 /// layer view. The one-object pass answered each such read with a full pass
 /// of its own, and two such permanents nested those passes inside each other.
+/// The cards outside the battlefield whose single read takes a whole-board
+/// pass (see `calculate_single_with_board_pass`). Reading several of them one
+/// at a time repeats that pass for each.
+pub(crate) fn off_battlefield_objects_needing_board_pass(
+    ids: &[ObjectId],
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    game: &crate::game_state::GameState,
+) -> Vec<ObjectId> {
+    if battlefield.is_empty() {
+        return Vec::new();
+    }
+    let mut by_layer: HashMap<Layer, Vec<&ContinuousEffect>> = HashMap::with_capacity(7);
+    for effect in effects {
+        by_layer.entry(effect.modification.layer()).or_default().push(effect);
+    }
+    let baseline_layers: Vec<&Vec<&ContinuousEffect>> = by_layer
+        .values()
+        .filter(|layer_effects| crate::dependency::needs_baseline_dependency_sort(layer_effects, game))
+        .collect();
+    if baseline_layers.is_empty() {
+        return Vec::new();
+    }
+    let started = HashSet::new();
+    ids.iter()
+        .copied()
+        .filter(|id| {
+            objects.get(id).is_some_and(|object| {
+                object.zone != Zone::Battlefield
+                    && baseline_layers.iter().any(|layer_effects| {
+                        layer_effects_may_reach_object(layer_effects, &started, object, objects)
+                    })
+            })
+        })
+        .collect()
+}
+
 fn calculate_single_with_board_pass(
     object: &Object,
     objects: &ObjectMap,
@@ -3609,6 +3647,8 @@ fn calculate_characteristics_layer_batch_internal(
     game: &crate::game_state::GameState,
     copy_only: bool,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
+    crate::perf_probe::add(if copy_only { "pass copy_only" } else { "pass full" }, 1);
+    crate::perf_probe::add(&format!("pass ids={} @{}", ids.len().min(3), crate::perf_probe::phase()), 1);
     let _tap_reads = game.derived_tap_read_scope();
     // Only an outermost pass computes final values for everything it covers.
     let capture_extras = !copy_only
@@ -5560,6 +5600,12 @@ fn effect_target_definitely_excludes_object(
                     && !filter.source
                     && effect.source != object.id
                     && filter.zone != Some(Zone::OutsideGame))
+                // A filter naming another zone: the layered matcher rejects
+                // on the zone before reading anything else. Spells and the
+                // filters that take the general matcher are left to it.
+                || (object.zone != Zone::Stack
+                    && filter.zone.is_some_and(|zone| zone != object.zone)
+                    && !filter_requires_layered_clone_fallback(filter))
         }
     }
 }

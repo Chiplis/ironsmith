@@ -2579,6 +2579,15 @@ impl GrantRegistry {
             collect_from_source(perm_id, true);
         }
 
+        // Each of these cards is read below; one batch replaces a
+        // whole-board pass per card when a layer's dependency order may
+        // reach them.
+        let mut off_battlefield = Vec::new();
+        for zone in [Zone::Graveyard, Zone::Exile, Zone::Command] {
+            for_each_candidate_id_for_zone(game, Some(zone), |source_id| off_battlefield.push(source_id));
+        }
+        game.prewarm_off_battlefield_characteristics(&off_battlefield);
+
         for zone in [Zone::Graveyard, Zone::Exile, Zone::Command] {
             for_each_candidate_id_for_zone(game, Some(zone), |source_id| {
                 if game

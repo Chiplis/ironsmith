@@ -1245,7 +1245,7 @@ impl ObjectSnapshot {
         Self::try_from_object_with_known_characteristics_and_effects(obj, game, calculated, &effects)
     }
 
-    fn try_from_object_with_known_characteristics_and_effects(
+    pub(crate) fn try_from_object_with_known_characteristics_and_effects(
         obj: &Object,
         game: &crate::game_state::GameState,
         calculated: Option<&CalculatedCharacteristics>,
