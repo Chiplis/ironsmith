@@ -130,7 +130,8 @@ impl<'a> EventContext<'a> {
         event: &dyn crate::events::GameEventType,
         evaluate: impl FnOnce(&PreparedEventContext<'_>) -> T,
     ) -> Result<T, crate::static_ability_processor::StaticEffectDiscoveryError> {
-        let original = self.game.continuous_query_snapshot()?;
+        let original = self.game.continuous_query_view()?;
+        let original: &GameState = &original;
         let supplied = self.prospective_etb_game
             .map(GameState::continuous_query_snapshot).transpose()?;
         let mut worlds = std::collections::HashMap::new();

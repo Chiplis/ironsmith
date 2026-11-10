@@ -5775,14 +5775,18 @@ retain_original_types: false, retain_original_name: false,
         if self.continuous_state_is_clean() {
             return self.cached_continuous_effects_snapshot_arc();
         }
+        let key = self.dirty_state_key();
+        // The list already regenerated for this exact state serves a read
+        // nested inside a calculation too, as the settled snapshot does on a
+        // clean state; regenerating per layer context ran a whole board pass
+        // for every condition that reads a card outside the battlefield.
+        if let Some(effects) = self.dirty_memo_effects(key) {
+            return effects;
+        }
         if let Some(context) = crate::continuous::nested_regeneration_context(self) {
             return crate::continuous::regenerate_in_context(context, || {
                 crate::static_ability_processor::get_all_continuous_effects(self)
             });
-        }
-        let key = self.dirty_state_key();
-        if let Some(effects) = self.dirty_memo_effects(key) {
-            return effects;
         }
         let marker = crate::continuous::provisional_condition_marker();
         let effects = Arc::new(crate::static_ability_processor::get_all_continuous_effects(
@@ -6089,7 +6093,24 @@ retain_original_types: false, retain_original_name: false,
                     *revision == self.effect_store.continuous_effects.revision()
                         && std::ptr::eq(cached.as_slice(), effects)
                 });
-        if snapshot_is_current { self.calculated_characteristics_arc(id) } else { None }
+        if snapshot_is_current {
+            return self.calculated_characteristics_arc(id);
+        }
+        // The dirty counterpart: a board pass already memoized for this exact
+        // state and effect list holds the same final result.
+        if self.continuous_state_is_clean() || self.is_phased_out(id) {
+            return None;
+        }
+        let memo = self.runtime_cache.dirty_characteristics_memo.borrow();
+        if memo.key != Some(self.dirty_state_key())
+            || !memo
+                .effects
+                .as_ref()
+                .is_some_and(|memoized| std::ptr::eq(memoized.as_slice(), effects))
+        {
+            return None;
+        }
+        memo.characteristics.get(&id).cloned().flatten()
     }
 
     pub(crate) fn calculated_characteristics_batch_with_effects(
@@ -7084,14 +7105,18 @@ retain_original_types: false, retain_original_name: false,
     pub fn update_cant_effects(&mut self) {
         // Restriction sources' conditions can read tapped state.
         self.enter_derived_tap_reads();
-        self.forget_dirty_characteristics();
         let prior_prohibitions = self.effect_store.cant_effects.cant_gain_control.clone();
-        let prior_scan = self.effect_store.cant_effects.control_prohibitions_during_scan.replace(prior_prohibitions);
+        let prior_scan = self.effect_store.cant_effects.control_prohibitions_during_scan.replace(prior_prohibitions.clone());
         self.update_cant_effects_inner();
         // A nested derived query must restore its caller's retained map,
         // rather than expose a partially rebuilt tracker to the outer scan.
         self.effect_store.cant_effects.control_prohibitions_during_scan = prior_scan;
-        self.forget_dirty_characteristics();
+        // The control layer reads these prohibitions. Characteristics memoized
+        // for this dirty state were derived under the old set (the scan itself
+        // reads that same set), so they stay valid unless the set changed.
+        if self.effect_store.cant_effects.cant_gain_control != prior_prohibitions {
+            self.forget_dirty_characteristics();
+        }
         self.exit_derived_tap_reads();
     }
 
@@ -7163,7 +7188,7 @@ retain_original_types: false, retain_original_name: false,
         let all_effects = if self.continuous_state_is_clean() {
             self.cached_continuous_effects_snapshot_arc()
         } else {
-            Arc::new(self.all_continuous_effects())
+            self.all_continuous_effects_arc()
         };
         if self.cant_effects_static_scan_can_stay_empty(all_effects.as_slice()) {
             return;
@@ -7262,10 +7287,17 @@ retain_original_types: false, retain_original_name: false,
                 self.prewarm_calculated_characteristics(&battlefield_ids);
                 None
             } else {
-                Some(self.calculated_characteristics_batch_with_effects(
-                    &battlefield_ids,
-                    all_effects.as_slice(),
-                ))
+                // Through the state's memoized board pass, shared with the
+                // reads made on this same state before and after the scan.
+                Some(
+                    battlefield_ids
+                        .iter()
+                        .filter_map(|&id| {
+                            self.calculated_characteristics_for_capture(id, all_effects.as_slice())
+                                .map(|chars| (id, chars))
+                        })
+                        .collect::<HashMap<_, _>>(),
+                )
             };
             self.objects
                 .iter()

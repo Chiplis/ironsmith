@@ -89,9 +89,7 @@ impl GameState {
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         // Replacement sources' conditions can read tapped state.
         self.enter_derived_tap_reads();
-        self.forget_dirty_characteristics();
         let result = self.update_replacement_effects_inner();
-        self.forget_dirty_characteristics();
         self.exit_derived_tap_reads();
         result
     }
@@ -225,6 +223,21 @@ impl GameState {
 
     /// Prepare a complete read-only query view without performing game rules
     /// procedures such as day/night transformations, ascend or zone changes.
+    /// `continuous_query_snapshot` without the copy when there is nothing to
+    /// recompute: at a completed refresh the snapshot is this state itself.
+    /// A replacement matcher takes this once per effect per event, so a spell
+    /// that moves thirty cards one at a time copied the whole game hundreds
+    /// of times.
+    pub(crate) fn continuous_query_view(
+        &self,
+    ) -> Result<std::borrow::Cow<'_, Self>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if self.continuous_state_is_refreshed_fixed_point() {
+            crate::static_ability_processor::validate_mana_scalar_domain(self)?;
+            return Ok(std::borrow::Cow::Borrowed(self));
+        }
+        self.continuous_query_snapshot().map(std::borrow::Cow::Owned)
+    }
+
     pub fn continuous_query_snapshot(
         &self,
     ) -> Result<Self, crate::static_ability_processor::StaticEffectDiscoveryError> {

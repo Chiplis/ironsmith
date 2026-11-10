@@ -5200,7 +5200,9 @@ impl GameState {
                 // Both views share one immutable receipt; replacing it retains
                 // chronology and never appends a past action into the new turn.
                 self.turn_store.action_history.replace_shared(record);
-                self.invalidate_continuous_history_modifiers();
+                if event.kind() != crate::events::EventKind::CharacteristicGained {
+                    self.invalidate_continuous_history_modifiers();
+                }
                 return;
             }
         }
@@ -5223,7 +5225,11 @@ impl GameState {
         self.turn_store
             .turn_history
             .stage_event(&event, object_snapshot, source_snapshot);
-        self.invalidate_continuous_history_modifiers();
+        // See `record_turn_history_event`: a gained characteristic reports the
+        // continuous state, it does not change it.
+        if event.kind() != crate::events::EventKind::CharacteristicGained {
+            self.invalidate_continuous_history_modifiers();
+        }
     }
 
     pub(crate) fn record_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
@@ -5353,6 +5359,11 @@ impl GameState {
             }
         }
         for receipt in self.retained_action_observations() {
+            // Any other occurrence leaves the event as it is; skipping it here
+            // avoids one whole-event copy per history record.
+            if !event.ptr_eq(receipt) {
+                continue;
+            }
             event = event.with_retained_trigger_capture(receipt);
             if event.triggers_captured() {
                 break;

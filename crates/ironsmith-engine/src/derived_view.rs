@@ -752,6 +752,37 @@ impl<'a> DerivedGameView<'a> {
             return;
         }
 
+        if self.shares_game_effects
+            && crate::continuous::characteristic_memo_context(self.game).is_none()
+        {
+            // Same reads the single-object path makes: the game's dirty-state
+            // memo answers the whole battlefield from one shared board pass.
+            // Cards elsewhere still go through one batch below.
+            let (board, elsewhere): (Vec<_>, Vec<_>) = missing.into_iter().partition(|id| {
+                self.game
+                    .object(*id)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
+            });
+            {
+                let mut cache = self.characteristics.borrow_mut();
+                for id in board {
+                    cache.insert(id, self.game.calculated_characteristics_arc(id));
+                }
+            }
+            if elsewhere.is_empty() {
+                return;
+            }
+            let calculated = self.game.calculated_characteristics_batch_with_effects(
+                &elsewhere,
+                self.all_effects.as_slice(),
+            );
+            let mut cache = self.characteristics.borrow_mut();
+            for id in elsewhere {
+                cache.insert(id, calculated.get(&id).cloned().map(Arc::new));
+            }
+            return;
+        }
+
         let calculated = self
             .game
             .calculated_characteristics_batch_with_effects(&missing, self.all_effects.as_slice());
