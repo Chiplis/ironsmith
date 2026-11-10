@@ -9,6 +9,9 @@ pub(super) struct PriorityAnalysisJob {
     actions: Vec<LegalAction>,
     provisional_actions: Vec<LegalAction>,
     presentation_actions: Vec<LegalAction>,
+    /// A candidate ran out of search budget with a meaningful action still
+    /// neither proven nor ruled out.
+    unresolved: bool,
 }
 
 struct PriorityAnalysisStep {
@@ -44,6 +47,7 @@ pub(super) fn priority_can_act(ctx: &ironsmith::decisions::context::PriorityCont
     if ctx.actions.iter().any(|action| priority_action_is_meaningful(action) && proven(action)) {
         return Some(true);
     }
+    if ctx.payment_unresolved { return Some(true); }
     if ctx.analysis_complete { return Some(false); }
     ctx.payment_proven_actions.as_ref()?;
     let eligible = ctx.actions.iter().chain(&ctx.presentation_actions).any(priority_action_is_meaningful);
@@ -116,16 +120,16 @@ impl WasmGame {
                 job.provisional_actions.retain(|action| ironsmith::decision::legal_action_source(action) != candidate.source);
             }
         } else if candidate.work_units >= PRIORITY_CANDIDATE_WORK_CAP {
-            // An unfinished payment search is unknown, never unaffordable.
-            // Offer what this source could do if its mana were available and
-            // let the payment prompt decide when the player announces it, so
-            // one unbounded search cannot keep the whole menu incomplete.
-            for action in &job.presentation_actions {
-                if ironsmith::decision::legal_action_source(action) == candidate.source
+            // An unfinished payment search is unknown: neither payable nor
+            // unaffordable. The source's actions stay offered as unproven
+            // (never highlighted as payable), the stop is kept so the player
+            // can still try one, and the rest of the menu can complete.
+            if job.presentation_actions.iter().any(|action| {
+                ironsmith::decision::legal_action_source(action) == candidate.source
+                    && priority_action_is_meaningful(action)
                     && !job.actions.contains(action)
-                {
-                    job.actions.push(action.clone());
-                }
+            }) {
+                job.unresolved = true;
             }
         } else {
             // Rotate unresolved cards: one search cannot consume every slice.
@@ -146,6 +150,7 @@ impl WasmGame {
             &job.game, job.player, displayed,
         ).map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
         ctx.presentation_actions = job.presentation_actions.clone();
+        ctx.payment_unresolved = job.unresolved;
         ctx.analysis_complete = finished;
         ctx.payment_proven_actions = Some(job.actions.clone());
         self.pending_decision = Some(DecisionContext::Priority(ctx));
@@ -406,6 +411,7 @@ impl WasmGame {
             actions: ctx.payment_proven_actions.clone().unwrap_or_else(|| vec![LegalAction::PassPriority]),
             presentation_actions: ctx.presentation_actions.clone(),
             provisional_actions: ctx.actions.iter().filter(|action| !matches!(action, LegalAction::PassPriority)).cloned().collect(),
+            unresolved: false,
         }));
         true
     }
@@ -843,6 +849,7 @@ mod priority_analysis_tests {
                 actions: vec![LegalAction::PassPriority],
                 provisional_actions: Vec::new(),
                 presentation_actions: Vec::new(),
+                unresolved: false,
             }));
             let mut failed = false;
             for _ in 0..256 {

@@ -16,7 +16,7 @@ pub use resumable::ManaAnalysisSession;
 pub(super) use resumable::{
     analysis_failure, with_assumed_mana_for_presentation, with_checked_query,
 };
-pub(crate) use resumable::mana_payment_is_assumed;
+pub(crate) use resumable::{mana_payment_is_assumed, with_bounded_payment_recheck};
 
 pub use mechanics::*;
 
@@ -3971,7 +3971,11 @@ fn mana_cost_can_be_paid_with_view_at_x(
         request.x_value = x_value;
         // A menu bound overestimates spending permissions anyway, so it needs
         // no proposal on the stack and therefore no copy of the game.
-        if resumable::bounding_payments() {
+        if resumable::bounding_payments()
+            && game
+                .player(player)
+                .is_some_and(|payer| payer.restricted_mana.is_empty())
+        {
             return resumable::check_payment(game, &request);
         }
         // CR 601.2a: spending restrictions inspect the proposed spell on the
@@ -4049,11 +4053,26 @@ pub(crate) fn mana_cost_with_locked_x_and_generic_reduction(
 /// Whether this payment query is a priority-menu bound for an ordinary cast,
 /// which needs no proposed spell. Every other casting method carries a face,
 /// a price or a spending permission that only the proposal records.
-pub(super) fn menu_bound_skips_proposal(method: &CastingMethod) -> bool {
+pub(super) fn menu_bound_skips_proposal(
+    game: &GameState,
+    payer: PlayerId,
+    method: &CastingMethod,
+) -> bool {
+    if !matches!(method, CastingMethod::Normal) {
+        return false;
+    }
     // The presentation pass assumes mana outright, so its answer never reads
-    // the proposal either.
-    matches!(method, CastingMethod::Normal)
-        && (resumable::bounding_payments() || resumable::mana_payment_is_assumed())
+    // the proposal.
+    if resumable::mana_payment_is_assumed() {
+        return true;
+    }
+    // A menu search runs on the real game only while nothing in the pool is
+    // judged against the spell on the stack (mana restricted to a kind of
+    // spell). Otherwise the proposal carries exactly what the search needs.
+    resumable::bounding_payments()
+        && game
+            .player(payer)
+            .is_some_and(|player| player.restricted_mana.is_empty())
 }
 
 /// Build the selected face once for every payment route, including explicit
@@ -4163,7 +4182,7 @@ fn mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
     // A supplied spell view (an optional-cost hypothesis) is skipped as well:
     // the view only narrows what may be spent, which a bound overestimates.
     if let Some((spell, method)) = declaration
-        && !menu_bound_skips_proposal(method)
+        && !menu_bound_skips_proposal(game, caster, method)
     {
         return with_cast_payment_proposal(game, caster, spell_id, spell, method, true, |proposed| {
             let proposed_view = DerivedGameView::new(proposed);
@@ -5254,7 +5273,7 @@ pub(crate) fn can_cast_with_cost_with_context(
                     )
                     .with_spend_policy(crate::alternative_cast::play_permission::casting_spend_policy(game, player, spell_for_checks, casting_method));
                     request.reserved_tap_sources = resource.into_iter().collect();
-                    if menu_bound_skips_proposal(casting_method) {
+                    if menu_bound_skips_proposal(game, player, casting_method) {
                         resumable::check_payment(game, &request)
                     } else {
                         with_cast_payment_proposal(game, player, spell_id, spell_for_checks, casting_method, true,

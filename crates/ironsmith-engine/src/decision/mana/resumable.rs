@@ -448,10 +448,30 @@ pub(crate) fn analysis_failure() -> Option<crate::effects::ExecutionError> {
     SESSION.with(|slot| slot.borrow().as_ref().and_then(|session| session.failure.clone()))
 }
 
+thread_local! {
+    static BOUNDED_RECHECK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Run `check` with affordability answered by the menu's negative-only bound
+/// when `bounded` is set. A menu built from that bound offers actions whose
+/// payment is not proven; re-validating one of them exactly as it is
+/// announced would search for the payment the menu deliberately did not, and
+/// refuse the click instead of opening its payment prompt.
+pub(crate) fn with_bounded_payment_recheck<T>(bounded: bool, check: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            BOUNDED_RECHECK.with(|flag| flag.set(self.0));
+        }
+    }
+    let _restore = Restore(BOUNDED_RECHECK.with(|flag| flag.replace(bounded || flag.get())));
+    check()
+}
+
 /// Whether a priority-menu session is running on this thread. Its
 /// affordability answers are upper bounds; every other caller stays exact.
 pub(super) fn bounding_payments() -> bool {
-    SESSION.with(|slot| {
+    BOUNDED_RECHECK.with(std::cell::Cell::get) || SESSION.with(|slot| {
         slot.borrow()
             .as_ref()
             .is_some_and(|session| session.bound_payments && session.active_root.is_some())
@@ -463,21 +483,31 @@ pub(super) fn bounding_payments() -> bool {
 /// menu. Other games retain the synchronous oracle, never a cached root answer.
 pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::ManaPaymentRequest) -> bool {
     if mana_payment_is_assumed() { return true; }
-    // A priority menu does not prove payments. Announcing an action validates
-    // its payment authoritatively, so the menu only has to leave out what
-    // certainly cannot be paid: a negative-only bound, never a search. This
-    // keeps menu analysis independent of how hard a payment is to find, and
-    // of the hypothetical games an exact search has to simulate.
-    if bounding_payments() {
-        if crate::mana_payment::payment_may_be_possible(game, request) {
+    // A menu, and the re-check of an action picked from it, first ask the
+    // negative-only bound: what certainly cannot be paid is left out without
+    // any search.
+    let menu_session = SESSION.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .is_some_and(|session| session.bound_payments && session.active_root.is_some())
+    });
+    let recheck = BOUNDED_RECHECK.with(std::cell::Cell::get);
+    if menu_session || recheck {
+        if !crate::mana_payment::payment_may_be_possible(game, request) {
+            // A bound that failed to calculate proved nothing. Surface the
+            // failure as an incomplete query instead of a negative answer.
+            return match game.token_resource_failure() {
+                Some(error) => failed_calculation(game, error),
+                None => false,
+            };
+        }
+        // An announced action only has to reach its payment prompt.
+        if recheck {
             return true;
         }
-        // A bound that failed to calculate proved nothing. Surface the
-        // failure as an incomplete query instead of a negative answer.
-        return match game.token_resource_failure() {
-            Some(error) => failed_calculation(game, error),
-            None => false,
-        };
+        // "Not ruled out" is not "payable". The menu marks an action as
+        // payable only when the search below finds a payment; a search that
+        // runs out of budget leaves the action offered but unproven.
     }
     let bound = SESSION.with(|slot| slot.borrow().as_ref().is_some_and(|session|
         session.active_root == Some(game as *const GameState as usize)));
@@ -489,6 +519,27 @@ pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::Man
     }
     let mut restore = Restore(SESSION.with(|slot| slot.borrow_mut().take()));
     if !bound {
+        // A hypothetical game inside a menu session has no stable identity to
+        // keep a frontier under. Give it this slice's budget; an unfinished
+        // search leaves the query pending, never negative.
+        if menu_session && let Some(session) = restore.0.as_mut() {
+            if session.remaining == 0 {
+                session.pending = true;
+                session.suspensions = session.suspensions.saturating_add(1);
+                return false;
+            }
+            let mut search = crate::mana_payment::ManaPaymentAnalysis::check(game, request.clone());
+            let result = search.step(session.remaining);
+            session.remaining = session.remaining.saturating_sub(search.last_slice_units().max(1));
+            return match result {
+                Some(result) => payment_result(game, result, Some(session)),
+                None => {
+                    session.pending = true;
+                    session.suspensions = session.suspensions.saturating_add(1);
+                    false
+                }
+            };
+        }
         return payment_result(game, crate::mana_payment::check_mana_payment(game, request), restore.0.as_mut());
     }
     let session = restore.0.as_mut().unwrap();

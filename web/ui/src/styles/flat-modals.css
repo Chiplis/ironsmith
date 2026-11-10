@@ -95,7 +95,7 @@
 [data-slot="sheet-content"] [data-slot="sheet-title"],
 [data-slot="sheet-content"] .fantasy-sheet-title {
   font-family: var(--ironsmith-ui-font, "Rajdhani"), system-ui, sans-serif !important;
-  font-size: 18px !important;
+  font-size: var(--flat-type-title) !important;
   font-weight: 700 !important;
   line-height: 1.2 !important;
   letter-spacing: 0.06em !important;
@@ -108,7 +108,7 @@
 [data-slot="sheet-content"] .fantasy-sheet-subtitle,
 .fantasy-sheet .text-muted-foreground {
   color: var(--flat-ink-mute) !important;
-  font-size: 12px !important;
+  font-size: var(--flat-type-support) !important;
   font-weight: 600;
   line-height: 1.5;
   letter-spacing: 0 !important;
@@ -119,7 +119,7 @@
 [data-slot="sheet-header"] > div:first-child:not([data-slot]),
 [data-slot="sheet-content"] .verify-match-eyebrow {
   color: var(--flat-ink-head) !important;
-  font-size: 10px !important;
+  font-size: var(--flat-type-micro) !important;
   font-weight: 700;
   letter-spacing: 0.16em !important;
   text-transform: uppercase;
@@ -195,7 +195,7 @@
 [data-slot="sheet-content"] .decklist-section-heading {
   border-bottom: 1px solid var(--flat-rule) !important;
   color: var(--flat-ink-head) !important;
-  font-size: 11px;
+  font-size: var(--flat-type-micro);
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -203,7 +203,7 @@
 
 [data-slot="sheet-content"] .decklist-section-heading h3 {
   color: var(--flat-ink-head) !important;
-  font-size: 11px;
+  font-size: var(--flat-type-micro);
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
@@ -465,7 +465,7 @@
 
 .verify-match-title {
   color: var(--flat-ink-bright);
-  font-size: 18px;
+  font-size: var(--flat-type-title);
   letter-spacing: 0.06em;
 }
 
@@ -568,7 +568,7 @@
 .card-forge-eyebrow,
 .card-forge-panel-title {
   color: var(--flat-ink-head) !important;
-  font-size: 10px;
+  font-size: var(--flat-type-micro);
   letter-spacing: 0.16em;
 }
 
@@ -713,14 +713,8 @@
     padding: 10px 48px 8px 16px !important;
   }
 
-  .lobby-sheet:not(.lobby-sheet-active) .fantasy-sheet-header [data-slot="sheet-title"] {
-    font-size: 24px !important;
-    line-height: 1.05 !important;
-  }
-
   .lobby-sheet:not(.lobby-sheet-active) .fantasy-sheet-header [data-slot="sheet-description"] {
     max-width: 60ch !important;
-    font-size: 11px !important;
     line-height: 1.3 !important;
   }
 
@@ -801,13 +795,11 @@
 
   .lobby-sheet-setup label {
     gap: 2px !important;
-    font-size: 10px !important;
   }
 
   .lobby-sheet-setup .fantasy-field {
     min-height: 32px !important;
     padding: 5px 8px !important;
-    font-size: 12px !important;
   }
 
   .lobby-sheet-setup .lobby-deck-picker {
@@ -830,15 +822,13 @@
     min-height: 140px !important;
     overflow-y: auto;
     padding: 8px !important;
-    font-size: 12px !important;
-    line-height: 1.25 !important;
+    line-height: 1.3 !important;
   }
 
   .lobby-sheet-setup .lobby-sheet-commander-input {
     min-height: 64px !important;
     padding: 8px !important;
-    font-size: 12px !important;
-    line-height: 1.25 !important;
+    line-height: 1.3 !important;
   }
 
   .lobby-sheet-setup fieldset {
@@ -855,18 +845,19 @@
   }
 
   .lobby-sheet-setup fieldset label > span:first-of-type {
-    font-size: 11px !important;
+    font-size: var(--flat-type-micro) !important;
+    font-weight: 700 !important;
   }
 
   .lobby-sheet-setup fieldset label > span:last-of-type {
-    font-size: 11px !important;
-    line-height: 1.25 !important;
+    font-size: var(--flat-type-support) !important;
+    font-weight: 500 !important;
+    line-height: 1.3 !important;
   }
 
   .lobby-sheet-setup .ui-primary-action {
     min-height: 32px !important;
     padding: 6px 12px !important;
-    font-size: 11px !important;
   }
 }
 
@@ -1039,14 +1030,14 @@
 
 .mobile-landscape-gate-kicker {
   color: #d8bf7a !important;
-  font-size: 10px;
+  font-size: var(--flat-type-micro);
   letter-spacing: 0.16em;
 }
 
 .mobile-landscape-gate-title {
   color: #f2d9a3 !important;
   font-family: var(--ironsmith-ui-font, "Rajdhani"), system-ui, sans-serif !important;
-  font-size: 22px;
+  font-size: var(--flat-type-title);
   letter-spacing: 0.06em;
 }
 
@@ -1189,7 +1180,7 @@
   padding: 6px 10px 4px;
   color: var(--flat-ink-head, #d8bf7a);
   background: var(--flat-well, #0e0f11);
-  font-size: 10px;
+  font-size: var(--flat-type-micro, 12px);
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -1218,7 +1209,7 @@
   border-radius: 0;
   color: var(--flat-ink, #e7d9bc);
   background: transparent;
-  font-size: 13px;
+  font-size: var(--flat-type-support, 14px);
   line-height: 1.35;
   text-align: left;
   cursor: default;
@@ -1269,7 +1260,7 @@
   border-radius: 2px;
   color: var(--flat-danger-ink, #f0a9a0);
   background: var(--flat-danger-fill, #2b1114);
-  font-size: 10px;
+  font-size: var(--flat-type-micro, 12px);
   letter-spacing: 0.04em;
   text-overflow: ellipsis;
   white-space: nowrap;

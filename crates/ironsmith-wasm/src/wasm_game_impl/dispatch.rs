@@ -1595,6 +1595,7 @@ impl WasmGame {
             priority_epoch_checkpoint: None,
             priority_epoch_has_undoable_action: false,
             priority_epoch_undo_locked_by_mana: false,
+            irreversible_mana_lock_generation: 0,
             priority_epoch_undo_locked_by_disclosure: false,
             priority_epoch_undo_land_stable_id: None,
             semantic_threshold: 0.0,
@@ -5562,6 +5563,7 @@ impl WasmGame {
                         )
                     {
                         self.priority_epoch_undo_locked_by_mana = true;
+                        self.irreversible_mana_lock_generation += 1;
                     }
                     self.priority_epoch_undo_land_stable_id =
                         self.committed_undo_land_stable_id(&replay.checkpoint, &replay.root);
@@ -5673,6 +5675,7 @@ impl WasmGame {
                                 .replay_root_mana_activation_added_to_stack(&checkpoint, &root)
                             {
                                 self.priority_epoch_undo_locked_by_mana = true;
+                                self.irreversible_mana_lock_generation += 1;
                             }
                             self.priority_epoch_undo_land_stable_id =
                                 self.committed_undo_land_stable_id(&checkpoint, &root);

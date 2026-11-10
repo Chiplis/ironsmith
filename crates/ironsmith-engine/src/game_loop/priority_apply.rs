@@ -1107,11 +1107,17 @@ pub(super) fn apply_admitted_priority_action(
             if game.object(*source).is_some() {
                 if let Some(ability) = game.current_ability(*source, *ability_index) {
                     if let AbilityKind::Activated(activated) = &ability.kind {
-                        if !can_activate_ability_with_restrictions(
-                            game,
-                            *source,
-                            *ability_index,
-                            activated,
+                        // A deferred menu offers abilities on a payment bound,
+                        // so re-check on the same bound; the payment itself is
+                        // settled in the prompt that follows.
+                        if !crate::decision::with_bounded_payment_recheck(
+                            super::priority_analysis_deferred(),
+                            || can_activate_ability_with_restrictions(
+                                game,
+                                *source,
+                                *ability_index,
+                                activated,
+                            ),
                         ) {
                             return Err(GameLoopError::ActionCancelled(
                                 "Ability activation restrictions are no longer satisfied"

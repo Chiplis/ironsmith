@@ -4307,6 +4307,9 @@ struct ReplayCheckpoint {
     /// knowledge, including audit views, rather than a reversible zone count.
     public_hand_disclosures: HashSet<(PlayerId, ObjectId)>,
     payment_disclosure_generation: u64,
+    /// How many irreversible mana activations had been latched when this
+    /// checkpoint was taken. Restoring it undoes only what came after.
+    irreversible_mana_lock_generation: u64,
     /// Diagnostic tag identifying where this checkpoint was captured.
     diag_tag: &'static str,
 }
@@ -4979,6 +4982,10 @@ pub struct WasmGame {
     /// Latched for the current priority epoch when an irreversible mana ability
     /// activation has occurred (for example sacrifice/counter/life side effects).
     priority_epoch_undo_locked_by_mana: bool,
+    /// Counts every latch of `priority_epoch_undo_locked_by_mana`, so a
+    /// pending action can tell a lock from before it began (which cancelling
+    /// it does not undo) from one caused by its own chain.
+    irreversible_mana_lock_generation: u64,
     priority_epoch_undo_locked_by_disclosure: bool,
     /// Stable id of the most recent reversible land-for-mana tap committed in
     /// the current priority epoch.

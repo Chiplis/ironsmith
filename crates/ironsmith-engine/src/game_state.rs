@@ -1905,6 +1905,9 @@ struct DirtyStateKey {
 struct DirtyCharacteristicsMemo {
     key: Option<DirtyStateKey>,
     effects: Option<Arc<Vec<ContinuousEffect>>>,
+    /// Whether `effects` came from the limit-checked discovery. A fallible
+    /// caller reuses only that; an unchecked list could hide its error.
+    effects_checked: bool,
     characteristics:
         HashMap<ObjectId, Option<Arc<crate::continuous::CalculatedCharacteristics>>>,
 }

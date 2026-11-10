@@ -1544,13 +1544,17 @@ pub struct PriorityContext {
     /// Timing/target-eligible announcements discovered by analysis, not payment proofs.
     /// Kept separate so rendering never enumerates actions or changes legality.
     pub presentation_actions: Vec<crate::decision::LegalAction>,
+    /// The analysis gave up on at least one eligible action without either
+    /// finding a payment or ruling one out. Such an action is offered
+    /// unproven, and the player is still given the chance to act.
+    pub payment_unresolved: bool,
     pub player: PlayerId,
     pub actions: PreparedPriorityActions,
 }
 impl PriorityContext {
     pub fn new(game: &crate::game_state::GameState, player: PlayerId, actions: Vec<crate::decision::LegalAction>)
         -> Result<Self, crate::static_ability_processor::StaticEffectDiscoveryError> {
-        Ok(Self { player, actions: PreparedPriorityActions::new(game, actions)?, analysis_complete: true, payment_proven_actions: None, presentation_actions: Vec::new() })
+        Ok(Self { player, actions: PreparedPriorityActions::new(game, actions)?, analysis_complete: true, payment_proven_actions: None, presentation_actions: Vec::new(), payment_unresolved: false })
     }
 }
 

@@ -43,7 +43,7 @@ pub(crate) use legal_actions::{
 use legal_actions::*;
 #[allow(unused_imports)]
 use mana::*;
-pub(crate) use mana::{latched_card_copy_price, AvailableManaSource, can_pay_mana_cost_with_available_sources, can_pay_mana_cost_with_available_sources_except, check_scoped_mana_payment, mana_payment_is_assumed, payment_requires_stateful_sources};
+pub(crate) use mana::{latched_card_copy_price, AvailableManaSource, can_pay_mana_cost_with_available_sources, can_pay_mana_cost_with_available_sources_except, check_scoped_mana_payment, mana_payment_is_assumed, payment_requires_stateful_sources, with_bounded_payment_recheck};
 #[allow(unused_imports)]
 use perf::*;
 #[allow(unused_imports)]

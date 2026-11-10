@@ -22,6 +22,31 @@ const MODALS = [
   ['table settings', '.topbar-menu-trigger'],
 ];
 
+// One type scale everywhere: five sizes, nothing under 12px, nothing lighter
+// than medium. Rendered cards and keycaps keep their own typography.
+const textOffScale = (element) => {
+  const scale = new Set([12, 14, 15, 17, 20]);
+  const found = [];
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const owner = node.parentElement;
+    if (!node.textContent.trim() || !owner.getClientRects().length) continue;
+    if (owner.closest('.sr-only, code, kbd, .game-card, [data-card-era], .card-glint-live')) continue;
+    const style = getComputedStyle(owner);
+    const size = Math.round(parseFloat(style.fontSize) * 10) / 10;
+    if (!scale.has(size) || Number(style.fontWeight) < 500) {
+      found.push(`${size}px/${style.fontWeight} "${node.textContent.trim().slice(0, 24)}"`);
+    }
+  }
+  return found;
+};
+
+// Dialogs that are not Radix sheets but share the type scale.
+const SURFACES = [
+  ['keyboard shortcuts', '[data-open="shortcuts"]', '.keyboard-shortcuts-panel'],
+  ['load decks', '[data-open="loaddecks"]', '.deck-loading-screen'],
+];
+
 test('every modal wears the flat dark chrome', async () => {
   const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await vite.listen();
@@ -59,8 +84,18 @@ test('every modal wears the flat dark chrome', async () => {
       if (chrome.titleFont !== null) {
         assert.ok(/Rajdhani/.test(chrome.titleFont), `${name} title font: ${chrome.titleFont}`);
       }
+      const offScale = await sheet.evaluate(textOffScale);
+      assert.deepEqual(offScale, [], `${name} text off the modal type scale`);
       await page.keyboard.press('Escape');
       await sheet.waitFor({ state: 'detached' });
+    }
+
+    for (const [name, opener, root] of SURFACES) {
+      await page.locator(opener).click();
+      const surface = page.locator(root);
+      await surface.waitFor();
+      assert.deepEqual(await surface.evaluate(textOffScale), [], `${name} text off the modal type scale`);
+      await page.keyboard.press('Escape');
     }
   } finally {
     await browser.close();

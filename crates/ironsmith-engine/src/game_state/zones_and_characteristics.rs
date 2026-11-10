@@ -5735,8 +5735,39 @@ retain_original_types: false, retain_original_name: false,
         {
             return Ok(self.cached_continuous_effects_snapshot_arc());
         }
-        crate::static_ability_processor::try_get_all_continuous_effects(self, self.static_effect_discovery_limits())
-            .map(Arc::new)
+        // A dirty state outside any calculation: one discovery serves every
+        // read until the state changes. Capturing a snapshot of each permanent
+        // before a tap otherwise rediscovered every static effect per permanent.
+        if crate::continuous::nested_regeneration_context(self).is_some() {
+            return crate::static_ability_processor::try_get_all_continuous_effects(self, self.static_effect_discovery_limits())
+                .map(Arc::new);
+        }
+        let key = self.dirty_state_key();
+        {
+            let memo = self.runtime_cache.dirty_characteristics_memo.borrow();
+            if memo.key == Some(key) && memo.effects_checked
+                && let Some(effects) = memo.effects.as_ref()
+            {
+                return Ok(Arc::clone(effects));
+            }
+        }
+        let marker = crate::continuous::provisional_condition_marker();
+        let effects = Arc::new(crate::static_ability_processor::try_get_all_continuous_effects(
+            self,
+            self.static_effect_discovery_limits(),
+        )?);
+        if !crate::continuous::computed_provisionally(marker) && key == self.dirty_state_key() {
+            let mut memo = self.runtime_cache.dirty_characteristics_memo.borrow_mut();
+            if memo.key != Some(key) {
+                memo.key = Some(key);
+                memo.characteristics.clear();
+            }
+            // Characteristics memoized from an unchecked list of the same
+            // state were derived from equal effects; they stay valid.
+            memo.effects = Some(Arc::clone(&effects));
+            memo.effects_checked = true;
+        }
+        Ok(effects)
     }
 
     /// Shared form of [`Self::all_continuous_effects`].
@@ -5764,6 +5795,7 @@ retain_original_types: false, retain_original_name: false,
                 memo.characteristics.clear();
             }
             memo.effects = Some(Arc::clone(&effects));
+            memo.effects_checked = false;
         }
         effects
     }
@@ -5792,6 +5824,7 @@ retain_original_types: false, retain_original_name: false,
         let mut memo = self.runtime_cache.dirty_characteristics_memo.borrow_mut();
         memo.key = None;
         memo.effects = None;
+        memo.effects_checked = false;
         memo.characteristics.clear();
     }
 
@@ -5871,6 +5904,7 @@ retain_original_types: false, retain_original_name: false,
             if memo.key != Some(key) {
                 memo.key = Some(key);
                 memo.effects = None;
+                memo.effects_checked = false;
                 memo.characteristics.clear();
             }
             memo.characteristics.extend(calculated.drain(..));
@@ -6008,6 +6042,30 @@ retain_original_types: false, retain_original_name: false,
     ) -> Option<crate::continuous::CalculatedCharacteristics> {
         if let Some(cached) = self.cached_characteristics_for_effects(id, effects) {
             return Some(cached.as_ref().clone());
+        }
+        // The dirty counterpart: `effects` is this dirty state's own memoized
+        // list, so the memoized board pass holds exactly this result. A
+        // capture of every permanent then costs one pass, not one each.
+        if !self.continuous_state_is_clean()
+            && crate::continuous::nested_regeneration_context(self).is_none()
+            && !(self.object(id).is_some_and(|object| object.zone == Zone::Battlefield)
+                && self.is_phased_out(id))
+            && self.characteristicless_face_down_characteristics(id).is_none()
+        {
+            let key = self.dirty_state_key();
+            let shares_memo_effects = {
+                let memo = self.runtime_cache.dirty_characteristics_memo.borrow();
+                memo.key == Some(key)
+                    && memo
+                        .effects
+                        .as_ref()
+                        .is_some_and(|memoized| std::ptr::eq(memoized.as_slice(), effects))
+            };
+            if shares_memo_effects {
+                return self
+                    .dirty_calculated_characteristics(id)
+                    .map(|chars| chars.as_ref().clone());
+            }
         }
         self.calculated_characteristics_with_effects(id, effects)
     }

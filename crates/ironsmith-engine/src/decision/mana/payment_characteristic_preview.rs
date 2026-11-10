@@ -326,7 +326,7 @@ pub(super) fn can_pay_scoped_tap(
             ),
         );
         request.reserved_tap_sources.extend_from_slice(resources);
-        if menu_bound_skips_proposal(casting_method) {
+        if menu_bound_skips_proposal(game, player, casting_method) {
             return resumable::check_payment(game, &request);
         }
         with_cast_payment_proposal(game, player, spell.id, spell, casting_method, true, |proposed| {

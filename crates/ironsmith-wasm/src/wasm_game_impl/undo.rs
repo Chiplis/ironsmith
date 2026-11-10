@@ -94,8 +94,12 @@ impl WasmGame {
         }
 
         if let Some(checkpoint) = self.pending_action_checkpoint.as_ref() {
+            // Cancelling restores this action's own checkpoint. A mana lock
+            // latched before that checkpoint (a Lotus Petal sacrificed earlier
+            // in the same priority window) is not undone by it, and must not
+            // trap the player in a payment prompt they cannot complete.
             return self.payment_disclosure_generation == checkpoint.payment_disclosure_generation
-                && !self.has_irreversible_mana_undo_lock()
+                && self.irreversible_mana_lock_generation == checkpoint.irreversible_mana_lock_generation
                 && !self.has_irreversible_library_change_since(checkpoint)
                 && !self.has_irreversible_random_change_since(checkpoint)
                 && !self.has_irreversible_hand_disclosure_since(checkpoint);

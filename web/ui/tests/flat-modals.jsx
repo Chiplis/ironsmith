@@ -11,7 +11,13 @@ import VerifyMatchSheet from "../src/components/layout/VerifyMatchSheet";
 import TopbarMenuSheet from "../src/components/layout/TopbarMenuSheet";
 import LobbyOverlay from "../src/components/layout/LobbyOverlay";
 import CreateCardForgeSheet from "../src/components/layout/CreateCardForgeSheet";
+import DeckLoadingView from "../src/components/board/DeckLoadingView";
+import KeyboardShortcutsOverlay from "../src/components/overlays/KeyboardShortcutsOverlay";
+import { OPEN_SHORTCUTS_EVENT } from "../src/lib/shortcuts-overlay";
 import "../src/index.css";
+
+// The shortcuts overlay opens itself when a game starts; here it opens on demand.
+localStorage.setItem("ironsmith.showShortcutsOnStart", "false");
 
 const players = [
   { id: 0, name: "Alice", life: 20, hand_size: 7, library_size: 53, battlefield: [], graveyard_cards: [], exile_cards: [] },
@@ -76,11 +82,19 @@ function Fixture() {
           <VerifyMatchSheet trigger={<button type="button" data-open="verify" className="verify-trigger">Verify</button>} />
           <CreateCardForgeSheet players={players} trigger={<button type="button" data-open="forge">Forge</button>} />
           {trigger("lobby", "Lobby")}
+          {trigger("loaddecks", "Load Decks")}
+          <button type="button" data-open="shortcuts" onClick={() => window.dispatchEvent(new Event(OPEN_SHORTCUTS_EVENT))}>Shortcuts</button>
           <TopbarMenuSheet playerNames={["Alice", "Bob"]} setPlayerNames={() => {}} startingLife={20} setStartingLife={() => {}} />
         </div>
         {which === "decklist" ? <OpenDecklistModal decklist={DECKLIST} onClose={close} /> : null}
         <LogDrawer open={which === "log"} onOpenChange={(open) => setWhich(open ? "log" : "")} />
         {which === "lobby" ? <LobbyOverlay onClose={close} /> : null}
+        {which === "loaddecks" ? (
+          <div data-load-decks style={{ position: "fixed", inset: 0, zIndex: 50 }}>
+            <DeckLoadingView onTestDecks={() => {}} onCancel={close} />
+          </div>
+        ) : null}
+        <KeyboardShortcutsOverlay />
       </GameContext.Provider>
     </I18nProvider>
   );

@@ -1029,8 +1029,11 @@ impl GameState {
             // each permanent, every query.
             let static_abilities = match self.cached_characteristics_for_effects(perm_id, all_effects) {
                 Some(cached) => cached.static_abilities.clone(),
+                // On a dirty state this shares the state's one memoized board
+                // pass; reading each permanent on its own ran a pass apiece,
+                // for every payment node that asked.
                 None => self
-                    .calculated_characteristics_with_effects(perm_id, all_effects)
+                    .calculated_characteristics_for_capture(perm_id, all_effects)
                     .map(|chars| chars.static_abilities)
                     .unwrap_or_default(),
             };

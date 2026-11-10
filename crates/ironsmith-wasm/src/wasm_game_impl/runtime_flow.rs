@@ -715,6 +715,7 @@ impl WasmGame {
                 ) || self.replay_root_mana_activation_added_to_stack(checkpoint, &root)
                 {
                     self.priority_epoch_undo_locked_by_mana = true;
+                    self.irreversible_mana_lock_generation += 1;
                 }
                 self.priority_epoch_undo_land_stable_id =
                     self.committed_undo_land_stable_id(checkpoint, &root);
@@ -1165,6 +1166,7 @@ impl WasmGame {
             id_counters: snapshot_id_counters(),
             public_hand_disclosures: self.public_hand_disclosure_identities(),
             payment_disclosure_generation: self.payment_disclosure_generation,
+            irreversible_mana_lock_generation: self.irreversible_mana_lock_generation,
             diag_tag: tag,
         }
     }

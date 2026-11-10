@@ -1,0 +1,468 @@
+/* Modal typography.
+ *
+ * flat-modals.css gave every modal one surface language; this file gives them
+ * one type language. Before it, each sheet set its own sizes (10px to 14px),
+ * weights (400 to 700), tracking (0 to 0.2em) and inks, and most supporting
+ * copy sat under 5:1 contrast in a condensed face that reads small.
+ *
+ * The whole scale is five sizes, three weights and three inks:
+ *
+ *   title    20px / 700   uppercase, 0.04em   the sheet's name
+ *   heading  17px / 700                       a section inside a sheet
+ *   body     15px / 500                       copy, values, fields, buttons (600)
+ *   support  14px / 500                       field labels, hints, descriptions
+ *   micro    12px / 700   uppercase, 0.08em   eyebrows, group labels, stat labels
+ *
+ *   ink       13:1   what you read or act on
+ *   ink-soft  10:1   labels and supporting copy
+ *   ink-mute   7:1   hints and metadata; nothing readable goes below this
+ *
+ * Components keep their Tailwind size utilities; inside a modal those
+ * utilities are re-pointed onto the scale, the same way flat-modals.css
+ * re-points the colour tokens. Rendered cards are left alone.
+ *
+ * The standalone Load Decks screen is the same component the lobby embeds,
+ * so it takes the same scale; the keyboard-shortcuts overlay is restyled in
+ * its own stylesheet against these tokens.
+ */
+
+[data-slot="sheet-content"],
+.deck-loading-screen,
+.keyboard-shortcuts-panel,
+.mobile-landscape-gate {
+  --flat-type-title: 20px;
+  --flat-type-heading: 17px;
+  --flat-type-body: 15px;
+  --flat-type-support: 14px;
+  --flat-type-micro: 12px;
+  --flat-track-caps: 0.08em;
+  --flat-font: var(--ironsmith-ui-font, "Rajdhani"), system-ui, sans-serif;
+
+  /* The inks, lifted so the quietest readable text clears 7:1. */
+  --flat-ink-soft: #cabd9f;
+  --flat-ink-mute: #a99d85;
+  --flat-ink-faint: #8b806b;
+  --flat-ink-off: #6f6759;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) {
+  font-family: var(--flat-font);
+  font-size: var(--flat-type-body);
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+
+/* --- utilities onto the scale ---------------------------------------- */
+
+:is([data-slot="sheet-content"], .deck-loading-screen) :is(.text-\[10px\], .text-\[11px\]):not(:where(.game-card, [data-card-era], .card-glint-live) *) {
+  font-size: var(--flat-type-micro) !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) :is(.text-xs, .text-\[12px\], .text-\[13px\]):not(:where(.game-card, [data-card-era], .card-glint-live) *) {
+  font-size: var(--flat-type-support) !important;
+  line-height: 1.45 !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) :is(.text-sm, .text-\[14px\], .text-\[15px\], .text-base):not(:where(.game-card, [data-card-era], .card-glint-live) *) {
+  font-size: var(--flat-type-body) !important;
+  line-height: 1.45 !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) :is(.text-\[16px\], .text-\[18px\], .text-lg):not(:where(.game-card, [data-card-era], .card-glint-live) *) {
+  font-size: var(--flat-type-heading) !important;
+  line-height: 1.3 !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) :is(.text-xl, .text-2xl):not(:where(.game-card, [data-card-era], .card-glint-live) *) {
+  font-size: var(--flat-type-title) !important;
+  line-height: 1.2 !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) .font-normal {
+  font-weight: 500 !important;
+}
+
+/* Wide tracking only survives on uppercase micro labels, and at one value. */
+:is([data-slot="sheet-content"], .deck-loading-screen) :is(
+  .tracking-\[0\.14em\],
+  .tracking-\[0\.16em\],
+  .tracking-\[0\.18em\],
+  .tracking-\[0\.2em\],
+  .tracking-wider,
+  .tracking-widest
+):not(label) {
+  letter-spacing: var(--flat-track-caps) !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) .tracking-wide {
+  letter-spacing: 0.02em !important;
+}
+
+/* Hard-coded dim inks (the deck browser's dates, counts and inactive
+   filters) sat at 3.4:1 to 4.9:1. Inside a modal they take the shared inks. */
+:is([data-slot="sheet-content"], .deck-loading-screen) :is(.text-\[\#8b806b\], .text-\[\#6f6759\], .text-\[\#776b58\]):not(:disabled) {
+  color: var(--flat-ink-mute) !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) :is(.text-\[\#b8aa8e\], .text-\[\#d8c8a7\]) {
+  color: var(--flat-ink-soft) !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) button:is(.text-\[\#8b806b\], .text-\[\#6f6759\]):not(:disabled) {
+  color: var(--flat-ink-soft) !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) button:is(.text-\[\#8b806b\], .text-\[\#6f6759\]):hover:not(:disabled) {
+  color: var(--flat-ink) !important;
+}
+
+/* --- header ---------------------------------------------------------- */
+
+[data-slot="sheet-content"] [data-slot="sheet-title"],
+[data-slot="sheet-content"] .fantasy-sheet-title,
+.verify-match-title {
+  font-family: var(--flat-font) !important;
+  font-size: var(--flat-type-title) !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.04em !important;
+}
+
+[data-slot="sheet-content"] [data-slot="sheet-description"],
+.fantasy-sheet [data-slot="sheet-description"],
+[data-slot="sheet-content"] .fantasy-sheet-subtitle,
+.fantasy-sheet .text-muted-foreground {
+  font-family: var(--flat-font) !important;
+  color: var(--flat-ink-soft) !important;
+  font-size: var(--flat-type-support) !important;
+  font-weight: 500 !important;
+  line-height: 1.45 !important;
+}
+
+[data-slot="sheet-header"] > div:first-child:not([data-slot]),
+[data-slot="sheet-content"] .verify-match-eyebrow {
+  font-family: var(--flat-font) !important;
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 700 !important;
+  letter-spacing: var(--flat-track-caps) !important;
+}
+
+/* --- labels, fields, controls ---------------------------------------- */
+
+:is([data-slot="sheet-content"], .deck-loading-screen) label,
+:is([data-slot="sheet-content"], .deck-loading-screen) label[class*="tracking-"] {
+  color: var(--flat-ink-soft) !important;
+  font-size: var(--flat-type-support) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+:is([data-slot="sheet-content"], .deck-loading-screen) .fantasy-field {
+  font-size: var(--flat-type-body) !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+}
+
+/* Decklists are pasted and read as columns: keep them monospaced, but at a
+   weight and size that match the rest of the sheet. */
+:is([data-slot="sheet-content"], .deck-loading-screen) textarea.font-mono {
+  font-size: var(--flat-type-support) !important;
+}
+
+:is([data-slot="sheet-content"], .deck-loading-screen) :is([data-slot="button"], .stone-pill) {
+  font-family: var(--flat-font) !important;
+  font-size: var(--flat-type-body) !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
+}
+
+[data-slot="sheet-content"] [data-slot="button"][data-variant="ghost"],
+[data-slot="sheet-content"] [data-slot="button"][data-variant="outline"],
+[data-slot="sheet-content"] [data-slot="button"][data-variant="secondary"],
+[data-slot="sheet-content"] .stone-pill:not(.settings-reset-button):not(.ui-primary-action):not([aria-pressed="true"]) {
+  color: var(--flat-ink) !important;
+}
+
+[data-slot="sheet-content"] :is([data-slot="button"], .stone-pill):disabled,
+[data-slot="sheet-content"] :is([data-slot="button"], .stone-pill)[aria-disabled="true"] {
+  color: var(--flat-ink-off) !important;
+}
+
+[data-slot="sheet-content"] :is([data-slot="badge"], .fantasy-sheet-badge) {
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+}
+
+[data-slot="sheet-content"] [role="tab"] {
+  color: var(--flat-ink-soft) !important;
+  font-size: var(--flat-type-support) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+}
+
+[data-slot="sheet-content"] [role="tab"]:hover:not([data-state="active"]) {
+  color: var(--flat-ink) !important;
+}
+
+[data-slot="sheet-content"] [role="tab"][data-state="active"],
+[data-slot="sheet-content"] [role="tab"][aria-selected="true"] {
+  color: var(--flat-ink-bright) !important;
+}
+
+[data-slot="sheet-content"] .toolbar-checkbox {
+  color: var(--flat-ink-soft) !important;
+  font-size: var(--flat-type-support) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+[data-slot="sheet-content"] code {
+  font-size: 0.9em;
+}
+
+/* --- decklist --------------------------------------------------------- */
+
+[data-slot="sheet-content"] .decklist-section-heading,
+[data-slot="sheet-content"] .decklist-section-heading :is(h3, span) {
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 700 !important;
+  letter-spacing: var(--flat-track-caps) !important;
+}
+
+[data-slot="sheet-content"] .decklist-row {
+  font-size: var(--flat-type-body) !important;
+  letter-spacing: 0 !important;
+}
+
+/* --- log -------------------------------------------------------------- */
+
+[data-slot="sheet-content"] .fantasy-log-entry {
+  font-size: var(--flat-type-body) !important;
+  font-weight: 500 !important;
+  line-height: 1.45 !important;
+  letter-spacing: 0 !important;
+}
+
+[data-slot="sheet-content"] .fantasy-log-time {
+  color: var(--flat-ink-mute) !important;
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-slot="sheet-content"] .fantasy-sheet-empty {
+  color: var(--flat-ink-mute) !important;
+  font-size: var(--flat-type-support) !important;
+}
+
+/* --- diagnostics ------------------------------------------------------ */
+
+.diagnostics-sheet :is(.diagnostics-section-title, .diagnostics-stat-label) {
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 700 !important;
+  letter-spacing: var(--flat-track-caps) !important;
+  text-transform: uppercase;
+}
+
+.diagnostics-sheet .diagnostics-section-title {
+  color: var(--flat-ink-head) !important;
+}
+
+.diagnostics-sheet .diagnostics-stat-label {
+  color: var(--flat-ink-mute) !important;
+}
+
+.diagnostics-sheet .diagnostics-stat-value {
+  font-size: var(--flat-type-heading) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
+
+.diagnostics-sheet :is(.diagnostics-stat-hint, .diagnostics-toolbar-note, .diagnostics-empty) {
+  color: var(--flat-ink-mute) !important;
+  font-size: var(--flat-type-support) !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  letter-spacing: 0 !important;
+}
+
+.diagnostics-sheet :is(.diagnostics-verdict, .diagnostics-table, .diagnostics-events, .diagnostics-trace, .diagnostics-stage) {
+  font-size: var(--flat-type-body) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+}
+
+.diagnostics-sheet .diagnostics-table th {
+  color: var(--flat-ink-mute) !important;
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 700 !important;
+  letter-spacing: var(--flat-track-caps) !important;
+  text-transform: uppercase;
+}
+
+/* --- verify match ----------------------------------------------------- */
+
+.verify-match-sheet :is(.verify-match-result-title, .verify-match-replay-title) {
+  font-size: var(--flat-type-body) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
+
+.verify-match-sheet :is(.verify-match-source, .verify-match-error, .verify-match-replay-error, .verify-match-fact dd, .verify-match-replay-current) {
+  font-size: var(--flat-type-support) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+}
+
+.verify-match-sheet :is(.verify-match-fact dt, .verify-match-replay-eyebrow) {
+  color: var(--flat-ink-mute) !important;
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 700 !important;
+  letter-spacing: var(--flat-track-caps) !important;
+  text-transform: uppercase;
+}
+
+/* --- card forge ------------------------------------------------------- */
+
+.card-forge-sheet :is(.card-forge-eyebrow, .card-forge-panel-title, .card-forge-section-label, .card-forge-stat-field span) {
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 700 !important;
+  letter-spacing: var(--flat-track-caps) !important;
+  text-transform: uppercase;
+}
+
+.card-forge-sheet .card-forge-section-label {
+  color: var(--flat-ink-soft) !important;
+}
+
+.card-forge-sheet :is(.card-forge-chip, .card-forge-color, .card-forge-choice) {
+  color: var(--flat-ink) !important;
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+}
+
+.card-forge-sheet :is(.card-forge-chip, .card-forge-color, .card-forge-choice).is-active {
+  color: var(--flat-ink-bright) !important;
+}
+
+.card-forge-sheet :is(
+  .card-forge-banner,
+  .card-forge-footer-note,
+  .card-forge-preview-layout,
+  .card-forge-preview-colors,
+  .card-forge-preview-cost,
+  .card-forge-printing-credit
+) {
+  color: var(--flat-ink-mute) !important;
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+}
+
+.card-forge-sheet :is(.card-forge-description, .card-forge-tab-subtitle, .card-forge-status) {
+  font-size: var(--flat-type-support) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+}
+
+.card-forge-sheet :is(.card-forge-description, .card-forge-tab-subtitle) {
+  color: var(--flat-ink-soft) !important;
+}
+
+.card-forge-sheet .card-forge-tab-trigger {
+  color: var(--flat-ink-soft) !important;
+}
+
+.card-forge-sheet .card-forge-tab-trigger:hover,
+.card-forge-sheet .card-forge-tab-trigger[data-state="active"] {
+  color: var(--flat-ink-bright) !important;
+}
+
+.card-forge-sheet :is(.build-card-fidelity-label, .build-card-fidelity-value) {
+  font-size: var(--flat-type-support) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+/* --- settings --------------------------------------------------------- */
+
+.settings-sheet .settings-sheet-tab[data-slot="tabs-trigger"] {
+  font-size: var(--flat-type-micro) !important;
+  letter-spacing: 0.04em !important;
+}
+
+/* --- landscape gate --------------------------------------------------- */
+
+.mobile-landscape-gate-kicker {
+  font-size: var(--flat-type-micro) !important;
+  font-weight: 700;
+  letter-spacing: var(--flat-track-caps) !important;
+}
+
+.mobile-landscape-gate-title {
+  font-size: var(--flat-type-title) !important;
+  letter-spacing: 0.04em !important;
+}
+
+.mobile-landscape-gate-copy {
+  color: var(--flat-ink-soft) !important;
+  font-size: var(--flat-type-body) !important;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.mobile-landscape-gate-note {
+  color: var(--flat-ink-mute) !important;
+  font-size: var(--flat-type-support) !important;
+  font-weight: 500;
+}
+
+.mobile-landscape-gate .stone-pill.mobile-landscape-gate-button {
+  font-size: var(--flat-type-body) !important;
+  font-weight: 600 !important;
+}
+
+/* --- lobby ------------------------------------------------------------ */
+
+/* Create / Join / Tournaments / Goldfish are the lobby's tabs, so they read
+   like every other sheet's tabs. */
+.lobby-sheet .fantasy-sheet-header ~ * button.stone-pill[aria-pressed],
+.lobby-sheet button.stone-pill[aria-pressed] {
+  font-size: var(--flat-type-support) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+}
+
+.lobby-sheet button.stone-pill[aria-pressed="false"] {
+  color: var(--flat-ink-soft) !important;
+}
+
+.lobby-sheet button.stone-pill[aria-pressed="true"] {
+  color: var(--flat-ink-bright) !important;
+}
+
+[data-slot="sheet-content"] .fantasy-sheet-stat {
+  font-size: var(--flat-type-body) !important;
+  letter-spacing: 0 !important;
+}
+
+/* --- load decks screen ------------------------------------------------ */
+
+.deck-loading-screen h1 {
+  font-family: var(--flat-font) !important;
+  font-size: var(--flat-type-title) !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.04em !important;
+}

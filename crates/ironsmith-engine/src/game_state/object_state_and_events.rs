@@ -5318,7 +5318,14 @@ impl GameState {
         self.turn_store
             .turn_history
             .record_event(event, object_snapshot, source_snapshot);
-        self.invalidate_continuous_history_modifiers();
+        // A gained characteristic is published from a completed refresh: it
+        // reports what the continuous state already is. Invalidating that
+        // state for each one forced a full refresh per gained subtype, and a
+        // land that becomes a creature "with all creature types" gains a few
+        // hundred of them in one instruction.
+        if event.kind() != crate::events::EventKind::CharacteristicGained {
+            self.invalidate_continuous_history_modifiers();
+        }
         let Some(record) = self.turn_store.turn_history.event_records.last_shared() else {
             return;
         };
