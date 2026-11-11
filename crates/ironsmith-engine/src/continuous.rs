@@ -2563,8 +2563,13 @@ impl CharacteristicCalculationKey {
 thread_local! {
     /// Each entry carries the context revision at which its partial
     /// characteristics were last written, which identifies that layer view.
-    static IN_PROGRESS_CHARACTERISTIC_CALCULATIONS: RefCell<HashMap<CharacteristicCalculationKey, Vec<(u64, CalculatedCharacteristics)>>> =
-        RefCell::new(HashMap::new());
+    static IN_PROGRESS_CHARACTERISTIC_CALCULATIONS: RefCell<FxMap<CharacteristicCalculationKey, Vec<(u64, CalculatedCharacteristics)>>> =
+        RefCell::new(FxMap::default());
+    /// How many objects of each game are in the table above. A whole-board
+    /// pass holds hundreds, and "is this game being calculated" is asked by
+    /// every read made inside it.
+    static IN_PROGRESS_CHARACTERISTIC_GAMES: RefCell<Vec<(usize, usize)>> =
+        const { RefCell::new(Vec::new()) };
     static CHARACTERISTIC_CONTEXT_REVISION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
@@ -2582,11 +2587,11 @@ fn bump_characteristic_context_revision() -> u64 {
 /// never serialized and is kept alive by the guard's immutable game borrow.
 pub(crate) fn characteristic_memo_context(game: &crate::game_state::GameState) -> Option<u64> {
     let game = std::ptr::from_ref(game) as usize;
-    IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
-        calculations
+    IN_PROGRESS_CHARACTERISTIC_GAMES.with(|games| {
+        games
             .borrow()
-            .keys()
-            .any(|key| key.game == game)
+            .iter()
+            .any(|(address, _)| *address == game)
             .then(|| CHARACTERISTIC_CONTEXT_REVISION.with(std::cell::Cell::get))
     })
 }
@@ -2610,6 +2615,18 @@ impl<'game> CharacteristicCalculationGuard<'game> {
                 .entry(key)
                 .or_default()
                 .push((stamp, chars.clone()));
+        });
+        // One count per distinct object of this game in the table.
+        IN_PROGRESS_CHARACTERISTIC_GAMES.with(|games| {
+            let first_entry = IN_PROGRESS_CHARACTERISTIC_CALCULATIONS
+                .with(|calculations| calculations.borrow().get(&key).is_some_and(|entries| entries.len() == 1));
+            if first_entry {
+                let mut games = games.borrow_mut();
+                match games.iter_mut().find(|(address, _)| *address == key.game) {
+                    Some((_, count)) => *count += 1,
+                    None => games.push((key.game, 1)),
+                }
+            }
         });
         Self { key, _game: game }
     }
@@ -2639,7 +2656,26 @@ impl Drop for CharacteristicCalculationGuard<'_> {
             };
             if should_remove {
                 calculations.remove(&self.key);
-                if !calculations.keys().any(|key| key.game == self.key.game) {
+                let game_finished = IN_PROGRESS_CHARACTERISTIC_GAMES.with(|games| {
+                    let mut games = games.borrow_mut();
+                    match games.iter().position(|(address, _)| *address == self.key.game) {
+                        Some(position) => {
+                            games[position].1 -= 1;
+                            if games[position].1 == 0 {
+                                games.swap_remove(position);
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        None => true,
+                    }
+                });
+                debug_assert_eq!(
+                    game_finished,
+                    !calculations.keys().any(|key| key.game == self.key.game)
+                );
+                if game_finished {
                     // The outermost calculation for this game is over; the game
                     // may be mutated (or its address reused) from here on.
                     NESTED_EFFECT_REGENERATIONS.with(|memo| {

@@ -7979,6 +7979,7 @@ impl GameState {
             }
             ConditionExpr::Not(inner) => Self::condition_may_read_turn_history(inner),
             ConditionExpr::PlayerHasCardTypesInGraveyardOrMore { player, .. }
+            | ConditionExpr::PlayerIsMonarch { player, .. }
             | ConditionExpr::PlayerHasCitysBlessing { player, .. }
             | ConditionExpr::PlayerCardsInHandOrMore { player, .. }
             | ConditionExpr::PlayerCardsInHandOrFewer { player, .. }

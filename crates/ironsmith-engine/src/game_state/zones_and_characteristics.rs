@@ -5952,6 +5952,81 @@ retain_original_types: false, retain_original_name: false,
         .then(|| self.dirty_state_key())
     }
 
+    /// `calculated_characteristics_batch_with_effects` for a dirty state whose
+    /// memoized effect list is `effects`: objects the memo already holds are
+    /// answered from it, and one batch derives the rest (with the board, which
+    /// that batch passes over anyway) and adds them. Replacement discovery
+    /// asks for the same objects once per proposed zone change of one state.
+    fn dirty_batch_through_memo(
+        &self,
+        ids: &[ObjectId],
+        effects: &Arc<Vec<ContinuousEffect>>,
+    ) -> HashMap<ObjectId, crate::continuous::CalculatedCharacteristics> {
+        let key = self.dirty_state_key();
+        let usable = !self.continuous_state_is_clean()
+            && crate::continuous::nested_regeneration_context(self).is_none()
+            && self
+                .dirty_memo_effects(key)
+                .is_some_and(|memoized| Arc::ptr_eq(&memoized, effects));
+        if !usable {
+            return self.calculated_characteristics_batch_with_effects(ids, effects);
+        }
+        let mut calculated = HashMap::with_capacity(ids.len());
+        let mut missing = Vec::new();
+        {
+            let memo = self.runtime_cache.dirty_characteristics_memo.borrow();
+            for &id in ids {
+                // Face-down objects without characteristics are answered by
+                // the batch entry itself, never from a layer result.
+                match memo.characteristics.get(&id) {
+                    Some(Some(chars))
+                        if self.characteristicless_face_down_characteristics(id).is_none() =>
+                    {
+                        calculated.insert(id, chars.as_ref().clone());
+                    }
+                    _ => missing.push(id),
+                }
+            }
+        }
+        if missing.is_empty() {
+            return calculated;
+        }
+        let any_permanent = missing.iter().any(|id| {
+            self.object(*id).is_some_and(|object| object.zone == Zone::Battlefield)
+        });
+        let mut request = missing.clone();
+        if any_permanent {
+            for &id in &self.battlefield {
+                if !self.is_phased_out(id)
+                    && !request.contains(&id)
+                    && !calculated.contains_key(&id)
+                    && !crate::continuous::characteristics_calculation_in_progress(self, id)
+                {
+                    request.push(id);
+                }
+            }
+        }
+        let marker = crate::continuous::provisional_condition_marker();
+        let batch = self.calculated_characteristics_batch_with_effects(&request, effects);
+        if !crate::continuous::computed_provisionally(marker) && key == self.dirty_state_key() {
+            let mut memo = self.runtime_cache.dirty_characteristics_memo.borrow_mut();
+            if memo.key == Some(key) {
+                let known = Arc::make_mut(&mut memo.characteristics);
+                for (id, chars) in &batch {
+                    if self.characteristicless_face_down_characteristics(*id).is_none() {
+                        known.entry(*id).or_insert_with(|| Some(Arc::new(chars.clone())));
+                    }
+                }
+            }
+        }
+        for id in missing {
+            if let Some(chars) = batch.get(&id) {
+                calculated.insert(id, chars.clone());
+            }
+        }
+        calculated
+    }
+
     /// A characteristic read on a dirty state outside any calculation. One
     /// board pass answers every permanent, exactly as each single read would.
     fn dirty_calculated_characteristics(
@@ -6749,7 +6824,7 @@ retain_original_types: false, retain_original_name: false,
                 })
             })
             .collect();
-        let mut calculated = self.calculated_characteristics_batch_with_effects(&present, &effects);
+        let mut calculated = self.dirty_batch_through_memo(&present, &effects);
         for id in present {
             let chars = calculated.get_mut(&id).ok_or(
                 crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;

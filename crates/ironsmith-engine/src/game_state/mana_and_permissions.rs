@@ -296,9 +296,24 @@ impl GameState {
             return Ok(snapshot);
         }
         snapshot.update_static_ability_effects()?;
+        let prohibitions = snapshot.effect_store.cant_effects.cant_gain_control.clone();
         snapshot.update_cant_effects();
-        snapshot.update_static_ability_effects()?;
-        snapshot.update_cant_effects();
+        // The same argument once the copy itself is settled: with the state
+        // clean, its static effects published and the prohibitions unchanged
+        // by the scan just made, the second discovery is a no-op and the
+        // third scan would repeat the second.
+        let revision = snapshot.effect_store.continuous_effects.revision();
+        let settled = snapshot.continuous_state_is_clean()
+            && snapshot
+                .runtime_cache
+                .static_effects_cache
+                .borrow()
+                .has_checked_snapshot(revision)
+            && snapshot.effect_store.cant_effects.cant_gain_control == prohibitions;
+        if !settled {
+            snapshot.update_static_ability_effects()?;
+            snapshot.update_cant_effects();
+        }
         if let Some(key) = dirty_key {
             self.adopt_dirty_derivations_from_query_snapshot(&snapshot, key);
         }
