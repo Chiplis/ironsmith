@@ -1805,7 +1805,13 @@ fn current_ability_surface_texts_for_battlefield(
         .filter(|line| !line.is_empty())
         .map(str::to_string)
         .collect::<Vec<_>>();
-    if current_lines.len() == current.abilities.len() {
+    // Only layer 1 (copies, text-box overlays) rewrites compiled_card_text.
+    // Ability loss leaves the printed text in place, so a matching line count
+    // proves nothing: Magus of the Moon swaps Urza's Tower's one printed
+    // ability for the Mountain's intrinsic one (CR 305.7).
+    if current_lines.len() == current.abilities.len()
+        && current.compiled_card_text != object.compiled_card_text
+    {
         return current_lines;
     }
 
@@ -1883,7 +1889,12 @@ pub(super) fn current_indexed_ability_surface_text(
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>();
-    if current_lines.len() == current.abilities.len()
+    // Indexing printed text by ability position is only sound while layer 1
+    // wrote that text for these abilities (see the battlefield surface).
+    let text_matches_abilities = current.abilities.as_slice() == object.abilities.as_slice()
+        || current.compiled_card_text != object.compiled_card_text;
+    if text_matches_abilities
+        && current_lines.len() == current.abilities.len()
         && let Some(line) = current_lines.get(ability_index)
     {
         return (*line).to_string();
@@ -3998,8 +4009,10 @@ fn format_type_line_parts(
         }
     }
 
+    // A permanent can lose every card type (March of the Machines' Sol Ring
+    // after Neurok Transmuter says it isn't an artifact). Name what it is.
     if type_line.is_empty() {
-        "Object".to_string()
+        "Permanent".to_string()
     } else {
         type_line
     }
@@ -7342,3 +7355,48 @@ mod scoped_revealed_hand_tests {
 #[cfg(test)]
 #[path = "public_revealed_hand_source_tests.rs"]
 mod public_revealed_hand_source_tests;
+
+#[cfg(test)]
+mod land_type_ability_loss_surface_tests {
+    use super::*;
+    use ironsmith::ids::PlayerId;
+    use ironsmith::zone::Zone;
+
+    // CR 305.7: Magus of the Moon replaces Urza's Tower's printed mana
+    // ability with the Mountain's intrinsic one. The frame must not keep the
+    // printed line just because the ability count is unchanged.
+    #[test]
+    fn magus_of_the_moon_replaces_urzas_tower_printed_line() {
+        let _guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let tower = ironsmith_registry_test::compile_to_runtime_definition(
+            "Urza's Tower",
+            "Type: Land — Urza's Power-Plant\n{T}: Add {C}. If you control an Urza's Mine and an Urza's Power-Plant, add {C}{C}{C} instead.",
+            false,
+        )
+        .expect("tower should compile");
+        let magus = ironsmith_registry_test::compile_to_runtime_definition(
+            "Magus of the Moon",
+            "Mana cost: {2}{R}\nType: Creature — Human Wizard\nPower/Toughness: 2/2\nNonbasic lands are Mountains.",
+            false,
+        )
+        .expect("magus should compile");
+        let tower_id = game.create_object_from_definition(&tower, alice, Zone::Battlefield);
+        game.create_object_from_definition(&magus, bob, Zone::Battlefield);
+        game.refresh_continuous_state().unwrap();
+
+        let object = game.object(tower_id).unwrap();
+        let current = game.calculated_characteristics(tower_id).unwrap();
+        let surface = current_ability_surface_texts_for_battlefield(&game, object, Some(&current));
+        assert!(
+            surface.iter().all(|line| !line.contains("Urza's Mine")),
+            "printed Tower line survived ability loss: {surface:?}"
+        );
+        assert!(
+            surface.iter().any(|line| line.contains("{R}")),
+            "Mountain mana ability missing: {surface:?}"
+        );
+    }
+}

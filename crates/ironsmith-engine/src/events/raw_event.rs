@@ -195,6 +195,11 @@ impl RawEvent {
         &self.lookback_source_snapshots
     }
 
+    /// The shared look-back list itself, for identity-keyed digests.
+    pub(crate) fn shared_lookback_source_snapshots(&self) -> &Arc<Vec<ObjectSnapshot>> {
+        &self.lookback_source_snapshots
+    }
+
     /// Player bindings captured by a delayed-trigger registration.
     pub fn player_tags(&self) -> &HashMap<TagKey, Vec<PlayerId>> {
         &self.player_tags

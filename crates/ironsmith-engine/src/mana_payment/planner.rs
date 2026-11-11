@@ -1126,6 +1126,19 @@ fn remaining_mana_is_unpayable(game: &GameState, request: &ManaPaymentRequest) -
     {
         return false;
     }
+    // Constrained costs and sources with nontrivial activation costs use this
+    // complete planner in the public affordability query. Calling that query here would re-enter the same payment search.
+    // Keep the preceding conservative bounds, then let the current search
+    // validate producer provenance and the X allocation itself.
+    // Asked before the projection scan below: both only decline the veto,
+    // and that scan asks whether each mana ability's own mana cost can be
+    // paid, which comes back here once per such ability at every depth.
+    if !request.cost.spending_restrictions().is_empty()
+        || request.cost.has_waterbend_obligation()
+        || crate::decision::payment_requires_stateful_sources(game, request.payer, &view)
+    {
+        return false;
+    }
     // A tap cost alone does not prove independence: the activation may also
     // untap another source, change an ability, or expose a new resource. Only
     // veto costs when every currently legal activation has an exact projection.
@@ -1133,16 +1146,6 @@ fn remaining_mana_is_unpayable(game: &GameState, request: &ManaPaymentRequest) -
     if collect_activation_choices_with_view(game, request, false, &analysis.view)
         .iter()
         .any(|choice| analysis.project(choice).is_none())
-    {
-        return false;
-    }
-    // Constrained costs and sources with nontrivial activation costs use this
-    // complete planner in the public affordability query. Calling that query here would re-enter the same payment search.
-    // Keep the preceding conservative bounds, then let the current search
-    // validate producer provenance and the X allocation itself.
-    if !request.cost.spending_restrictions().is_empty()
-        || request.cost.has_waterbend_obligation()
-        || crate::decision::payment_requires_stateful_sources(game, request.payer, &view)
     {
         return false;
     }

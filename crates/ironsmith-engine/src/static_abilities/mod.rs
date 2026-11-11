@@ -1057,6 +1057,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Whether `is_active` evaluates a condition this ability carries itself
+    /// ("as long as ..." stored on the ability rather than on its model).
+    fn has_own_activity_condition(&self) -> bool {
+        false
+    }
+
     /// Returns object abilities carried by a source-filtered grant. This is
     /// used by schemas such as level tiers that can store only static ability
     /// carriers even when the granted keyword is triggered or activated.
@@ -2003,6 +2009,10 @@ impl StaticAbility {
 
     pub fn granted_inline_condition(&self) -> Option<&crate::ConditionExpr> {
         self.0.granted_inline_condition()
+    }
+
+    pub(crate) fn has_own_activity_condition(&self) -> bool {
+        self.0.has_own_activity_condition()
     }
 
     pub fn source_granted_inline_abilities(&self) -> Vec<&crate::ability::Ability> {

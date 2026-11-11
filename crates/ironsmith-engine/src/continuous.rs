@@ -3089,6 +3089,9 @@ fn refresh_active_static_abilities(
 
 fn static_ability_has_condition(ability: &StaticAbility) -> bool {
     ability.granted_inline_condition().is_some()
+        // An anthem keeps its "as long as" on the ability itself (a graveyard
+        // Wildfire Wickerfolk's delirium).
+        || ability.has_own_activity_condition()
         || ability.compiled_model().is_some_and(|model| {
             matches!(
                 model.payload,

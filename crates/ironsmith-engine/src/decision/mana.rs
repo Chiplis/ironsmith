@@ -4144,25 +4144,54 @@ fn with_cast_payment_proposal(
     if payment_only && resumable::mana_payment_is_assumed() {
         return true;
     }
-    let mut proposed = game.clone();
-    proposed.project_spell_for_payment(spell_id);
     face.zone = Zone::Stack;
-    *proposed.object_mut(spell_id).expect("proposal source exists") = face;
-    proposed.stage_initial_controller_for_assembly(spell_id, caster);
-    proposed.set_cast_origin_snapshot(spell_id, origin);
-    if matches!(method.origin_method(), CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. }) {
-        proposed.set_face_down(spell_id);
-    }
-    if let Err(error) = proposed.refresh_continuous_state() {
-        return resumable::failed_calculation(game, crate::effects::ExecutionError::ContinuousDiscovery(error));
-    }
-    if supplied_is_root_object {
-        resumable::with_declared_cast(game, &proposed, spell_id, method, &spell.optional_costs_paid, || compute(&proposed))
+    // Everything below is a function of this game, the caster, the spell, the
+    // method and the face. While this game is an analysis session's immutable
+    // root, the session keeps the result.
+    let key = resumable::proposal_key(game, caster, spell_id, method, &face);
+    let retained = key.as_ref().and_then(resumable::take_proposal);
+    let retained = match retained {
+        Some(retained) => Some(retained),
+        None => {
+            let mut proposed = game.clone();
+            proposed.project_spell_for_payment(spell_id);
+            *proposed.object_mut(spell_id).expect("proposal source exists") = face;
+            proposed.stage_initial_controller_for_assembly(spell_id, caster);
+            proposed.set_cast_origin_snapshot(spell_id, origin);
+            if matches!(method.origin_method(), CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. }) {
+                proposed.set_face_down(spell_id);
+            }
+            if let Err(error) = proposed.refresh_continuous_state() {
+                return resumable::failed_calculation(game, crate::effects::ExecutionError::ContinuousDiscovery(error));
+            }
+            match key {
+                Some(key) => match resumable::new_proposal(key, proposed) {
+                    Some(retained) => Some(retained),
+                    None => unreachable!("a proposal key exists only while a session is installed"),
+                },
+                None => {
+                    return if supplied_is_root_object {
+                        resumable::with_declared_cast(game, &proposed, spell_id, method, &spell.optional_costs_paid, || compute(&proposed))
+                    } else {
+                        // check_payment already handles non-root hypothetical games exactly,
+                        // without caching a result against a different declared view.
+                        compute(&proposed)
+                    };
+                }
+            }
+        }
+    };
+    let retained = retained.expect("retained or returned above");
+    let proposed = retained.game();
+    let result = if supplied_is_root_object {
+        resumable::with_declared_cast(game, proposed, spell_id, method, &spell.optional_costs_paid, || compute(proposed))
     } else {
         // check_payment already handles non-root hypothetical games exactly,
         // without caching a result against a different declared view.
-        compute(&proposed)
-    }
+        compute(proposed)
+    };
+    resumable::retain_proposal(game, retained);
+    result
 }
 
 fn mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(

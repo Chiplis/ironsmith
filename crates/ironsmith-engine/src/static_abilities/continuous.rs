@@ -5418,6 +5418,10 @@ impl StaticAbilityKind for Anthem {
         static_condition_is_active(condition, game, source, game.controller_of(source_obj))
     }
 
+    fn has_own_activity_condition(&self) -> bool {
+        self.condition.is_some()
+    }
+
     fn is_anthem(&self) -> bool {
         true
     }

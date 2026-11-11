@@ -194,13 +194,113 @@ enum PaymentQueryContext {
     DeclaredCastCheckedRoot(ObjectId, crate::alternative_cast::CastingMethod, crate::cost::OptionalCostsPaid),
 }
 
+/// Everything a cast payment proposal is built from, besides the game it is
+/// built on (the session's root or its checked query, named by `context`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ProposalKey {
+    context: PaymentQueryContext,
+    caster: PlayerId,
+    spell: ObjectId,
+    method: crate::alternative_cast::CastingMethod,
+    /// The complete proposed face, compared in full.
+    face: String,
+}
+
+/// A proposed-spell game built from the session's immutable root. A menu is
+/// enumerated again on every slice of its analysis, and each pass asked for
+/// the same proposal several times per card; every request copied the game
+/// and refreshed the copy.
+///
+/// A proposal is a whole refreshed game, and a wide board has one analysis
+/// session per card, so what stays alive between slices is capped across all
+/// sessions (`MAX_PROPOSALS_BETWEEN_SLICES`). The cap only decides how often a
+/// proposal is rebuilt, never what a query answers.
+#[derive(Debug)]
+pub(super) struct RetainedProposal {
+    key: ProposalKey,
+    game: Box<GameState>,
+}
+
+static LIVE_PROPOSALS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+const MAX_PROPOSALS_BETWEEN_SLICES: usize = 8;
+const MAX_PROPOSALS_PER_SESSION: usize = 4;
+
+impl RetainedProposal {
+    pub(super) fn game(&self) -> &GameState { &self.game }
+}
+
+impl Drop for RetainedProposal {
+    fn drop(&mut self) {
+        LIVE_PROPOSALS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// The key for a proposal built on `game`, when `game` is the game the
+/// installed session is bound to. Any other game has no retained proposals.
+pub(super) fn proposal_key(
+    game: &GameState, caster: PlayerId, spell: ObjectId,
+    method: &crate::alternative_cast::CastingMethod, face: &crate::object::Object,
+) -> Option<ProposalKey> {
+    let context = SESSION.with(|slot| {
+        let slot = slot.borrow();
+        let session = slot.as_ref()?;
+        (session.bound_root.is_some()
+            && session.active_root == Some(game as *const GameState as usize)
+            && matches!(session.active_context, PaymentQueryContext::Root | PaymentQueryContext::ContinuousCheckedRoot))
+        .then(|| session.active_context.clone())
+    })?;
+    Some(ProposalKey { context, caster, spell, method: method.clone(), face: format!("{face:?}") })
+}
+
+/// Remove the retained proposal for `key`; the caller hands it back with
+/// `retain_proposal` once it has been read. Nothing borrows the session while
+/// the proposal is in use, so nested queries can use the session freely.
+pub(super) fn take_proposal(key: &ProposalKey) -> Option<RetainedProposal> {
+    SESSION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let session = slot.as_mut()?;
+        let index = session.proposals.iter().position(|proposal| proposal.key == *key)?;
+        Some(session.proposals.swap_remove(index))
+    })
+}
+
+pub(super) fn new_proposal(key: ProposalKey, game: GameState) -> Option<RetainedProposal> {
+    SESSION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        slot.as_mut()?;
+        LIVE_PROPOSALS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Some(RetainedProposal { key, game: Box::new(game) })
+    })
+}
+
+pub(super) fn retain_proposal(root: &GameState, proposal: RetainedProposal) {
+    SESSION.with(|slot| {
+        if let Some(session) = slot.borrow_mut().as_mut()
+            && session.active_root == Some(root as *const GameState as usize)
+            && session.active_context == proposal.key.context
+        {
+            if session.proposals.len() >= MAX_PROPOSALS_PER_SESSION {
+                session.proposals.remove(0);
+            }
+            session.proposals.push(proposal);
+        }
+    });
+}
+
+#[derive(Debug)]
+enum PaymentSearch {
+    Running(Box<crate::mana_payment::ManaPaymentAnalysis>),
+    Finished(Result<(), crate::mana_payment::ManaPaymentFailure>),
+}
+
 /// Owned by a single immutable priority snapshot. Completed queries are reused
 /// across menu passes; unfinished queries retain their frontier without restart.
 #[derive(Debug, Default)]
 pub struct ManaAnalysisSession {
     searches: HashMap<u64, Vec<(ManaQuery, Search)>>,
     facts: HashMap<SnapshotFactKey, Vec<(SnapshotFactContext, bool)>>,
-    payment_searches: Vec<(PaymentQueryContext, crate::mana_payment::ManaPaymentRequest, crate::mana_payment::ManaPaymentAnalysis)>,
+    payment_searches: Vec<(PaymentQueryContext, crate::mana_payment::ManaPaymentRequest, PaymentSearch)>,
+    proposals: Vec<RetainedProposal>,
     /// Identity checks only: these addresses are never dereferenced. The owner
     /// must retain its immutable snapshot for the session's lifetime.
     bound_root: Option<usize>,
@@ -294,6 +394,9 @@ impl ManaAnalysisSession {
         });
         drop(restore);
         self.active_root = None;
+        if LIVE_PROPOSALS.load(std::sync::atomic::Ordering::Relaxed) > MAX_PROPOSALS_BETWEEN_SLICES {
+            self.proposals.clear();
+        }
         (result, complete)
     }
 
@@ -546,7 +649,7 @@ pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::Man
     let context = session.active_context.clone();
     let index = session.payment_searches.iter().position(|(kind, key, _)| *kind == context && key == request)
         .unwrap_or_else(|| {
-            session.payment_searches.push((context.clone(), request.clone(), crate::mana_payment::ManaPaymentAnalysis::check(game, request.clone())));
+            session.payment_searches.push((context.clone(), request.clone(), PaymentSearch::Running(Box::new(crate::mana_payment::ManaPaymentAnalysis::check(game, request.clone())))));
             session.payment_searches.len() - 1
         });
     if session.remaining == 0 {
@@ -554,9 +657,20 @@ pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::Man
         session.suspensions = session.suspensions.saturating_add(1);
         return false;
     }
-    let search = &mut session.payment_searches[index].2;
+    let search = match &mut session.payment_searches[index].2 {
+        PaymentSearch::Finished(result) => {
+            let result = result.clone();
+            return payment_result(game, result, Some(session));
+        }
+        PaymentSearch::Running(search) => search,
+    };
     let result = search.step(session.remaining);
     session.remaining = session.remaining.saturating_sub(search.last_slice_units());
+    if let Some(result) = &result {
+        // Only the verdict is read again. The finished search still owned its
+        // copy of the game, with every cache the search warmed.
+        session.payment_searches[index].2 = PaymentSearch::Finished(result.clone().map(|_| ()));
+    }
     match result {
         Some(result) => payment_result(game, result, Some(session)),
         None => {

@@ -186,6 +186,60 @@ fn object_control_fingerprint(object: &std::sync::Arc<crate::object::Object>) ->
     fingerprint
 }
 
+thread_local! {
+    static LOOKBACK_FINGERPRINTS: std::cell::RefCell<std::collections::HashMap<usize,
+        (std::sync::Weak<Vec<crate::snapshot::ObjectSnapshot>>, u64)>> = Default::default();
+}
+
+// A triggering event's look-back snapshots describe every trigger source on
+// the battlefield, and every entry queued from one event shares the list.
+// Formatting it once per stack entry per observation was nearly all of a
+// triggered mana ability's cost on a wide board. The list is digested once
+// per allocation (same cache discipline as `object_control_fingerprint`) and
+// the rest of the entry is hashed in full, so the fingerprint still covers
+// every field.
+fn hash_stack_entry(hasher: &mut DefaultHasher, entry: &StackEntry) {
+    let Some(event) = entry
+        .triggering_event
+        .as_ref()
+        .filter(|event| !event.lookback_source_snapshots().is_empty())
+    else {
+        crate::trigger_identity::hash_debug(hasher, entry)
+            .expect("hash-only formatting is infallible");
+        return;
+    };
+    let lookback = event.shared_lookback_source_snapshots();
+    let key = std::sync::Arc::as_ptr(lookback) as usize;
+    let cached = LOOKBACK_FINGERPRINTS.with(|cache| {
+        cache.borrow().get(&key).and_then(|(weak, fingerprint)| {
+            weak.upgrade()
+                .filter(|live| std::sync::Arc::ptr_eq(live, lookback))
+                .map(|_| *fingerprint)
+        })
+    });
+    let fingerprint = cached.unwrap_or_else(|| {
+        let mut inner = DefaultHasher::new();
+        crate::trigger_identity::hash_debug(&mut inner, lookback.as_ref())
+            .expect("hash-only formatting is infallible");
+        let fingerprint = inner.finish();
+        LOOKBACK_FINGERPRINTS.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            // A bounded disposable cache, never a search or legality limit.
+            if cache.len() >= 1024 {
+                cache.retain(|_, (list, _)| list.strong_count() != 0);
+                if cache.len() >= 1024 { cache.clear(); }
+            }
+            cache.insert(key, (std::sync::Arc::downgrade(lookback), fingerprint));
+        });
+        fingerprint
+    });
+    let mut stripped = entry.clone();
+    stripped.triggering_event = Some(event.clone().with_lookback_source_snapshots(Vec::new()));
+    crate::trigger_identity::hash_debug(hasher, &stripped)
+        .expect("hash-only formatting is infallible");
+    fingerprint.hash(hasher);
+}
+
 fn source_control_fingerprint(
     game: &GameState,
     source: StableId,
@@ -217,7 +271,7 @@ fn source_control_fingerprint(
     }
     format!("{:?}", game.turn).hash(&mut hasher);
     for entry in game.stack.iter().take(game.stack.len().saturating_sub(1)) {
-        format!("{entry:?}").hash(&mut hasher);
+        hash_stack_entry(&mut hasher, entry);
     }
     for object_id in game.object_ids_in_deterministic_order() {
         if let Some(object) = game.object_store.shared_object(object_id) {

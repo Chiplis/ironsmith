@@ -3848,6 +3848,11 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.granted_inline_condition.as_ref()
     }
 
+    fn has_own_activity_condition(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(|ability| ability.has_own_activity_condition())
+    }
+
     fn source_granted_inline_abilities(&self) -> Vec<&crate::ability::Ability> {
         self.source_granted_inline_abilities.iter().collect()
     }
