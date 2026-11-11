@@ -186,15 +186,16 @@ fn append_exact_permission_actions_for_card_selected(
     }
     for origin in origins {
         let (face, _, _) = crate::alternative_cast::play_permission::selected_face(game, player, card, &origin)?;
-        let query = crate::grant_registry::proposed_card_face_query(game, &face)?;
-        let grants = query.effect_store.grant_registry.get_grants_for_card(&query, card.id, zone, player);
+        let query = crate::grant_registry::proposed_card_face_query_for_origin(game, &face, &origin)?;
+        let query = query.as_ref();
+        let grants = query.effect_store.grant_registry.get_grants_for_card(query, card.id, zone, player);
         if let Some(error) = query.token_resource_failure() { return Err(error); }
         for (index, grant) in grants.iter().enumerate() {
             if !matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
                 || selected.map_or(!grant.play_from_constraints.requires_exact_selection()
-                    && !is_limited_budget_choice(&query, player, &grants, grant), |selected|
+                    && !is_limited_budget_choice(query, player, &grants, grant), |selected|
                     grant.permission_identity.as_ref() != Some(&selected.identity) || grant.source.source_id() != selected.source)
-                || !grant_usage_limit_allows(&query, player, grant.permission_identity.as_ref(), grant.usage_limit) { continue; }
+                || !grant_usage_limit_allows(query, player, grant.permission_identity.as_ref(), grant.usage_limit) { continue; }
             let identity = grant.permission_identity.clone().ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
                 "permission-local mana omitted its immutable acquisition identity".into()))?;
             let source = grant.source.source_id();

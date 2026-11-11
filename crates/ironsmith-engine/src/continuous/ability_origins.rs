@@ -261,7 +261,9 @@ impl AbilityOrigin {
 #[derive(Debug, Clone, Default)]
 pub struct CalculatedAbilities {
     definitions: SharedVec<Ability>,
-    origins: Vec<AbilityOrigin>,
+    // Shared: a characteristics copy is taken per object per layer, and
+    // origins change only when the ability list does.
+    origins: std::sync::Arc<Vec<AbilityOrigin>>,
     host: Option<ObjectId>,
     current_effect: Option<AbilityEffectOrigin>,
     next_effect_slot: usize,
@@ -278,7 +280,7 @@ impl CalculatedAbilities {
             crate::ability::AbilityKind::Triggered(triggered)
                 if triggered.effects.retained_trigger_definition().is_some()))
         {
-            for (ability, origin) in self.definitions.iter_mut().zip(&self.origins) {
+            for (ability, origin) in self.definitions.iter_mut().zip(self.origins.iter()) {
                 crate::triggers::acquisition::bind_ability(ability, self.host, origin);
             }
         }
@@ -310,7 +312,8 @@ impl CalculatedAbilities {
                 },
                 None => AbilityOrigin::Printed(slot),
             })
-            .collect();
+            .collect::<Vec<_>>()
+            .into();
         self.next_effect_slot = self.len();
         self.current_effect = effect;
         self.bind_trigger_acquisitions();
@@ -332,7 +335,7 @@ impl CalculatedAbilities {
     pub fn push_with_origin(&mut self, mut ability: Ability, origin: AbilityOrigin) {
         crate::triggers::acquisition::bind_ability(&mut ability, self.host, &origin);
         self.definitions.push(ability);
-        self.origins.push(origin);
+        std::sync::Arc::make_mut(&mut self.origins).push(origin);
     }
     pub fn retain(&mut self, mut predicate: impl FnMut(&Ability) -> bool) {
         self.retain_with_origin(|ability, _| predicate(ability));
@@ -349,7 +352,7 @@ impl CalculatedAbilities {
             index += 1;
             keep
         });
-        self.origins = retained;
+        self.origins = std::sync::Arc::new(retained);
     }
     /// Transform definitions atomically while keeping every acquisition and
     /// generating occurrence paired with its original slot.
@@ -358,7 +361,7 @@ impl CalculatedAbilities {
         mut map: impl FnMut(&Ability) -> Result<Ability, E>,
     ) -> Result<(), E> {
         let mut definitions = self.definitions.to_vec();
-        for (definition, origin) in definitions.iter_mut().zip(&self.origins) {
+        for (definition, origin) in definitions.iter_mut().zip(self.origins.iter()) {
             if origin.is_rules_text() { *definition = map(definition)?; }
         }
         self.definitions = definitions.into();
@@ -367,7 +370,7 @@ impl CalculatedAbilities {
 
     pub fn clear(&mut self) {
         self.definitions.clear();
-        self.origins.clear();
+        self.origins = Default::default();
     }
     pub fn as_slice(&self) -> &[Ability] {
         self.definitions.as_slice()
@@ -390,7 +393,7 @@ impl std::ops::Deref for CalculatedAbilities {
 }
 impl From<SharedVec<Ability>> for CalculatedAbilities {
     fn from(definitions: SharedVec<Ability>) -> Self {
-        let origins = (0..definitions.len()).map(AbilityOrigin::Printed).collect();
+        let origins = (0..definitions.len()).map(AbilityOrigin::Printed).collect::<Vec<_>>().into();
         let mut abilities = Self {
             definitions,
             origins,

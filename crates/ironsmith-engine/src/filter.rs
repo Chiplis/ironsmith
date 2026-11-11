@@ -1606,7 +1606,7 @@ pub(crate) fn object_current_mana_cost(
     id: ObjectId,
 ) -> Option<crate::mana::ManaCost> {
     game.current_characteristics(id)
-        .map(|characteristics| characteristics.mana_cost.clone())
+        .map(|characteristics| characteristics.mana_cost.as_deref().cloned())
         .unwrap_or_else(|| {
             game.object(id)
                 .and_then(|object| object.mana_cost.as_deref().cloned())

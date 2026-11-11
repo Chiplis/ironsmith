@@ -5903,27 +5903,53 @@ retain_original_types: false, retain_original_name: false,
         }
     }
 
-    /// Before copying a dirty state for a read-only query: derive here what
-    /// the copy's refresh derives first (the checked static discovery and
-    /// the board under it). The copy inherits both, and so does every later
-    /// copy of this same state.
+    /// Before copying a dirty state for a read-only query: run here the
+    /// checked static discovery the copy's refresh runs first. The copy
+    /// inherits it, and so does every later copy of this same state.
     pub(crate) fn prewarm_dirty_derivations_for_query_snapshot(&self) {
         if self.continuous_state_is_clean()
             || crate::continuous::nested_regeneration_context(self).is_some()
         {
             return;
         }
-        if self.try_all_continuous_effects_arc().is_err() {
+        let _ = self.try_all_continuous_effects_arc();
+    }
+
+    /// The copy derived the board for this same state while it refreshed.
+    /// Keep that here, for the next copy of this state to inherit.
+    pub(crate) fn adopt_dirty_derivations_from_query_snapshot(
+        &self,
+        snapshot: &Self,
+        key: DirtyStateKey,
+    ) {
+        if self.continuous_state_is_clean() || self.dirty_state_key() != key {
             return;
         }
-        if let Some(first) = self
-            .battlefield
-            .iter()
-            .copied()
-            .find(|id| !self.is_phased_out(*id))
-        {
-            let _ = self.dirty_calculated_characteristics(first);
+        let theirs = snapshot.runtime_cache.dirty_characteristics_memo.borrow();
+        if theirs.key != Some(key) || theirs.characteristics.is_empty() {
+            return;
         }
+        let mut mine = self.runtime_cache.dirty_characteristics_memo.borrow_mut();
+        // Same state and the same discovered effects (one shared list).
+        let same_effects = mine.key == Some(key)
+            && mine.effects_checked
+            && theirs.effects_checked
+            && matches!((&mine.static_effects, &theirs.static_effects),
+                (Some(mine), Some(theirs)) if Arc::ptr_eq(mine, theirs));
+        if !same_effects {
+            return;
+        }
+        let known = Arc::make_mut(&mut mine.characteristics);
+        for (id, chars) in theirs.characteristics.iter() {
+            known.entry(*id).or_insert_with(|| chars.clone());
+        }
+    }
+
+    /// The key of this dirty state for `adopt_dirty_derivations_from_query_snapshot`.
+    pub(crate) fn dirty_state_key_for_query_snapshot(&self) -> Option<DirtyStateKey> {
+        (!self.continuous_state_is_clean()
+            && crate::continuous::nested_regeneration_context(self).is_none())
+        .then(|| self.dirty_state_key())
     }
 
     /// A characteristic read on a dirty state outside any calculation. One
@@ -6329,7 +6355,6 @@ retain_original_types: false, retain_original_name: false,
         if needing.len() < 2 {
             return;
         }
-        crate::perf_probe::add("off-battlefield prewarm", 1);
         let marker = crate::continuous::provisional_condition_marker();
         let calculated = self.calculated_characteristics_batch_with_effects(&needing, &effects);
         if crate::continuous::computed_provisionally(marker) || !self.continuous_state_is_clean() {
@@ -6539,7 +6564,7 @@ retain_original_types: false, retain_original_name: false,
                     copy_values: None,
                     alternate_name: object.split_other_half_name().map(str::to_string),
                     name: object.name.clone(),
-                    mana_cost: object.mana_cost_owned(),
+                    mana_cost: object.mana_cost.clone(),
                     linked_face_mana_value: object.linked_face_mana_value(),
                     compiled_card_text: object.compiled_card_text.clone(),
                     ability_labels: object.ability_labels.clone(),

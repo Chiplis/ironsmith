@@ -5589,7 +5589,7 @@ pub(crate) fn resolve_dynamic_mana_cost(
             })?;
         let cost =
             if let Some(characteristics) = current {
-                characteristics.mana_cost
+                characteristics.mana_cost.as_deref().cloned()
             } else {
                 let snapshot =
                     execution_ctx
@@ -5667,7 +5667,7 @@ pub(crate) fn resolve_dynamic_mana_cost(
     // A source with no mana cost contributes no reduction (CR 702.193b).
     let reduction = game
         .current_characteristics(execution_ctx.source)
-        .and_then(|characteristics| characteristics.mana_cost)
+        .and_then(|characteristics| characteristics.mana_cost.as_deref().cloned())
         .unwrap_or_default();
     let options = expanded.reduced_by_mana_cost_options(&reduction);
     if options.len() == 1 {

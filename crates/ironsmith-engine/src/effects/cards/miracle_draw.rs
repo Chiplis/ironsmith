@@ -69,7 +69,9 @@ fn capture_opportunity(
                             "drawn Miracle card has no current characteristics".into(),
                         )
                     })?
-                    .mana_cost,
+                    .mana_cost
+                    .as_deref()
+                    .cloned(),
                 other_face_mana_cost: crate::decision::spell_view_for_split_other_half_cast(
                     game, object,
                 )

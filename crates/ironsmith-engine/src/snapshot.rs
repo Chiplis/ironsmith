@@ -463,7 +463,7 @@ impl CopiableValues {
             alternative_casts: chars.copy_values.as_ref().map_or_else(Vec::new, |values| values.alternative_casts.clone()),
             optional_costs: chars.copy_values.as_ref().map_or_else(Vec::new, |values| values.optional_costs.clone()),
             name: retained_copiable_name(&chars.name, chars.alternate_name.as_deref()),
-            mana_cost: chars.mana_cost.clone(),
+            mana_cost: chars.mana_cost.as_deref().cloned(),
             compiled_card_text: chars.compiled_card_text.to_string(),
             ability_labels: chars.ability_labels.to_vec(),
             power: chars.power,
@@ -1311,7 +1311,7 @@ impl ObjectSnapshot {
             if snapshot.linked_face_layout == crate::card::LinkedFaceLayout::Split {
                 snapshot.other_face_name = calculated.alternate_name.clone();
             }
-            snapshot.mana_cost = calculated.mana_cost.clone();
+            snapshot.mana_cost = calculated.mana_cost.as_deref().cloned();
             snapshot.linked_face_mana_value = calculated.linked_face_mana_value;
             snapshot.compiled_card_text = calculated.compiled_card_text.to_string();
             snapshot.ability_labels = calculated.ability_labels.to_vec();

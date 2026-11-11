@@ -39,8 +39,10 @@ pub struct RawEvent {
     /// Keep physical per-kind receipts intact for matching and history. The
     /// legacy generic trigger scalar is i32; counter amounts must stay wide.
     counter_trigger_amount: Option<i64>,
-    source_snapshot: Option<ObjectSnapshot>,
-    lookback_source_snapshots: Vec<ObjectSnapshot>,
+    // Shared: every copy of the game copies each retained event, and these
+    // snapshots are the bulk of one.
+    source_snapshot: Option<Arc<ObjectSnapshot>>,
+    lookback_source_snapshots: Arc<Vec<ObjectSnapshot>>,
     /// Contextual player bindings carried across delayed-trigger boundaries.
     player_tags: HashMap<TagKey, Vec<PlayerId>>,
     defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
@@ -91,7 +93,7 @@ impl RawEvent {
             simultaneous_batch: None,
             counter_trigger_amount: None,
             source_snapshot: None,
-            lookback_source_snapshots: Vec::new(),
+            lookback_source_snapshots: Arc::default(),
             player_tags: HashMap::new(),
             defending_player_reference: None,
         }
@@ -110,7 +112,7 @@ impl RawEvent {
             simultaneous_batch: None,
             counter_trigger_amount: None,
             source_snapshot: None,
-            lookback_source_snapshots: Vec::new(),
+            lookback_source_snapshots: Arc::default(),
             player_tags: HashMap::new(),
             defending_player_reference: None,
         }
@@ -184,7 +186,7 @@ impl RawEvent {
     /// Get last-known information for the event source, if the event source has
     /// left the public zone it was expected to be in.
     pub fn source_snapshot(&self) -> Option<&ObjectSnapshot> {
-        self.source_snapshot.as_ref()
+        self.source_snapshot.as_deref()
     }
 
     /// Get pre-event snapshots of objects that could have been trigger sources
@@ -318,13 +320,13 @@ impl RawEvent {
         if event.source_snapshot.is_none() {
             event.source_snapshot = completed.source_snapshot.clone();
         }
-        for snapshot in &completed.lookback_source_snapshots {
+        for snapshot in completed.lookback_source_snapshots.iter() {
             if !event
                 .lookback_source_snapshots
                 .iter()
                 .any(|previous| previous.object_id == snapshot.object_id)
             {
-                event.lookback_source_snapshots.push(snapshot.clone());
+                Arc::make_mut(&mut event.lookback_source_snapshots).push(snapshot.clone());
             }
         }
         event
@@ -386,13 +388,13 @@ impl RawEvent {
 
     #[must_use]
     pub fn with_source_snapshot(mut self, snapshot: ObjectSnapshot) -> Self {
-        self.source_snapshot = Some(snapshot);
+        self.source_snapshot = Some(Arc::new(snapshot));
         self
     }
 
     #[must_use]
     pub fn with_lookback_source_snapshots(mut self, snapshots: Vec<ObjectSnapshot>) -> Self {
-        self.lookback_source_snapshots = snapshots;
+        self.lookback_source_snapshots = Arc::new(snapshots);
         self
     }
 

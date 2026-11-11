@@ -328,7 +328,7 @@ mod tests {
         assert_eq!(chars.subtypes.as_slice(), &[Subtype::Vampire]);
         assert_eq!(chars.name.as_ref(), "Black Human");
         assert_eq!(chars.colors, ColorSet::BLACK);
-        assert_eq!(chars.mana_cost, game.object(id).unwrap().mana_cost_owned());
+        assert_eq!(chars.mana_cost.as_deref().cloned(), game.object(id).unwrap().mana_cost_owned());
         assert_eq!((chars.power, chars.toughness), (Some(2), Some(3)));
         assert!(chars.static_abilities.iter().any(|ability| ability.id() == StaticAbilityId::Fear));
         assert_eq!(original.protection_from(), Some(&ProtectionFrom::Color(ColorSet::BLACK)),

@@ -817,6 +817,29 @@ pub(crate) fn proposed_card_face_query(
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)
 }
 
+/// `proposed_card_face_query` for a face that `selected_face` built for
+/// `origin`. An ordinary play-from origin with no printed alternative selects
+/// the physical object unchanged, so the proposed game is this game: its
+/// read-only query view answers without copying the game and refreshing the
+/// copy once per card. Every other origin installs a different face.
+pub(crate) fn proposed_card_face_query_for_origin<'a>(
+    game: &'a crate::GameState,
+    face: &crate::object::Object,
+    origin: &crate::alternative_cast::CastingMethod,
+) -> Result<std::borrow::Cow<'a, crate::GameState>, crate::effects::ExecutionError> {
+    let unchanged_face = matches!(
+        origin,
+        crate::alternative_cast::CastingMethod::PlayFrom { use_alternative: None, .. }
+    ) && face.face_down_cast_state.is_none()
+        && !(face.zone == Zone::Exile && game.is_face_down(face.id));
+    if unchanged_face {
+        return game
+            .continuous_query_view()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery);
+    }
+    proposed_card_face_query(game, face).map(std::borrow::Cow::Owned)
+}
+
 /// Identity of a permission independent of its position among available methods.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GrantPermissionIdentity {

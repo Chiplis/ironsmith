@@ -2291,7 +2291,8 @@ pub struct CalculatedCharacteristics {
     pub name: SharedStr,
     /// A second current split-card name, cleared when layer 1 replaces names.
     pub alternate_name: Option<String>,
-    pub mana_cost: Option<ManaCost>,
+    // Shared with the object when no effect rewrote it.
+    pub mana_cost: Option<crate::object::SharedValue<ManaCost>>,
     /// Noncopiable linked-face mana value of the current view. Copy and
     /// face-down layers replace this even if both raw mana costs are absent.
     pub linked_face_mana_value: Option<u32>,
@@ -2932,7 +2933,8 @@ fn initial_unmerged_text_box_characteristics(object: &Object, game: Option<&crat
         name: object.name.clone(),
         mana_cost: object
             .split_combined_mana_cost()
-            .or_else(|| object.mana_cost_owned()),
+            .map(Into::into)
+            .or_else(|| object.mana_cost.clone()),
         linked_face_mana_value: object.linked_face_mana_value(),
         compiled_card_text: split_combined.map_or_else(|| object.compiled_card_text.clone(), |combined| format!("{}\n{}", object.compiled_card_text, combined.other_half_compiled_text).into()),
         ability_labels: split_combined.map_or_else(|| object.ability_labels.clone(), |combined| object.ability_labels.iter().chain(combined.other_half_ability_labels.iter()).cloned().collect()),
@@ -3127,7 +3129,7 @@ fn copy_characteristics_from_copiable_values(
     chars.copy_values = Some(Arc::new(retained_values));
     chars.name = values.name.clone().into();
     chars.alternate_name = None;
-    chars.mana_cost = values.mana_cost.clone();
+    chars.mana_cost = values.mana_cost.clone().map(Into::into);
     chars.linked_face_mana_value = None;
     chars.compiled_card_text = values.compiled_card_text.clone().into();
     chars.spell_effect = Arc::new(values.spell_effect.clone());
@@ -3647,8 +3649,6 @@ fn calculate_characteristics_layer_batch_internal(
     game: &crate::game_state::GameState,
     copy_only: bool,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
-    crate::perf_probe::add(if copy_only { "pass copy_only" } else { "pass full" }, 1);
-    crate::perf_probe::add(&format!("pass ids={} @{}", ids.len().min(3), crate::perf_probe::phase()), 1);
     let _tap_reads = game.derived_tap_read_scope();
     // Only an outermost pass computes final values for everything it covers.
     let capture_extras = !copy_only
@@ -6195,7 +6195,7 @@ pub(crate) fn filter_matches_with_characteristics_in_context(
             adjusted_object.subtypes = chars.subtypes.clone();
             adjusted_object.supertypes = chars.supertypes.clone();
             adjusted_object.color_override = Some(chars.colors);
-            adjusted_object.mana_cost = chars.mana_cost.clone().map(Into::into);
+            adjusted_object.mana_cost = chars.mana_cost.clone();
             // Copy/face-down layers remove the original linked-face value.
             // Retain baseline linked data only while it remains in this view.
             if chars.linked_face_mana_value.is_none() {
@@ -6546,7 +6546,7 @@ fn filter_matches_layered_fast(
         && chars.mana_cost.as_ref().is_none_or(|cost| !budget.can_pay(cost))
     { return Some(false); }
     if let Some(required_cost) = &filter.exact_mana_cost
-        && chars.mana_cost.as_ref() != Some(required_cost)
+        && chars.mana_cost.as_deref() != Some(required_cost)
     {
         return Some(false);
     }

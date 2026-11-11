@@ -63,7 +63,6 @@ pub mod costs;
 pub mod decision;
 pub mod decisions;
 pub mod dependency;
-pub mod perf_probe;
 pub(crate) mod derived_view;
 pub mod dungeon;
 pub mod effect;

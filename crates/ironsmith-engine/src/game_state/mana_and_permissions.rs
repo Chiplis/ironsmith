@@ -70,7 +70,6 @@ impl GameState {
             .flatten();
         let (effects, derived) = match memoized {
             Some((statics, derived)) => {
-                crate::perf_probe::add("static discovery reused", 1);
                 (statics.as_ref().clone(), derived)
             }
             None => (
@@ -259,6 +258,7 @@ impl GameState {
         // fallible static refresh. Reject out-of-range mana before entering
         // that infallible adapter as well.
         crate::static_ability_processor::validate_mana_scalar_domain(self)?;
+        let dirty_key = self.dirty_state_key_for_query_snapshot();
         self.prewarm_dirty_derivations_for_query_snapshot();
         let mut snapshot = self.clone();
         // A completed refresh is the fixed point of these same procedures
@@ -268,11 +268,40 @@ impl GameState {
         if self.continuous_state_is_refreshed_fixed_point() {
             return Ok(snapshot);
         }
+        // Static effects already published for this exact clean state: the
+        // discovery steps below change nothing, so each later prohibition
+        // scan would read what the first one read. That holds only while the
+        // first scan leaves the state clean, the effects unchanged and the
+        // control prohibitions (a layer input) as they were.
+        let revision = self.effect_store.continuous_effects.revision();
+        let settled = dirty_key.is_none()
+            && self.continuous_state_is_clean()
+            && self
+                .runtime_cache
+                .static_effects_cache
+                .borrow()
+                .has_checked_snapshot(revision);
+        let prohibitions = settled.then(|| self.effect_store.cant_effects.cant_gain_control.clone());
         snapshot.update_cant_effects();
+        if let Some(prohibitions) = prohibitions
+            && snapshot.continuous_state_is_clean()
+            && snapshot.effect_store.continuous_effects.revision() == revision
+            && snapshot
+                .runtime_cache
+                .static_effects_cache
+                .borrow()
+                .has_checked_snapshot(revision)
+            && snapshot.effect_store.cant_effects.cant_gain_control == prohibitions
+        {
+            return Ok(snapshot);
+        }
         snapshot.update_static_ability_effects()?;
         snapshot.update_cant_effects();
         snapshot.update_static_ability_effects()?;
         snapshot.update_cant_effects();
+        if let Some(key) = dirty_key {
+            self.adopt_dirty_derivations_from_query_snapshot(&snapshot, key);
+        }
         Ok(snapshot)
     }
 
@@ -287,7 +316,6 @@ impl GameState {
     /// - Static ability continuous effects (anthems, etc.)
     /// - Replacement effects from static abilities
     /// - "Can't" effect tracking
-    #[track_caller]
     pub fn refresh_continuous_state(
         &mut self,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
@@ -296,7 +324,6 @@ impl GameState {
             self.publish_completed_control_transitions();
             return Ok(());
         }
-        crate::perf_probe::hit("refresh", std::panic::Location::caller());
         let checkpoint = self.clone();
         // Everything published below is retained until the next invalidation;
         // record what it reads (tapped state, mana, the stack).
@@ -304,15 +331,10 @@ impl GameState {
         let result = (|| {
             // Refresh prohibitions before discovering or committing new
             // controller assignments; source tap-state changes are live now.
-            crate::perf_probe::set_phase("cant1");
             self.update_cant_effects();
-            crate::perf_probe::set_phase("static");
             self.update_static_ability_effects()?;
-            crate::perf_probe::set_phase("cant2");
             self.update_cant_effects();
-            crate::perf_probe::set_phase("reconcile");
             self.reconcile_continuous_control_changes();
-            crate::perf_probe::set_phase("after-reconcile");
 
             // A continuous effect may itself inspect summoning-sickness state.
             // Rebuild once after a controller transition so those predicates see
@@ -324,13 +346,10 @@ impl GameState {
             }
 
             // Update replacement effects from static abilities
-            crate::perf_probe::set_phase("repl");
             self.update_replacement_effects()?;
 
             // Update "can't" effect tracking
-            crate::perf_probe::set_phase("cant3");
             self.update_cant_effects();
-            crate::perf_probe::set_phase("tail");
 
             if self.apply_day_nightbound_transformations_with_current_restrictions() {
                 self.update_static_ability_effects()?;
@@ -382,7 +401,6 @@ impl GameState {
                 .mark_refreshed_snapshot(revision);
             Ok(())
         })();
-        crate::perf_probe::set_phase("-");
         self.exit_derived_tap_reads();
         if result.is_err() {
             self.restore_execution_checkpoint(checkpoint, false);

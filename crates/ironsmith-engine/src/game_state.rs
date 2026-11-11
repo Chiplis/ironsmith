@@ -1893,7 +1893,7 @@ impl RuntimeCacheState {
 /// under the same key see the same objects, zones, effects, players, stack,
 /// combat context and turn position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct DirtyStateKey {
+pub(crate) struct DirtyStateKey {
     mutation_revision: u64,
     zone_revision: u64,
     effect_revision: u64,
@@ -7300,9 +7300,7 @@ impl GameState {
         self.player(player).map(|player| &player.mana_pool)
     }
 
-    #[track_caller]
     pub(crate) fn mark_continuous_state_dirty(&self) {
-        crate::perf_probe::hit("dirty", std::panic::Location::caller());
         let counter = &self
             .runtime_cache
             .work_counters
@@ -7352,7 +7350,6 @@ impl GameState {
                 // published restrictions are unchanged by this stack change.
                 // Caches keyed by the context revision are computed outside
                 // those tracked derivations; they still rebuild.
-                crate::perf_probe::add("stack change kept clean", 1);
                 self.runtime_cache.payment_restriction_presence.set(None);
                 self.runtime_cache.continuous_context_revision.set(
                     self.runtime_cache
@@ -7401,7 +7398,6 @@ impl GameState {
     /// peers' cached values is not equivalent to a full layer pass when
     /// objects' characteristics depend on each other (a mutual ability-copy
     /// loop, CR 613.8b), so every such change rebuilds the whole state.
-    #[track_caller]
     fn mark_object_changed_and_continuous_state_dirty(&mut self, id: ObjectId) {
         self.object_store.changes.record(id);
         self.object_store.render_changes.record(id);
@@ -7942,13 +7938,6 @@ impl GameState {
     /// invalidate history-reading conditions, selectors, and numeric modifiers
     /// at publication as well. Fixed bonuses can still depend on turn history.
     fn invalidate_continuous_history_modifiers(&self) {
-        if !self.runtime_cache.continuous_state_dirty.get() {
-            for effect in self.cached_continuous_effects_snapshot_arc().iter() {
-                if let Some(c) = effect.condition.as_ref().filter(|c| Self::condition_may_read_turn_history(c)) {
-                    let d = format!("{c:?}"); crate::perf_probe::add(&format!("hist cond {}", &d[..d.len().min(70)]), 1);
-                }
-            }
-        }
         if !self.runtime_cache.continuous_state_dirty.get()
             && (self
                 .cached_continuous_effects_snapshot_arc()
@@ -8024,6 +8013,33 @@ impl GameState {
             | ConditionExpr::ThisSpellWasKicked => false,
             ConditionExpr::ValueComparison { left, right, .. } => {
                 Self::value_may_read_turn_history(left) || Self::value_may_read_turn_history(right)
+            }
+            // Counts over current zones, attachments and counters.
+            ConditionExpr::CountComparison { count, .. } => {
+                use ironsmith_core::AnthemCountExpression as Count;
+                match count {
+                    Count::MatchingFilter(filter)
+                    | Count::GreatestManaValueAmong(filter)
+                    | Count::AttachedToSource(filter)
+                    | Count::AttachedToAffected(filter) => {
+                        Self::object_filter_is_turn_context_sensitive(filter)
+                    }
+                    Count::GraveyardsWithAtLeastCards { .. }
+                    | Count::ColorsOfAffected
+                    | Count::CountersOnSource(_)
+                    | Count::CountersOnAffected(_) => false,
+                    _ => true,
+                }
+            }
+            ConditionExpr::AttachmentCount { attachment, host, .. } => {
+                Self::object_filter_is_turn_context_sensitive(attachment)
+                    || match host {
+                        ironsmith_core::AttachmentConditionHost::Source
+                        | ironsmith_core::AttachmentConditionHost::SourceAttachedObject => false,
+                        ironsmith_core::AttachmentConditionHost::Matching(filter) => {
+                            Self::object_filter_is_turn_context_sensitive(filter)
+                        }
+                    }
             }
             ConditionExpr::YouControl(filter)
             | ConditionExpr::OpponentControls(filter)

@@ -823,7 +823,7 @@ pub(crate) fn resolve_wide(
                     .flatten();
                 let cost = game
                     .calculated_characteristics_arc(id)
-                    .and_then(|chars| chars.mana_cost.clone())
+                    .and_then(|chars| chars.mana_cost.as_deref().cloned())
                     .or_else(|| object.mana_cost.as_deref().cloned());
                 return Ok(cost.as_ref().map_or(0, |cost| generic(cost, x_value)));
             }
@@ -855,7 +855,7 @@ pub(crate) fn resolve_wide(
                     };
 
                     if let Some(total) = context.linked_exile_characteristic_sum(target_spec, |chars| {
-                        chars.mana_cost.as_ref().map_or(0, count_symbols)
+                        chars.mana_cost.as_deref().map_or(0, count_symbols)
                     })? {
                         return Ok(total);
                     }

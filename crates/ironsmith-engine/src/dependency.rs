@@ -429,18 +429,54 @@ fn effect_output_changed(
         if !effect_applies_to_any_object(b, baseline, objects, game) {
             return false;
         }
-        let before = collect_activated_ability_signatures(
-            filter,
-            *counter,
-            *include_mana,
-            *only_loyalty,
-            *exclude_source_name,
-            *exclude_source_id,
-            a,
-            baseline,
-            objects,
-            game,
-        );
+        let effect_key = a as *const ContinuousEffect as usize;
+        let baseline_key = baseline as *const _ as usize;
+        let shareable = APPLIED_BASELINES.with(|slot| {
+            slot.borrow().as_ref().is_some_and(|round| {
+                round.baseline == baseline_key && round.effects.contains(&effect_key)
+            })
+        });
+        let shared_before = shareable
+            .then(|| {
+                APPLIED_BASELINES.with(|slot| {
+                    slot.borrow().as_ref().and_then(|round| {
+                        round
+                            .copied_activated
+                            .iter()
+                            .find(|(key, _)| *key == effect_key)
+                            .map(|(_, signatures)| std::rc::Rc::clone(signatures))
+                    })
+                })
+            })
+            .flatten();
+        let before = match shared_before {
+            Some(before) => before,
+            None => {
+                let before = std::rc::Rc::new(collect_activated_ability_signatures(
+                    filter,
+                    *counter,
+                    *include_mana,
+                    *only_loyalty,
+                    *exclude_source_name,
+                    *exclude_source_id,
+                    a,
+                    baseline,
+                    objects,
+                    game,
+                ));
+                if shareable {
+                    APPLIED_BASELINES.with(|slot| {
+                        if let Some(round) = slot.borrow_mut().as_mut()
+                            && round.baseline == baseline_key
+                            && round.copied_activated.iter().all(|(key, _)| *key != effect_key)
+                        {
+                            round.copied_activated.push((effect_key, std::rc::Rc::clone(&before)));
+                        }
+                    });
+                }
+                before
+            }
+        };
         let baseline_after = applied_baseline(b, baseline, objects, game);
         let after = collect_activated_ability_signatures(
             filter,
@@ -454,7 +490,7 @@ fn effect_output_changed(
             objects,
             game,
         );
-        return before != after;
+        return *before != after;
     }
 
     if let Modification::CopyStaticAbilityVariants {
@@ -1366,7 +1402,13 @@ type AppliedBaseline = std::rc::Rc<HashMap<ObjectId, CalculatedCharacteristics>>
 /// every effect A asks what the same effect B does to it.
 struct AppliedBaselineRound {
     baseline: usize,
+    /// Addresses of the effects being sorted. They outlive the round, so no
+    /// other effect (a copy rebound to another controller) can have one.
+    effects: Vec<usize>,
     entries: Vec<(usize, AppliedBaseline)>,
+    /// The activated abilities a sorted copy effect copies from the round's
+    /// baseline: the "before" half of every probe of that effect this round.
+    copied_activated: Vec<(usize, std::rc::Rc<HashSet<String>>)>,
 }
 
 thread_local! {
@@ -1379,11 +1421,19 @@ thread_local! {
 struct AppliedBaselineRoundGuard(Option<AppliedBaselineRound>);
 
 impl AppliedBaselineRoundGuard {
-    fn begin(baseline: &HashMap<ObjectId, CalculatedCharacteristics>) -> Self {
+    fn begin(
+        baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+        effects: &[&ContinuousEffect],
+    ) -> Self {
         Self(APPLIED_BASELINES.with(|slot| {
             slot.replace(Some(AppliedBaselineRound {
                 baseline: baseline as *const _ as usize,
+                effects: effects
+                    .iter()
+                    .map(|effect| *effect as *const ContinuousEffect as usize)
+                    .collect(),
                 entries: Vec::new(),
+                copied_activated: Vec::new(),
             }))
         }))
     }
@@ -1396,9 +1446,9 @@ impl Drop for AppliedBaselineRoundGuard {
     }
 }
 
-/// `apply_effect_to_baseline`, shared within the current sort round. Only an
-/// effect without a source-controller context is shared: it is never rebound
-/// to a copy, so its address is the sorted effect's own for the whole round.
+/// `apply_effect_to_baseline`, shared within the current sort round. Only
+/// the sorted effects themselves are shared, recognized by address; the
+/// result is a function of the effect and the round's fixed baseline.
 fn applied_baseline(
     effect: &ContinuousEffect,
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
@@ -1407,7 +1457,11 @@ fn applied_baseline(
 ) -> AppliedBaseline {
     let effect_key = effect as *const ContinuousEffect as usize;
     let baseline_key = baseline as *const _ as usize;
-    let shareable = !effect.has_source_controller_context();
+    let shareable = APPLIED_BASELINES.with(|slot| {
+        slot.borrow().as_ref().is_some_and(|round| {
+            round.baseline == baseline_key && round.effects.contains(&effect_key)
+        })
+    });
     if shareable {
         let cached = APPLIED_BASELINES.with(|slot| {
             slot.borrow().as_ref().and_then(|round| {
@@ -3401,7 +3455,7 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
     let mut result = Vec::with_capacity(effects.len());
 
     while !remaining.is_empty() {
-        let round = AppliedBaselineRoundGuard::begin(&current_baseline);
+        let round = AppliedBaselineRoundGuard::begin(&current_baseline, effects);
         let representatives = chars_class_representatives(&current_baseline, objects, game);
         // CDAs (CR 613.3) and then the CR 305.7 land-type ability loss go
         // first; dependencies order effects within the earliest class.
@@ -3787,7 +3841,7 @@ mod tests {
                 copy_values: None,
                 alternate_name: object.split_other_half_name().map(str::to_string),
                 name: object.name.clone(),
-                mana_cost: object.mana_cost_owned(),
+                mana_cost: object.mana_cost.clone(),
                 linked_face_mana_value: object.linked_face_mana_value(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 ability_labels: object.ability_labels.clone(),
@@ -3855,7 +3909,7 @@ mod tests {
                 copy_values: None,
                 alternate_name: land.split_other_half_name().map(str::to_string),
                 name: land.name.clone(),
-                mana_cost: land.mana_cost_owned(),
+                mana_cost: land.mana_cost.clone(),
                 linked_face_mana_value: land.linked_face_mana_value(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 ability_labels: land.ability_labels.clone(),
@@ -3996,7 +4050,7 @@ mod tests {
                 copy_values: None,
                 alternate_name: land.split_other_half_name().map(str::to_string),
                 name: land.name.clone(),
-                mana_cost: land.mana_cost_owned(),
+                mana_cost: land.mana_cost.clone(),
                 linked_face_mana_value: land.linked_face_mana_value(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 ability_labels: land.ability_labels.clone(),
@@ -4189,7 +4243,7 @@ mod tests {
                 copy_values: None,
                 alternate_name: object.split_other_half_name().map(str::to_string),
                 name: object.name.clone(),
-                mana_cost: object.mana_cost_owned(),
+                mana_cost: object.mana_cost.clone(),
                 linked_face_mana_value: object.linked_face_mana_value(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 ability_labels: object.ability_labels.clone(),
@@ -4429,7 +4483,7 @@ mod tests {
             copy_values: None,
             alternate_name: object.split_other_half_name().map(str::to_string),
             name: object.name.clone(),
-            mana_cost: object.mana_cost_owned(),
+            mana_cost: object.mana_cost.clone(),
             linked_face_mana_value: object.linked_face_mana_value(),
             compiled_card_text: object.compiled_card_text.clone(),
             ability_labels: object.ability_labels.clone(),
