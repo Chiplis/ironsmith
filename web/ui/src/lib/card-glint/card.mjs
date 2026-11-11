@@ -17,6 +17,8 @@ const colors = value => {
   return [...new Set(values.map(v => names[String(v).toLowerCase()] ?? String(v).toUpperCase()).filter(v => /^[WUBRG]$/.test(v)))];
 };
 
+const sameColors = (a, b) => a.length === b.length && a.every(color => b.includes(color));
+
 // Missing printings use the standard modern component frames. Unlike scanned
 // frame plates, these retain color-pair pinlines, legend crowns and special
 // layouts without borrowing another card's printing or artwork.
@@ -63,8 +65,20 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
   const signature = String(face.characteristic_signature ?? '').match(/^colors:([^\n]*)/m);
   const cost = face.mana_cost ?? card.mana_cost ?? '';
   const displayedCost = face.display_mana_cost ?? card.display_mana_cost ?? cost;
-  const palette = colors(signature ? signature[1] : face.colors ?? face.color_indicator ?? [...cost.matchAll(/[WUBRG]/g)].map(m => m[0]));
+  const costColors = colors([...cost.matchAll(/[WUBRG]/g)].map(m => m[0]));
+  const live = signature ? signature[1] : face.colors;
+  const palette = colors(live ?? face.color_indicator ?? costColors);
   const text = rules(face);
+  // Card Glint compares the live colors with the printed ones and draws the
+  // color indicator itself (CR 204): Rograkh's printed dot, or a Sol Ring an
+  // effect made blue. Base colors come from the printing, else the printed
+  // indicator, else the mana cost (Devoid is colorless). Tokens have no
+  // printing; their frame alone shows their colors.
+  const token = card.token === true || card.kind === 'token' || face.layout === 'token' || card.layout === 'token';
+  const printFace = print === card ? null : print.card_faces?.[composite ? 0 : faceIndex] ?? print;
+  const printedIndicator = face.color_indicator ?? printFace?.color_indicator;
+  const baseColors = token ? palette : colors(printFace?.colors ?? (printFace ? print.colors : null) ??
+    printedIndicator ?? (/^Devoid\b/m.test(text) ? [] : costColors));
   // Becoming a creature does not remove loyalty abilities. Keep their roomy,
   // badged layout even when the live type line no longer says Planeswalker.
   // Do not replace explicit multi-face or other special layouts.
@@ -83,7 +97,11 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
     typeLine: builderCreated ? printedTypeLine(face.type_line_display ?? type) : face.type_line_display ?? type,
     artifact: /\bArtifact\b/.test(type), land: /\bLand\b/.test(type),
     creature: /\bCreature\b/.test(type), legendary: /\bLegendary\b/.test(type),
-    colors: palette,
+    colors: baseColors,
+    ...(printedIndicator?.length ? {colorIndicator: colors(printedIndicator)} : {}),
+    ...(live != null && !token ? {currentColors: palette} : {}),
+    // A color-changing effect also recolors the frame; artifact panels stay.
+    ...(sameColors(palette, baseColors) ? {} : {frameColors: palette}),
     manaSymbols: [...(builderCreated ? printedManaCost(displayedCost) : displayedCost).matchAll(/\{([^{}]+)\}/g)].map(m => m[1]),
     rulesText: text,
     rulesParagraphs: [

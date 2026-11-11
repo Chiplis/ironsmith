@@ -3746,11 +3746,8 @@ fn source_has_entry_dies_projection(snapshot: &crate::snapshot::ObjectSnapshot) 
 
 fn append_entry_dies_projection(game: &GameState, event: &TriggerEvent, entries: &mut Vec<TriggeredAbilityEntry>) {
     let Some(entry) = event.downcast::<crate::events::EnterBattlefieldEvent>() else { return; };
-    let Some(snapshot) = entry.completed_snapshot.as_ref() else { eprintln!("ENTRY_PROJECTION_TRACE no completed snapshot object={:?}",entry.object); return; };
-    eprintln!("ENTRY_PROJECTION_TRACE object={:?} abilities={:#?}",entry.object,snapshot.abilities);
-    let has_projection = source_has_entry_dies_projection(snapshot);
-    eprintln!("ENTRY_PROJECTION_TRACE object={:?} projection={has_projection}",entry.object);
-    if !has_projection { return; }
+    let Some(snapshot) = entry.completed_snapshot.as_ref() else { return; };
+    if !source_has_entry_dies_projection(snapshot) { return; }
     let mut projected = crate::events::ZoneChangeEvent::with_cause(
         snapshot.object_id, crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard,
         crate::events::EventCause::effect(), Some(snapshot.clone()));

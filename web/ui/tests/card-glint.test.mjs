@@ -8,7 +8,8 @@ test('live text, colors and stats override physical printing metadata', () => {
   const face = cardGlintFace({name:'Changed',oracle_text:'Draw two cards.',mana_cost:'{2}{U}',type_line:'Creature — Wizard',
     colors:['R'],power:'5',toughness:'6'}, {printing:{oracle_text:'Old text',colors:['U'],set:'lea',frame:'1993',artist:'Artist'},
     imageUrl:'https://cards.scryfall.io/normal/front/a/b/id.jpg'});
-  assert.equal(face.rulesText,'Draw two cards.'); assert.deepEqual(face.colors,['R']);
+  assert.equal(face.rulesText,'Draw two cards.'); assert.deepEqual(face.colors,['U']);
+  assert.deepEqual(face.currentColors,['R']); assert.deepEqual(face.frameColors,['R']);
   assert.deepEqual(face.manaSymbols,['2','U']); assert.equal(face.power,'5');
   assert.equal(face.frameStyle,'retro'); assert.equal(face.artist,'Artist');
   assert.equal(face.illustration,'https://cards.scryfall.io/art_crop/front/a/b/id.jpg');
@@ -38,7 +39,8 @@ test('faces, split cards, land identity and colorless changes survive adaptation
   const split=cardGlintFace({layout:'split',card_faces:[{name:'Left'},{name:'Right'}]});
   assert.deepEqual(split.faces.map(face=>face.name),['Left','Right']);
   assert.deepEqual(cardGlintFace({type_line:'Land',color_identity:['U'],intrinsic_mana:['G']}).frameColors,['U','G']);
-  assert.deepEqual(cardGlintFace({colors:[],mana_cost:'{U}'}).colors,[]);
+  const colorless=cardGlintFace({colors:[],mana_cost:'{U}'});
+  assert.deepEqual([colorless.colors,colorless.currentColors,colorless.frameColors],[['U'],[],[]]);
 });
 test('measured wrapped text creates targets and never claims missing actions are covered', () => {
   const context={measureText:text=>({width:text.length*5})};
@@ -279,4 +281,17 @@ test('frame audit retains printing treatments, canonical types, Saga stats, stam
 test('Omen renders both panels using the inset spell frame', () => {
  const face = cardGlintFace({layout:'omen', card_faces:[{name:'Dragon',type_line:'Creature — Dragon'}, {name:'Omen',type_line:'Instant — Omen',oracle_text:'Draw a card.'}]}, {faceIndex:1});
  assert.equal(face.name,'Dragon'); assert.equal(face.layout,'adventure'); assert.equal(face.faces.length,2);
+});
+
+test('live colors go to Card Glint as current colors against the printed base', () => {
+  // March of the Machines + Neurok Transmuter: a typeless Sol Ring made blue.
+  const sol = cardGlintFace({name:'Sol Ring',mana_cost:'{1}',type_line:'Permanent',colors:['U']});
+  assert.deepEqual([sol.colors,sol.currentColors,sol.frameColors],[[],['U'],['U']]);
+  const rograkh = cardGlintFace({mana_cost:'{0}',type_line:'Legendary Creature',colors:['R'],color_indicator:['R']});
+  assert.deepEqual([rograkh.colors,rograkh.colorIndicator,rograkh.currentColors,rograkh.frameColors],[['R'],['R'],['R'],undefined]);
+  assert.deepEqual(cardGlintFace({mana_cost:'{1}',type_line:'Artifact',colors:['green','white','blue']}).currentColors,['G','W','U']);
+  const devoid = cardGlintFace({mana_cost:'{1}{U}',oracle_text:'Devoid',type_line:'Creature',colors:[]});
+  assert.deepEqual([devoid.colors,devoid.frameColors],[[],undefined]);
+  const token = cardGlintFace({type_line:'Creature — Spirit',colors:['W'],token:true});
+  assert.deepEqual([token.colors,token.currentColors,token.frameColors],[['W'],undefined,undefined]);
 });
