@@ -4,14 +4,22 @@ use super::*;
 pub(crate) type FragmentSpec = ironsmith_core::OptionalTextFragmentsSpec<crate::triggers::Trigger,crate::effect::Effect,crate::costs::Cost,crate::static_abilities::ThisSpellCostCondition>;
 fn plan(chars:&CalculatedCharacteristics)->Option<(usize,crate::ability::Ability,crate::static_abilities::CompiledStaticAbility,FragmentSpec)>{
  chars.abilities.iter().enumerate().find_map(|(slot,ability)|{
-  let crate::ability::AbilityKind::Static(ability_model)=&ability.kind else{return None};let model=ability_model.canonical_model()?;
+  let crate::ability::AbilityKind::Static(ability_model)=&ability.kind else{return None};
+  // Only a compiled model carries this payload, and its canonical model is
+  // that same model: test it by reference before copying anything.
+  if let Some(compiled)=ability_model.compiled_model()
+   && !matches!(compiled.payload,ironsmith_core::StaticAbilityPayload::OptionalTextFragments(_)){return None}
+  let model=ability_model.canonical_model()?;
   let ironsmith_core::StaticAbilityPayload::OptionalTextFragments(spec)=&model.payload else{return None};
   Some((slot,ability.clone(),model.clone(),(**spec).clone()))
  })
 }
 pub(crate) fn declared_plan(object:&crate::object::Object)->Option<FragmentSpec>{
  object.abilities.iter().find_map(|ability|{
-  let crate::ability::AbilityKind::Static(ability)=&ability.kind else{return None};let model=ability.canonical_model()?;
+  let crate::ability::AbilityKind::Static(ability)=&ability.kind else{return None};
+  if let Some(compiled)=ability.compiled_model()
+   && !matches!(compiled.payload,ironsmith_core::StaticAbilityPayload::OptionalTextFragments(_)){return None}
+  let model=ability.canonical_model()?;
   match model.payload {ironsmith_core::StaticAbilityPayload::OptionalTextFragments(spec)=>Some(*spec),_=>None}
  })
 }

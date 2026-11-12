@@ -57,7 +57,7 @@ pub(crate) fn rewrite_continuous_target_words(target: &EffectTarget, change: Tex
 /// the vocabulary so a future word-bearing duration cannot be silently skipped.
 pub(crate) fn rewrite_until_words(until: &Until, change: TextChange) -> Result<Until, Error> {
     Ok(match until {
-        Until::TurnsPass(value) => Until::TurnsPass(rewrite_value_words(value, change)?),
+        Until::TurnsPass(value) => Until::TurnsPass(Box::new(rewrite_value_words(value, change)?)),
         Until::PlayersNextUntapStep { player } => Until::PlayersNextUntapStep {
             player: rewrite_player_filter_words(player, change)?,
         },
@@ -238,7 +238,7 @@ mod tests {
     fn authored_target_condition_duration_and_quoted_grant_are_all_rewritten() {
         let mut original = ApplyContinuousEffect::new(
             EffectTarget::Filter(black()), Modification::AddAbilityGeneric(grant()),
-            Until::TurnsPass(Value::Count(black())),
+            Until::TurnsPass(Box::new(Value::Count(black()))),
         ).with_condition(Condition::YouControl(black()));
         original.target_spec = Some(ChooseSpec::target(ChooseSpec::Object(black())));
         original.additional_modifications.push(Modification::SetPower {
@@ -252,7 +252,7 @@ mod tests {
         assert!(matches!(&changed.target, EffectTarget::Filter(filter) if filter == &blue()));
         assert_eq!(changed.target_spec, Some(ChooseSpec::target(ChooseSpec::Object(blue()))));
         assert_eq!(changed.condition, Some(Condition::YouControl(blue())));
-        assert_eq!(changed.until, Until::TurnsPass(Value::Count(blue())));
+        assert_eq!(changed.until, Until::TurnsPass(Box::new(Value::Count(blue()))));
         let Some(Modification::AddAbilityGeneric(ability)) = &changed.modification else { unreachable!() };
         let AbilityKind::Activated(ability) = &ability.kind else { unreachable!() };
         assert_eq!(ability.mana_cost.costs()[0].compiled_model(), Some(&ironsmith_core::Cost::Sacrifice(blue())));

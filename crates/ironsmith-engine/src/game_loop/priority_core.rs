@@ -254,6 +254,40 @@ pub fn priority_analysis_deferred() -> bool {
     DEFER_PRIORITY_ANALYSIS.with(|value| value.get())
 }
 
+thread_local! {
+    static BOUND_PRIORITY_ANALYSIS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Menu policy for synchronous priority decisions on this engine thread.
+///
+/// Off (the default): every offered action carries an exact payment proof.
+/// On: affordability is the negative-only bound the browser's deferred menu
+/// uses (`payment_may_be_possible`). The menu leaves out only what certainly
+/// cannot be paid and runs no payment search; the payment step that follows an
+/// announcement stays exact, so an offered action whose payment turns out
+/// impossible is cancelled there instead of never being offered. The
+/// context's `presentation_actions` list is left empty in this mode. Intended for
+/// callers that enumerate far more menus than they take actions from (search,
+/// self-play). Never changes which actions the engine accepts.
+pub fn set_priority_analysis_bounded(bounded: bool) {
+    BOUND_PRIORITY_ANALYSIS.with(|value| value.set(bounded));
+}
+
+pub fn priority_analysis_bounded() -> bool {
+    BOUND_PRIORITY_ANALYSIS.with(|value| value.get())
+}
+
+/// Legal actions under this thread's menu policy.
+fn priority_menu_actions(
+    game: &GameState,
+    player: PlayerId,
+) -> Result<Vec<LegalAction>, GameLoopError> {
+    Ok(crate::decision::with_bounded_payment_recheck(
+        priority_analysis_bounded(),
+        || compute_legal_actions(game, player),
+    )?)
+}
+
 pub fn priority_context(
     game: &GameState,
     player: PlayerId,
@@ -279,7 +313,7 @@ pub fn analyze_priority_context(
     let priority_players = game.priority_team_players();
     let mut actions = Vec::new();
     for player in priority_players.iter().copied() {
-        for action in compute_legal_actions(game, player)? {
+        for action in priority_menu_actions(game, player)? {
             if !actions.contains(&action) {
                 actions.push(action);
             }
@@ -297,10 +331,15 @@ pub fn analyze_priority_context(
 
     let mut ctx = crate::decisions::context::PriorityContext::new(game, priority_player, actions)
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    for player in game.priority_team_players() {
-        ctx.presentation_actions.extend(crate::decision::compute_actions_assuming_mana_for_presentation(
-            game, player, None,
-        )?);
+    // The presentation list exists so an interface can show announcements
+    // whose payment is unproven. A bounded menu already offers every action
+    // that is not ruled out, and its callers never render that list.
+    if !priority_analysis_bounded() {
+        for player in game.priority_team_players() {
+            ctx.presentation_actions.extend(crate::decision::compute_actions_assuming_mana_for_presentation(
+                game, player, None,
+            )?);
+        }
     }
     Ok(ctx)
 }

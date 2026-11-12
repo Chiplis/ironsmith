@@ -256,6 +256,22 @@ impl AbilityOrigin {
     }
 }
 
+/// One completed trigger-acquisition binding: `bound` is `source` after
+/// `bind_ability` ran for `host` over `origins`.
+struct BoundDefinitions {
+    source: std::sync::Arc<Vec<Ability>>,
+    host: Option<ObjectId>,
+    origins: std::sync::Arc<Vec<AbilityOrigin>>,
+    bound: std::sync::Arc<Vec<Ability>>,
+}
+
+const BOUND_DEFINITIONS_CAPACITY: usize = 256;
+
+thread_local! {
+    static BOUND_DEFINITIONS: std::cell::RefCell<std::collections::VecDeque<BoundDefinitions>> =
+        const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
+}
+
 /// Mutations preserve the origin paired with each definition. There is no
 /// DerefMut: raw Vec edits must not silently detach an ability from its origin.
 #[derive(Debug, Clone, Default)]
@@ -280,9 +296,53 @@ impl CalculatedAbilities {
             crate::ability::AbilityKind::Triggered(triggered)
                 if triggered.effects.retained_trigger_definition().is_some()))
         {
+            let host = self.host;
+            // Binding writes a value that depends only on the definitions,
+            // the host and the origins. When every ability already holds that
+            // value there is nothing to write, and the shared list is kept.
+            let already_bound = self
+                .definitions
+                .iter()
+                .zip(self.origins.iter())
+                .all(|(ability, origin)| {
+                    crate::triggers::acquisition::ability_is_bound(ability, host, origin)
+                });
+            if already_bound {
+                return;
+            }
+            // The same printed list is bound for the same host and origins on
+            // every recalculation of an object. Reuse that result instead of
+            // copying every ability again. The entry keeps the source list
+            // alive, so its address cannot be reused by different abilities.
+            let source = self.definitions.shared();
+            let reused = BOUND_DEFINITIONS.with(|cache| {
+                cache.borrow().iter().find_map(|entry| {
+                    (std::sync::Arc::ptr_eq(&entry.source, &source)
+                        && entry.host == host
+                        && (std::sync::Arc::ptr_eq(&entry.origins, &self.origins)
+                            || *entry.origins == *self.origins))
+                        .then(|| entry.bound.clone())
+                })
+            });
+            if let Some(bound) = reused {
+                self.definitions = bound.into();
+                return;
+            }
             for (ability, origin) in self.definitions.iter_mut().zip(self.origins.iter()) {
                 crate::triggers::acquisition::bind_ability(ability, self.host, origin);
             }
+            BOUND_DEFINITIONS.with(|cache| {
+                let mut cache = cache.borrow_mut();
+                if cache.len() >= BOUND_DEFINITIONS_CAPACITY {
+                    cache.pop_front();
+                }
+                cache.push_back(BoundDefinitions {
+                    source,
+                    host,
+                    origins: self.origins.clone(),
+                    bound: self.definitions.shared(),
+                });
+            });
         }
     }
     pub(super) fn replace_with_origin(

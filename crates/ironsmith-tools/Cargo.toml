@@ -104,6 +104,11 @@ path = "src/bin/report_replacement_effect_parse_status.rs"
 test = false
 
 [[bin]]
+name = "bench_playouts"
+path = "src/bin/bench_playouts.rs"
+test = false
+
+[[bin]]
 name = "sync_card_status_db"
 path = "src/bin/sync_card_status_db.rs"
 test = false

@@ -1111,7 +1111,8 @@ pub(super) fn apply_admitted_priority_action(
                         // so re-check on the same bound; the payment itself is
                         // settled in the prompt that follows.
                         if !crate::decision::with_bounded_payment_recheck(
-                            super::priority_analysis_deferred(),
+                            super::priority_analysis_deferred()
+                                || super::priority_analysis_bounded(),
                             || can_activate_ability_with_restrictions(
                                 game,
                                 *source,

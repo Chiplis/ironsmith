@@ -230,7 +230,7 @@ mod tests {
     fn fresh_native_grant_round_trips_then_rewrites_and_round_trips_again() {
         let mut native = ApplyContinuousEffect::new(EffectTarget::Filter(filter(ColorSet::BLACK)),
             Modification::AddAbilityGeneric(grant(ColorSet::BLACK)),
-            Until::TurnsPass(Value::Count(filter(ColorSet::BLACK))),
+            Until::TurnsPass(Box::new(Value::Count(filter(ColorSet::BLACK)))),
         ).with_condition(Condition::YouControl(filter(ColorSet::BLACK)));
         native.additional_modifications.push(Modification::AddColors(ColorSet::BLACK));
         native.runtime_modifications.push(RuntimeModification::ChangeControllerToPlayer(
@@ -253,7 +253,7 @@ mod tests {
         let model = changed_again.downcast_ref::<ApplyContinuousEffect>().unwrap();
         assert_eq!(model.target, EffectTarget::Filter(filter(ColorSet::GREEN)));
         assert_eq!(model.condition, Some(Condition::YouControl(filter(ColorSet::GREEN))));
-        assert_eq!(model.until, Until::TurnsPass(Value::Count(filter(ColorSet::GREEN))));
+        assert_eq!(model.until, Until::TurnsPass(Box::new(Value::Count(filter(ColorSet::GREEN)))));
         let Some(Modification::AddAbilityGeneric(ability)) = &model.modification else { unreachable!() };
         assert_grant_words(ability, ColorSet::GREEN);
         assert!(matches!(model.additional_modifications[0], Modification::AddColors(colors) if colors == ColorSet::GREEN));

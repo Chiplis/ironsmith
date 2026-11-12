@@ -299,7 +299,8 @@ pub enum Until {
     /// A CR 611.2b duration whose predicate is materialized at resolution and
     /// whose first transition to false is permanent.
     ForAsLongAs(ContinuousDurationPredicate),
-    TurnsPass(crate::value_model::Value),
+    // Boxed: this one variant otherwise makes every `Until` as large as a `Value`.
+    TurnsPass(Box<crate::value_model::Value>),
     /// Ends when this exact incarnation completes casting from the named zone.
     /// Merely leaving that zone (including proposal before payment) is not enough.
     ObjectIsCast {

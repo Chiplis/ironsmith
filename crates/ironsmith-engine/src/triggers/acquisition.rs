@@ -38,6 +38,27 @@ pub(crate) fn bind_ability(
     }
 }
 
+/// Whether `bind_ability` with these arguments would leave `ability` as it is.
+pub(crate) fn ability_is_bound(
+    ability: &crate::ability::Ability,
+    host: Option<ObjectId>,
+    origin: &AbilityOrigin,
+) -> bool {
+    let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else {
+        return true;
+    };
+    match (
+        &triggered.trigger.acquisition,
+        host.zip(triggered.effects.retained_trigger_definition()),
+    ) {
+        (None, None) => true,
+        (Some(bound), Some((host, definition))) => {
+            bound.host == host && bound.definition == definition && bound.origin == *origin
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 #[path = "acquisition_tests.rs"]
 mod tests;
