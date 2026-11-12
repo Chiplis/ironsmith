@@ -282,10 +282,26 @@ fn priority_menu_actions(
     game: &GameState,
     player: PlayerId,
 ) -> Result<Vec<LegalAction>, GameLoopError> {
-    Ok(crate::decision::with_bounded_payment_recheck(
-        priority_analysis_bounded(),
-        || compute_legal_actions(game, player),
-    )?)
+    if priority_analysis_bounded() {
+        // One menu asks about the same proposed spells and snapshot facts
+        // through several payment routes. An analysis session bound to this
+        // game keeps those for the length of the computation, as the
+        // browser's menu analysis does; the bound itself never searches.
+        let mut session = crate::decision::ManaAnalysisSession::default();
+        let (actions, complete) = session.run_for_game(game, usize::MAX, || {
+            crate::decision::with_bounded_payment_recheck(true, || {
+                compute_legal_actions(game, player)
+            })
+        });
+        if complete && session.failure().is_none() {
+            return Ok(actions?);
+        }
+        // An incomplete or failed session proved nothing: compute without it.
+        return Ok(crate::decision::with_bounded_payment_recheck(true, || {
+            compute_legal_actions(game, player)
+        })?);
+    }
+    Ok(compute_legal_actions(game, player)?)
 }
 
 pub fn priority_context(
