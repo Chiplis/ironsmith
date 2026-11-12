@@ -237,6 +237,7 @@ pub(crate) fn may_have_keyword_action_replacements(game: &crate::game_state::Gam
         .effects()
         .iter()
         .any(related)
-        || crate::replacement_ability_processor::generate_replacement_effects_from_abilities(game)
+        || game
+            .memoized_replacement_effects_from_abilities()
             .map_or(true, |effects| effects.iter().any(related))
 }

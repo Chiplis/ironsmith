@@ -471,7 +471,8 @@ pub(super) fn has_replacements_for_events(
         .effects()
         .iter()
         .any(|effect| !unrelated(effect))
-        || crate::replacement_ability_processor::generate_replacement_effects_from_abilities(game)
+        || game
+            .memoized_replacement_effects_from_abilities()
             .map_or(true, |effects| {
                 effects.iter().any(|effect| !unrelated(effect))
             })

@@ -1756,6 +1756,10 @@ struct RuntimeCacheState {
     trigger_registry: RefCell<Option<Arc<crate::triggers::check::TriggerRegistry>>>,
     object_snapshot_cache: RefCell<ObjectSnapshotCache>,
     dirty_characteristics_memo: RefCell<DirtyCharacteristicsMemo>,
+    /// Replacement effects discovered from abilities for one exact state
+    /// (`memoized_replacement_effects_from_abilities`).
+    replacement_discovery_memo:
+        RefCell<Option<(DirtyStateKey, Arc<Vec<crate::replacement::ReplacementEffect>>)>>,
     sba_candidates: RefCell<Box<crate::rules::state_based::SbaCandidateCache>>,
     characteristics_cache: CharacteristicsCache,
     work_counters: WorkCounters,
@@ -1826,6 +1830,7 @@ impl Clone for RuntimeCacheState {
             // snapshot of a dirty game otherwise re-derived the whole board
             // for every snapshot taken of that one state.
             dirty_characteristics_memo: RefCell::new(self.dirty_characteristics_memo.borrow().clone()),
+            replacement_discovery_memo: RefCell::new(self.replacement_discovery_memo.borrow().clone()),
             sba_candidates: RefCell::new(self.sba_candidates.borrow().clone()),
             characteristics_cache: CharacteristicsCache::cloned_from(&self.characteristics_cache),
             work_counters: WorkCounters::default(),
@@ -1882,6 +1887,7 @@ impl RuntimeCacheState {
             trigger_registry: RefCell::new(None),
             object_snapshot_cache: RefCell::new(ObjectSnapshotCache::default()),
             dirty_characteristics_memo: RefCell::new(DirtyCharacteristicsMemo::default()),
+            replacement_discovery_memo: RefCell::new(None),
             sba_candidates: RefCell::new(Default::default()),
             characteristics_cache: CharacteristicsCache::default(),
             work_counters: WorkCounters::default(),
@@ -11763,6 +11769,11 @@ impl GameState {
 
     /// Complete the CR 704.5b observation window for a real SBA pass.
     pub(crate) fn clear_empty_library_draw_attempts_since_sba(&mut self) {
+        // Mutable access to the players invalidates every derived continuous
+        // result. Nearly every pass has nothing to clear, so look first.
+        if !self.players.iter().any(|player| player.attempted_draw_from_empty_library) {
+            return;
+        }
         for player in &mut self.players {
             player.attempted_draw_from_empty_library = false;
         }

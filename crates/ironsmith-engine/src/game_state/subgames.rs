@@ -1064,7 +1064,9 @@ impl GameState {
         self.zone_movement_admission_blocks(id, destination, &admission)
     }
     pub(crate) fn capture_zone_movement_admission(&self) -> super::ZoneMovementAdmission {
-        match self.continuous_query_snapshot() {
+        // Only one rule list is read: at a completed refresh the view is this
+        // state itself, so no copy of the game is made.
+        match self.continuous_query_view() {
             Ok(checked) => super::ZoneMovementAdmission {
                 rules: checked.effect_store.cant_effects.cant_move_between_zones.clone(), failed: false,
             },

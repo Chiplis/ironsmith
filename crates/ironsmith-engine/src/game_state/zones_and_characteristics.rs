@@ -5845,6 +5845,48 @@ retain_original_types: false, retain_original_name: false,
         memo.effects_checked = false;
         memo.static_effects = None;
         memo.characteristics = Arc::default();
+        *self.runtime_cache.replacement_discovery_memo.borrow_mut() = None;
+    }
+
+    /// `generate_replacement_effects_from_abilities` for this exact state,
+    /// computed once. A payment bound asks whether any replacement could
+    /// touch mana once per candidate action against one unchanged state, and
+    /// each ask used to re-derive every object's abilities.
+    ///
+    /// Valid under the same key and the same exclusions as the dirty
+    /// characteristics memo: the discovery runs inside a derived-read scope,
+    /// so a tap, mana or stack change it depended on invalidates the state;
+    /// a provisional result, a result from inside another calculation and a
+    /// failed discovery are never kept; `forget_dirty_characteristics` drops
+    /// it with the characteristics it was derived from.
+    pub(crate) fn memoized_replacement_effects_from_abilities(
+        &self,
+    ) -> Result<
+        Arc<Vec<crate::replacement::ReplacementEffect>>,
+        crate::static_ability_processor::StaticEffectDiscoveryError,
+    > {
+        let nested = crate::continuous::nested_regeneration_context(self).is_some();
+        let key = self.dirty_state_key();
+        if !nested
+            && let Some((memo_key, effects)) =
+                self.runtime_cache.replacement_discovery_memo.borrow().as_ref()
+            && *memo_key == key
+        {
+            return Ok(Arc::clone(effects));
+        }
+        let marker = crate::continuous::provisional_condition_marker();
+        let effects = {
+            let _tap_reads = self.derived_tap_read_scope();
+            Arc::new(crate::replacement_ability_processor::generate_replacement_effects_from_abilities(self)?)
+        };
+        if !nested
+            && !crate::continuous::computed_provisionally(marker)
+            && key == self.dirty_state_key()
+        {
+            *self.runtime_cache.replacement_discovery_memo.borrow_mut() =
+                Some((key, Arc::clone(&effects)));
+        }
+        Ok(effects)
     }
 
     /// The checked static discovery already made for this exact dirty state,
