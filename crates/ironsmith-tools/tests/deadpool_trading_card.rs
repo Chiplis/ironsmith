@@ -171,10 +171,10 @@ fn exchanged_enter_trigger_fires_and_the_upkeep_drawback_moves_to_partner() {
         .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2))
         .with_ability(Ability::triggered(
             ironsmith::triggers::Trigger::enters_battlefield(
-                ironsmith::target::ObjectFilter {
+                ironsmith::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     source: true,
                     ..Default::default()
-                },
+                }),
                 None,
             ),
             vec![ironsmith::effect::Effect::gain_life(2)],

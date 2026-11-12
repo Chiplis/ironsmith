@@ -2816,10 +2816,10 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants(
             spec,
             lifetime: crate::permission_helpers::PermissionLifetime::Static,
         })) if spec == crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(
-            crate::target::ObjectFilter {
+            crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![CardType::Creature],
-                ..crate::target::ObjectFilter::default()
-            }
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::target::ObjectFilter::default())
+            })
         )
     ));
     assert!(matches!(
@@ -3092,10 +3092,10 @@ pub(super) fn rewrite_lexed_permission_helpers_route_subject_filters_through_gra
             spec,
             lifetime: crate::permission_helpers::PermissionLifetime::Static,
         })) if spec == crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(
-            crate::target::ObjectFilter {
+            crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![CardType::Creature],
-                ..crate::target::ObjectFilter::default()
-            }
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::target::ObjectFilter::default())
+            })
         )
     ));
 }

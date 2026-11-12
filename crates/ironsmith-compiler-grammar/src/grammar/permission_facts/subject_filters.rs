@@ -171,10 +171,10 @@ fn parse_mixed_spell_disjunction_filter_tokens(
     if left_filter.all_card_types.len() < 2 && right_filter.all_card_types.len() < 2 {
         return Ok(None);
     }
-    Ok(Some(ObjectFilter {
+    Ok(Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![left_filter, right_filter],
-        ..ObjectFilter::default()
-    }))
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    })))
 }
 
 pub fn parse_simple_spell_type_list_filter_tokens(
@@ -185,10 +185,10 @@ pub fn parse_simple_spell_type_list_filter_tokens(
         simple_spell_type_list,
         "permission spell type list",
     )?;
-    Some(ObjectFilter {
+    Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types,
-        ..ObjectFilter::default()
-    })
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    }))
 }
 
 pub fn generic_spell_subject_requires_nonland(tokens: &[OwnedLexToken]) -> bool {
@@ -196,7 +196,7 @@ pub fn generic_spell_subject_requires_nonland(tokens: &[OwnedLexToken]) -> bool 
 }
 
 pub fn permanent_spell_filter() -> ObjectFilter {
-    ObjectFilter {
+    ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![
             CardType::Artifact,
             CardType::Creature,
@@ -204,8 +204,8 @@ pub fn permanent_spell_filter() -> ObjectFilter {
             CardType::Planeswalker,
             CardType::Battle,
         ],
-        ..ObjectFilter::default()
-    }
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    })
 }
 
 fn normalize_permission_subject_filter(mut filter: ObjectFilter) -> ObjectFilter {
@@ -234,13 +234,13 @@ fn parse_binary_permission_subject_filter_tokens(
     let Ok(right) = parse_object_filter_with_grammar_entrypoint_lexed(right_tokens, false) else {
         return Ok(None);
     };
-    Ok(Some(ObjectFilter {
+    Ok(Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![
             normalize_permission_subject_filter(left),
             normalize_permission_subject_filter(right),
         ],
-        ..ObjectFilter::default()
-    }))
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    })))
 }
 
 fn parse_subject_separator_fact(tokens: &[OwnedLexToken]) -> Option<ListSeparator> {

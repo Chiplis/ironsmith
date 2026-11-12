@@ -269,12 +269,12 @@ mod tests {
         );
         let tag = crate::tag::TagKey::from("secretly_chosen");
         let object_choice = ironsmith_core::SecretObjectChoice {
-            filter: ObjectFilter {
+            filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Battlefield),
                 controller: Some(PlayerFilter::IteratedPlayer),
                 card_types: vec![CardType::Creature],
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
             count: ChoiceCount::exactly(1),
             tag: tag.clone(),
             reveal_after_choice: true,

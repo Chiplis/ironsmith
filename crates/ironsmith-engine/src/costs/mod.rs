@@ -364,11 +364,11 @@ impl Cost {
         let card_filter = if card_types.is_empty() {
             None
         } else {
-            Some(crate::filter::ObjectFilter {
+            Some(crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(crate::zone::Zone::Hand),
                 card_types,
                 ..Default::default()
-            })
+            }))
         };
         Self::validated_effect(crate::effect::Effect::new(
             crate::effects::DiscardEffect::new_with_filter(

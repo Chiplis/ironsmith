@@ -238,14 +238,11 @@ fn parse_turn_history_intervening_predicate(
     if let Some(dealt) = crate::word_primitives::parse_sequence_start(&words, &["has", "dealt"])
         && crate::word_primitives::ends_with(&words, &["damage", "this", "turn"])
         && let Some(source) = clause.between_word_range(0, dealt)
-        && matches!(
-            crate::util::parse_target_phrase(source.tokens()),
-            Ok(crate::cards::builders::TargetAst::Source(_))
-                | Ok(crate::cards::builders::TargetAst::Object(
-                    ObjectFilter { source: true, .. },
-                    ..
-                ))
-        )
+        && (match crate::util::parse_target_phrase(source.tokens()) {
+            Ok(crate::cards::builders::TargetAst::Source(_)) => true,
+            Ok(crate::cards::builders::TargetAst::Object(filter, ..)) => filter.source,
+            _ => false,
+        })
         && let Some(quantity) = clause.between_word_range(dealt + 2, words.len() - 3)
         && let Ok((comparison, used)) =
             parse_quantity_comparison_prefix(quantity.tokens(), false, false, "source damage total")
@@ -1931,10 +1928,10 @@ pub(super) fn parse_opponent_controls_tagged_object_predicate(
     if !is_opponent_controller_clause(relation.subject_clause) {
         return None;
     }
-    let mut filter = ObjectFilter {
+    let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         controller: Some(PlayerFilter::Opponent),
         ..Default::default()
-    };
+    });
     match controlled_tagged_object_kind(relation.tail_clause)? {
         ControlledTaggedObjectKind::Permanent => {}
         ControlledTaggedObjectKind::Creature => filter.card_types.push(CardType::Creature),
@@ -2505,10 +2502,10 @@ fn parse_paid_named_label_without_cost_noun(tokens: &[OwnedLexToken]) -> Option<
         && label.chars().all(|ch| ch.is_ascii_alphabetic())
         && !this_turn
     {
-        let filter = crate::filter::ObjectFilter {
+        let filter = crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             cast_paid_label: Some(crate::cost::OptionalCostRef::from(named_paid_cost_label_from_word(label)?)),
             ..Default::default()
-        };
+        });
         crate::word_claims::claim_tokens(tokens);
         return Some(PredicateAst::ItMatches(filter));
     }
@@ -4759,10 +4756,10 @@ pub(super) fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Opt
         if !is_blocking_state_clause(state_clause) {
             continue;
         }
-        return Some(PredicateAst::ItMatchedLastKnown(ObjectFilter {
+        return Some(PredicateAst::ItMatchedLastKnown(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             nonblocking: true,
             ..Default::default()
-        }));
+        })));
     }
     None
 }
@@ -7470,10 +7467,10 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     {
         let mut host = host;
         host.zone = None;
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             attached_to_object: Some(Box::new(host)),
             ..Default::default()
-        };
+        });
         return Ok(PredicateAst::ItMatchedLastKnown(filter));
     }
     // "if it wasn't sacrificed" (Urza's Miter): the departed permanent's
@@ -7712,10 +7709,10 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         monarch_words.as_slice()
         && monarch_words.len() <= 6
     {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             has_x_in_cost: true,
             ..Default::default()
-        };
+        });
         return Ok(PredicateAst::ItMatches(filter));
     }
     if let Some(subject) = monarch_words.strip_suffix(&["monarch", "as", "turn", "began"]) {

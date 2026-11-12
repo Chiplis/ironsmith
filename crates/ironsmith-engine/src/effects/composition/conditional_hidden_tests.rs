@@ -70,11 +70,11 @@ fn fixture(
         game.reveal_hidden_card_with_definition(top, &identity(matches))
             .unwrap();
     }
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: None,
         shares_creature_type_with_source: true,
-        ..ObjectFilter::creature()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature())
+    });
     let effect = ConditionalEffect::if_only(
         Condition::TaggedObjectMatches("looked".into(), filter),
         vec![

@@ -269,7 +269,7 @@ mod tests {
             "opponent",
             "controls",
         ]);
-        let Some(Comparison::EqualExpr(value)) = filter.power else {
+        let Some(Comparison::EqualExpr(value)) = filter.power.clone() else {
             panic!("expected a power comparison");
         };
         let Value::GreatestPower(scope) = value.unhinted() else {
@@ -299,7 +299,7 @@ mod tests {
             "value",
         ]);
         assert!(matches!(
-            filter.mana_value,
+            filter.mana_value.clone(),
             Some(Comparison::EqualExpr(value))
                 if matches!(value.unhinted(), Value::LeastManaValue(_))
         ));
@@ -312,7 +312,7 @@ mod tests {
             "or", "tied", "for", "greatest",
         ]);
         assert!(matches!(
-            filter.mana_value,
+            filter.mana_value.clone(),
             Some(Comparison::EqualExpr(value))
                 if matches!(value.unhinted(), Value::GreatestManaValue(_))
         ));

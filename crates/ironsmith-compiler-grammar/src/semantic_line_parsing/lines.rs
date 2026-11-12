@@ -1449,7 +1449,7 @@ fn parse_statement_to_chunks_impl(
             "card",
         ],
     ) {
-        let sacrifice_domain = ObjectFilter {
+        let sacrifice_domain = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![
                 ObjectFilter::creature()
                     .controlled_by(PlayerFilter::IteratedPlayer)
@@ -1459,7 +1459,7 @@ fn parse_statement_to_chunks_impl(
                     .in_zone(Zone::Battlefield),
             ],
             ..Default::default()
-        };
+        });
         let opponents = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![EffectAst::CommaThen {
                 effects: vec![
@@ -1475,12 +1475,12 @@ fn parse_statement_to_chunks_impl(
                 ],
             }],
         });
-        let mut graveyard_card = ObjectFilter {
+        let mut graveyard_card = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Graveyard),
             owner: Some(PlayerFilter::You),
             card_types: vec![CardType::Creature, CardType::Planeswalker],
             ..Default::default()
-        };
+        });
         graveyard_card.set_explicit_card_noun(true);
         let controller = EffectAst::CommaThen {
             effects: vec![

@@ -66,7 +66,7 @@ mod tests {
             let PredicateAst::ItMatches(subject) = predicate else {
                 panic!("{predicate:?}")
             };
-            let Some(crate::filter::Comparison::EqualExpr(value)) = subject.power else {
+            let Some(crate::filter::Comparison::EqualExpr(value)) = subject.power.clone() else {
                 panic!("missing equality")
             };
             match value.as_ref() {

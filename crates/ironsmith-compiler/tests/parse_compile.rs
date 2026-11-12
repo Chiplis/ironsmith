@@ -3044,7 +3044,7 @@ fn compile_last_known_countered_spell_preserves_stack_identity() {
 
 #[test]
 fn compile_live_permanent_spell_predicate_preserves_stack_identity() {
-    let permanent_spell = ObjectFilter {
+    let permanent_spell = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![
             CardType::Artifact,
             CardType::Creature,
@@ -3054,8 +3054,8 @@ fn compile_live_permanent_spell_predicate_preserves_stack_identity() {
         ],
         zone: Some(Zone::Stack),
         stack_kind: Some(ironsmith_compiler::filter::StackObjectKind::Spell),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
 
     let condition = compile_condition_from_predicate_ast(
         &PredicateAst::ItMatches(permanent_spell),

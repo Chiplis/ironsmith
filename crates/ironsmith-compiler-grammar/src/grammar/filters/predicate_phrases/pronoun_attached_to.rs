@@ -27,9 +27,9 @@ pub(super) fn parse_pronoun_attached_to_predicate(
     )) else {
         return Ok(None);
     };
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         attached_to_object: Some(Box::new(attached_to)),
         ..Default::default()
-    };
+    });
     Ok(Some(PredicateAst::ItMatches(filter)))
 }

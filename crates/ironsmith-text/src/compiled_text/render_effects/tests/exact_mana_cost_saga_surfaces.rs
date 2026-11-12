@@ -37,18 +37,18 @@ fn exact_mana_cost_union_keeps_colored_costs_distinct_and_requires_a_shared_base
     let white = crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::White]);
     assert_ne!(generic, white);
 
-    let generic_filter = ObjectFilter {
+    let generic_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         exact_mana_cost: Some(generic),
-        ..ObjectFilter::artifact()
-    };
-    let white_filter = ObjectFilter {
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::artifact())
+    });
+    let white_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         exact_mana_cost: Some(white),
-        ..ObjectFilter::artifact()
-    };
-    let union = ObjectFilter {
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::artifact())
+    });
+    let union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![generic_filter, white_filter],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
 
     assert_eq!(
         union.description(),

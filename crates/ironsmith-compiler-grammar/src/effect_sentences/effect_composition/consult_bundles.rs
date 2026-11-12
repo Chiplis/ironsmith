@@ -353,6 +353,7 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
                             ..
                         },
                     ) = &mut subject_verb.action
+                    && let filter = &mut **filter
                     && let Some(constraint) =
                         filter.tagged_constraints.iter_mut().find(|constraint| {
                             constraint.relation == TaggedOpbjectRelation::IsTaggedObject

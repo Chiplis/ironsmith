@@ -3962,10 +3962,10 @@ mod tests {
         let return_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object({
             let mut filter = crate::filter::ObjectFilter::default();
             filter.any_of = vec![
-                crate::filter::ObjectFilter {
+                crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     zone: Some(Zone::Stack),
                     ..Default::default()
-                },
+                }),
                 crate::filter::ObjectFilter::creature(),
             ];
             filter
@@ -4112,10 +4112,10 @@ mod tests {
         let return_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object({
             let mut filter = crate::filter::ObjectFilter::default();
             filter.any_of = vec![
-                crate::filter::ObjectFilter {
+                crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     zone: Some(Zone::Stack),
                     ..Default::default()
-                },
+                }),
                 crate::filter::ObjectFilter::creature(),
             ];
             filter
@@ -4199,10 +4199,10 @@ mod tests {
         let return_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object({
             let mut filter = crate::filter::ObjectFilter::default();
             filter.any_of = vec![
-                crate::filter::ObjectFilter {
+                crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     zone: Some(Zone::Stack),
                     ..Default::default()
-                },
+                }),
                 crate::filter::ObjectFilter::creature(),
             ];
             filter

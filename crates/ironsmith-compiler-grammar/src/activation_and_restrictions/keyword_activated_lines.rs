@@ -371,14 +371,14 @@ pub fn parse_cycling_search_filter(
             } else {
                 (card_types, Vec::new())
             };
-            Ok(Some(ObjectFilter {
+            Ok(Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 supertypes,
                 card_types,
                 all_card_types,
                 subtypes,
                 colors,
-                ..ObjectFilter::default()
-            }))
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })))
         }
         Err(CyclingSearchParseError::MissingKeyword) => Err(CardTextError::ParseError(
             "missing cycling keyword".to_string(),

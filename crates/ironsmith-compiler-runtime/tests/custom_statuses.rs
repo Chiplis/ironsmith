@@ -307,7 +307,7 @@ fn custom_statuses_and_official_designations_do_not_alias_or_clear_each_other() 
     );
     body.abilities.push(ironsmith::ability::Ability::triggered(
         ironsmith::triggers::Trigger::keyword_action_matching_object(KeywordActionKind::Renown,
-            ironsmith::target::PlayerFilter::Any, ironsmith::target::ObjectFilter { source: true, ..Default::default() }),
+            ironsmith::target::PlayerFilter::Any, ironsmith::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { source: true, ..Default::default() })),
         vec![Effect::gain_life(1)]));
     let source = game.create_object_from_definition(&body, A, Zone::Battlefield);
     let gained = apply(&mut game, source, "bribed", true);

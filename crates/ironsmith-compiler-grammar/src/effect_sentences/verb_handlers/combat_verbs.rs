@@ -780,11 +780,11 @@ pub(crate) fn parse_each_object_set_union(
             branch.zone = Some(Zone::Battlefield);
         }
     }
-    Ok(Some(ObjectFilter {
+    Ok(Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         any_of: vec![left, right],
         ..Default::default()
-    }))
+    })))
 }
 
 fn parse_damage_each_filter(

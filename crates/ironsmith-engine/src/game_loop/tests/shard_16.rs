@@ -4821,11 +4821,11 @@ pub(super) fn test_saga_survives_when_lore_counter_removed() {
     }
 
     let search_effect = Effect::search_library(
-        crate::target::ObjectFilter {
+        crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Artifact],
             mana_value: Some(crate::target::Comparison::LessThanOrEqual(1)),
             ..Default::default()
-        },
+        }),
         Zone::Battlefield,
         crate::target::PlayerFilter::You,
         false,
@@ -5019,13 +5019,13 @@ pub(super) fn test_urzas_saga_excludes_x_cost_artifacts() {
         game.create_object_from_definition(&ornithopter_def, alice, Zone::Library);
 
     // Create the filter from Urza's Saga chapter III
-    let filter = crate::target::ObjectFilter {
+    let filter = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![CardType::Artifact],
         mana_value: Some(crate::target::Comparison::LessThanOrEqual(1)),
         has_mana_cost: true,
         no_x_in_cost: true,
         ..Default::default()
-    };
+    });
 
     let ctx = FilterContext::new(alice).with_source(saga_id);
 

@@ -1526,7 +1526,7 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
         && filter.card_types.is_empty()
         && filter.all_card_types.is_empty()
     {
-        filter.card_types = ObjectFilter::permanent_card().card_types;
+        filter.card_types = ObjectFilter::permanent_card().card_types.clone();
     }
 
     match (parsed.aggregate, parsed.value_kind) {

@@ -751,10 +751,10 @@ pub(crate) fn schedule_token_batch_cleanup_with_outputs(
     if token_ids.is_empty() {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
     }
-    let filter = crate::target::ObjectFilter {
+    let filter = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: token_ids.iter().copied().map(crate::target::ObjectFilter::specific).collect(),
         ..Default::default()
-    };
+    });
     let mut children = Vec::new();
     if options.exile_at_end_of_combat {
         children.push(schedule_token_batch_delayed_effect_with_outputs(

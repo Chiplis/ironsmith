@@ -2784,13 +2784,13 @@ mod tests {
         let artifact_id = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
 
         let view = DerivedGameView::new(&game);
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             card_types: vec![CardType::Creature],
             subtypes: vec![Subtype::Aura],
             type_or_subtype_union: true,
             ..Default::default()
-        };
+        });
         let filter_ctx = game.filter_context_for(alice, None);
 
         let ids = view.candidate_ids_for_filter_with_context(&filter, &filter_ctx);

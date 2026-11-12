@@ -469,10 +469,10 @@ fn parse_simple_object_filter_words_with_list_marker(
             other,
             saw_type_list_separator,
         )?;
-        filter.with_attached_object = Some(Box::new(ObjectFilter {
+        filter.with_attached_object = Some(Box::new(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             subtypes: vec![Subtype::Equipment],
-            ..ObjectFilter::default()
-        }));
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })));
         crate::word_claims::claim_words(&input_words[..1]);
         return Some(filter);
     }
@@ -606,16 +606,16 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::Untapped => filter.untapped = true,
             SimpleObjectFilterAtom::Unblocked => filter.unblocked = true,
             SimpleObjectFilterAtom::Nonenchanted => {
-                filter.without_attached_object = Some(Box::new(ObjectFilter {
+                filter.without_attached_object = Some(Box::new(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     card_types: vec![CardType::Enchantment], subtypes: vec![Subtype::Aura],
-                    ..ObjectFilter::default()
-                }));
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                })));
             }
             SimpleObjectFilterAtom::Equipped => {
-                filter.with_attached_object = Some(Box::new(ObjectFilter {
+                filter.with_attached_object = Some(Box::new(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     subtypes: vec![Subtype::Equipment],
-                    ..ObjectFilter::default()
-                }));
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                })));
             }
             SimpleObjectFilterAtom::Colorless => filter.colorless = true,
             SimpleObjectFilterAtom::Multicolored => filter.multicolored = true,
@@ -739,7 +739,7 @@ fn parse_simple_filter_body(
             || saw_spell
             || filter.zone.is_some_and(|zone| zone != Zone::Battlefield))
     {
-        filter.card_types = ObjectFilter::permanent_card().card_types;
+        filter.card_types = ObjectFilter::permanent_card().card_types.clone();
     }
     if filter.zone.is_none() {
         if saw_spell {
@@ -1058,9 +1058,9 @@ mod nonenchanted_adjective_tests {
             let filter=parse_simple_object_filter_words(words,false).unwrap();
             assert_eq!(filter.card_types,vec![CardType::Creature]);
             assert!(filter.with_attached_object.is_none());
-            assert_eq!(filter.without_attached_object.as_deref(),Some(&ObjectFilter {
-                card_types:vec![CardType::Enchantment],subtypes:vec![Subtype::Aura],..ObjectFilter::default()
-            }));
+            assert_eq!(filter.without_attached_object.as_deref(),Some(&ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
+                card_types:vec![CardType::Enchantment],subtypes:vec![Subtype::Aura],..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })));
         }
     }
 }

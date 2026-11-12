@@ -47,10 +47,10 @@ fn shared_subject_targeting_prefers_live_source_then_retained_color() {
             TargetingInvalidReason::HasProtection,
         ),
         (
-            StaticAbility::hexproof_from(ObjectFilter {
+            StaticAbility::hexproof_from(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 colors: Some(ColorSet::RED),
                 ..Default::default()
-            }),
+            })),
             TargetingInvalidReason::HasHexproofFrom,
         ),
     ] {
@@ -125,10 +125,10 @@ fn shared_subject_targeting_restrictions_use_retained_source_filter_facts() {
         .cant_be_targeted_from
         .push(ObjectCantBeTargetedFrom {
             object: target,
-            source_filter: ObjectFilter {
+            source_filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 colors: Some(ColorSet::RED),
                 ..Default::default()
-            },
+            }),
             controller: alice,
         });
     let snapshot = ObjectSnapshot::from_object(game.object(source).unwrap(), &game);

@@ -3893,11 +3893,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
             // "it has no oil counters on it".
             if let Some(absent) = &filter.without_counter
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     without_counter: None,
                     zone: None,
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
             {
                 return match absent {
                     ironsmith_core::CounterConstraint::Typed(counter_type) => format!(
@@ -4169,12 +4169,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             // card type.
             if tag.as_str().starts_with("moved_")
                 && filter.mana_value.is_some()
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     mana_value: None,
                     zone: None,
                     union_surface: Default::default(),
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
             {
                 let mut bare = filter.clone();
                 bare.zone = None;
@@ -4247,12 +4247,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             // Regent): a subtype check on the token the ability just created.
             if tag.as_str().starts_with("created_")
                 && let [subtype] = filter.subtypes.as_slice()
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     subtypes: Vec::new(),
                     zone: None,
                     union_surface: Default::default(),
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
             {
                 return format!(
                     "the token is {}",
@@ -4271,13 +4271,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                         && constraint.relation
                             == crate::filter::TaggedOpbjectRelation::ManaValueLtTagged
                 )
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     excluded_card_types: Vec::new(),
                     tagged_constraints: Vec::new(),
                     zone: None,
                     union_surface: Default::default(),
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
             {
                 return "it's a spell with lesser mana value".to_string();
             }
@@ -4301,12 +4301,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             // Naktamun): a bare entered-this-turn check on the referenced
             // object.
             if filter.entered_battlefield_this_turn
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     entered_battlefield_this_turn: false,
                     zone: None,
                     union_surface: Default::default(),
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
             {
                 use ironsmith_core::DemonstrativeAntecedentSurface as Surface;
                 let subject = match filter.demonstrative_antecedent_surface() {
@@ -4322,13 +4322,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             // permanent status reads as a predicate adjective.
             if (filter.renowned || filter.modified)
                 && !(filter.renowned && filter.modified)
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     renowned: false,
                     modified: false,
                     zone: None,
                     union_surface: Default::default(),
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
                 && matches!(filter.zone, None | Some(Zone::Battlefield))
             {
                 return if filter.renowned { "it's renowned" } else { "it's modified" }.to_string();
@@ -4338,11 +4338,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             if let Some(crate::filter::Comparison::EqualExpr(bound)) = &filter.power
                 && let Value::LeastPower(among) = bound.as_ref()
                 && *among == ObjectFilter::creature().in_zone(Zone::Battlefield)
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     power: None,
                     union_surface: Default::default(),
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
             {
                 return "it has the least power or is tied for least power among creatures on the battlefield".into();
             }
@@ -4352,12 +4352,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 && relation.kind == ironsmith_core::ObjectCharacteristicRelationKind::SharesAny
                 && relation.characteristics.as_slice() == [ironsmith_core::ObjectCharacteristic::Name]
                 && relation.comparison.zone == Some(Zone::Battlefield)
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     characteristic_relations: Vec::new(),
                     union_surface: Default::default(),
                     zone: None,
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
             {
                 return "another permanent with the same name is on the battlefield".to_string();
             }
@@ -4366,13 +4366,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             if filter.nontoken
                 && filter.card_types.len() == 1
                 && filter.zone.is_none()
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     card_types: Vec::new(),
                     nontoken: false,
                     use_face_up_characteristics: false,
                     union_surface: Default::default(),
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
             {
                 return format!(
                     "it's {}",
@@ -4437,14 +4437,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 }
             }
             if let [attacked, blocked] = filter.any_of.as_slice() {
-                let attacked_only = ObjectFilter {
+                let attacked_only = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     attacked_this_turn: true,
-                    ..ObjectFilter::default()
-                };
-                let blocked_only = ObjectFilter {
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                });
+                let blocked_only = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     blocked_this_turn: true,
-                    ..ObjectFilter::default()
-                };
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                });
                 let mut rest = filter.clone();
                 rest.any_of.clear();
                 if rest.zone == Some(Zone::Battlefield) {
@@ -4716,10 +4716,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             // not a type check.
             if let [constraint] = filter.tagged_constraints.as_slice()
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::SameStableId
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     tagged_constraints: Vec::new(),
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
             {
                 return "it's that card".to_string();
             }
@@ -8703,12 +8703,12 @@ fn describe_last_known_tagged_object_condition(tag: &TagKey, filter: &ObjectFilt
         && let [constraint] = filter.tagged_constraints.as_slice()
         && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
         && constraint.tag.as_str() == "__it__"
-        && (ObjectFilter {
+        && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             tagged_constraints: Vec::new(),
             union_surface: Default::default(),
             zone: None,
-            ..filter.clone()
-        }) == ObjectFilter::default()
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+        })) == ObjectFilter::default()
     {
         return "it was cast this way".to_string();
     }

@@ -29,7 +29,7 @@ pub fn accursed_duneyard() -> CardDefinition {
 /// Matches: Shade, Skeleton, Specter, Spirit, Vampire, Wraith, or Zombie.
 #[cfg(test)]
 fn undead_creature_filter() -> ObjectFilter {
-    ObjectFilter {
+    ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         card_types: vec![CardType::Creature],
         subtypes: vec![
@@ -42,7 +42,7 @@ fn undead_creature_filter() -> ObjectFilter {
             Subtype::Zombie,
         ],
         ..Default::default()
-    }
+    })
 }
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]

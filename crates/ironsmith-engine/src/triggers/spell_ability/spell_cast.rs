@@ -1542,13 +1542,13 @@ mod tests {
     #[test]
     fn adventure_creature_spell_uses_rules_characteristic_surface() {
         for stack_kind in [None, Some(crate::filter::StackObjectKind::Spell)] {
-            let filter = ObjectFilter {
+            let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Stack),
                 stack_kind,
                 card_types: vec![CardType::Creature],
                 subtypes: vec![Subtype::Adventure],
                 ..Default::default()
-            };
+            });
             let trigger = SpellCastTrigger::new(Some(filter), PlayerFilter::You);
 
             assert_eq!(
@@ -1560,12 +1560,12 @@ mod tests {
 
     #[test]
     fn adventure_creature_spell_special_surface_rejects_qualified_near_misses() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             card_types: vec![CardType::Creature],
             subtypes: vec![Subtype::Adventure],
             ..Default::default()
-        };
+        });
 
         let mut owned = filter.clone();
         owned.owner = Some(PlayerFilter::You);

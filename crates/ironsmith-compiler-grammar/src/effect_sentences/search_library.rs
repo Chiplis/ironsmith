@@ -383,10 +383,10 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
             let TargetAst::Object(graveyard, _, _) = graveyard_target else {
                 unreachable!()
             };
-            let filter = ObjectFilter {
+            let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 any_of: vec![ObjectFilter::source(), graveyard],
                 ..Default::default()
-            };
+            });
             effects.push(EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 player,
@@ -420,7 +420,7 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
                 return Err(CardTextError::ParseError("unsupported hand and graveyard subset shuffle".into()));
             };
             crate::word_claims::claim_tokens(&target_tokens[..=and_token]);
-            let filter = ObjectFilter { any_of: vec![hand, graveyard], ..Default::default() };
+            let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { any_of: vec![hand, graveyard], ..Default::default() });
             effects.push(EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 player,

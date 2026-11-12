@@ -3590,19 +3590,19 @@ fn try_parse_labeled_line_dispatch_inner(
         && trigger_with_intro.len() > 1
     {
         let source_zone_condition =
-            PredicateAst::Source(SourcePredicateAst::SourceMatches(crate::ObjectFilter {
+            PredicateAst::Source(SourcePredicateAst::SourceMatches(crate::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 any_of: vec![
-                    crate::ObjectFilter {
+                    crate::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         zone: Some(crate::zone::Zone::Command),
                         ..Default::default()
-                    },
-                    crate::ObjectFilter {
+                    }),
+                    crate::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         zone: Some(crate::zone::Zone::Battlefield),
                         ..Default::default()
-                    },
+                    }),
                 ],
                 ..Default::default()
-            }));
+            })));
         let triggered = RecognizedTriggeredLine {
             info: line.info.clone(),
             full_text: render_token_slice(&body_line.tokens),

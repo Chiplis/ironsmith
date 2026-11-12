@@ -151,12 +151,12 @@ fn assert_counter_body(name: &str, definition: &CardDefinition) {
         let ChooseSpec::Object(filter) = inner.unhinted() else { panic!("{name}: {inner:?}"); };
         let permanent = if put { ObjectFilter::permanent().with_counter_type(CounterType::Time) }
             else { ObjectFilter::permanent() };
-        assert_eq!(filter, &ObjectFilter {
+        assert_eq!(filter, &ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![permanent, ObjectFilter::default().in_zone(Zone::Exile)
                 .with_alternative_cast(ironsmith::filter::AlternativeCastKind::Suspend)
                 .with_counter_type(CounterType::Time)],
-            ..ObjectFilter::default()
-        }, "{name}, mode {mode}: exact scoped target union");
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }), "{name}, mode {mode}: exact scoped target union");
     }
 }
 

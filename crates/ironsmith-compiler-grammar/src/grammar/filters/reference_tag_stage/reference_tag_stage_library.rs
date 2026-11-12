@@ -133,10 +133,10 @@ pub(super) fn parse_permanent_or_suspended_card_disjunction(
         return None;
     }
 
-    Some(ObjectFilter {
+    Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![left_filter, right_filter],
-        ..ObjectFilter::default()
-    })
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    }))
 }
 
 pub(super) fn parse_permanent_or_suspended_card_arm(

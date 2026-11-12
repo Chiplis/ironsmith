@@ -2424,10 +2424,10 @@ mod tests {
     fn non_target_move_to_zone_does_not_request_cast_time_targets() {
         let move_choice = MoveToZoneEffect::new(
             ChooseSpec::WithCount(
-                Box::new(ChooseSpec::Object(crate::filter::ObjectFilter {
+                Box::new(ChooseSpec::Object(crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     zone: Some(Zone::Exile),
-                    ..crate::filter::ObjectFilter::default()
-                })),
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::filter::ObjectFilter::default())
+                }))),
                 crate::effect::ChoiceCount::exactly(1),
             ),
             Zone::Graveyard,
@@ -2436,10 +2436,10 @@ mod tests {
         assert!(move_choice.target_selection_profile().is_none());
 
         let move_target = MoveToZoneEffect::new(
-            ChooseSpec::target(ChooseSpec::Object(crate::filter::ObjectFilter {
+            ChooseSpec::target(ChooseSpec::Object(crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Battlefield),
-                ..crate::filter::ObjectFilter::default()
-            })),
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::filter::ObjectFilter::default())
+            }))),
             Zone::Graveyard,
             false,
         );

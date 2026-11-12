@@ -35,10 +35,10 @@ pub(super) fn lower_sacrifice_then_put_additional(
     let mut effects = if shape.plain_word_sacrifice {
         vec![EffectAst::subject_verb_sacrifice(
             PlayerAst::Implicit,
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 source: true,
                 ..Default::default()
-            },
+            }),
             1,
             None,
         )]

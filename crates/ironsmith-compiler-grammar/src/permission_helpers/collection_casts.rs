@@ -617,10 +617,10 @@ fn parse_unpriced_collection_cast_clause(
             let mut hand = filter.clone();
             hand.zone = Some(Zone::Hand);
             hand.owner = Some(PlayerFilter::You);
-            filter = ObjectFilter {
+            filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 any_of: vec![graveyard, hand],
-                ..ObjectFilter::default()
-            };
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            });
         }
         Collection::YourHandGraveyardOrOwnedExile => {
             let branch = |zone| {
@@ -629,10 +629,10 @@ fn parse_unpriced_collection_cast_clause(
                 branch.owner = Some(PlayerFilter::You);
                 branch
             };
-            filter = ObjectFilter {
+            filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 any_of: vec![branch(Zone::Hand), branch(Zone::Graveyard), branch(Zone::Exile)],
-                ..ObjectFilter::default()
-            };
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            });
         }
         Collection::OwnedOutsideGame => {
             filter.zone = Some(Zone::OutsideGame);
@@ -759,24 +759,24 @@ mod castable_card_filter_tests {
 
     #[test]
     fn normalization_only_removes_spell_stack_requirements_from_card_candidates() {
-        let mut instant = ObjectFilter {
+        let mut instant = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             stack_kind: Some(StackObjectKind::Spell),
             card_types: vec![CardType::Instant],
             owner: Some(PlayerFilter::You),
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         instant.mana_value = Some(Comparison::LessThanOrEqual(3));
-        let ability = ObjectFilter {
+        let ability = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             stack_kind: Some(StackObjectKind::Ability),
             controller: Some(PlayerFilter::Opponent),
-            ..ObjectFilter::default()
-        };
-        let mut filter = ObjectFilter {
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
+        let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![instant, ability.clone()],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         normalize_castable_card_filter(&mut filter);
 
         let card = &filter.any_of[0];

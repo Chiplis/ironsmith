@@ -3043,10 +3043,10 @@ fn compile_conditional_ast(
                             }
                         };
                         let mut cast = cast.clone();
-                        cast.required_spell = Some(ObjectFilter {
+                        cast.required_spell = Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                             mana_value: Some(comparison),
-                            ..ObjectFilter::default()
-                        });
+                            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                        }));
                         let mut may_effect = may_effect.clone();
                         may_effect.effects[0] = Effect::new(cast);
                         Effect::new(may_effect)

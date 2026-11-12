@@ -150,13 +150,13 @@ pub(super) fn each_player_optional_reveal_drives_their_own_token_count() {
 
 #[test]
 pub(super) fn explicit_static_label_capitalizes_conjunctive_subtype_anthem_body() {
-    let mut filter = ObjectFilter {
+    let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         controller: Some(PlayerFilter::You),
         subtypes: vec![Subtype::Spider, Subtype::Boar, Subtype::Bat],
         other: true,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     filter.set_conjunctive_set_surface(true);
     let model: crate::static_abilities::CompiledStaticAbility = ironsmith_core::StaticAbility::new(
         ironsmith_core::Anthem::<ironsmith_core::Condition>::new(filter, 1, 1),
@@ -1224,10 +1224,10 @@ pub(super) fn describe_effect_list_compacts_draw_reveal_discard_nonland_sequence
         Effect::new(crate::effects::ConditionalEffect::new(
             Condition::Not(Box::new(Condition::TaggedObjectMatches(
                 revealed.clone(),
-                ObjectFilter {
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     card_types: vec![CardType::Land],
                     ..Default::default()
-                },
+                }),
             ))),
             vec![Effect::new(crate::effects::DiscardEffect::new_with_filter(
                 Value::Fixed(1),
@@ -5302,30 +5302,30 @@ pub(super) fn warp_world_surface_requires_a_type_union_not_an_all_types_intersec
     }
 
     let expected = "Each player shuffles all permanents they own into their library, then reveals that many cards from the top of their library. Each player puts all artifact, creature, and land cards revealed this way onto the battlefield, then does the same for enchantment cards, then puts all cards revealed this way that weren't put onto the battlefield on the bottom of their library";
-    let union = ObjectFilter {
+    let union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![
             CardType::Artifact,
             CardType::Creature,
             CardType::Land,
             CardType::Enchantment,
         ],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     assert_ne!(
         describe_effect(&warp_world_shape(union)),
         expected,
         "a per-card conditional does not implement ordered category movement phases"
     );
 
-    let intersection = ObjectFilter {
+    let intersection = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         all_card_types: vec![
             CardType::Artifact,
             CardType::Creature,
             CardType::Land,
             CardType::Enchantment,
         ],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     assert_ne!(
         describe_effect(&warp_world_shape(intersection)),
         expected,
@@ -5472,7 +5472,7 @@ fn tagged_exchange_pair_renders_across_target_declaration_segments() {
     let counterpart = TagKey::from("chosen_counterpart");
     let chooser = PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(entering.clone()));
     let mut filter = ObjectFilter::permanent();
-    filter.card_types = ObjectFilter::permanent_card().card_types;
+    filter.card_types = ObjectFilter::permanent_card().card_types.clone();
     filter.controller = Some(PlayerFilter::excluding(PlayerFilter::Any, chooser.clone()));
     filter.tagged_constraints.push(TaggedObjectConstraint {
         tag: entering.clone(),
@@ -6464,10 +6464,10 @@ pub(super) fn zone_localized_creature_union_preserves_other_and_card_nouns() {
     let mut graveyard = ObjectFilter::creature().in_zone(Zone::Graveyard);
     graveyard.set_explicit_card_type_noun(Some(CardType::Creature));
     graveyard.set_explicit_card_noun(true);
-    let union = ObjectFilter {
+    let union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![battlefield, graveyard.clone()],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let choice = ChooseSpec::target(ChooseSpec::Object(union)).with_count(ChoiceCount::up_to(1));
     let expected = "Exile up to one other target creature from the battlefield or creature card from a graveyard";
     assert_eq!(
@@ -6477,13 +6477,13 @@ pub(super) fn zone_localized_creature_union_preserves_other_and_card_nouns() {
 
     let mut wrong_graveyard = graveyard;
     wrong_graveyard.other = true;
-    let wrong_union = ObjectFilter {
+    let wrong_union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![
             ObjectFilter::creature().in_zone(Zone::Battlefield),
             wrong_graveyard,
         ],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let wrong_choice =
         ChooseSpec::target(ChooseSpec::Object(wrong_union)).with_count(ChoiceCount::up_to(1));
     assert_ne!(
@@ -7436,21 +7436,21 @@ pub(super) fn copy_count_replacement_factors_identical_plural_retarget_suffix() 
 #[test]
 pub(super) fn revealed_hand_subtype_color_union_keeps_scope_and_shared_card_noun() {
     let owner = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent));
-    let mut filter = ObjectFilter {
+    let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(owner),
         any_of: vec![
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 subtypes: vec![crate::types::Subtype::Forest],
-                ..ObjectFilter::default()
-            },
-            ObjectFilter {
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 colors: Some(crate::color::ColorSet::GREEN),
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
         ],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     filter.set_explicit_card_noun(true);
     filter.set_conjunctive_set_surface(true);
     let look = Effect::new(crate::effects::LookAtHandEffect::reveal(

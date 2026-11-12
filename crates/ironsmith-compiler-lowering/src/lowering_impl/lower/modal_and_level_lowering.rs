@@ -420,10 +420,10 @@ pub fn lower_parsed_modal(
             let mut conditions = choose_both_control_card_types.iter().map(|card_type| {
                 crate::effect::Condition::PlayerControls {
                     player: crate::target::PlayerFilter::You,
-                    filter: crate::filter::ObjectFilter {
+                    filter: crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         card_types: vec![*card_type],
                         ..Default::default()
-                    },
+                    }),
                 }
             });
             let first = conditions

@@ -1998,7 +1998,7 @@
                 &cant.restriction
             && blockers.has_plural_object_noun_surface()
             && !blockers.excluded_static_abilities.is_empty()
-            && (ObjectFilter { source_surface: None, ..attacker.clone() }) == ObjectFilter::source()
+            && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { source_surface: None, ..ironsmith_core::filter_model::ObjectFilterFields::from(attacker.clone()) })) == ObjectFilter::source()
             && let Some(subject) = {
                 let mut bare = blockers.clone();
                 bare.set_plural_object_noun_surface(false);
@@ -2018,7 +2018,7 @@
         if cant.start == crate::effect::RestrictionStart::Immediate
             && cant.duration == Until::EndOfTurn
             && let crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } = &cant.restriction
-            && (ObjectFilter { source_surface: None, ..attacker.clone() }) == ObjectFilter::source()
+            && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { source_surface: None, ..ironsmith_core::filter_model::ObjectFilterFields::from(attacker.clone()) })) == ObjectFilter::source()
             && let Some(allowed) = describe_except_by_characteristic_blockers(blockers)
                 .or_else(|| describe_except_by_subtype_blockers(blockers))
         {
@@ -8849,10 +8849,10 @@
         // those cards".
         let object_text = match grant_play_tagged.filter.as_ref() {
             Some(filter) if grant_play_tagged.cast_pool_is_plural && helper_tag => {
-                let land_only = crate::target::ObjectFilter {
+                let land_only = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     card_types: vec![crate::types::CardType::Land],
-                    ..crate::target::ObjectFilter::default()
-                };
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::target::ObjectFilter::default())
+                });
                 if grant_play_tagged.allow_land && *filter == land_only {
                     "lands from among those cards".to_string()
                 } else if !grant_play_tagged.allow_land && *filter != crate::target::ObjectFilter::default() {

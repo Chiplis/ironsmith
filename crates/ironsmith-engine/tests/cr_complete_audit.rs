@@ -32031,11 +32031,11 @@ fn cr_709_4b_split_card_mana_symbol_queries_see_both_halves_outside_stack() {
                             let mut filter = if historical {
                                 ObjectFilter::tagged("symbol subject")
                             } else {
-                                ObjectFilter {
+                                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                                     specific: Some(subject),
                                     zone: Some(zone),
-                                    ..ObjectFilter::default()
-                                }
+                                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                                })
                             };
                             let required_count = if query == 0 {
                                 filter.colored_mana_symbol_count =
@@ -62600,10 +62600,10 @@ fn cr_400_7_607_2c_old_leaves_trigger_excludes_tokens_created_by_returned_incarn
                                 .card_types(vec![CardType::Creature])
                                 .power_toughness(ironsmith::PowerToughness::fixed(2, 3))
                                 .build();
-                        let linked = ObjectFilter {
+                        let linked = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                             created_with_source: true,
-                            ..ObjectFilter::creature().in_zone(Zone::Battlefield)
-                        };
+                            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature().in_zone(Zone::Battlefield))
+                        });
                         let definition = CardDefinitionBuilder::new(
                             CardId::new(),
                             "Token producer with a linked leaves reader",
@@ -64588,8 +64588,8 @@ fn cr_115_7a_change_all_targets_is_atomic_when_one_slot_has_no_alternative() {
                         .card_types(vec![CardType::Creature]).power_toughness(ironsmith::PowerToughness::fixed(2,8)).build();
                     let ids:Vec<_>=(0..4).map(|_|game.create_object_from_definition(&creature,caster,Zone::Battlefield)).collect();
                     let [a,b,c,d]:[ObjectId;4]=ids.clone().try_into().unwrap();
-                    let first=if pattern==1 { ObjectFilter {any_of:vec![ObjectFilter::specific(a),ObjectFilter::specific(c)],..ObjectFilter::default()} } else {ObjectFilter::specific(a)};
-                    let second=if pattern==2 {ObjectFilter::specific(b)} else {ObjectFilter {any_of:vec![ObjectFilter::specific(b),ObjectFilter::specific(d)],..ObjectFilter::default()}};
+                    let first=if pattern==1 { ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {any_of:vec![ObjectFilter::specific(a),ObjectFilter::specific(c)],..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())}) } else {ObjectFilter::specific(a)};
+                    let second=if pattern==2 {ObjectFilter::specific(b)} else {ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {any_of:vec![ObjectFilter::specific(b),ObjectFilter::specific(d)],..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())})};
                     let spell=game.create_object_from_definition(&CardDefinitionBuilder::new(CardId::new(),"Two independent target requirements")
                         .card_types(vec![card_type]).mana_cost(ManaCost::new()).with_spell_effect(vec![
                             Effect::new(PutCountersEffect::new(CounterType::Charge,1,ChooseSpec::target(ChooseSpec::Object(first)))),
@@ -81321,7 +81321,7 @@ fn cr_audit_simultaneous_duration_returns() -> Vec<CrAuditSimultaneousDurationOb
                                 // Only the two watchers are artifacts on the battlefield.
                                 // This one actual movement instruction ends both durations.
                                 cr_audit_announce_target_domain_effect(&mut game,actor,0,Effect::new(ExileEffect::all(
-                                    ObjectFilter{zone:Some(Zone::Battlefield),card_types:vec![CardType::Artifact],..Default::default()})),&mut dm);
+                                    ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {zone:Some(Zone::Battlefield),card_types:vec![CardType::Artifact],..Default::default()}))),&mut dm);
                                 settle(&mut game,&mut queue,&mut dm);
                             } else {
                                 for group in order {
@@ -95583,14 +95583,14 @@ fn cr_702_74a_evoke_works_from_library_exile_and_command_with_native_cast_permis
         // The command-zone case actually puts the creature card there via a
         // separate native spell. It is not designated as a commander; the
         // ordinary permission, rather than commander rules, allows casting.
-        let permission=CardDefinitionBuilder::new(CardId::new(),"Native ordinary remote-zone creature casting permission").card_types(vec![CardType::Artifact]).with_ability(Ability::static_ability(StaticAbility::grants(GrantSpec::new(Grantable::play_from(),ObjectFilter{card_types:vec![CardType::Creature],owner:Some(PlayerFilter::You),..Default::default()},from)))).build();let grant=g.create_object_from_definition(&permission,actor,Zone::Battlefield);
+        let permission=CardDefinitionBuilder::new(CardId::new(),"Native ordinary remote-zone creature casting permission").card_types(vec![CardType::Artifact]).with_ability(Ability::static_ability(StaticAbility::grants(GrantSpec::new(Grantable::play_from(),ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {card_types:vec![CardType::Creature],owner:Some(PlayerFilter::You),..Default::default()}),from)))).build();let grant=g.create_object_from_definition(&permission,actor,Zone::Battlefield);
         let draw_def=CardDefinitionBuilder::new(CardId::new(),"Native actual remote-zone Mulldrifter draw witness").card_types(vec![CardType::Artifact]).build();let mut library=Vec::new();for _ in 0..4{let id=g.create_object_from_definition(&draw_def,actor,Zone::Library);library.push(g.object(id).unwrap().stable_id);}
         let paid=if evoke{3}else{5};let mut payers=Vec::new();for n in 0..paid{let symbol=if n==0{ManaSymbol::Blue}else{ManaSymbol::Colorless};let payer=CardDefinitionBuilder::new(CardId::new(),"Native actual remote-zone Evoke payer").card_types(vec![CardType::Artifact]).with_ability(Ability::mana(ironsmith::cost::TotalCost::free(),vec![symbol])).build();payers.push(g.create_object_from_definition(&payer,actor,Zone::Battlefield));}
         let mut card=g.create_object_from_definition(&definition,actor,if from==Zone::Command{Zone::Graveyard}else{from});let physical=g.object(card).unwrap().stable_id;
         let transport_hand=if from==Zone::Command{let transport=CardDefinitionBuilder::new(CardId::new(),"Native actual command-zone placement instruction").card_types(vec![CardType::Instant]).mana_cost(ManaCost::new()).with_spell_effect(vec![Effect::new(MoveToZoneEffect::new(ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().in_zone(Zone::Graveyard).owned_by(PlayerFilter::You))),Zone::Command,false))]).build();Some(g.create_object_from_definition(&transport,actor,Zone::Hand))}else{None};let mut d=Choices{actor,transport_target:transport_hand.map(|_|card),transport_targets:0};let mut q=TriggerQueue::new();ironsmith::game_loop::advance_priority_with_dm(&mut g,&mut q,&mut d).unwrap();
         if let Some(hand)=transport_hand{let a=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==hand)).expect("real zero-cost placement spell has an actual creature-card target in graveyard");cr_audit_complete_priority_action_with_dm(&mut g,actor,a,&mut d,&mut q).unwrap();assert_eq!(g.stack.len(),1);one(&mut g,&mut q,&mut d);assert!(g.stack.is_empty()&&q.is_empty());let old=card;card=g.find_object_by_stable_id(physical).unwrap();assert_ne!(card,old);assert_eq!(g.object(card).unwrap().zone,Zone::Command);assert_eq!(g.object(card).unwrap().owner,actor);assert!(g.player(actor).unwrap().get_commanders().is_empty());assert_eq!(d.transport_targets,1);command_transports+=1;eprintln!("evoke-remote-command-placement {label} transported=true target_choices=1 commanders=0");}
         for payer in payers{let action=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,ability_index:0}if *source==payer)).unwrap();cr_audit_complete_priority_action_with_dm(&mut g,actor,action,&mut d,&mut q).unwrap();assert!(g.is_tapped(payer));mana_actions+=1;}
-        let spec=g.current_abilities(grant).unwrap().iter().find_map(|a|match &a.kind{ironsmith::AbilityKind::Static(s)=>s.grant_spec(),_=>None}).expect("actual static PlayFrom permission is present");assert!(matches!(spec.grantable,Grantable::PlayFrom));assert_eq!(spec.zone,from);assert_eq!(spec.beneficiary,PlayerFilter::You);assert_eq!(spec.filter,ObjectFilter{card_types:vec![CardType::Creature],owner:Some(PlayerFilter::You),..Default::default()});assert_eq!(g.current_controller(grant),Some(actor));assert_eq!(g.object(grant).unwrap().zone,Zone::Battlefield);assert_eq!(g.object(card).unwrap().owner,actor);assert_eq!(g.object(card).unwrap().zone,from);assert!(g.current_characteristics(card).unwrap().card_types.contains(&CardType::Creature));assert!(spec.usage_limit.is_none()&&spec.max_plays.is_none());
+        let spec=g.current_abilities(grant).unwrap().iter().find_map(|a|match &a.kind{ironsmith::AbilityKind::Static(s)=>s.grant_spec(),_=>None}).expect("actual static PlayFrom permission is present");assert!(matches!(spec.grantable,Grantable::PlayFrom));assert_eq!(spec.zone,from);assert_eq!(spec.beneficiary,PlayerFilter::You);assert_eq!(spec.filter,ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {card_types:vec![CardType::Creature],owner:Some(PlayerFilter::You),..Default::default()}));assert_eq!(g.current_controller(grant),Some(actor));assert_eq!(g.object(grant).unwrap().zone,Zone::Battlefield);assert_eq!(g.object(card).unwrap().owner,actor);assert_eq!(g.object(card).unwrap().zone,from);assert!(g.current_characteristics(card).unwrap().card_types.contains(&CardType::Creature));assert!(spec.usage_limit.is_none()&&spec.max_plays.is_none());
         // Removing the permission must revoke every remote casting method,
         // even with the actual mana already available.
         let mut without_permission = g.clone();

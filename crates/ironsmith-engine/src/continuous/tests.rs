@@ -172,7 +172,7 @@ fn dynamic_pt_uses_greatest_mana_value_from_matching_spell_cast_history() {
         .build();
     let token_id = game.create_object_from_card(&token, alice, Zone::Battlefield);
 
-    let mut spell_history = ObjectFilter {
+    let mut spell_history = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Stack),
         cast_by: Some(PlayerFilter::You),
         cast_this_turn: true,
@@ -180,8 +180,8 @@ fn dynamic_pt_uses_greatest_mana_value_from_matching_spell_cast_history() {
             ObjectFilter::default().with_type(CardType::Instant),
             ObjectFilter::default().with_type(CardType::Sorcery),
         ],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     spell_history.set_conjunctive_set_surface(true);
     let amount = Value::GreatestManaValue(spell_history);
     add_dynamic_base_pt(&mut game, token_id, alice, amount.clone(), amount);
@@ -3226,7 +3226,7 @@ fn retained_copy_dependency_programs_roundtrip_and_follow_ability_mapping() {
 fn optional_text_cast_selection_matches_across_all_characteristic_calculators() {
     use crate::ability::Ability;
     use crate::effects::DestroyEffect;
-    let restricted=ChooseSpec::target(ChooseSpec::Object(ObjectFilter {colors:Some(crate::color::ColorSet::BLACK),..ObjectFilter::creature()}));
+    let restricted=ChooseSpec::target(ChooseSpec::Object(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {colors:Some(crate::color::ColorSet::BLACK),..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature())})));
     let unrestricted=ChooseSpec::target(ChooseSpec::creature());
     let program=|spec|crate::resolution::ResolutionProgram::from_effects(vec![crate::effect::Effect::new(DestroyEffect::with_spec(spec))]);
     let model:crate::static_abilities::CompiledStaticAbility=ironsmith_core::StaticAbility {

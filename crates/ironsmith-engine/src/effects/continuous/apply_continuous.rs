@@ -2747,11 +2747,11 @@ mod tests {
         creature_arm.tagged_constraints.push(constraint.clone());
         let mut equipment_arm = ObjectFilter::default().with_subtype(Subtype::Equipment);
         equipment_arm.tagged_constraints.push(constraint);
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             any_of: vec![creature_arm, equipment_arm],
             ..Default::default()
-        };
+        });
         assert!(object_filter_uses_context_tag(&filter));
 
         let mut apply = ApplyContinuousEffect::new_runtime(
@@ -2784,13 +2784,13 @@ mod tests {
 
     #[test]
     fn ordinary_any_of_filter_does_not_claim_a_context_tag_dependency() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![
                 ObjectFilter::creature(),
                 ObjectFilter::default().with_subtype(Subtype::Equipment),
             ],
             ..Default::default()
-        };
+        });
 
         assert!(!object_filter_uses_context_tag(&filter));
     }

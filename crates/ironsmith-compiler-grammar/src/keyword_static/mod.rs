@@ -3774,10 +3774,10 @@ fn parse_players_cant_cast_spells_sharing_last_spell_color_line(
     ) {
         return Ok(None);
     }
-    let spells = ObjectFilter {
+    let spells = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         shares_color_with_last_spell_cast_this_turn: true,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     Ok(Some(StaticAbility::restriction(
         crate::effect::Restriction::cast_spells_matching(PlayerFilter::Any, spells),
         crate::lexer::render_token_slice(&clean).trim().to_string(),
@@ -3936,10 +3936,10 @@ fn parse_spells_and_lands_with_chosen_names_cant_line(
         return Ok(None);
     }
     let display = crate::lexer::render_token_slice(&clean).trim().to_string();
-    let named = ObjectFilter {
+    let named = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         name: Some("{chosen name}".to_string()),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     Ok(Some(vec![
         StaticAbility::restriction(
             crate::effect::Restriction::cast_spells_matching(PlayerFilter::Any, named.clone()),

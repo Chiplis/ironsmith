@@ -462,10 +462,10 @@ fn target_count_without_a_target_predicate_can_match_zero_targets() {
     let game = GameState::new(vec!["Alice".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let ctx = crate::filter::FilterContext::new(alice);
-    let mut filter = ObjectFilter {
+    let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         target_count: Some(crate::effect::ChoiceCount::exactly(0)),
         ..Default::default()
-    };
+    });
 
     assert!(chosen_targets_match_cost_filter(&game, &filter, &ctx, &[]));
 

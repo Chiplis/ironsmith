@@ -79,7 +79,7 @@ fn phased_out_endpoints_cannot_form_a_new_link_or_erase_an_existing_link(){
 }
 #[test]
 fn typed_link_filter_words_rewrite_without_renaming_opaque_relation_identity(){
- let black=ironsmith::ObjectFilter{colors:Some(ironsmith::color::ColorSet::BLACK),..Default::default()};
+ let black=ironsmith::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {colors:Some(ironsmith::color::ColorSet::BLACK),..Default::default()});
  let original=Effect::new(ironsmith::effects::LinkPermanentsEffect{source:ChooseSpec::Object(black.clone()),target:ChooseSpec::Object(black),relation:"black relation".into(),require_creatures:true});
  let rewritten=original.with_text_change(ironsmith_core::TextChange::color(ironsmith::color::Color::Black,ironsmith::color::Color::Blue).unwrap()).unwrap();
  let link=rewritten.downcast_ref::<ironsmith::effects::LinkPermanentsEffect>().unwrap();

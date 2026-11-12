@@ -1816,8 +1816,8 @@ pub fn parse_must_block_if_able_clause(
                 );
                 let mut filter =
                     ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Triggering.bind());
-                filter.card_types = named.card_types;
-                filter.subtypes = named.subtypes;
+                filter.card_types = named.card_types.clone();
+                filter.subtypes = named.subtypes.clone();
                 filter
             } else if super::super::grammar::activation_restrictions::parse_target_indicator_tokens(
                 attacker_clause.tokens(),

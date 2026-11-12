@@ -445,7 +445,7 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
             }
             let mut filter = crate::target::ObjectFilter::default();
             filter.subtypes = types.added_subtypes.clone();
-            types.added_subtypes = rewrite_filter_words(&filter, change)?.subtypes;
+            types.added_subtypes = rewrite_filter_words(&filter, change)?.subtypes.clone();
         }
         for counters in &mut model.enters_with_counters {
             counters.amount = rewrite_value_words(&counters.amount, change)?;
@@ -866,8 +866,8 @@ mod tests {
     use ironsmith_core::{Color, ColorSet, ManaCost, ManaSymbol, Subtype};
 
     fn change() -> TextChange { TextChange::color(Color::Black, Color::Blue).unwrap() }
-    fn black() -> ObjectFilter { ObjectFilter { colors: Some(ColorSet::BLACK), ..ObjectFilter::default() } }
-    fn blue() -> ObjectFilter { ObjectFilter { colors: Some(ColorSet::BLUE), ..ObjectFilter::default() } }
+    fn black() -> ObjectFilter { ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLACK), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) }) }
+    fn blue() -> ObjectFilter { ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLUE), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) }) }
     fn word_effect() -> Effect { Effect::new(DrawCardsEffect::you(Value::Count(black()))) }
 
     #[test]

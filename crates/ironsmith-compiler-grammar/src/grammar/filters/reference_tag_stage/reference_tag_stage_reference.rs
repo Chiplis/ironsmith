@@ -2166,19 +2166,19 @@ fn parse_object_filter_inner_unchecked(
                 // not the one permanent carrying this source Equipment.
                 // Keep a pre-existing attachment condition conjunctive: an
                 // Aura and an Equipment may be different attached objects.
-                let equipment = ObjectFilter {
+                let equipment = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     subtypes: vec![Subtype::Equipment],
-                    ..ObjectFilter::default()
-                };
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                });
                 if filter.with_attached_object.is_none() {
                     filter.with_attached_object = Some(Box::new(equipment));
                 } else {
                     let previous_union = std::mem::take(&mut filter.any_of);
-                    filter.any_of = vec![ObjectFilter {
+                    filter.any_of = vec![ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         with_attached_object: Some(Box::new(equipment)),
                         any_of: previous_union,
-                        ..ObjectFilter::default()
-                    }];
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                    })];
                 }
             }
             "equipped" if !is_negated_word => {
@@ -2793,14 +2793,14 @@ fn parse_object_filter_inner_unchecked(
         disjunction
             .subtypes
             .retain(|subtype| *subtype != or_subtype);
-        let legendary_branch = ObjectFilter {
+        let legendary_branch = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             supertypes: vec![Supertype::Legendary],
-            ..ObjectFilter::default()
-        };
-        let subtype_branch = ObjectFilter {
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
+        let subtype_branch = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             subtypes: vec![or_subtype],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         disjunction.any_of = vec![legendary_branch, subtype_branch];
         filter = disjunction;
     }

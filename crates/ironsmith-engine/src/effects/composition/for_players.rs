@@ -3879,11 +3879,11 @@ mod tests {
         let mut ctx = ExecutionContext::new(source, alice, &mut answers);
         ctx.tag_player("retained", alice);
         let tag = crate::tag::TagKey::from("readonly-selected");
-        let filter = crate::filter::ObjectFilter {
+        let filter = crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(crate::zone::Zone::Hand),
             owner: Some(PlayerFilter::IteratedPlayer),
             ..Default::default()
-        };
+        });
         let choose = crate::effects::ChooseObjectsEffect::new(
             filter,
             crate::effect::ChoiceCount::exactly(1),

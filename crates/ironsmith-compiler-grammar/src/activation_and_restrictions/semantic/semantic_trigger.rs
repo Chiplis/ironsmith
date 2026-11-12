@@ -2919,7 +2919,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             crate::word_claims::claim_words(origin_words);
             return Ok(TriggerSpec::Either(
                 Box::new(this_enters_battlefield_trigger_spec(
-                    source_filter.source_surface,
+                    source_filter.source_surface.clone(),
                     ironsmith_core::trigger_model::TriggerSubjectNumber::Singular,
                     origin_condition.clone(),
                 )),
@@ -3676,7 +3676,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             filter.owner = Some(PlayerFilter::You);
         }
         if subject_mentions_permanent(&subject_words) {
-            filter.card_types = ObjectFilter::permanent_card().card_types;
+            filter.card_types = ObjectFilter::permanent_card().card_types.clone();
         }
         if subject_mentions_card(&subject_words) {
             filter.nontoken = true;

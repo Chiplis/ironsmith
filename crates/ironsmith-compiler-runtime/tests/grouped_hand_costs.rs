@@ -436,12 +436,12 @@ fn whole_group_is_an_intersection_and_stale_reveal_or_discard_tags_fail_closed()
         ColorSet::BLUE.union(ColorSet::RED),
         0,
     );
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(PlayerFilter::You),
         shares_color: true,
         ..Default::default()
-    };
+    });
     let choose = ChooseObjectsEffect::new(filter, 3, PlayerFilter::You, "group");
     assert!(
         choose.can_execute_as_cost(&game, source, A).is_err(),

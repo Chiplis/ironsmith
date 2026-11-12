@@ -255,7 +255,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         // "Whenever <this card's name> attacks": the self-named subject is
         // the same source-only attack trigger as "this creature attacks".
         TriggerSpec::Attacks(filter)
-            if crate::filter::ObjectFilter { source_surface: None, ..filter.clone() }
+            if crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { source_surface: None, ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone()) })
                 == crate::filter::ObjectFilter::source() =>
         {
             Some(PlayerFilter::Defending)

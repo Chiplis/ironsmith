@@ -7,7 +7,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PermissionClauseSpec> {
     let source = rest.strip_prefix(&["if", "its", "colorless", "or", "it", "shares", "a", "color", "with"])
         .or_else(|| rest.strip_prefix(&["if", "it", "is", "colorless", "or", "it", "shares", "a", "color", "with"]))?;
     if !crate::util::is_source_reference_words(source) { return None; }
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         owner: Some(PlayerFilter::You),
         any_of: vec![
             ObjectFilter::default().colorless(),
@@ -15,7 +15,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PermissionClauseSpec> {
                 vec![ironsmith_core::ObjectCharacteristic::Color], ObjectFilter::source()),
         ],
         ..Default::default()
-    };
+    });
     crate::word_claims::claim_tokens(tokens);
     Some(PermissionClauseSpec::GrantBySpec {
         player: PlayerAst::You,

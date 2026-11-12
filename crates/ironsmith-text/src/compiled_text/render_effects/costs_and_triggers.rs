@@ -846,12 +846,12 @@ pub(super) fn describe_simple_discard_cost(
     if count == 1
         && discard.card_filter.as_ref().is_some_and(|filter| {
             *filter
-                == ObjectFilter {
+                == ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     zone: Some(Zone::Hand),
                     owner: Some(PlayerFilter::You),
                     last_drawn_this_turn: Some(PlayerFilter::You),
                     ..Default::default()
-                }
+                })
         })
     {
         return Some("Discard the last card you drew this turn".into());
@@ -877,7 +877,7 @@ pub(super) fn describe_simple_discard_cost(
             return None;
         }
         Some(filter) if filter.card_types.len() <= 1 => {
-            let expected = ObjectFilter {
+            let expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Hand),
                 card_types: filter.card_types.clone(),
                 subtypes: filter.subtypes.clone(),
@@ -885,7 +885,7 @@ pub(super) fn describe_simple_discard_cost(
                 name: filter.name.clone(),
                 other: filter.other,
                 ..Default::default()
-            };
+            });
             if filter != &expected || filter.subtypes.len() > 1 {
                 return None;
             }
@@ -942,11 +942,11 @@ pub(super) fn describe_simple_discard_cost(
 }
 
 pub(super) fn describe_discard_any_of_filter(filter: &ObjectFilter) -> Option<String> {
-    let expected = ObjectFilter {
+    let expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         any_of: filter.any_of.clone(),
         ..Default::default()
-    };
+    });
     if filter != &expected {
         return None;
     }
@@ -963,7 +963,7 @@ pub(super) fn describe_simple_hand_card_filter(filter: &ObjectFilter) -> Option<
     if !matches!(filter.owner.as_ref(), None | Some(PlayerFilter::You)) {
         return None;
     }
-    let mut expected = ObjectFilter {
+    let mut expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: filter.zone,
         owner: filter.owner.clone(),
         card_types: filter.card_types.clone(),
@@ -971,7 +971,7 @@ pub(super) fn describe_simple_hand_card_filter(filter: &ObjectFilter) -> Option<
         colors: filter.colors,
         name: filter.name.clone(),
         ..Default::default()
-    };
+    });
     if !matches!(expected.zone, None | Some(Zone::Hand)) {
         return None;
     }
@@ -1735,7 +1735,7 @@ fn describe_cost_component_parts_with_target(
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
             && source_choice.filter
-                == (ObjectFilter { source: true, ..ObjectFilter::default() }).in_zone(Zone::Battlefield)
+                == (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { source: true, ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) })).in_zone(Zone::Battlefield)
             && source_choice.chooser == PlayerFilter::You
             && source_choice.count == ChoiceCount::exactly(1)
             && let Some(choose) = costs[idx + 1]
@@ -7661,12 +7661,12 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
             crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 | crate::filter::TaggedOpbjectRelation::SameObjectId
         )
-        && (ObjectFilter {
+        && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             tagged_constraints: Vec::new(),
             zone: None,
             union_surface: Default::default(),
-            ..filter.clone()
-        }) == ObjectFilter::default()
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+        })) == ObjectFilter::default()
     {
         return "of them".to_string();
     }

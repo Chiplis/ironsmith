@@ -137,11 +137,11 @@ fn comparison_references_unbound_x(comparison: &Option<Comparison>) -> bool {
 
 fn relax_unbound_x_comparisons(filter: &mut crate::filter::ObjectFilter) -> bool {
     let mut changed = false;
-    for comparison in [
-        &mut filter.mana_value,
-        &mut filter.power,
-        &mut filter.toughness,
-    ] {
+    for comparison in { let fields__ = &mut **filter; [
+        &mut fields__.mana_value,
+        &mut fields__.power,
+        &mut fields__.toughness,
+    ] } {
         if comparison_references_unbound_x(comparison) {
             *comparison = None;
             changed = true;

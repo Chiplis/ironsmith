@@ -273,7 +273,7 @@ fn cemetery_redirected_effect_driven_play_keeps_original_destination_and_actor()
         let replacement = card(&mut game, B, Zone::Battlefield, "Replacement", vec![CardType::Artifact]);
         game.effect_store.replacement_effects.add_one_shot_effect(ironsmith::replacement::ReplacementEffect::with_matcher(
             replacement, B, ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(
-                ironsmith::ObjectFilter { specific: Some(land), ..Default::default() }, Some(Zone::Exile), Some(Zone::Battlefield)),
+                ironsmith::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { specific: Some(land), ..Default::default() }), Some(Zone::Exile), Some(Zone::Battlefield)),
             ironsmith::replacement::ReplacementAction::ChangeDestination(Zone::Graveyard)));
         let mut ctx = EffectContext::new_default(source, A); ctx.set_tagged_objects("play", vec![selected]);
         ironsmith::effects::CastTaggedEffect::new("play", ironsmith::PlayerFilter::You).allow_land().execute(&mut game, &mut ctx).unwrap();
@@ -292,7 +292,7 @@ fn cemetery_priority_and_direct_land_plays_publish_redirected_completion_without
         let replacement = card(&mut game, B, Zone::Battlefield, "Entry replacement", vec![CardType::Artifact]);
         game.effect_store.replacement_effects.add_one_shot_effect(ironsmith::replacement::ReplacementEffect::with_matcher(
             replacement, B, ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(
-                ironsmith::ObjectFilter { specific: Some(land), ..Default::default() }, Some(Zone::Hand), Some(Zone::Battlefield)),
+                ironsmith::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { specific: Some(land), ..Default::default() }), Some(Zone::Hand), Some(Zone::Battlefield)),
             ironsmith::replacement::ReplacementAction::ChangeDestination(Zone::Graveyard)));
         let entries_before = game.turn_store.turn_history.event_kind_count(ironsmith::events::EventKind::EnterBattlefield);
         let plays_before = game.turn_store.turn_history.event_kind_count(ironsmith::events::EventKind::LandPlayed);

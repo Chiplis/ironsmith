@@ -347,11 +347,11 @@ fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
     // "protection from that player" (Eon Frolicker): everything a referenced
     // player controls (CR 702.16j).
     if let Some(player) = filter.controller.as_ref()
-        && (ObjectFilter {
+        && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             controller: None,
             union_surface: Default::default(),
-            ..filter.clone()
-        }) == ObjectFilter::default()
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+        })) == ObjectFilter::default()
     {
         match player {
             crate::target::PlayerFilter::Target(_)
@@ -371,10 +371,10 @@ fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
     if let [constraint] = filter.tagged_constraints.as_slice()
         && constraint.relation == crate::filter::TaggedOpbjectRelation::SharesCardType
         && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
-        && (ObjectFilter {
+        && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             tagged_constraints: Vec::new(),
-            ..filter.clone()
-        }) == ObjectFilter::default()
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+        })) == ObjectFilter::default()
     {
         return "each of the exiled card's card types".to_string();
     }

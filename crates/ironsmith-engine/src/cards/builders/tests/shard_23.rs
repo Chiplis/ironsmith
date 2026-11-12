@@ -856,13 +856,13 @@ pub(super) fn loot_the_key_to_everything_runtime_count_uses_distinct_card_types_
     game.create_object_from_definition(&sol_ring, alice, crate::zone::Zone::Battlefield);
     game.create_object_from_definition(&llanowar_elves, alice, crate::zone::Zone::Battlefield);
 
-    let count_value = crate::effect::Value::CardTypesAmong(crate::target::ObjectFilter {
+    let count_value = crate::effect::Value::CardTypesAmong(crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(crate::zone::Zone::Battlefield),
         controller: Some(crate::target::PlayerFilter::You),
         excluded_card_types: vec![crate::types::CardType::Land],
         other: true,
         ..Default::default()
-    });
+    }));
     let ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
     let resolved = crate::effects::helpers::resolve_value(&game, &count_value, &ctx)
         .expect("Loot upkeep X value should resolve");
@@ -921,13 +921,13 @@ pub(super) fn loot_the_key_to_everything_runtime_count_zero_without_other_nonlan
     let alice = crate::ids::PlayerId::from_index(0);
     let source_id = game.create_object_from_definition(&def, alice, crate::zone::Zone::Battlefield);
 
-    let count_value = crate::effect::Value::CardTypesAmong(crate::target::ObjectFilter {
+    let count_value = crate::effect::Value::CardTypesAmong(crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(crate::zone::Zone::Battlefield),
         controller: Some(crate::target::PlayerFilter::You),
         excluded_card_types: vec![crate::types::CardType::Land],
         other: true,
         ..Default::default()
-    });
+    }));
     let ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
     let resolved = crate::effects::helpers::resolve_value(&game, &count_value, &ctx)
         .expect("Loot upkeep X value should resolve");
@@ -950,13 +950,13 @@ pub(super) fn loot_the_key_to_everything_runtime_count_ignores_lands_and_opponen
     game.create_object_from_definition(&forest, alice, crate::zone::Zone::Battlefield);
     game.create_object_from_definition(&shivan_dragon, bob, crate::zone::Zone::Battlefield);
 
-    let count_value = crate::effect::Value::CardTypesAmong(crate::target::ObjectFilter {
+    let count_value = crate::effect::Value::CardTypesAmong(crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(crate::zone::Zone::Battlefield),
         controller: Some(crate::target::PlayerFilter::You),
         excluded_card_types: vec![crate::types::CardType::Land],
         other: true,
         ..Default::default()
-    });
+    }));
     let ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
     let resolved = crate::effects::helpers::resolve_value(&game, &count_value, &ctx)
         .expect("Loot upkeep X value should resolve");

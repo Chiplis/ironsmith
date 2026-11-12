@@ -433,31 +433,31 @@ mod tests {
 
     #[test]
     fn test_top_library_zone_grants_render_cast_and_play_subjects() {
-        let dragon_filter = ObjectFilter {
+        let dragon_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             subtypes: vec![Subtype::Dragon],
             excluded_card_types: vec![CardType::Land],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         let dragon = GrantSpec::new(Grantable::play_from(), dragon_filter, Zone::Library);
         assert_eq!(
             dragon.display(),
             "You may cast Dragon spells from the top of your library"
         );
 
-        let artifact_or_colorless_filter = ObjectFilter {
+        let artifact_or_colorless_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             excluded_card_types: vec![CardType::Land],
             any_of: vec![
-                ObjectFilter {
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     card_types: vec![CardType::Artifact],
-                    ..ObjectFilter::default()
-                },
-                ObjectFilter {
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }),
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     colorless: true,
-                    ..ObjectFilter::default()
-                },
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }),
             ],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         let artifact_or_colorless = GrantSpec::new(
             Grantable::play_from(),
             artifact_or_colorless_filter,
@@ -468,11 +468,11 @@ mod tests {
             "You may cast artifact spells or colorless spells from the top of your library"
         );
 
-        let creature_filter = ObjectFilter {
+        let creature_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Creature],
             excluded_card_types: vec![CardType::Land],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         let creature = GrantSpec::new(
             Grantable::play_from(),
             creature_filter.clone(),
@@ -489,20 +489,20 @@ mod tests {
             "Once each turn, you may cast a creature spell from the top of your library"
         );
 
-        let mixed_filter = ObjectFilter {
+        let mixed_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![
-                ObjectFilter {
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     card_types: vec![CardType::Land],
-                    ..ObjectFilter::default()
-                },
-                ObjectFilter {
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }),
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     subtypes: vec![Subtype::Bird],
                     excluded_card_types: vec![CardType::Land],
-                    ..ObjectFilter::default()
-                },
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }),
             ],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         let mixed = GrantSpec::new(Grantable::play_from(), mixed_filter, Zone::Library);
         assert_eq!(
             mixed.display(),

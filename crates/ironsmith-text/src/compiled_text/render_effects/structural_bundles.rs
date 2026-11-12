@@ -54,10 +54,10 @@ pub(super) fn describe_source_exiled_retyped_keyword_token_copy(
     creature_card.tagged_constraints.clear();
     creature_card.union_surface = Default::default();
     if creature_card
-        != (ObjectFilter {
+        != (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Creature],
-            ..ObjectFilter::default()
-        })
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }))
     {
         return None;
     }
@@ -114,11 +114,11 @@ mod source_exiled_retyped_keyword_token_copy_tests {
     use super::*;
 
     fn dino_copy() -> crate::effects::CreateTokenCopyEffect {
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Exile),
             card_types: vec![CardType::Creature],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         filter
             .tagged_constraints
             .push(crate::filter::TaggedObjectConstraint {
@@ -4079,10 +4079,10 @@ mod basic_land_name_choice_tests {
         nonbasic
             .excluded_supertypes
             .push(crate::types::Supertype::Basic);
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![nonland, nonbasic],
-            ..ObjectFilter::default()
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })
     }
 
     #[test]
@@ -5059,25 +5059,25 @@ mod activated_triggered_copy_target_tests {
     use super::*;
 
     fn ability_union(outer_kind: StackObjectKind) -> ObjectFilter {
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             controller: Some(PlayerFilter::You),
             stack_kind: Some(outer_kind),
             other: true,
             any_of: vec![
-                ObjectFilter {
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     zone: Some(Zone::Stack),
                     stack_kind: Some(StackObjectKind::ActivatedAbility),
-                    ..ObjectFilter::default()
-                },
-                ObjectFilter {
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }),
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     zone: Some(Zone::Stack),
                     stack_kind: Some(StackObjectKind::TriggeredAbility),
-                    ..ObjectFilter::default()
-                },
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }),
             ],
-            ..ObjectFilter::default()
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })
     }
 
     #[test]
@@ -5935,17 +5935,17 @@ pub(in crate::compiled_text) fn describe_copy_count_replacement_with_shared_plur
 
 fn describe_shared_terminal_subtype_or_color_quality(branch: &ObjectFilter) -> Option<String> {
     if branch.subtypes.len() == 1 {
-        let expected = ObjectFilter {
+        let expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             subtypes: branch.subtypes.clone(),
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         return (branch == &expected).then(|| branch.subtypes[0].to_string());
     }
     let colors = branch.colors.filter(|colors| colors.count() == 1)?;
-    let expected = ObjectFilter {
+    let expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         colors: Some(colors),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     (branch == &expected).then(|| describe_filter_color_alternatives(colors))
 }
 
@@ -5989,12 +5989,12 @@ pub(in crate::compiled_text) fn describe_revealed_hand_then_draw_shared_terminal
     {
         return None;
     }
-    let mut expected = ObjectFilter {
+    let mut expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: filter.owner.clone(),
         any_of: filter.any_of.clone(),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     expected.set_explicit_card_noun(true);
     expected.set_conjunctive_set_surface(true);
     if filter != &expected {
@@ -9356,12 +9356,12 @@ fn describe_quantified_player_and_protected_battle_damage(
         || player_damage.unpreventable != battle_damage.unpreventable
         || battle_damage.target != ChooseSpec::Iterated
         || battles.filter
-            != (ObjectFilter {
+            != (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Battlefield),
                 card_types: vec![CardType::Battle],
                 protected_by: Some(PlayerFilter::IteratedPlayer),
-                ..ObjectFilter::default()
-            })
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }))
     {
         return None;
     }
@@ -10077,20 +10077,20 @@ fn is_exact_wave_sacrifice_union(filter: &ObjectFilter) -> bool {
     }
     let mut outer = filter.clone();
     outer.any_of.clear();
-    let expected_outer = ObjectFilter {
+    let expected_outer = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         controller: Some(PlayerFilter::IteratedPlayer),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     if outer != expected_outer {
         return false;
     }
 
     let exact_branch = |card_type: CardType, nonbasic: bool| {
-        let mut expected = ObjectFilter {
+        let mut expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![card_type],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         if nonbasic {
             expected.excluded_supertypes = vec![crate::types::Supertype::Basic];
         }
@@ -10105,12 +10105,12 @@ fn is_exact_sacrificed_land_controller_search(
     choose: &crate::effects::ChooseObjectsEffect,
     sacrificed_object_tag: &TagKey,
 ) -> bool {
-    let expected = ObjectFilter {
+    let expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Library),
         card_types: vec![CardType::Land],
         supertypes: vec![crate::types::Supertype::Basic],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let mut filter_without_owner = choose.filter.clone();
     let Some(PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(owner_tag))) =
         filter_without_owner.owner.take()
@@ -10179,10 +10179,10 @@ fn describe_typed_sacrifice_land_search_shuffle(effects: &[Effect]) -> Option<St
     else {
         return None;
     };
-    let expected_land = ObjectFilter {
+    let expected_land = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![CardType::Land],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     if current_tag.as_str() != "__it__"
         || land_filter != &expected_land
         || land_gate.surface != ironsmith_core::ConditionalSurface::LeadingIf
@@ -10411,12 +10411,12 @@ fn describe_participant_secret_creature_choice_then_reveal_and_sacrifice(
         return None;
     }
     let object_choice = choice.object_choice.as_ref()?;
-    let expected_filter = ObjectFilter {
+    let expected_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         controller: Some(PlayerFilter::IteratedPlayer),
         card_types: vec![CardType::Creature],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     if object_choice.filter != expected_filter
         || object_choice.count != crate::effect::ChoiceCount::exactly(1)
         || !object_choice.reveal_after_choice
@@ -10457,10 +10457,10 @@ fn filter_is_library_graveyard_union_owned_by_you_except_tagged(
         || ![Zone::Library, Zone::Graveyard].iter().all(|zone| {
             filter.any_of.iter().any(|branch| {
                 branch
-                    == &ObjectFilter {
+                    == &ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         zone: Some(*zone),
-                        ..ObjectFilter::default()
-                    }
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                    })
             })
         })
         || filter.tagged_constraints.as_slice()
@@ -10476,10 +10476,10 @@ fn filter_is_library_graveyard_union_owned_by_you_except_tagged(
     outer.any_of.clear();
     outer.tagged_constraints.clear();
     outer
-        == ObjectFilter {
+        == ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             owner: Some(PlayerFilter::You),
-            ..ObjectFilter::default()
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })
 }
 
 /// Restore a cross-zone search partition only when all executable links are
@@ -10492,10 +10492,10 @@ fn describe_multi_zone_search_exile_remainder_to_top(effects: &[Effect]) -> Opti
     };
     let search = structural_unwrap_render_wrappers(search_effect)
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let expected_search_filter = ObjectFilter {
+    let expected_search_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         owner: Some(PlayerFilter::You),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     if search.filter != expected_search_filter
         || search.count != crate::effect::ChoiceCount::exactly(5)
         || search.count_value.is_some()
@@ -11509,10 +11509,10 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
         let set_pt = early_set_base_pt(set_pt_effect)?;
         let create = early_create_token(create_effect)?;
         let created_tag = early_effect_tag(create_effect)?;
-        let zone_change_group = ObjectFilter {
+        let zone_change_group = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Creature],
             ..Default::default()
-        }
+        })
         .match_tagged(
             ironsmith_core::ZONE_CHANGE_GROUP_TAG,
             crate::filter::TaggedOpbjectRelation::IsTaggedObject,

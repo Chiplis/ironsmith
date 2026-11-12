@@ -144,10 +144,10 @@ fn collapse_tagged_filter_to_specific_objects(
     match object_ids.as_slice() {
         [] => filter.clone(),
         [object_id] => ObjectFilter::specific(*object_id),
-        _ => ObjectFilter {
+        _ => ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: object_ids.into_iter().map(ObjectFilter::specific).collect(),
             ..Default::default()
-        },
+        }),
     }
 }
 
@@ -187,11 +187,11 @@ fn bind_restriction_target_players(
             // CR 608.2h: a number a resolving instruction reads ("power less than or
             // or equal to that number", Rumbling Ruin) is determined once, as the
             // instruction resolves; the affected objects' own power stays live.
-            for comparison in [
-                &mut resolved.power,
-                &mut resolved.toughness,
-                &mut resolved.mana_value,
-            ] {
+            for comparison in { let fields__ = &mut **resolved; [
+                &mut fields__.power,
+                &mut fields__.toughness,
+                &mut fields__.mana_value,
+            ] } {
                 freeze_resolution_comparison(comparison, ctx, game);
             }
             Ok(())
@@ -272,10 +272,10 @@ fn collapse_filter_to_current_matching_objects(
     match object_ids.as_slice() {
         [] => ObjectFilter::specific(crate::ids::ObjectId::from_raw(0)),
         [object_id] => ObjectFilter::specific(*object_id),
-        _ => ObjectFilter {
+        _ => ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: object_ids.into_iter().map(ObjectFilter::specific).collect(),
             ..Default::default()
-        },
+        }),
     }
 }
 
@@ -316,10 +316,10 @@ fn lock_filter_to_current_matching_objects(
     match object_ids.as_slice() {
         [] => ObjectFilter::specific(crate::ids::ObjectId::from_raw(0)),
         [object_id] => ObjectFilter::specific(*object_id),
-        _ => ObjectFilter {
+        _ => ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: object_ids.into_iter().map(ObjectFilter::specific).collect(),
             ..Default::default()
-        },
+        }),
     }
 }
 

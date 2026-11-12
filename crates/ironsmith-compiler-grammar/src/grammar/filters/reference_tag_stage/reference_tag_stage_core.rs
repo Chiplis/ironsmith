@@ -279,10 +279,10 @@ pub(super) fn apply_basic_land_exception(filter: &mut ObjectFilter) {
     nonbasic_branch.any_of.clear();
     push_unique(&mut nonbasic_branch.excluded_supertypes, Supertype::Basic);
 
-    *filter = ObjectFilter {
+    *filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![nonland_branch, nonbasic_branch],
         ..Default::default()
-    };
+    });
 }
 
 pub(super) fn try_apply_distinct_powers_clause(

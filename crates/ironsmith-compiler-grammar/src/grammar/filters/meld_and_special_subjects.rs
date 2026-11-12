@@ -609,7 +609,7 @@ mod tests {
         assert_eq!(filter.card_types, vec![CardType::Creature]);
         assert_eq!(filter.controller, Some(PlayerFilter::You));
         let constraint = filter
-            .counters_put_on_this_turn
+            .counters_put_on_this_turn.clone()
             .expect("typed counter-placement history constraint");
         assert_eq!(constraint.counter_type, Some(CounterType::PlusOnePlusOne));
         assert_eq!(constraint.source_controller, PlayerFilter::You);
@@ -752,7 +752,7 @@ mod tests {
 
         let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
         assert_eq!(filter.card_types, vec![CardType::Creature]);
-        let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) = filter.mana_value else {
+        let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) = filter.mana_value.clone() else {
             panic!(
                 "expected mana value <= source-counter expression, got {:?}",
                 filter.mana_value

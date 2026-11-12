@@ -20,11 +20,11 @@ fn object_filter_is_your_commander(filter: &ObjectFilter, card_types: &[CardType
     normalized.zone = None;
     normalized.card_types.clear();
     normalized
-        == ObjectFilter {
+        == ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             owner: Some(PlayerFilter::You),
             is_commander: true,
             ..Default::default()
-        }
+        })
 }
 
 fn object_filter_is_plain_card_type(filter: &ObjectFilter, card_type: CardType) -> bool {

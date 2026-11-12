@@ -60,18 +60,18 @@ pub(crate) fn walk_filter_references<E>(
     bind: &mut impl FnMut(&mut PlayerFilter) -> Result<(), E>,
     finish: &mut impl FnMut(&mut ObjectFilter) -> Result<(), E>,
 ) -> Result<(), E> {
-    for player in [&mut filter.controller, &mut filter.owner]
+    for player in { let fields__ = &mut **filter; [&mut fields__.controller, &mut fields__.owner] }
         .into_iter()
         .flatten()
     {
         bind(player)?;
     }
     if !matches!(fields, PlayerReferenceFields::ControllerOwner) {
-        for player in [
-            &mut filter.cast_by,
-            &mut filter.targets_player,
-            &mut filter.targets_only_player,
-        ]
+        for player in { let fields__ = &mut **filter; [
+            &mut fields__.cast_by,
+            &mut fields__.targets_player,
+            &mut fields__.targets_only_player,
+        ] }
         .into_iter()
         .flatten()
         {

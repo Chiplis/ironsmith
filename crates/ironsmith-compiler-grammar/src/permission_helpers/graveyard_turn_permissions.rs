@@ -37,7 +37,7 @@ fn permission(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, 
     land.card_types = vec![CardType::Land];
     let Some(mut spell) = super::filtered_zone_permissions::card_filter(spell)? else { return Ok(None); };
     exclude_lands_from_spell_filter(&mut spell);
-    let filter = ObjectFilter { any_of: vec![land, spell], owner: Some(PlayerFilter::You), ..Default::default() };
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { any_of: vec![land, spell], owner: Some(PlayerFilter::You), ..Default::default() });
     let mut spec = crate::model::CompilerGrantSpecCore::new(crate::model::CompilerGrantableCore::play_from(), filter, Zone::Graveyard);
     spec.usage_limit = Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns);
     Ok(Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, spec, lifetime: PermissionLifetime::Static}))

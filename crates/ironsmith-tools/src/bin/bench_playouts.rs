@@ -18,6 +18,7 @@
 //!   BENCH_VERBOSE=1      per-turn timing lines
 //!   BENCH_TRACE=1        per-decision trace lines
 //!   BENCH_ONLY=<n>       play only game index n of the sequence
+//!   BENCH_SIZES=1        print the in-memory size of the main model types and exit
 //!   BENCH_EXACT_MENU=1   offer only actions with an exact payment proof (the engine
 //!                        default); otherwise menus are bounded like the browser's
 
@@ -565,6 +566,17 @@ fn run() {
     // BENCH_EXACT_MENU=1 keeps the default exact payment proof for every offered
     // action; otherwise menus are bounded the way the browser's are.
     ironsmith::game_loop::set_priority_analysis_bounded(!env_on("BENCH_EXACT_MENU"));
+    if env_on("BENCH_SIZES") {
+        use std::mem::size_of;
+        println!("size_of ObjectFilter = {}", size_of::<ironsmith::target::ObjectFilter>());
+        println!("size_of Ability = {}", size_of::<ironsmith::Ability>());
+        println!("size_of ContinuousEffect = {}", size_of::<ironsmith::continuous::ContinuousEffect>());
+        println!("size_of CalculatedCharacteristics = {}", size_of::<ironsmith::continuous::CalculatedCharacteristics>());
+        println!("size_of Object = {}", size_of::<ironsmith::object::Object>());
+        println!("size_of GameState = {}", size_of::<GameState>());
+        println!("size_of LegalAction = {}", size_of::<LegalAction>());
+        return;
+    }
     let only: Option<usize> = std::env::var("BENCH_ONLY").ok().and_then(|s| s.parse().ok());
 
     let decks = load_decks(&format);

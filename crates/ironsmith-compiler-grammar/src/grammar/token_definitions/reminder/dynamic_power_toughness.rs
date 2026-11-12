@@ -117,10 +117,10 @@ fn parse_dynamic_rhs(words: &[&str]) -> Option<Value> {
         words,
         &["the", "total", "power", "of", "those", "creatures"],
     ) {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Creature],
             ..Default::default()
-        }
+        })
         .match_tagged(
             crate::tag::CompilerReferenceTag::ZoneChangeGroup.bind(),
             TaggedOpbjectRelation::IsTaggedObject,

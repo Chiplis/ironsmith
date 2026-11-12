@@ -875,11 +875,11 @@ fn created_token_kind(
         TokenDefinitionSpec::Planeswalker(_) => vec![crate::types::CardType::Planeswalker],
         _ => return None,
     };
-    Some(ObjectFilter {
+    Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types,
         token: true,
-        ..ObjectFilter::default()
-    })
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    }))
 }
 
 /// A "target spell" slot, recorded so a later "that spell" can find it even
@@ -1422,10 +1422,10 @@ fn effect_contains_delayed_trigger(effect: &EffectAst) -> bool {
 }
 
 fn spell_target_reference_filter() -> ObjectFilter {
-    ObjectFilter {
+    ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(crate::zone::Zone::Stack),
-        ..ObjectFilter::default()
-    }
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    })
 }
 
 fn object_reference_matches_binding(
@@ -3907,10 +3907,10 @@ fn advance_reference_frame_for_effect(
                 && let Some(collection) =
                     crate::tag_support::player_loop_exported_exile_collection(effects)
             {
-                let exiled_card = ObjectFilter {
+                let exiled_card = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     zone: Some(crate::zone::Zone::Exile),
-                    ..ObjectFilter::default()
-                };
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                });
                 remember_object_kind_binding(frame, &collection, &exiled_card);
                 frame.last_object_tag = Some(collection);
             }
@@ -4306,10 +4306,10 @@ fn remember_exiled_library_card_kind(effect: &EffectAst, tag: &TagKey, frame: &m
             ..
         })
     ) {
-        let exiled_card = ObjectFilter {
+        let exiled_card = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(crate::zone::Zone::Exile),
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         remember_object_kind_binding(frame, tag, &exiled_card);
     }
 }
@@ -8265,7 +8265,7 @@ fn resolve_effect_result_values_in_fields(
             resolve_effect_result_value(&mut constraint.maximum, state)?;
             if let Some(minimum) = &mut constraint.minimum { resolve_effect_result_value(minimum, state)?; }
         }
-        for comparison in [&mut filter.power, &mut filter.toughness, &mut filter.mana_value, &mut filter.color_count, &mut filter.card_type_count].into_iter().flatten() {
+        for comparison in { let fields__ = &mut **filter; [&mut fields__.power, &mut fields__.toughness, &mut fields__.mana_value, &mut fields__.color_count, &mut fields__.card_type_count] }.into_iter().flatten() {
             match comparison {
                 crate::filter::Comparison::EqualExpr(value) | crate::filter::Comparison::NotEqualExpr(value)
                 | crate::filter::Comparison::LessThanExpr(value) | crate::filter::Comparison::LessThanOrEqualExpr(value)
@@ -14460,11 +14460,11 @@ mod cast_quantity_binding_tests {
 
     #[test]
     fn a_cast_trigger_with_two_quantities_does_not_guess_an_antecedent() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             mana_symbol_count: Some((ironsmith_core::color::Color::Blue, crate::effect::ChoiceCount::at_least(1))),
             target_count: Some(crate::effect::ChoiceCount::at_least(1)),
-            ..ObjectFilter::spell()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::spell())
+        });
         let trigger = TriggerSpec::SpellCast {
             filter: Some(filter), mana_source_filter: None, caster: PlayerFilter::You,
             timing: None, during_turn: None, min_spells_this_turn: None,
@@ -14655,7 +14655,7 @@ mod source_hand_antecedent_kind_tests {
  #[test]
  fn selected_source_card_keeps_off_battlefield_kind_for_prior_creature_recipient() {
   let mut frame=ReferenceFrame::default();let mut ids=IdGenContext::default();
-  for (name,filter) in [("chosen_host",ObjectFilter::creature().you_control()),("chosen_source",ObjectFilter{source:true,zone:Some(crate::zone::Zone::Hand),..Default::default()})] {
+  for (name,filter) in [("chosen_host",ObjectFilter::creature().you_control()),("chosen_source",ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {source:true,zone:Some(crate::zone::Zone::Hand),..Default::default()}))] {
    let effect=EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects{filter,count:crate::effect::ChoiceCount::exactly(1),count_value:None,player:PlayerAst::You,tag:crate::tag::TagRef::of(name)});
    advance_reference_frame_for_effect(&effect,&mut ids,&mut frame).unwrap();
   }
@@ -14676,7 +14676,7 @@ mod source_hand_antecedent_kind_tests {
   remember_object_kind_binding(&mut ambiguous,&"another_host".into(),&ObjectFilter::creature());
   assert!(noun_excluded_antecedent_replacement(&[crate::types::CardType::Creature],&ReferenceEnv::from_frame(&ambiguous)).is_none(),"multiple earlier creatures cannot be guessed");
   let mut unknown=ReferenceFrame::default();
-  remember_object_kind_binding(&mut unknown,&"source_without_zone".into(),&ObjectFilter{source:true,..Default::default()});
+  remember_object_kind_binding(&mut unknown,&"source_without_zone".into(),&ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {source:true,..Default::default()}));
   assert!(unknown.recent_object_target_bindings.is_empty(),"source identity alone supplies no kind/zone proof");
  }
 }
@@ -14691,7 +14691,7 @@ mod persistent_choice_recipient_tests {
             filter:ObjectFilter::creature().you_control(),count:crate::effect::ChoiceCount::exactly(1),
             count_value:None,player:PlayerAst::You,tag:crate::tag::CompilerReferenceTag::It.bind(),
         });
-        let source=TargetAst::Object(ObjectFilter {source:true,zone:Some(crate::zone::Zone::Hand),owner:Some(PlayerFilter::You),..Default::default()},None,None);
+        let source=TargetAst::Object(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {source:true,zone:Some(crate::zone::Zone::Hand),owner:Some(PlayerFilter::You),..Default::default()}),None,None);
         let exile=EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer,PlayerAst::You,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile{target:source,face_down:false,source_controller_may_look:false,source_top_only:false,source_bottom_only:false,target_plural_surface:false}));
         let mut filter=ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());

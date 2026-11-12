@@ -360,12 +360,12 @@ pub(super) fn describe_colored_card_type_damage_sources(filter: &ObjectFilter) -
     if filter.zone.is_some_and(|zone| zone != Zone::Battlefield) {
         return None;
     }
-    let expected = ObjectFilter {
+    let expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: filter.zone,
         card_types: filter.card_types.clone(),
         colors: Some(colors),
         ..Default::default()
-    };
+    });
     if filter != &expected {
         return None;
     }

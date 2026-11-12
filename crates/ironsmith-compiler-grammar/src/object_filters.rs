@@ -734,21 +734,21 @@ fn parse_explicit_card_filter_disjunction(
             arm.zone = None;
             arm.owner = None;
         }
-        let mut union = ObjectFilter {
+        let mut union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(shared_zone),
             owner: shared_owner,
             any_of: arms,
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         preserve_union_surface(&mut union, tokens);
         union.set_explicit_union_branch_articles(explicit_branch_articles);
         return Ok(Some(union));
     }
 
-    let mut union = ObjectFilter {
+    let mut union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: arms,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     preserve_union_surface(&mut union, tokens);
     union.set_explicit_union_branch_articles(explicit_branch_articles);
     Ok(Some(union))
@@ -854,10 +854,10 @@ fn parse_color_or_card_type_disjunction(
     }
 
     let mut filter = if noun.is_none() {
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             other,
-            ..ObjectFilter::default()
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })
     } else {
         let mut rest = tokens[..color_idx].to_vec();
         rest.extend_from_slice(&tokens[type_idx + 1..]);
@@ -867,10 +867,10 @@ fn parse_color_or_card_type_disjunction(
         return Ok(None);
     }
     filter.any_of = vec![
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             colors: Some(color),
-            ..ObjectFilter::default()
-        },
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }),
         ObjectFilter::default().with_type(card_type),
     ];
     filter.set_union_connective(ObjectFilterUnionConnective::Or);
@@ -1067,7 +1067,7 @@ fn preserve_public_spell_filter_facts(filter: &mut ObjectFilter, tokens: &[Owned
     // Retain all three characteristic alternatives and their source-owned
     // numeric reference before the generic adjective union can narrow them.
     if let Some(axes) = crate::grammar::filters::parse_source_number_spell_axes(&words) {
-        filter.any_of = axes.any_of;
+        filter.any_of = axes.any_of.clone();
         filter.mana_value = None;
         filter.power = None;
         filter.toughness = None;
@@ -1325,13 +1325,13 @@ fn finalize_public_object_filter(
 /// Operate only on semantic subtype atoms already consumed by a reader.
 /// Names, quoted text and ordinary nouns are never rewritten.
 fn expand_scoped_subtype_filter_atoms(mut filter: ObjectFilter) -> ObjectFilter {
-    filter.any_of = filter.any_of.into_iter().map(expand_scoped_subtype_filter_atoms).collect();
-    for field in [&mut filter.mana_from_source_spent_to_cast, &mut filter.targets_object,
-        &mut filter.targets_only_object, &mut filter.not_targeted_by_ability_from,
-        &mut filter.would_destroy_object, &mut filter.attached_to_object,
-        &mut filter.with_attached_object, &mut filter.without_attached_object,
-        &mut filter.could_enchant_object, &mut filter.controller_controls,
-        &mut filter.blocked_or_was_blocked_by_this_turn] {
+    filter.any_of = filter.any_of.clone().into_iter().map(expand_scoped_subtype_filter_atoms).collect();
+    for field in { let fields__ = &mut *filter; [&mut fields__.mana_from_source_spent_to_cast, &mut fields__.targets_object,
+        &mut fields__.targets_only_object, &mut fields__.not_targeted_by_ability_from,
+        &mut fields__.would_destroy_object, &mut fields__.attached_to_object,
+        &mut fields__.with_attached_object, &mut fields__.without_attached_object,
+        &mut fields__.could_enchant_object, &mut fields__.controller_controls,
+        &mut fields__.blocked_or_was_blocked_by_this_turn] } {
         if let Some(inner) = field.take() { *field = Some(Box::new(expand_scoped_subtype_filter_atoms(*inner))); }
     }
     // Positive disjunction and negative exclusion are both idempotent: a
@@ -1377,7 +1377,7 @@ fn expand_scoped_subtype_filter_atoms(mut filter: ObjectFilter) -> ObjectFilter 
     }).collect();
     filter.all_subtypes.retain(|subtype| !required.iter().any(|(original, _)| original == subtype));
     for (_, choices) in required {
-        filter = ObjectFilter { subtypes: choices, any_of: vec![filter], ..Default::default() };
+        filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { subtypes: choices, any_of: vec![filter], ..Default::default() });
     }
     filter
 }
@@ -2424,15 +2424,15 @@ fn parse_object_filter_unaudited(
         {
             let mut filter = parse_object_filter(&tokens[..boundary], other)?;
             filter.any_of = vec![
-                ObjectFilter {
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     discarded_or_cycled_this_turn_by: Some(PlayerFilter::Any),
-                    ..ObjectFilter::default()
-                },
-                ObjectFilter {
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }),
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     entered_graveyard_this_turn: true,
                     entered_graveyard_from_library_this_turn: true,
-                    ..ObjectFilter::default()
-                },
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }),
             ];
             claim_outside(tokens, &tokens[..boundary]);
             return Ok(filter);
@@ -3325,34 +3325,34 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
     }
     if base.shares_name_with_named_action_objects.is_none(){base.shares_name_with_named_action_objects=extra.shares_name_with_named_action_objects.clone();}
 
-    for card_type in extra.card_types {
+    for card_type in extra.card_types.clone() {
         push_unique(&mut base.card_types, card_type);
     }
-    for card_type in extra.excluded_card_types {
+    for card_type in extra.excluded_card_types.clone() {
         push_unique(&mut base.excluded_card_types, card_type);
     }
-    for subtype in extra.subtypes {
+    for subtype in extra.subtypes.clone() {
         push_unique(&mut base.subtypes, subtype);
     }
-    for subtype in extra.excluded_subtypes {
+    for subtype in extra.excluded_subtypes.clone() {
         push_unique(&mut base.excluded_subtypes, subtype);
     }
-    for supertype in extra.supertypes {
+    for supertype in extra.supertypes.clone() {
         push_unique(&mut base.supertypes, supertype);
     }
-    for supertype in extra.excluded_supertypes {
+    for supertype in extra.excluded_supertypes.clone() {
         push_unique(&mut base.excluded_supertypes, supertype);
     }
-    for ability in extra.static_abilities {
+    for ability in extra.static_abilities.clone() {
         push_unique(&mut base.static_abilities, ability);
     }
-    for ability in extra.excluded_static_abilities {
+    for ability in extra.excluded_static_abilities.clone() {
         push_unique(&mut base.excluded_static_abilities, ability);
     }
-    for marker in extra.ability_markers {
+    for marker in extra.ability_markers.clone() {
         push_unique(&mut base.ability_markers, marker);
     }
-    for marker in extra.excluded_ability_markers {
+    for marker in extra.excluded_ability_markers.clone() {
         push_unique(&mut base.excluded_ability_markers, marker);
     }
     if let Some(colors) = extra.colors {
@@ -3375,27 +3375,27 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
     if base.colored_mana_symbol_count.is_none() { base.colored_mana_symbol_count = extra.colored_mana_symbol_count; }
     base.chosen_color |= extra.chosen_color;
     if base.colors_chosen_while_drafting_named.is_none() {
-        base.colors_chosen_while_drafting_named = extra.colors_chosen_while_drafting_named;
+        base.colors_chosen_while_drafting_named = extra.colors_chosen_while_drafting_named.clone();
     }
-    if base.name_noted_for.is_none(){base.name_noted_for=extra.name_noted_for;base.noted_name_pair=extra.noted_name_pair;}
+    if base.name_noted_for.is_none(){base.name_noted_for=extra.name_noted_for.clone();base.noted_name_pair=extra.noted_name_pair;}
     if base.name_noted_while_drafting_named.is_none() {
-        base.name_noted_while_drafting_named = extra.name_noted_while_drafting_named;
+        base.name_noted_while_drafting_named = extra.name_noted_while_drafting_named.clone();
     }
     if base.creature_types_noted_while_drafting_named.is_none() {
-        base.creature_types_noted_while_drafting_named = extra.creature_types_noted_while_drafting_named;
+        base.creature_types_noted_while_drafting_named = extra.creature_types_noted_while_drafting_named.clone();
     }
     base.chosen_creature_type |= extra.chosen_creature_type;
     base.chosen_card_type |= extra.chosen_card_type;
     base.excluded_chosen_creature_type |= extra.excluded_chosen_creature_type;
     base.excluded_any_chosen_creature_type |= extra.excluded_any_chosen_creature_type;
     if base.color_count.is_none() {
-        base.color_count = extra.color_count;
+        base.color_count = extra.color_count.clone();
     }
     if base.alternative_cast.is_none() {
         base.alternative_cast = extra.alternative_cast;
     }
     if base.power.is_none() {
-        base.power = extra.power;
+        base.power = extra.power.clone();
     }
     if base.power_parity.is_none() {
         base.power_parity = extra.power_parity;
@@ -3404,10 +3404,10 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
         base.power_toughness_relation = extra.power_toughness_relation;
     }
     if base.toughness.is_none() {
-        base.toughness = extra.toughness;
+        base.toughness = extra.toughness.clone();
     }
     if base.mana_value.is_none() {
-        base.mana_value = extra.mana_value;
+        base.mana_value = extra.mana_value.clone();
     }
     if base.mana_value_parity.is_none() {
         base.mana_value_parity = extra.mana_value_parity;
@@ -3416,51 +3416,51 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
         base.total_counters_parity = extra.total_counters_parity;
     }
     if base.cast_by.is_none() {
-        base.cast_by = extra.cast_by;
+        base.cast_by = extra.cast_by.clone();
     }
     if base.excluded_cast_origin_zone.is_none() {
         base.excluded_cast_origin_zone = extra.excluded_cast_origin_zone;
     }
     if base.owner.is_none() {
-        base.owner = extra.owner;
+        base.owner = extra.owner.clone();
     }
     if base.zone.is_none() {
         base.zone = extra.zone;
     }
     if base.name.is_none() {
-        base.name = extra.name;
+        base.name = extra.name.clone();
     }
     if base.name_originally_printed_in_set.is_none() {
-        base.name_originally_printed_in_set = extra.name_originally_printed_in_set;
+        base.name_originally_printed_in_set = extra.name_originally_printed_in_set.clone();
     }
     if base.targets_player.is_none() {
-        base.targets_player = extra.targets_player;
+        base.targets_player = extra.targets_player.clone();
     }
     if base.targets_object.is_none() {
-        base.targets_object = extra.targets_object;
+        base.targets_object = extra.targets_object.clone();
     }
     base.targets_any_of |= extra.targets_any_of;
     if base.targets_only_player.is_none() {
-        base.targets_only_player = extra.targets_only_player;
+        base.targets_only_player = extra.targets_only_player.clone();
     }
     if base.targets_only_object.is_none() {
-        base.targets_only_object = extra.targets_only_object;
+        base.targets_only_object = extra.targets_only_object.clone();
     }
     base.targets_only_any_of |= extra.targets_only_any_of;
     if base.target_count.is_none() {
         base.target_count = extra.target_count;
     }
     if base.could_be_targeted_by.is_none() {
-        base.could_be_targeted_by = extra.could_be_targeted_by;
+        base.could_be_targeted_by = extra.could_be_targeted_by.clone();
     }
     base.shares_creature_type_with_source |= extra.shares_creature_type_with_source;
-    for relation in extra.characteristic_relations {
+    for relation in extra.characteristic_relations.clone() {
         crate::slice_primitives::push_unique(&mut base.characteristic_relations, relation);
     }
-    for constraint in extra.tagged_constraints {
+    for constraint in extra.tagged_constraints.clone() {
         crate::slice_primitives::push_unique(&mut base.tagged_constraints, constraint);
     }
-    for branch in extra.any_of {
+    for branch in extra.any_of.clone() {
         crate::slice_primitives::push_unique(&mut base.any_of, branch);
     }
 }
@@ -4831,10 +4831,10 @@ mod tests {
             assert_eq!(
                 filter.any_of,
                 vec![
-                    ObjectFilter {
+                    ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         colors: Some(color),
-                        ..ObjectFilter::default()
-                    },
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                    }),
                     ObjectFilter::default().with_type(card_type),
                 ],
                 "{text}: {filter:#?}"
@@ -5238,7 +5238,7 @@ mod indefinite_enchanted_filter_tests {
         let filter = crate::activation_and_restrictions::trigger_subject_filters::parse_trigger_subject_filter_lexed(&tokens).unwrap().unwrap();
         assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
         assert!(filter.tagged_constraints.is_empty(), "{filter:#?}");
-        assert_eq!(filter.with_attached_object.unwrap().subtypes, [crate::types::Subtype::Aura]);
+        assert_eq!(filter.with_attached_object.clone().unwrap().subtypes, [crate::types::Subtype::Aura]);
 
         let tokens = crate::lexer::lex_line("enchanted creature", 0).unwrap();
         let filter = parse_object_filter_lexed(&tokens, false).unwrap();

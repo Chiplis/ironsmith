@@ -52,8 +52,8 @@ fn every_native_keyword_factory_retains_implied_word_roles_and_normative_names()
 
 #[test]
 fn mobilize_keeps_implied_warriors_while_rewriting_its_authored_quantity_filter() {
-    let filter = ObjectFilter { card_types: vec![CardType::Creature], subtypes: vec![Subtype::Warrior],
-        controller: Some(PlayerFilter::You), ..ObjectFilter::default() };
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { card_types: vec![CardType::Creature], subtypes: vec![Subtype::Warrior],
+        controller: Some(PlayerFilter::You), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) });
     let definition = CardDefinitionBuilder::new(CardId::new(), "Dynamic mobilize")
         .mobilize_value(Value::Count(filter)).build();
     let original = create_instruction(&definition);

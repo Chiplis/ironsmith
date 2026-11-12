@@ -237,7 +237,7 @@ pub use filter_model::{
     DemonstrativeAntecedentSurface, ExcludedNameSurface,
     GlobalCharacteristicDomainSurface, GraveyardEntryHistorySurface, LiteralNameSurface,
     ObjectCharacteristic, ObjectCharacteristicRelation, ObjectCharacteristicRelationKind,
-    NamedActionObjectNameCondition, ObjectFilter, ObjectFilterUnionConnective, ObjectFilterUnionSurface, ObjectRef,
+    NamedActionObjectNameCondition, ObjectFilter, ObjectFilterFields, ObjectFilterUnionConnective, ObjectFilterUnionSurface, ObjectRef,
     ParityRequirement, PlayedByOpponentSurface, PlayerFilter, PlayerQuantity, PlayerTurnHistoryFilter, TargetObjectPlayerRelation,
     PowerToughnessRelation, PtReference,
     SameNameAntecedentSurface, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,

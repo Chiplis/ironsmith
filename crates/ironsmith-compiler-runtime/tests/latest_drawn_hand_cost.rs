@@ -191,9 +191,9 @@ fn old_object_filter_payloads_default_the_latest_draw_constraint_off() {
 
 #[test]
 fn latest_draw_player_scope_participates_in_generic_iterated_player_validation() {
-    let filter = ironsmith::target::ObjectFilter {
+    let filter = ironsmith::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         last_drawn_this_turn: Some(PlayerFilter::IteratedPlayer),
         ..Default::default()
-    };
+    });
     assert!(filter.mentions_iterated_player());
 }

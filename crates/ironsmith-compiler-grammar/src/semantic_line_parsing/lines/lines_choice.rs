@@ -76,10 +76,10 @@ pub(super) fn try_parse_chosen_type_behold_two_additional_cost(
         )),
         crate::model::CompilerCost::ValidatedEffect(Box::new(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjects {
-                filter: ObjectFilter {
+                filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     any_of: vec![battlefield, hand],
                     ..Default::default()
-                },
+                }),
                 count: crate::effect::ChoiceCount::exactly(2),
                 count_value: None,
                 player: PlayerAst::You,

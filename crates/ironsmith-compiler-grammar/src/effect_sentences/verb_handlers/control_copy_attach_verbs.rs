@@ -989,7 +989,7 @@ mod dynamic_control_bound_tests {
             let TargetAst::Object(filter, Some(_), _) = target else {
                 panic!("missing announced creature target");
             };
-            let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) = filter.power else {
+            let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) = filter.power.clone() else {
                 panic!("missing typed bound");
             };
             assert!(

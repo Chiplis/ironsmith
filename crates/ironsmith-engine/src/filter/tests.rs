@@ -402,14 +402,14 @@ fn negative_attack_or_entry_history_filter_checks_both_turn_records() {
     game.record_turn_history_event(&entry_event);
     game.mark_creature_attacked_this_turn(attacked);
 
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         controller: Some(PlayerFilter::You),
         card_types: vec![CardType::Creature],
         didnt_attack_this_turn: true,
         didnt_enter_battlefield_this_turn: true,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let context = FilterContext::new(alice);
 
     assert!(filter.matches(game.object(eligible).unwrap(), &context, &game));
@@ -505,11 +505,11 @@ fn original_printing_set_filter_matches_card_metadata_and_snapshots() {
     let antiquities_id = game.create_object_from_card(&antiquities_card, alice, Zone::Battlefield);
     let unannotated_id = game.create_object_from_card(&unannotated_card, alice, Zone::Battlefield);
     let context = FilterContext::new(alice);
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         name_originally_printed_in_set: Some("antiquities".to_string()),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
 
     let antiquities_object = game
         .object(antiquities_id)
@@ -548,10 +548,10 @@ fn created_with_source_filter_matches_stable_creation_provenance() {
     let linked_stable = game.object(linked).unwrap().stable_id;
     game.add_token_created_with_source_link(source_stable, linked_stable);
 
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         created_with_source: true,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let context = FilterContext::new(alice).with_source(source);
     let linked_object = game.object(linked).unwrap();
     assert!(filter.matches(linked_object, &context, &game));
@@ -604,12 +604,12 @@ fn blocked_by_tagged_filter_matches_current_combat_relationship() {
         TagKey::from("chosen_blockers"),
         vec![blocker_snapshot],
     )]));
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         card_types: vec![CardType::Creature],
         blocked_by: Some(ObjectRef::Tagged(TagKey::from("chosen_blockers"))),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
 
     assert!(filter.matches(game.object(attacker.id).unwrap(), &ctx, &game));
 }
@@ -649,11 +649,11 @@ fn attacking_alone_counts_attackers_per_controller() {
         ],
         ..Default::default()
     });
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         attacking: true,
         attacking_alone: true,
-        ..ObjectFilter::creature()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature())
+    });
     let ctx = FilterContext::new(alice);
     assert!(filter.matches(&first_alice, &ctx, &game));
     assert!(filter.matches(&cara_attacker, &ctx, &game));
@@ -1231,12 +1231,12 @@ fn foretold_filter_does_not_match_arbitrary_face_down_exile_cards() {
     let object_id = game.create_object_from_card(&card, owner, Zone::Exile);
     game.set_face_down(object_id);
 
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Exile),
         owner: Some(PlayerFilter::You),
         foretold: true,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let ctx = FilterContext::new(owner);
     assert_eq!(filter.description(), "a foretold card you own in exile");
     assert!(
@@ -1292,19 +1292,19 @@ fn filter_description_preserves_relative_and_independently_negated_unions() {
         "a Vehicle and/or creature you control"
     );
 
-    let mut independently_negated = ObjectFilter {
+    let mut independently_negated = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Graveyard),
         owner: Some(PlayerFilter::You),
         any_of: vec![
             ObjectFilter::default().with_type(CardType::Artifact),
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![CardType::Enchantment],
                 excluded_subtypes: vec![crate::types::Subtype::Aura],
                 ..Default::default()
-            },
+            }),
         ],
         ..Default::default()
-    };
+    });
     independently_negated.set_explicit_card_noun(true);
     assert_eq!(
         ObjectFilterExt::description(&independently_negated),
@@ -1315,38 +1315,38 @@ fn filter_description_preserves_relative_and_independently_negated_unions() {
 #[test]
 fn filter_description_compacts_mirrored_owner_or_controller_branches() {
     let permanent = ObjectFilter::permanent();
-    let union = ObjectFilter {
+    let union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![
             permanent.clone().owned_by(PlayerFilter::You),
             permanent.controlled_by(PlayerFilter::You),
         ],
         ..Default::default()
-    };
+    });
 
     assert_eq!(union.description(), "a permanent you own or control");
 }
 
 #[test]
 fn filter_description_keeps_distinct_owner_or_controller_branches_expanded() {
-    let distinct_selectors = ObjectFilter {
+    let distinct_selectors = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![
             ObjectFilter::permanent().owned_by(PlayerFilter::You),
             ObjectFilter::creature().controlled_by(PlayerFilter::You),
         ],
         ..Default::default()
-    };
+    });
     assert_eq!(
         distinct_selectors.description(),
         "a permanent you own or a creature you control"
     );
 
-    let distinct_players = ObjectFilter {
+    let distinct_players = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![
             ObjectFilter::permanent().owned_by(PlayerFilter::You),
             ObjectFilter::permanent().controlled_by(PlayerFilter::Opponent),
         ],
         ..Default::default()
-    };
+    });
     assert_eq!(
         distinct_players.description(),
         "a permanent you own or a permanent an opponent controls"
@@ -1366,21 +1366,21 @@ fn filter_description_compacts_the_complete_owned_nonbattlefield_zone_union() {
     ]
     .into_iter()
     .map(|zone| {
-        let mut branch = ObjectFilter {
+        let mut branch = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(zone),
             owner: Some(PlayerFilter::You),
             card_types: vec![CardType::Creature],
             ..Default::default()
-        };
+        });
         branch.set_explicit_card_noun(true);
         if zone == Zone::Stack { branch.stack_kind = Some(StackObjectKind::Spell); }
         branch
     })
     .collect();
-    let union = ObjectFilter {
+    let union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: branches,
         ..Default::default()
-    };
+    });
 
     assert_eq!(
         union.description(),
@@ -1401,22 +1401,22 @@ fn owned_nonbattlefield_union_compaction_rejects_an_extra_controller_constraint(
     ]
     .into_iter()
     .map(|zone| {
-        let mut branch = ObjectFilter {
+        let mut branch = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(zone),
             owner: Some(PlayerFilter::You),
             card_types: vec![CardType::Creature],
             ..Default::default()
-        };
+        });
         branch.set_explicit_card_noun(true);
         if zone == Zone::Stack { branch.stack_kind = Some(StackObjectKind::Spell); }
         branch
     })
     .collect::<Vec<_>>();
     branches[0].controller = Some(PlayerFilter::You);
-    let union = ObjectFilter {
+    let union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: branches,
         ..Default::default()
-    };
+    });
 
     assert_ne!(
         union.description(),
@@ -1426,12 +1426,12 @@ fn owned_nonbattlefield_union_compaction_rejects_an_extra_controller_constraint(
 
 #[test]
 fn filter_description_compacts_controlled_and_owned_nonbattlefield_domains() {
-    let mut battlefield = ObjectFilter {
+    let mut battlefield = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         controller: Some(PlayerFilter::You),
         card_types: vec![CardType::Land],
         ..Default::default()
-    };
+    });
     battlefield.set_plural_object_noun_surface(true);
     let mut branches = vec![battlefield];
     branches.extend(
@@ -1446,22 +1446,22 @@ fn filter_description_compacts_controlled_and_owned_nonbattlefield_domains() {
         ]
         .into_iter()
         .map(|zone| {
-            let mut branch = ObjectFilter {
+            let mut branch = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(zone),
                 owner: Some(PlayerFilter::You),
                 card_types: vec![CardType::Land],
                 ..Default::default()
-            };
+            });
             branch.set_explicit_card_noun(true);
         if zone == Zone::Stack { branch.stack_kind = Some(StackObjectKind::Spell); }
             branch.set_plural_object_noun_surface(true);
             branch
         }),
     );
-    let mut union = ObjectFilter {
+    let mut union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: branches,
         ..Default::default()
-    };
+    });
     union.set_conjunctive_set_surface(true);
 
     assert_eq!(
@@ -1474,15 +1474,15 @@ fn filter_description_compacts_controlled_and_owned_nonbattlefield_domains() {
 fn partial_nonbattlefield_union_does_not_claim_all_owned_cards() {
     let mut branches = [Zone::Hand, Zone::Library, Zone::Graveyard, Zone::Exile, Zone::Command]
         .into_iter().map(|zone| {
-            let mut branch = ObjectFilter { zone: Some(zone), owner: Some(PlayerFilter::You), card_types: vec![CardType::Creature], ..Default::default() };
+            let mut branch = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { zone: Some(zone), owner: Some(PlayerFilter::You), card_types: vec![CardType::Creature], ..Default::default() });
             branch.set_explicit_card_noun(true); branch
         }).collect::<Vec<_>>();
-    let partial = ObjectFilter { any_of: branches.clone(), ..Default::default() };
+    let partial = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { any_of: branches.clone(), ..Default::default() });
     assert_ne!(partial.description(), "creature cards you own that aren't on the battlefield");
     let mut battlefield = ObjectFilter::creature().controlled_by(PlayerFilter::You);
     battlefield.set_plural_object_noun_surface(true);
     branches.insert(0, battlefield);
-    let mut coordinated = ObjectFilter { any_of: branches, ..Default::default() };
+    let mut coordinated = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { any_of: branches, ..Default::default() });
     coordinated.set_conjunctive_set_surface(true);
     assert_ne!(coordinated.description(), "creatures you control and creature cards you own that aren't on the battlefield");
 }
@@ -1534,11 +1534,11 @@ fn test_filter_description_includes_chosen_color_clause() {
 
 #[test]
 fn test_filter_description_includes_entered_since_last_turn_ended_clause() {
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![CardType::Creature],
         entered_since_your_last_turn_ended: true,
         ..Default::default()
-    };
+    });
     assert_eq!(
         filter.description(),
         "creature that entered since your last turn ended"
@@ -1642,13 +1642,13 @@ fn counter_threshold_filter_matches_at_and_above_the_minimum() {
     let alice = PlayerId::from_index(0);
     let creature_id = create_modified_test_creature(&mut game, alice);
     let ctx = FilterContext::new(alice).with_source(creature_id);
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         with_counter: Some(CounterConstraint::AtLeast {
             counter_type: Some(CounterType::PlusOnePlusOne),
             count: 3,
         }),
-        ..ObjectFilter::creature().you_control()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature().you_control())
+    });
 
     for (counter_count, expected) in [(2, false), (3, true), (4, true)] {
         game.object_mut(creature_id)
@@ -2127,10 +2127,10 @@ fn nonbasic_land_type_filter_checks_subtypes_not_the_basic_supertype() {
 
     let player = PlayerId::from_index(0);
     let game = GameState::new(vec!["Alice".to_string()], 20);
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         has_nonbasic_land_type: true,
         ..Default::default()
-    };
+    });
     let desert = CardBuilder::new(CardId::from_raw(11), "Desert")
         .card_types(vec![CardType::Land])
         .subtypes(vec![Subtype::Desert])
@@ -2164,10 +2164,10 @@ fn basic_land_type_filter_checks_subtypes_not_the_basic_supertype() {
 
     let player = PlayerId::from_index(0);
     let game = GameState::new(vec!["Alice".to_string()], 20);
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         has_basic_land_type: true,
         ..Default::default()
-    };
+    });
     let desert = CardBuilder::new(CardId::from_raw(21), "Desert")
         .card_types(vec![CardType::Land])
         .subtypes(vec![Subtype::Desert])
@@ -2257,12 +2257,12 @@ fn test_blood_moon_filter_for_nonbasic_lands() {
     let p0 = PlayerId::from_index(0);
 
     // Blood Moon filter: nonbasic lands on the battlefield
-    let blood_moon_filter = ObjectFilter {
+    let blood_moon_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         card_types: vec![CardType::Land],
         excluded_supertypes: vec![Supertype::Basic],
         ..Default::default()
-    };
+    });
 
     // Create basic Plains
     let plains_card = CardBuilder::new(CardId::from_raw(1), "Plains")
@@ -2868,17 +2868,17 @@ fn tagged_extremum_mana_value_filter_uses_the_tagged_snapshot_set() {
         tag: tag.clone(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     };
-    let scope = ObjectFilter {
+    let scope = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         tagged_constraints: vec![tagged_constraint.clone()],
-        ..ObjectFilter::default()
-    };
-    let filter = ObjectFilter {
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         mana_value: Some(Comparison::EqualExpr(Box::new(Value::GreatestManaValue(
             scope,
         )))),
         tagged_constraints: vec![tagged_constraint],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let ctx = FilterContext::new(you).with_tagged_objects(&std::collections::HashMap::from([(
         tag,
         vec![cheap.clone(), expensive.clone()],
@@ -2920,13 +2920,13 @@ fn dynamic_comparison_resolves_surface_hinted_source_counter_count() {
     let source_spec = ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
         SourceReferenceSurface::ThisPermanentType("this artifact".to_string()),
     ));
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         mana_value: Some(Comparison::EqualExpr(Box::new(Value::CountersOn(
             Box::new(source_spec),
             Some(CounterType::Charge),
         )))),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let ctx = FilterContext::new(you).with_source(source_id);
 
     assert!(filter.matches(game.object(one_mana_id).unwrap(), &ctx, &game));
@@ -2953,10 +2953,10 @@ fn exact_mana_cost_filter_distinguishes_equal_mana_values() {
         .build();
     let generic_id = game.create_object_from_card(&generic, you, Zone::Library);
     let white_id = game.create_object_from_card(&white, you, Zone::Library);
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         exact_mana_cost: Some(generic_cost),
-        ..ObjectFilter::artifact().in_zone(Zone::Library)
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::artifact().in_zone(Zone::Library))
+    });
     let ctx = FilterContext::new(you);
 
     assert!(filter.matches(game.object(generic_id).unwrap(), &ctx, &game));
@@ -2968,12 +2968,12 @@ fn exact_mana_cost_filter_distinguishes_equal_mana_values() {
 
 #[test]
 fn dynamic_comparison_describes_player_counter_count() {
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         mana_value: Some(Comparison::GreaterThanExpr(Box::new(
             crate::effect::Value::PlayerCounters(PlayerFilter::You, crate::CounterType::Experience),
         ))),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
 
     assert!(
         filter

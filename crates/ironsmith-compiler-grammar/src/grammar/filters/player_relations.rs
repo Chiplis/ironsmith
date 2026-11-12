@@ -660,7 +660,7 @@ pub(super) fn try_apply_player_relation_clause(
         let mut right = filter.clone();
         apply_player_relation(&mut left, player.clone(), verb);
         apply_player_relation(&mut right, player, second);
-        *filter = ObjectFilter { any_of: vec![left, right], ..ObjectFilter::default() };
+        *filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { any_of: vec![left, right], ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) });
         filter.set_union_connective(ironsmith_core::ObjectFilterUnionConnective::Or);
         crate::word_claims::claim_words(&words[first_end..first_end+1+second_len]);
         return Some(first_end+1+second_len);

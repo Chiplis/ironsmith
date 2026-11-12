@@ -642,7 +642,7 @@ pub(super) fn read_into_destination(
                     // coordinated clause.
                     return Ok(Some(EffectAst::Coordinated {
                         effects: filter
-                            .any_of
+                            .any_of.clone()
                             .into_iter()
                             .map(EffectAst::subject_verb_return_all_to_hand)
                             .collect(),

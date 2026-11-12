@@ -171,7 +171,9 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         match_captured_public_destination, castable_face_match,
     );
     if residual != empty { return Err(TextChangeDomainError::ObjectFilter); }
-    let mut rewritten = filter.clone();
+    let mut rewritten_filter = filter.clone();
+    // One exclusive view of the fields: several are edited together below.
+    let rewritten = &mut *rewritten_filter;
     if let Some(history)=&mut rewritten.shares_name_with_named_action_objects {
         history.player=rewrite_player_filter_words(&history.player,change)?;
     }
@@ -240,7 +242,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
     // exact_mana_cost and could_produce_mana are symbol
     // predicates. Choice flags, historical captures and identity constraints
     // contain no literal word occurrence and retain their original meanings.
-    Ok(rewritten)
+    Ok(rewritten_filter)
 }
 
 pub(crate) fn rewrite_filter_comparison_words(comparison: &FilterComparison, change: TextChange) -> RewriteResult<FilterComparison> {
@@ -753,10 +755,10 @@ mod tests {
     };
 
     fn black_words() -> ObjectFilter {
-        ObjectFilter { colors: Some(ColorSet::BLACK), ..ObjectFilter::default() }
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLACK), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) })
     }
     fn blue_words() -> ObjectFilter {
-        ObjectFilter { colors: Some(ColorSet::BLUE), ..ObjectFilter::default() }
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLUE), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) })
     }
     fn black_to_blue() -> TextChange { TextChange::color(Color::Black, Color::Blue).unwrap() }
 
@@ -841,11 +843,11 @@ mod tests {
 
     #[test]
     fn authored_mana_color_query_and_bound_event_quantity_change_together() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             mana_symbol_count: Some((Color::Black, ChoiceCount::at_least(1))),
             exact_mana_cost: Some(ManaCost::from_pips(vec![vec![ManaSymbol::Black]])),
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         let result = rewrite_filter_words(&filter, black_to_blue()).unwrap();
         assert_eq!(result.mana_symbol_count, Some((Color::Blue, ChoiceCount::at_least(1))));
         assert_eq!(result.exact_mana_cost, filter.exact_mana_cost);
@@ -883,8 +885,8 @@ mod tests {
 
     #[test]
     fn conditions_rewrite_authored_types_through_history_and_attachment_predicates() {
-        let elf = ObjectFilter { subtypes: vec![Subtype::Elf], ..ObjectFilter::default() };
-        let vampire = ObjectFilter { subtypes: vec![Subtype::Vampire], ..ObjectFilter::default() };
+        let elf = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { subtypes: vec![Subtype::Elf], ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) });
+        let vampire = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { subtypes: vec![Subtype::Vampire], ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) });
         let condition = Condition::And(
             Box::new(Condition::Not(Box::new(Condition::AttachmentCount {
                 attachment: elf.clone(), host: AttachmentConditionHost::Matching(elf.clone()),
@@ -916,12 +918,12 @@ mod tests {
 
     #[test]
     fn generic_land_and_party_rules_do_not_author_their_implied_types() {
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             subtypes: vec![Subtype::Island, Subtype::Forest],
             excluded_subtypes: vec![Subtype::Island],
             has_basic_land_type: true, chosen_land_type: true,
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         let change = TextChange::basic_land_type(Subtype::Island, Subtype::Forest).unwrap();
         let rewritten = rewrite_filter_words(&filter, change).unwrap();
         filter.subtypes = vec![Subtype::Forest];
@@ -936,9 +938,9 @@ mod tests {
     #[test]
     fn incomplete_nested_domains_fail_without_mutating_the_input() {
         let mut filter = black_words();
-        filter.any_of.push(ObjectFilter {
-            ability_markers: vec!["swampwalk".into()], ..ObjectFilter::default()
-        });
+        filter.any_of.push(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
+            ability_markers: vec!["swampwalk".into()], ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }));
         let original = filter.clone();
         assert_eq!(rewrite_filter_words(&filter, black_to_blue()), Err(TextChangeDomainError::ObjectFilter));
         assert_eq!(filter, original);

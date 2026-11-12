@@ -30,28 +30,28 @@ fn shared_subject_preserves_captured_characteristics_and_nested_current_state() 
     }
     game.tap(candidate);
     let ctx = FilterContext::new(alice).with_source(source);
-    let retained = ObjectFilter {
+    let retained = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![CardType::Creature],
         subtypes: vec![Subtype::Elf],
         colors: Some(ColorSet::GREEN),
         power: Some(Comparison::Equal(2)),
         untapped: true,
         ..Default::default()
-    };
+    });
     assert!(retained.matches_snapshot(&snapshot, &ctx, &game));
     assert!(!retained.matches(game.object(candidate).unwrap(), &ctx, &game));
-    let current = ObjectFilter {
+    let current = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![CardType::Artifact],
         colors: Some(ColorSet::RED),
         tapped: true,
         match_current_state: true,
         ..Default::default()
-    };
+    });
     // Redirection must work inside a union, not just at the outer entry point.
-    let union = ObjectFilter {
+    let union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![current],
         ..Default::default()
-    };
+    });
     assert!(union.matches_snapshot(&snapshot, &ctx, &game));
     game.move_object_by_effect(candidate, Zone::Graveyard);
     assert!(!union.matches_snapshot(&snapshot, &ctx, &game));
@@ -67,22 +67,22 @@ fn shared_subject_keeps_live_only_predicate_policy() {
     // `modified` is no longer live-only: CR 700.9/603.10 death triggers read
     // a last-known subject's counters and attachments.
     let filters = [
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             blocking: true,
             ..Default::default()
-        },
-        ObjectFilter {
+        }),
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             drawn_this_turn: true,
             ..Default::default()
-        },
-        ObjectFilter {
+        }),
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             surveilled_this_turn: true,
             ..Default::default()
-        },
-        ObjectFilter {
+        }),
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             dealt_damage_this_turn: true,
             ..Default::default()
-        },
+        }),
     ];
     for filter in filters {
         assert!(
@@ -97,18 +97,18 @@ fn shared_subject_keeps_live_only_predicate_policy() {
     // `entered_graveyard_this_turn` is no longer live-only: a retained subject
     // needs its exact graveyard-incarnation receipt (see
     // `graveyard_snapshot_history_tests`), so a battlefield snapshot fails both.
-    let graveyard_history = ObjectFilter {
+    let graveyard_history = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         entered_graveyard_this_turn: true,
         ..Default::default()
-    };
+    });
     assert!(!graveyard_history.matches(game.object(candidate).unwrap(), &ctx, &game));
     assert!(!graveyard_history.matches_snapshot(&snapshot, &ctx, &game));
-    let union = ObjectFilter {
+    let union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         type_or_subtype_union: true,
         card_types: vec![CardType::Artifact],
         subtypes: vec![Subtype::Elf],
         ..Default::default()
-    };
+    });
     assert!(union.matches(game.object(candidate).unwrap(), &ctx, &game));
     assert!(!union.matches_snapshot(&snapshot, &ctx, &game));
 }
@@ -121,12 +121,12 @@ fn shared_subject_retains_snapshot_cast_order_without_a_live_stack_entry() {
     snapshot.cast_order_this_turn = Some(1);
     let mut ctx = FilterContext::new(alice).with_source(source);
     ctx.caster = Some(alice);
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Stack),
         stack_kind: Some(StackObjectKind::Spell),
         cast_this_turn: true,
         ..Default::default()
-    };
+    });
     assert!(filter.matches_snapshot(&snapshot, &ctx, &game));
     assert!(!filter.matches(game.object(spell).unwrap(), &ctx, &game));
     snapshot.cast_order_this_turn = None;
@@ -141,10 +141,10 @@ fn shared_subject_other_retains_stable_identity_after_zone_change() {
         .move_object_by_effect(candidate, Zone::Graveyard)
         .unwrap();
     let ctx = FilterContext::new(alice).with_source(new_id);
-    let other = ObjectFilter {
+    let other = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         other: true,
         ..Default::default()
-    };
+    });
     assert!(!other.matches_snapshot(&snapshot, &ctx, &game));
     assert!(!other.matches(game.object(new_id).unwrap(), &ctx, &game));
 }

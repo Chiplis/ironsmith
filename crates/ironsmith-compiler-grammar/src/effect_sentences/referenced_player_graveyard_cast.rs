@@ -39,11 +39,11 @@ fn parse_other_players_graveyards(tokens: &[OwnedLexToken]) -> Option<EffectAst>
     let lands = crate::target::ObjectFilter::default().with_type(crate::types::CardType::Land);
     let mut spells = crate::target::ObjectFilter::default();
     spells.excluded_card_types.push(crate::types::CardType::Land);
-    let filter = crate::target::ObjectFilter {
+    let filter = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![lands, spells],
         owner: Some(PlayerFilter::NotYou),
         ..Default::default()
-    };
+    });
     let mut spec = crate::model::CompilerGrantSpecCore::new(
         crate::model::CompilerGrantableCore::play_from(),
         filter,
@@ -81,11 +81,11 @@ fn parse_referenced_player_hand(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let lands = crate::target::ObjectFilter::default().with_type(crate::types::CardType::Land);
     let mut spells = crate::target::ObjectFilter::default();
     spells.excluded_card_types.push(crate::types::CardType::Land);
-    let filter = crate::target::ObjectFilter {
+    let filter = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![lands, spells],
         owner: Some(PlayerFilter::IteratedPlayer),
         ..Default::default()
-    };
+    });
     let mut spec = crate::model::CompilerGrantSpecCore::new(
         crate::model::CompilerGrantableCore::play_from(),
         filter,

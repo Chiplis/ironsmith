@@ -113,7 +113,7 @@ fn mixed_permanent_private_card_exile(
         ] => vec![Zone::Battlefield, Zone::Hand, Zone::Graveyard],
         _ => return None,
     };
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![
             ObjectFilter::permanent().controlled_by(PlayerFilter::You),
             ObjectFilter::default()
@@ -123,8 +123,8 @@ fn mixed_permanent_private_card_exile(
                 .in_zone(Zone::Graveyard)
                 .owned_by(PlayerFilter::You),
         ],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let tag = crate::util::helper_tag_for_tokens(tokens, "exiled");
     Some(vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {

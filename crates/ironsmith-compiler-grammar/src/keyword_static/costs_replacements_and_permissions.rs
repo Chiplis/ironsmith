@@ -410,7 +410,7 @@ pub fn parse_optional_life_additional_cost_reduction_line(
     let mut filter = parse_spell_filter_with_grammar_entrypoint(&subject_tokens);
     let subject_words = crate::lexer::token_word_refs(&subject_tokens);
     if static_keyword_cost_shapes::parse_optional_life_subject_is_permanent(&subject_words) {
-        filter.card_types = ObjectFilter::permanent_card().card_types;
+        filter.card_types = ObjectFilter::permanent_card().card_types.clone();
     }
     filter.cast_by = Some(PlayerFilter::You);
 
@@ -3311,7 +3311,7 @@ pub fn parse_subject_are_chosen_type_line(
         if extended.any_of.is_empty() || extended.controller.is_some() || extended.owner.is_some() {
             subjects.push(extended);
         } else {
-            subjects.extend(extended.any_of);
+            subjects.extend(extended.any_of.clone());
         }
     }
     let filter = if subjects.len() == 1 {
@@ -4453,10 +4453,10 @@ pub fn parse_damage_source_filter_words(words: &[&str]) -> Option<ObjectFilter> 
         && let (Some(color), Some(card_type)) = (parse_color(color), parse_card_type(card_type))
     {
         filter.any_of = vec![
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 colors: Some(color),
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
             ObjectFilter::default().with_type(card_type),
         ];
         filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::Or);
@@ -6198,12 +6198,12 @@ pub fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         keyword_static_lines::ExileCounterManaPermission::SnowSources
     );
 
-    let mut base_filter = ObjectFilter {
+    let mut base_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Exile),
         owner,
         with_counter: Some(crate::filter::CounterConstraint::Typed(spec.counter_type)),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     if is_play_lands_and_cast_noncreature_family {
         base_filter
             .tagged_constraints
@@ -6214,40 +6214,40 @@ pub fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
     }
 
     let mut filter = if is_play_lands_and_cast_noncreature_family {
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![
-                ObjectFilter {
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     card_types: vec![CardType::Land],
-                    ..base_filter.clone()
-                },
-                ObjectFilter {
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(base_filter.clone())
+                }),
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     excluded_card_types: vec![CardType::Creature, CardType::Land],
-                    ..base_filter.clone()
-                },
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(base_filter.clone())
+                }),
             ],
-            ..ObjectFilter::default()
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })
     } else if is_play_owned_family {
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![
-                ObjectFilter {
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     card_types: vec![CardType::Land],
-                    ..base_filter.clone()
-                },
-                ObjectFilter {
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(base_filter.clone())
+                }),
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     excluded_card_types: vec![CardType::Land],
-                    ..base_filter.clone()
-                },
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(base_filter.clone())
+                }),
             ],
-            ..ObjectFilter::default()
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })
     } else if is_play_not_owned_family {
         base_filter.clone()
     } else {
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             excluded_card_types: vec![CardType::Land],
-            ..base_filter
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(base_filter)
+        })
     };
     filter.has_mana_cost = false;
 
@@ -6300,12 +6300,12 @@ pub fn parse_surveilled_graveyard_play_life_cost_line(
         return Ok(None);
     }
 
-    let base_filter = ObjectFilter {
+    let base_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Graveyard),
         owner: Some(PlayerFilter::You),
         surveilled_this_turn: true,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let mut spell_filter = base_filter.clone();
     spell_filter.excluded_card_types.push(CardType::Land);
 
@@ -6359,12 +6359,12 @@ pub fn parse_land_and_each_permanent_type_graveyard_permission_line(
         .next()
         .map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
     let budget = |card_type: CardType| {
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Graveyard),
             owner: Some(PlayerFilter::You),
             card_types: vec![card_type],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         if card_type != CardType::Land {
             filter.excluded_card_types.push(CardType::Land);
         }
@@ -7395,11 +7395,11 @@ fn graveyard_cards_have_retrace_ability(
     let mut filter = if fact.nonland_permanents {
         ObjectFilter::permanent_card().without_type(CardType::Land)
     } else {
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: fact.card_types,
             subtypes: fact.subtypes,
-            ..ObjectFilter::default()
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })
     };
     filter.owner = Some(PlayerFilter::You);
     filter.zone = Some(Zone::Graveyard);
@@ -8276,15 +8276,15 @@ pub fn parse_conditional_draw_replacement_line(
                 ],
             }
         };
-        let mut land = ObjectFilter {
+        let mut land = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Land],
             ..Default::default()
-        };
+        });
         land.set_explicit_card_type_noun(Some(CardType::Land));
-        let mut nonland = ObjectFilter {
+        let mut nonland = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             excluded_card_types: vec![CardType::Land],
             ..Default::default()
-        };
+        });
         nonland.set_explicit_card_noun(true);
         let choose_kind = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
             chooser: crate::target::PlayerFilter::You,
@@ -10990,10 +10990,10 @@ pub fn parse_play_from_top_pay_life_line(
     }
     let land_grant = crate::model::CompilerGrantSpecCore::new(
         crate::model::CompilerGrantableCore::play_from(),
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Land],
-            ..ObjectFilter::default()
-        },
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }),
         Zone::Library,
     );
     let mut spell_filter = ObjectFilter::default();

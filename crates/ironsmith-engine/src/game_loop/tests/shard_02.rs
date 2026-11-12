@@ -1854,10 +1854,10 @@ pub(super) fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell()
     let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
     let grant_spec = crate::grant::GrantSpec::new(
         crate::grant::Grantable::emerge_from_cards_mana_cost(),
-        crate::filter::ObjectFilter {
+        crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Creature],
-            ..crate::filter::ObjectFilter::default()
-        },
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::filter::ObjectFilter::default())
+        }),
         Zone::Hand,
     );
     game.object_mut(source_id)

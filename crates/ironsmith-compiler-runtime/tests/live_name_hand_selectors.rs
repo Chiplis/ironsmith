@@ -373,11 +373,11 @@ fn older_characteristic_relation_payloads_keep_inclusive_semantics() {
     let restored: ObjectCharacteristicRelation = serde_json::from_value(json).unwrap();
     assert_eq!(relation, restored);
     assert!(!restored.exclude_candidate);
-    let inner = ObjectFilter {
+    let inner = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(PlayerFilter::OwnerOf(ObjectRef::FilterCandidate)),
         ..Default::default()
-    };
+    });
     let relation = ObjectCharacteristicRelation::shares(vec![ObjectCharacteristic::Name], inner)
         .excluding_candidate();
     assert_eq!(

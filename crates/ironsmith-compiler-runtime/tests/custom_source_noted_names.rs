@@ -171,7 +171,7 @@ fn generic_note_executor_and_source_filter_use_exact_object_memory_without_an_ob
   let mut ctx=EffectContext::new_default(first,A).with_source_number_owner(Some(owner.clone()));ctx.tag_object("input-name",snapshot.clone());
   let result=execute_effect(&mut game,&action,&mut ctx).unwrap();assert_eq!(result.as_count(),Some(if roundtrip{0}else{1}));
  }
- let filter=ironsmith::target::ObjectFilter{name_noted_for:Some(Box::new(ChooseSpec::Source)),noted_name_pair:Some(pair),..Default::default()};
+ let filter=ironsmith::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {name_noted_for:Some(Box::new(ChooseSpec::Source)),noted_name_pair:Some(pair),..Default::default()});
  assert!(filter_matches(&game,&filter,card,first,owner));
  assert!(!filter_matches(&game,&filter,card,second,ironsmith::linked_exile::LinkedExileOwner{host:second,pair,acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed}));
  let new=game.move_object(first,Zone::Hand,ironsmith::events::EventCause::effect()).unwrap();assert_ne!(new,first);
@@ -220,7 +220,7 @@ fn same_pair_separately_acquired_on_the_same_source_has_separate_name_memory(){
   let original=ironsmith::linked_exile::LinkedExileOwner{host:source,pair,acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed};
   let gained=ironsmith::linked_exile::LinkedExileOwner{host:source,pair,acquisition:ironsmith::linked_exile::LinkedExileAcquisition::EffectGroup(ironsmith::continuous::ContinuousEffectGroupId(719))};
   assert!(game.note_card_name_for_owner(gained.clone(),card.card.name.clone()));
-  let filter=ironsmith::target::ObjectFilter{name_noted_for:Some(Box::new(ChooseSpec::Source)),noted_name_pair:Some(pair),..Default::default()};
+  let filter=ironsmith::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {name_noted_for:Some(Box::new(ChooseSpec::Source)),noted_name_pair:Some(pair),..Default::default()});
   assert!(!filter_matches(&game,&filter,id,source,original.clone()));
   assert!(filter_matches(&game,&filter,id,source,gained));
   game.player_mut(A).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless,1);

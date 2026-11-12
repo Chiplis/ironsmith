@@ -2169,10 +2169,10 @@ pub(crate) fn audit_payload_reading(
             // "If you would proliferate, proliferate twice instead": an
             // untyped source you control is your own player action.
             if *source_filter
-                == (ObjectFilter {
+                == (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     controller: Some(PlayerFilter::You),
-                    ..ObjectFilter::default()
-                })
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }))
             {
                 return Some(format!(
                     "If you would {}, {}{effects_text} instead",

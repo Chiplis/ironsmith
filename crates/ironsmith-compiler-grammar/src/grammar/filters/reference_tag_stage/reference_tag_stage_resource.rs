@@ -141,15 +141,18 @@ pub(crate) fn lift_shared_trailing_mana_value_from_type_union(
     if filter.owner.is_none() {
         filter.owner = shared_owner;
     }
-    for branch in &mut filter.any_of {
-        if branch.zone == filter.zone {
-            branch.zone = None;
-        }
-        if branch.controller == filter.controller {
-            branch.controller = None;
-        }
-        if branch.owner == filter.owner {
-            branch.owner = None;
+    {
+        let filter = &mut **filter;
+        for branch in &mut filter.any_of {
+            if branch.zone == filter.zone {
+                branch.zone = None;
+            }
+            if branch.controller == filter.controller {
+                branch.controller = None;
+            }
+            if branch.owner == filter.owner {
+                branch.owner = None;
+            }
         }
     }
 

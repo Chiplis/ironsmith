@@ -223,8 +223,8 @@ mod tests {
     use std::sync::Arc;
 
     fn change() -> TextChange { TextChange::color(Color::Black, Color::Blue).unwrap() }
-    fn black() -> ObjectFilter { ObjectFilter { colors: Some(ColorSet::BLACK), ..ObjectFilter::default() } }
-    fn blue() -> ObjectFilter { ObjectFilter { colors: Some(ColorSet::BLUE), ..ObjectFilter::default() } }
+    fn black() -> ObjectFilter { ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLACK), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) }) }
+    fn blue() -> ObjectFilter { ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLUE), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) }) }
     fn grant() -> Ability {
         let pair = ironsmith_core::LinkedExilePair {
             definition: ironsmith_core::LinkedExileDefinition([21; 32]), pair: 4,

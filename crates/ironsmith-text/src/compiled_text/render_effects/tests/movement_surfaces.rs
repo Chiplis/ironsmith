@@ -29,14 +29,14 @@ fn typed_move_surface_preserves_put_return_and_actor_agreement() {
 
 #[test]
 fn heterogeneous_target_union_uses_owner_first_library_choice_surface() {
-    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter {
+    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![
             ObjectFilter::spell(),
             ObjectFilter::nonland_permanent(),
             ObjectFilter::default().in_zone(Zone::Graveyard),
         ],
-        ..ObjectFilter::default()
-    }));
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    })));
     let effect = Effect::new(crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(
         target,
     ));

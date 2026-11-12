@@ -3927,11 +3927,11 @@ mod coordinated_discard_tests {
 
     #[test]
     fn alternative_discard_costs_share_verb_and_preserve_restrictions() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Hand),
             subtypes: vec![crate::types::Subtype::Island],
             ..Default::default()
-        };
+        });
         let restricted =
             crate::costs::Cost::effect(crate::effects::DiscardEffect::new_with_filter(
                 1,

@@ -355,10 +355,10 @@ fn resolve_neutral(g: &mut GameState, source: ObjectId, controller: PlayerId, ef
 }
 
 fn destroy(g: &mut GameState, source: ObjectId, victim: ObjectId) {
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         specific: Some(victim),
         ..Default::default()
-    };
+    });
     resolve_neutral(g, source, ALICE, vec![Effect::destroy_all(filter)]);
 }
 
@@ -860,10 +860,10 @@ fn deaths_oasis_returns_only_a_card_with_lesser_mana_value_than_the_dead_creatur
         ALICE,
         Zone::Battlefield,
     );
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         specific: Some(dying),
         ..Default::default()
-    };
+    });
     let mut dm = Script {
         // Illegal picks first: a correct engine never offers them as legal.
         object_preference: vec!["Dying Four", "Milled Five", "Milled Three"],

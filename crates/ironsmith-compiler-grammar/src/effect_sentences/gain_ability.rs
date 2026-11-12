@@ -2045,10 +2045,10 @@ fn parse_bare_card_type_subtype_union_filter(tokens: &[OwnedLexToken]) -> Option
         branches.push(branch);
     }
 
-    (saw_card_type && saw_subtype).then_some(ObjectFilter {
+    (saw_card_type && saw_subtype).then_some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: branches,
-        ..ObjectFilter::default()
-    })
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    }))
 }
 
 fn words_start_nested_triggered_ability(words_after_verb: &[&str]) -> bool {

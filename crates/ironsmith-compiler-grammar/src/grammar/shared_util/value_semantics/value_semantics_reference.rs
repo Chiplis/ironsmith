@@ -223,7 +223,7 @@ fn parse_equal_to_aggregate_filter_value_unclaimed(tokens: &[OwnedLexToken]) -> 
         // CR 110.4c: battlefield "permanents" stay zone-only.
         && filter.zone != Some(crate::zone::Zone::Battlefield)
     {
-        filter.card_types = ObjectFilter::permanent_card().card_types;
+        filter.card_types = ObjectFilter::permanent_card().card_types.clone();
     }
 
     Some(

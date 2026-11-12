@@ -294,11 +294,11 @@ pub(crate) fn cost_to_payment_effect(cost: &Cost) -> Option<crate::effect::Effec
             let filter = if card_types.is_empty() {
                 None
             } else {
-                Some(crate::target::ObjectFilter {
+                Some(crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     card_types: card_types.clone(),
                     zone: Some(crate::zone::Zone::Hand),
                     ..Default::default()
-                })
+                }))
             };
             Some(crate::effect::Effect::discard_player_filtered(
                 *count,

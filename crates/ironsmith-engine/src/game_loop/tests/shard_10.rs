@@ -1512,11 +1512,11 @@ pub(super) fn test_protection_from_permanents_blocking() {
 
     // Create attacker with protection from green creatures
     let attacker_id = create_creature(&mut game, "Protected Attacker", alice, 2, 2);
-    let green_filter = ObjectFilter {
+    let green_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         colors: Some(crate::color::ColorSet::GREEN),
         card_types: vec![CardType::Creature],
         ..Default::default()
-    };
+    });
     game.object_mut(attacker_id)
         .unwrap()
         .abilities_mut()

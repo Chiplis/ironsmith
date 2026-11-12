@@ -158,12 +158,12 @@ pub fn parse_discard_segment_tokens(
             count: 1,
             card_types: Vec::new(),
             supertypes: Vec::new(),
-            filter: Some(ObjectFilter {
+            filter: Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Hand),
                 owner: Some(crate::target::PlayerFilter::You),
                 last_drawn_this_turn: Some(crate::target::PlayerFilter::You),
                 ..Default::default()
-            }),
+            })),
             random: false,
             name: None,
             other: false,
@@ -214,10 +214,10 @@ pub fn parse_discard_segment_tokens(
                 &tokens[right_first..],
                 false,
             )?;
-            let mut filter = ObjectFilter {
+            let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Hand),
-                ..ObjectFilter::default()
-            };
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            });
             filter.any_of = vec![left, right];
             ActivationCostSegmentCst::DiscardFiltered {
                 count,
@@ -255,11 +255,11 @@ pub fn parse_discard_segment_tokens(
             count,
             card_types,
             supertypes,
-            filter: (!subtypes.is_empty()).then_some(ObjectFilter {
+            filter: (!subtypes.is_empty()).then_some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Hand),
                 subtypes,
-                ..ObjectFilter::default()
-            }),
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })),
             random,
             name: None,
             other,

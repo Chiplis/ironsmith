@@ -1931,8 +1931,8 @@ mod graveyard_snapshot_history_tests {
             game.turn_store.turn_history.record_event(&event, Some(initial), None);
             let retained = crate::snapshot::ObjectSnapshot::from_object(game.object(grave).unwrap(), &game);
             game.move_object_by_effect(grave, Zone::Battlefield).unwrap();
-            let filter = ObjectFilter { entered_graveyard_this_turn: true,
-                entered_graveyard_from_battlefield_this_turn: true, ..ObjectFilter::default() };
+            let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { entered_graveyard_this_turn: true,
+                entered_graveyard_from_battlefield_this_turn: true, ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) });
             let ctx = game.filter_context_for(owner, None);
             assert_eq!(filter.matches_snapshot(&retained, &ctx, &game), origin == Zone::Battlefield,
                 "a retained card needs its actual graveyard origin, not merely a matching physical card");

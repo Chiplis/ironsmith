@@ -1880,12 +1880,12 @@ fn source_filtered_casting_permission_matches_stack_spell_origin_snapshot() {
         .add_counters(CounterType::Ice, 1);
     let snow_land = game.create_object_from_card(&snow_land_card, alice, Zone::Battlefield);
 
-    let mut spell_filter = crate::target::ObjectFilter {
+    let mut spell_filter = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Exile),
         owner: Some(crate::target::PlayerFilter::Opponent),
         with_counter: Some(crate::filter::CounterConstraint::Typed(CounterType::Ice)),
-        ..crate::target::ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::target::ObjectFilter::default())
+    });
     spell_filter.excluded_card_types.push(CardType::Land);
 
     game.effect_store

@@ -34,7 +34,7 @@ pub(crate) fn predicate(tokens:&[OwnedLexToken])->Option<PredicateAst>{
         else if words.get(noted.wrapping_sub(1)).is_some_and(|word|matches!(*word,"isnt"|"isn't")){(&words[..noted-1],true)}
         else if noted>=2 && words[noted-2..noted]==["is","not"]{(&words[..noted-2],true)}else{return None};
     let triggering=name_reference(subject)?;
-    let filter=ObjectFilter {name_noted_for:Some(Box::new(owner)),..Default::default()};
+    let filter=ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {name_noted_for:Some(Box::new(owner)),..Default::default()});
     let predicate=if triggering{PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::Triggering.bind(),filter)}else{PredicateAst::ItMatches(filter)};
     crate::word_claims::claim_tokens(original);
     Some(if negative{PredicateAst::Not(Box::new(predicate))}else{predicate})

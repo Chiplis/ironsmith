@@ -393,7 +393,7 @@ pub fn parse_elided_shared_domain_union(
                     &leading_words[start..],
                     &PlayerFilter::IteratedPlayer,
                 )
-                .and(relation.owner)
+                .and(relation.owner.clone())
             });
             outer.owner = leading_scope
                 .as_ref()
@@ -427,14 +427,14 @@ pub fn parse_elided_shared_domain_union(
         } else {
             let mut first = outer.clone();
             first.zone = first_branch.zone;
-            first.owner = first.owner.or(first_branch.owner);
+            first.owner = first.owner.clone().or(first_branch.owner.clone());
             let mut second = outer;
             second.zone = second_branch.zone;
-            second.owner = second.owner.or(second_branch.owner);
-            outer = ObjectFilter {
+            second.owner = second.owner.clone().or(second_branch.owner.clone());
+            outer = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 any_of: vec![first, second],
                 ..Default::default()
-            };
+            });
         }
         // Both locations, their owners (checked against the shared owner
         // above) and the joining "and" are read.

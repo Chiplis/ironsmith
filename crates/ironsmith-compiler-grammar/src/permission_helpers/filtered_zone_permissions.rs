@@ -325,7 +325,7 @@ fn permission_from_shape(tokens: &[OwnedLexToken], shape: PermissionShape<'_>) -
                 lands.card_types = vec![CardType::Land];
                 let Some(mut spells) = card_filter(spell_tokens)? else { return Ok(None); };
                 exclude_lands_from_spell_filter(&mut spells);
-                ObjectFilter { any_of: vec![lands, spells], ..Default::default() }
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { any_of: vec![lands, spells], ..Default::default() })
             } else {
                 let Some(mut lands) = card_filter(subject)? else { return Ok(None); };
                 // The play-only spelling here must name land cards. General

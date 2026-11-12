@@ -8121,11 +8121,11 @@ fn parse_named_control_condition_then_attach_those(
     let Some(object) = attach_object_mut(attach_effect) else {
         return Ok(None);
     };
-    let union = ObjectFilter {
+    let union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(crate::zone::Zone::Battlefield),
         any_of: named,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     *object = TargetAst::Object(union, None, None);
     if_true.extend(attach);
     Ok(Some(effects))
@@ -10142,7 +10142,11 @@ fn combine_shared_set_base_axes(effects: &mut [EffectAst]) {
             (power.unhinted(), toughness.unhinted()) else { continue; };
         if duration != second_duration || filter.tagged_constraints.is_empty()
             || filter.tagged_constraints != other.tagged_constraints
-            || !matches!(target, TargetAst::Source(_) | TargetAst::Object(ObjectFilter { source: true, .. }, _, _))
+            || !(match &target {
+                TargetAst::Source(_) => true,
+                TargetAst::Object(filter, _, _) => filter.source,
+                _ => false,
+            })
         { continue; }
         *effect = EffectAst::subject_verb_set_base_power_toughness(
             power.clone(), Value::TotalToughness(filter.clone()), target.clone(), duration.clone(),
@@ -15171,13 +15175,13 @@ pub(crate) fn time_travel_effect_ast() -> EffectAst {
         .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
         .with_counter_type(crate::object::CounterType::Time);
     let target = TargetAst::Object(
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![
                 permanent_with_time_counter,
                 suspended_card_with_time_counter,
             ],
-            ..ObjectFilter::default()
-        },
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }),
         None,
         None,
     );

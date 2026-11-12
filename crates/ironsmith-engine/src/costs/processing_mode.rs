@@ -447,19 +447,19 @@ mod tests {
 
         let mode_typed = CostProcessingMode::DiscardCards {
             count: 1,
-            filter: ObjectFilter {
+            filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![CardType::Creature],
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
         };
         assert_eq!(mode_typed.display(), "Discard a creature card");
 
         let mode_multi = CostProcessingMode::DiscardCards {
             count: 1,
-            filter: ObjectFilter {
+            filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![CardType::Enchantment, CardType::Instant, CardType::Sorcery],
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
         };
         assert_eq!(
             mode_multi.display(),

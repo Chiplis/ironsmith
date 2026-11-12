@@ -277,11 +277,11 @@ pub fn parse_object_filter_with_grammar_entrypoint(
     }
     let words = crate::lexer::parser_token_word_refs(tokens);
     if crate::word_primitives::equals(&words, &["spell", "or", "permanent"]) || crate::word_primitives::equals(&words, &["permanent", "or", "spell"]) {
-        return Ok(ObjectFilter {
+        return Ok(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             other,
             any_of: vec![ObjectFilter::spell(), ObjectFilter::permanent()],
-            ..ObjectFilter::default()
-        });
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }));
     }
     if let Some((index, introducer_len)) = tokens.iter().enumerate().find_map(|(index, token)| {
         if token.is_word("that's") || token.is_word("thats") {
@@ -590,10 +590,10 @@ pub fn spell_filter_union(arms: Vec<ObjectFilter>) -> ObjectFilter {
         }
         return merged;
     }
-    ObjectFilter {
+    ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: arms,
-        ..ObjectFilter::default()
-    }
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    })
 }
 
 fn parse_spell_filter_words_with_noun_phrase_union(words: &[&str]) -> ObjectFilter {

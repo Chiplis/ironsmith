@@ -529,10 +529,10 @@ fn targeted_valentin_followup() {
             .unwrap()
             .mana_pool
             .add(ironsmith::mana::ManaSymbol::Colorless, mana);
-        let filter = ironsmith::target::ObjectFilter {
+        let filter = ironsmith::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             specific: Some(victim),
             ..Default::default()
-        };
+        });
         g.push_to_stack(StackEntry::ability(
             source,
             PlayerId(0),

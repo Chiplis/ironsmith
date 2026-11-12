@@ -1191,7 +1191,7 @@ mod deferred_destroy_owner_contract_tests {
             let _result = crate::events::processing::process_destroy(game, originals[0], Some(ctx.source), ctx.decision_maker);
             Ok(EffectOutcome::resolved())
         } else {
-            let filter = ObjectFilter { any_of: originals.iter().copied().map(ObjectFilter::specific).collect(), ..ObjectFilter::default() };
+            let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { any_of: originals.iter().copied().map(ObjectFilter::specific).collect(), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) });
             DestroyEffect::all(filter).execute(game, ctx)
         }
     }

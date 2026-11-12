@@ -7110,10 +7110,10 @@ pub(super) fn describe_reveal_top_and_or_choice_rest_bottom_structural(
             let [card_type] = choose.filter.card_types.as_slice() else {
                 return false;
             };
-            let expected = ObjectFilter {
+            let expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![*card_type],
-                ..ObjectFilter::default()
-            }
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })
             .in_zone(Zone::Library)
             .match_tagged(
                 look.tag.clone(),
@@ -11420,10 +11420,10 @@ pub(super) fn describe_remove_counter_then_no_counters_conditional(
             else {
                 return None;
             };
-            let expected = ObjectFilter {
+            let expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 without_counter: Some(crate::filter::CounterConstraint::Typed(*counter)),
                 ..Default::default()
-            };
+            });
             if *filter != expected {
                 return None;
             }
@@ -13200,10 +13200,10 @@ fn describe_two_reference_union_onto_battlefield_then_shuffle(
         return None;
     };
     if *union
-        != (ObjectFilter {
+        != (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: union.any_of.clone(),
-            ..ObjectFilter::default()
-        })
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }))
     {
         return None;
     }
@@ -13213,11 +13213,11 @@ fn describe_two_reference_union_onto_battlefield_then_shuffle(
             [constraint] if constraint.relation
                 == crate::filter::TaggedOpbjectRelation::IsTaggedObject
         ) && *branch
-            == ObjectFilter {
+            == ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: branch.zone,
                 tagged_constraints: branch.tagged_constraints.clone(),
-                ..ObjectFilter::default()
-            }
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })
     };
     if !pure_reference(first)
         || !pure_reference(second)
@@ -16181,10 +16181,10 @@ fn describe_each_player_reveal_matching_tapped_and_exile_rest(
     semantic_filter.union_surface = Default::default();
     if tag.as_str() != "__it__"
         || semantic_filter
-            != (ObjectFilter {
+            != (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![CardType::Land],
-                ..ObjectFilter::default()
-            })
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }))
         || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
     {
         return None;
@@ -16254,13 +16254,13 @@ fn describe_each_player_reveal_permanents_and_rest(effects: &[Effect]) -> Option
     let Value::Count(count_filter) = look.count.unhinted() else {
         return None;
     };
-    let expected_count_filter = ObjectFilter {
+    let expected_count_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         controller: Some(PlayerFilter::IteratedPlayer),
-        card_types: ObjectFilter::permanent_card().card_types,
+        card_types: ObjectFilter::permanent_card().card_types.clone(),
         excluded_card_types: vec![CardType::Land],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     // CR 110.4c: the battlefield noun "permanent" may lower zone-only.
     let mut zone_only_count_filter = expected_count_filter.clone();
     zone_only_count_filter.card_types.clear();
@@ -21139,11 +21139,11 @@ fn describe_target_player_reveals_library(effects: &[Effect]) -> Option<String> 
     {
         return None;
     }
-    let expected = ObjectFilter {
+    let expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Library),
         owner: Some(PlayerFilter::Target(Box::new(PlayerFilter::Any))),
         ..Default::default()
-    };
+    });
     if tag_matching.filter != expected {
         return None;
     }
@@ -21197,11 +21197,11 @@ fn describe_target_permanent_damage_multiplier(effects: &[Effect]) -> Option<Str
     if *object != ObjectFilter::permanent() {
         return None;
     }
-    let permanent_types = ObjectFilter {
+    let permanent_types = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
-        card_types: ObjectFilter::permanent_card().card_types,
+        card_types: ObjectFilter::permanent_card().card_types.clone(),
         ..Default::default()
-    };
+    });
     let mut target_shape = target_filter.clone();
     target_shape.union_surface = Default::default();
     let target_text = if *target_filter == ObjectFilter::permanent()

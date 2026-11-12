@@ -1508,11 +1508,11 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         let mut shared_scope = filter.clone();
         shared_scope.any_of.clear();
         shared_scope.set_conjunctive_set_surface(false);
-        let supported_scope = ObjectFilter {
+        let supported_scope = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             controller: filter.controller.clone(),
             owner: filter.owner.clone(),
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         if shared_scope == supported_scope {
             let parts = filter
                 .any_of

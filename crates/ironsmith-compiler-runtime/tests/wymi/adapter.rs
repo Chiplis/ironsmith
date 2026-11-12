@@ -1409,9 +1409,9 @@ fn oracle_filter(query: &J, context: &J) -> R<ironsmith::target::ObjectFilter> {
         "And" => {
             for q in array(&query["args"]) {
                 let part = oracle_filter(q, context)?;
-                f.card_types.extend(part.card_types);
+                f.card_types.extend(part.card_types.clone());
                 if part.mana_value.is_some() {
-                    f.mana_value = part.mana_value;
+                    f.mana_value = part.mana_value.clone();
                 }
             }
         }

@@ -201,8 +201,9 @@ pub fn parse_granted_casting_keyword_line(
                 && arm.owner.is_none() && arm.controller.is_none()
         })
     {
+        let owner = last.owner.clone();
         filter.zone = Some(zone);
-        filter.owner = last.owner.clone();
+        filter.owner = owner;
         for arm in &mut filter.any_of {
             arm.zone = None;
             arm.owner = None;

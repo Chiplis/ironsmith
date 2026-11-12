@@ -1112,10 +1112,10 @@ pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPr
         IfResultPredicate::DiesThisWay => {
             EffectPredicate::PriorEffectResult(ironsmith_core::PriorEffectResultSurface::new(
                 ironsmith_core::PriorEffectAction::Died,
-                crate::filter::ObjectFilter {
+                crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     zone: None,
-                    ..crate::filter::ObjectFilter::creature()
-                },
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::filter::ObjectFilter::creature())
+                }),
                 ironsmith_core::PriorEffectResultActor::Passive,
                 ironsmith_core::PriorEffectResultQuantifier::One,
             ))

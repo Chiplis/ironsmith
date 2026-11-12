@@ -315,14 +315,14 @@ mod tests {
         let existing_library_card =
             game.create_object_from_card(&test_card(13, "Existing Top"), bob, Zone::Library);
 
-        let target_filter = crate::target::ObjectFilter {
+        let target_filter = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![
                 crate::target::ObjectFilter::spell(),
                 crate::target::ObjectFilter::nonland_permanent(),
                 crate::target::ObjectFilter::default().in_zone(Zone::Graveyard),
             ],
-            ..crate::target::ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::target::ObjectFilter::default())
+        });
         let target_spec = ChooseSpec::target(ChooseSpec::Object(target_filter));
         let effect = MoveToLibraryTopOrBottomChoiceEffect::new(target_spec);
         let source = game.new_object_id();

@@ -546,20 +546,20 @@ fn parse_predicate_opponent_controls_uses_capture_parser() -> Result<(), CardTex
     for (text, expected_filter) in [
         (
             "If opponent controls artifact",
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 controller: Some(PlayerFilter::Opponent),
                 card_types: vec![CardType::Artifact],
                 ..Default::default()
-            },
+            }),
         ),
         (
             "If an opponent controls another creature",
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 controller: Some(PlayerFilter::Opponent),
                 card_types: vec![CardType::Creature],
                 other: true,
                 ..Default::default()
-            },
+            }),
         ),
     ] {
         let tokens = lex_line(text, 0)?;
@@ -595,25 +595,25 @@ fn parse_predicate_opponent_controls_tagged_object_uses_capture_parser() -> Resu
     for (text, filter) in [
         (
             "If an opponent controls it",
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 controller: Some(PlayerFilter::Opponent),
                 ..Default::default()
-            },
+            }),
         ),
         (
             "If opponent controls that creature",
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 controller: Some(PlayerFilter::Opponent),
                 card_types: vec![CardType::Creature],
                 ..Default::default()
-            },
+            }),
         ),
         (
             "If an opponent controls that permanent",
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 controller: Some(PlayerFilter::Opponent),
                 ..Default::default()
-            },
+            }),
         ),
     ] {
         let tokens = lex_line(text, 0)?;
@@ -658,10 +658,10 @@ fn parse_predicate_demonstrative_permanent_spell_keeps_stack_domain() -> Result<
 #[test]
 fn parse_predicate_preserves_last_known_copula_and_negation() -> Result<(), CardTextError> {
     let creature = ObjectFilter::creature();
-    let horror = ObjectFilter {
+    let horror = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
-        ..ObjectFilter::default().with_subtype(Subtype::Horror)
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default().with_subtype(Subtype::Horror))
+    });
     let demon = ObjectFilter::default().with_subtype(Subtype::Demon);
 
     for (text, expected) in [
@@ -1206,10 +1206,10 @@ fn parse_predicate_control_conditions_use_shared_capture_parser() -> Result<(), 
             "If you control three or more creatures with different powers",
             PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
                 player: PlayerAst::You,
-                filter: ObjectFilter {
+                filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     distinct_powers: true,
-                    ..ObjectFilter::creature().controlled_by(PlayerFilter::You)
-                },
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature().controlled_by(PlayerFilter::You))
+                }),
                 count: 3,
             }),
         ),
@@ -1397,10 +1397,10 @@ fn parse_predicate_negative_control_uses_shared_capture_parser() -> Result<(), C
             "If you do not control another creature",
             PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo {
                 player: PlayerAst::You,
-                filter: ObjectFilter {
+                filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     other: true,
-                    ..ObjectFilter::creature().controlled_by(PlayerFilter::You)
-                },
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature().controlled_by(PlayerFilter::You))
+                }),
             }),
         ),
     ] {
@@ -2107,24 +2107,24 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
     for (text, expected_filter) in [
         (
             "If that permanent is black",
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 colors: Some(ColorSet::BLACK),
                 ..Default::default()
-            },
+            }),
         ),
         (
             "If it's blocking",
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 blocking: true,
                 ..Default::default()
-            },
+            }),
         ),
         (
             "If that creature is attacking",
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 attacking: true,
                 ..Default::default()
-            },
+            }),
         ),
     ] {
         let tokens = lex_line(text, 0)?;
@@ -2173,17 +2173,17 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
         ),
         (
             "If that creature was not blocking",
-            PredicateAst::ItMatchedLastKnown(ObjectFilter {
+            PredicateAst::ItMatchedLastKnown(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 nonblocking: true,
                 ..Default::default()
-            }),
+            })),
         ),
         (
             "If that creature was blue or black",
-            PredicateAst::ItMatchedLastKnown(ObjectFilter {
+            PredicateAst::ItMatchedLastKnown(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 colors: Some(ColorSet::BLUE.union(ColorSet::BLACK)),
                 ..Default::default()
-            }),
+            })),
         ),
     ] {
         let tokens = lex_line(text, 0)?;
@@ -3443,10 +3443,10 @@ fn parse_predicate_graveyard_card_counts_use_capture_parser() -> Result<(), Card
         parsed,
         PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player: PlayerAst::You,
-            filter: ObjectFilter {
+            filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Graveyard),
                 ..Default::default()
-            },
+            }),
             count: 7,
         })
     );

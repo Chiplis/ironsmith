@@ -372,14 +372,14 @@ fn try_parse_divvy_sentence_sequence_program(
 
         let mut remainder_filter = search_filter.clone();
         remainder_filter.any_of = vec![
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Library),
-                ..ObjectFilter::default()
-            },
-            ObjectFilter {
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Graveyard),
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
         ];
         remainder_filter
             .tagged_constraints

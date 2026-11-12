@@ -479,22 +479,22 @@ mod tests {
             .last()
             .copied()
             .expect("surveilled card should be in graveyard");
-        let graveyard_filter = crate::target::ObjectFilter {
+        let graveyard_filter = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Graveyard),
             surveilled_this_turn: true,
             ..Default::default()
-        };
+        });
         assert!(graveyard_filter.matches(
             game.object(graveyard_card).unwrap(),
             &game.filter_context_for(alice, None),
             &game
         ));
 
-        let library_filter = crate::target::ObjectFilter {
+        let library_filter = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Library),
             surveilled_this_turn: true,
             ..Default::default()
-        };
+        });
         assert!(library_filter.matches(
             game.object(b).unwrap(),
             &game.filter_context_for(alice, None),

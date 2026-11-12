@@ -1524,12 +1524,12 @@ impl ContinuousEffectManager {
     /// this projection neither moves it nor allocates another ability identity.
     pub(crate) fn project_sticker_onto_entry(&mut self, id: ContinuousEffectId, original: ObjectId, entrant: ObjectId, zone: Zone) {
         if let Some(effect) = Arc::make_mut(&mut self.effects).iter_mut().find(|effect| effect.id == id) {
-            effect.applies_to = EffectTarget::Filter(ObjectFilter {
+            effect.applies_to = EffectTarget::Filter(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(zone),
-                any_of: vec![ObjectFilter { specific: Some(original), ..Default::default() },
-                             ObjectFilter { specific: Some(entrant), ..Default::default() }],
+                any_of: vec![ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { specific: Some(original), ..Default::default() }),
+                             ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { specific: Some(entrant), ..Default::default() })],
                 ..Default::default()
-            });
+            }));
             effect.source_type = EffectSourceType::Resolution { locked_targets: vec![original, entrant] };
             self.revision += 1;
         }

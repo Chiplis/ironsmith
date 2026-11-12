@@ -270,7 +270,7 @@ fn cast_aura(game: &mut GameState, definition: &CardDefinition, host: ObjectId) 
     assert_eq!(game.object(aura).unwrap().attached_to, Some(AttachmentTarget::Object(host))); aura
 }
 fn destroy_and_stack(game: &mut GameState, source: ObjectId, objects: &[ObjectId]) {
-    let filter = ObjectFilter { any_of: objects.iter().map(|id| ObjectFilter::specific(*id)).collect(), ..ObjectFilter::default() };
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { any_of: objects.iter().map(|id| ObjectFilter::specific(*id)).collect(), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) });
     let outcome = execute_effect(game, &Effect::destroy_all(filter), &mut EffectContext::new(source, A, &mut SelectFirstDecisionMaker)).unwrap();
     for event in outcome.events { game.queue_trigger_event(Default::default(), event); }
     let mut queue = TriggerQueue::new(); check_and_apply_sbas(game, &mut queue).unwrap();

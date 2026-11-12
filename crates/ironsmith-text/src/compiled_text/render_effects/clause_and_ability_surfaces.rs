@@ -11361,20 +11361,20 @@ pub(crate) fn describe_static_ability_with_subject(
                         "enchanted" => Some("enchanted creature"),
                         _ => None,
                     }
-                    && (ObjectFilter {
+                    && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         tagged_constraints: Vec::new(),
                         union_surface: Default::default(),
-                        ..objects.clone()
-                    }) == ObjectFilter::default()
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(objects.clone())
+                    })) == ObjectFilter::default()
                     && attached.card_types.as_slice() == [CardType::Creature]
                     && let Some(relation) = attached.power_toughness_relation
-                    && (ObjectFilter {
+                    && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         card_types: Vec::new(),
                         zone: None,
                         power_toughness_relation: None,
                         union_surface: Default::default(),
-                        ..attached.clone()
-                    }) == ObjectFilter::default()
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(attached.clone())
+                    })) == ObjectFilter::default()
                 {
                     let condition_text = match relation {
                         ironsmith_core::PowerToughnessRelation::PowerGreaterThanToughness => {
@@ -11420,13 +11420,13 @@ pub(crate) fn describe_static_ability_with_subject(
                         _ => None,
                     }
                     && let [keyword] = gate.static_abilities.as_slice()
-                    && (ObjectFilter {
+                    && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         static_abilities: Vec::new(),
-                        ..gate.clone()
-                    }) == (ObjectFilter {
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(gate.clone())
+                    })) == (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         zone: gate.zone,
-                        ..objects.clone()
-                    })
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(objects.clone())
+                    }))
                     && let Some(keyword) = ironsmith_core::filter_model::describe_filter_static_ability(*keyword)
                 {
                     let body = rule.describe(objects);
@@ -20389,11 +20389,11 @@ pub(super) fn describe_next_spell_delayed_trigger(
         && let Some(spell_filter) = cast_trigger.filter.as_ref()
         && let [constraint] = spell_filter.tagged_constraints.as_slice()
         && constraint.relation == crate::target::TaggedOpbjectRelation::SameStableId
-        && (ObjectFilter {
+        && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             tagged_constraints: Vec::new(),
             union_surface: Default::default(),
-            ..spell_filter.clone()
-        }) == ObjectFilter::default()
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(spell_filter.clone())
+        })) == ObjectFilter::default()
     {
         let delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
         let delayed_text = delayed_text.trim().trim_end_matches('.');

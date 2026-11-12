@@ -132,7 +132,7 @@ fn existing_sigil_current_flag_rechecks_one_one_but_past_tense_stays_on_event_lk
     let entrant = card(&mut game, Zone::Battlefield, vec![CardType::Creature]);
     let mut entered = crate::events::EnterBattlefieldEvent::new(entrant, Zone::Hand);
     entered.completed_snapshot = Some(ObjectSnapshot::from_object_with_calculated_characteristics(game.object(entrant).unwrap(), &game));
-    let event = event(entered); let filter = ObjectFilter { power: Some(Comparison::Equal(1)), toughness: Some(Comparison::Equal(1)), ..Default::default() };
+    let event = event(entered); let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { power: Some(Comparison::Equal(1)), toughness: Some(Comparison::Equal(1)), ..Default::default() });
     let current = Condition::TaggedObjectMatches("triggering".into(), filter.clone());
     let past = Condition::TaggedObjectMatchedLastKnown("triggering".into(), filter);
     ApplyContinuousEffect::with_spec(ChooseSpec::SpecificObject(entrant), Modification::ModifyPowerToughness { power: 1, toughness: 1 }, Until::EndOfTurn)

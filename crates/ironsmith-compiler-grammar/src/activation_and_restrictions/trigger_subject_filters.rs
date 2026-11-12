@@ -122,7 +122,7 @@ pub fn parse_discard_trigger_card_filter(
             && filter.all_card_types.is_empty()
             && qualifier_words.iter().any(|word| matches!(*word, "permanent" | "permanents"))
         {
-            filter.card_types = ObjectFilter::permanent_card().card_types;
+            filter.card_types = ObjectFilter::permanent_card().card_types.clone();
         }
         filter.zone = None;
         return Ok(Some(filter));
@@ -1161,7 +1161,7 @@ pub fn parse_spell_activity_trigger(
                                 // IteratedPlayer binding.
                                 filter.owner = None;
                             } else if filter.owner.is_none() {
-                                filter.owner = origin_filter.owner;
+                                filter.owner = origin_filter.owner.clone();
                             }
                         }
                         Ok(Some(filter))

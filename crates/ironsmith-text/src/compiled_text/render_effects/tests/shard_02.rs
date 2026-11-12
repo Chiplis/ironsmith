@@ -426,11 +426,11 @@ fn gain_then_put_counters_shared_value_renders_one_where_x_basis() {
 
 #[test]
 fn any_number_from_hand_then_linked_draw_keeps_order_and_offset_surface() {
-    let hand = ObjectFilter {
+    let hand = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(PlayerFilter::You),
         ..Default::default()
-    };
+    });
     let move_to_library = crate::effects::MoveToZoneEffect::to_bottom_of_library(
         ChooseSpec::Object(hand).with_count(ChoiceCount::any_number()),
     )
@@ -451,11 +451,11 @@ fn any_number_from_hand_then_linked_draw_keeps_order_and_offset_surface() {
 
 #[test]
 fn whole_hand_then_linked_draw_keeps_order_and_any_order_surface() {
-    let hand = ObjectFilter {
+    let hand = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(PlayerFilter::You),
         ..Default::default()
-    };
+    });
     let move_to_library =
         crate::effects::MoveToZoneEffect::to_bottom_of_library(ChooseSpec::All(hand))
             .with_library_order(ironsmith_core::LibraryPlacementOrder::ChosenBy(

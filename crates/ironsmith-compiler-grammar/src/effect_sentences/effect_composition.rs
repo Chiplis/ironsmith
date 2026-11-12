@@ -855,7 +855,7 @@ fn parse_choose_type_then_phase_out_bundle(
     });
 
     Ok(Some(vec![
-        EffectAst::subject_verb_choose_card_type(chooser, choose_filter.card_types),
+        EffectAst::subject_verb_choose_card_type(chooser, choose_filter.card_types.clone()),
         EffectAst::subject_verb_phase_out_all(phase_out_filter),
     ]))
 }
@@ -1602,7 +1602,7 @@ fn chosen_counter_target(
 ) -> Result<TargetAst, CardTextError> {
     match shape {
         bundle_grammar::ChosenCounterTarget::PermanentOrSuspendedCard => Ok(TargetAst::Object(
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 any_of: vec![
                     ObjectFilter::permanent(),
                     ObjectFilter::default()
@@ -1610,8 +1610,8 @@ fn chosen_counter_target(
                         .with_alternative_cast(AlternativeCastKind::Suspend)
                         .with_counter_type(CounterType::Time),
                 ],
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
             span_from_tokens(first),
             None,
         )),

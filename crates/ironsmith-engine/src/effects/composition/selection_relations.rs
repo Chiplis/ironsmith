@@ -213,17 +213,17 @@ mod tests {
         let ca = card("Gamma // Alpha");
         let beta = card("Beta");
         let nameless = card("");
-        let shared = ObjectFilter {
+        let shared = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             shares_name: true,
             ..Default::default()
-        };
+        });
         assert!(allows(&game, &shared, &[ab, bc, beta], false));
         assert!(!allows(&game, &shared, &[ab, bc, ca], false));
         assert!(!allows(&game, &shared, &[nameless, nameless], false));
-        let distinct = ObjectFilter {
+        let distinct = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             distinct_names: true,
             ..Default::default()
-        };
+        });
         assert!(!allows(&game, &distinct, &[ab, beta], false));
         assert!(!allows(&game, &distinct, &[nameless, beta], false));
         assert_eq!(
@@ -247,13 +247,13 @@ mod tests {
         let first = make(CardType::Artifact);
         let second = make(CardType::Creature);
         let land = make(CardType::Land);
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Hand),
             owner: Some(crate::target::PlayerFilter::You),
             excluded_card_types: vec![CardType::Land],
             shares_name: true,
             ..Default::default()
-        };
+        });
         // The offered IDs may have been placeholders before the public answer
         // opened them. Candidate membership alone cannot validate nonland.
         let context = SelectObjectsContext::new(

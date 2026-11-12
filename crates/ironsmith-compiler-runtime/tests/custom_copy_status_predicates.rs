@@ -17,7 +17,7 @@ fn exact_copy_and_keyword_predicate_ignores_payment_and_rejects_uncast_originals
   if copy{game.object_mut(id).unwrap().kind=ObjectKind::SpellCopy;}
   if !identity{game.object_mut(id).unwrap().abilities_mut().retain(|ability|!matches!(&ability.kind,ironsmith::ability::AbilityKind::Static(s)if s.custom_keyword_name().is_some_and(|name|name==label)));}
   if paid{let mut receipt=ironsmith_core::OptionalCostRef::from("Additional");receipt.custom_keyword=Some(label.into());game.object_mut(id).unwrap().optional_costs_paid.costs.push((receipt,1));}
-  let filter=ironsmith::target::ObjectFilter{zone:Some(Zone::Stack),spell_copy:true,ability_markers:vec![format!("custom keyword:{label}")],..Default::default()};
+  let filter=ironsmith::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {zone:Some(Zone::Stack),spell_copy:true,ability_markers:vec![format!("custom keyword:{label}")],..Default::default()});
   let snapshot=ironsmith::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(id).unwrap(),&game);
   assert_eq!(snapshot_matches(&game,&filter,&snapshot,id,A),copy&&identity,"LKI retains exact copy kind and keyword identity");
   ironsmith::effects::execute_effect(&mut game,&definition.spell_effect.as_ref().unwrap()[0],&mut ironsmith::effects::EffectContext::new_default(id,A)).unwrap();

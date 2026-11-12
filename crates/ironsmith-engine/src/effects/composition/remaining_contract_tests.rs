@@ -235,23 +235,23 @@ fn nested_source_actor_scopes_restore_on_error_and_keep_unrelated_outputs() {
 fn filter_traversal_preserves_field_and_wrapper_boundaries() {
     use crate::effects::player_reference_binding::*;
     use crate::target::{ObjectFilter, PlayerFilter};
-    let base = ObjectFilter {
+    let base = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         controller: Some(PlayerFilter::IteratedPlayer),
         owner: Some(PlayerFilter::OpponentOf(Box::new(
             PlayerFilter::IteratedPlayer,
         ))),
         cast_by: Some(PlayerFilter::IteratedPlayer),
         attached_to_player: Some(PlayerFilter::IteratedPlayer),
-        attached_to_object: Some(Box::new(ObjectFilter {
+        attached_to_object: Some(Box::new(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             owner: Some(PlayerFilter::IteratedPlayer),
             ..Default::default()
-        })),
-        any_of: vec![ObjectFilter {
+        }))),
+        any_of: vec![ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             owner: Some(PlayerFilter::IteratedPlayer),
             ..Default::default()
-        }],
+        })],
         ..Default::default()
-    };
+    });
     for fields in [
         PlayerReferenceFields::ControllerOwner,
         PlayerReferenceFields::SpellFacets,
@@ -291,7 +291,7 @@ fn filter_traversal_preserves_field_and_wrapper_boundaries() {
             !matches!(fields, PlayerReferenceFields::ControllerOwner)
         );
     }
-    let mut nested = base.owner.unwrap();
+    let mut nested = base.owner.clone().unwrap();
     walk_player_reference_wrappers(&mut nested, &mut |reference| {
         if matches!(reference, PlayerFilter::IteratedPlayer) {
             *reference = PlayerFilter::Specific(PlayerId(1));

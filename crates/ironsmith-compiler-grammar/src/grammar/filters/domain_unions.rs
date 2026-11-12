@@ -40,24 +40,24 @@ pub fn parse_subtype_color_shared_card_union_lexed(
             _ => return None,
         };
 
-    let subtype_branch = ObjectFilter {
+    let subtype_branch = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         subtypes: vec![subtype],
-        ..ObjectFilter::default()
-    };
-    let color_branch = ObjectFilter {
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
+    let color_branch = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         colors: Some(color),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let branches = if subtype_first {
         vec![subtype_branch, color_branch]
     } else {
         vec![color_branch, subtype_branch]
     };
-    let mut union = ObjectFilter {
+    let mut union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: branches,
         other,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     union.set_explicit_card_noun(true);
     union.set_conjunctive_set_surface(true);
     Some(union)

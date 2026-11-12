@@ -42,16 +42,16 @@ fn reveal_claim_filter(
             .collect::<Vec<_>>();
         claim.shares_creature_type_with_source = false;
         let mut relation = if subtypes.is_empty() {
-            crate::target::ObjectFilter {
+            crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 source: true,
                 other: true,
                 ..Default::default()
-            }
+            })
         } else {
-            crate::target::ObjectFilter {
+            crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 subtypes,
                 ..Default::default()
-            }
+            })
         };
         // The filter's base qualities are ANDed with its any_of group.
         // Nest the old group to preserve its constraints while adding this

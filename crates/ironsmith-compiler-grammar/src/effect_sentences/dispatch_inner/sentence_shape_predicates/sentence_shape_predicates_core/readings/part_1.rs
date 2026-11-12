@@ -455,19 +455,19 @@ pub(super) fn read_this_turn_and_next_turn_restrictions(
                 "targets" | "target", "of", "spells", "or", "activated", "abilities"
             ]
         ) {
-            let spells_or_activated = crate::target::ObjectFilter {
+            let spells_or_activated = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 any_of: vec![
-                    crate::target::ObjectFilter {
+                    crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         stack_kind: Some(crate::filter::StackObjectKind::Spell),
-                        ..crate::target::ObjectFilter::default()
-                    },
-                    crate::target::ObjectFilter {
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::target::ObjectFilter::default())
+                    }),
+                    crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         stack_kind: Some(crate::filter::StackObjectKind::ActivatedAbility),
-                        ..crate::target::ObjectFilter::default()
-                    },
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::target::ObjectFilter::default())
+                    }),
                 ],
-                ..crate::target::ObjectFilter::default()
-            };
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::target::ObjectFilter::default())
+            });
             restrictions.push(crate::effect::Restriction::BeTargetedPlayerFrom(
                 crate::target::PlayerFilter::Any,
                 spells_or_activated.clone(),

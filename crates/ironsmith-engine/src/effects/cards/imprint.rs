@@ -59,12 +59,12 @@ impl EffectExecutor for ImprintFromHandEffect {
         use crate::target::{ChooseSpec, PlayerFilter};
         const SELECTED: &str = "__imprint_selected";
         const EXILED: &str = "__imprint_arrived";
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Hand),
             owner: Some(PlayerFilter::You),
             any_of: vec![self.filter.clone()],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         let mut choose = crate::effects::ChooseObjectsEffect::new(
             filter,
             ChoiceCount::up_to(1),

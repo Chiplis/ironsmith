@@ -1348,18 +1348,18 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
             match prefix.kind {
                 SourceTriggerKind::BecomesBlocked => {
                     if clause_grammar::parse_blocked_damage_effect_tokens(&effects_tokens) {
-                        let attacking = ObjectFilter {
+                        let attacking = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                             zone: Some(Zone::Battlefield),
                             card_types: vec![CardType::Creature],
                             attacking: true,
-                            ..ObjectFilter::default()
-                        };
-                        let blocking = ObjectFilter {
+                            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                        });
+                        let blocking = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                             zone: Some(Zone::Battlefield),
                             card_types: vec![CardType::Creature],
                             blocking: true,
-                            ..ObjectFilter::default()
-                        };
+                            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                        });
                         return Ok(LineAst::Triggered {
                             trigger: TriggerSpec::ThisBecomesBlocked,
                             effects: vec![

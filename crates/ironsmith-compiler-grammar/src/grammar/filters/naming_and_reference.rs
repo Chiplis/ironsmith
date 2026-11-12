@@ -543,10 +543,10 @@ where
     if alternative_names.len() > 1 && filter.any_of.is_empty() {
         filter.any_of = alternative_names
             .into_iter()
-            .map(|name| ObjectFilter {
+            .map(|name| ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 name: Some(name),
-                ..ObjectFilter::default()
-            })
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }))
             .collect();
         return Ok(true);
     }
@@ -561,10 +561,10 @@ where
         filter.any_of = serial_names
             .into_iter()
             .map(|surface| {
-                let mut branch = ObjectFilter {
+                let mut branch = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     name: Some(surface.to_ascii_lowercase()),
-                    ..ObjectFilter::default()
-                };
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                });
                 branch.set_name_surface(surface);
                 branch
             })

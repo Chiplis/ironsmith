@@ -483,10 +483,10 @@ fn lower_selected_hand_reveal(
             top_tag.clone(),
             ironsmith_core::TaggedOpbjectRelation::IsTaggedObject,
         );
-        let union = ObjectFilter {
+        let union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![filter, top_filter],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         return Ok(Some(vec![
             EffectAst::subject_verb_look_at_top_cards(
                 player,
@@ -617,7 +617,7 @@ pub fn parse_sentence_target_player_reveals_random_card_from_hand(
         return Ok(None);
     }
 
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(match player {
             PlayerAst::You => PlayerFilter::You,
@@ -627,8 +627,8 @@ pub fn parse_sentence_target_player_reveals_random_card_from_hand(
             PlayerAst::That => PlayerFilter::IteratedPlayer,
             _ => return Ok(None),
         }),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let tag = helper_tag_for_tokens(clause.tokens(), "revealed");
 
     Ok(Some(vec![

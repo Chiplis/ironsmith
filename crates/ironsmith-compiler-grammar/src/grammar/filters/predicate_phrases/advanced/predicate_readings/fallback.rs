@@ -1203,10 +1203,10 @@ fn player_hasnt_played_that_card(words: &[&str]) -> Option<PredicateAst> {
     ) {
         return None;
     }
-    Some(PredicateAst::ItMatches(ObjectFilter {
+    Some(PredicateAst::ItMatches(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(crate::zone::Zone::Exile),
         ..Default::default()
-    }))
+    })))
 }
 
 /// "you played a land this turn" (River of Tears).

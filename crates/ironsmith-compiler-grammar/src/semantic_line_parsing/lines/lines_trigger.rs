@@ -2896,7 +2896,7 @@ pub fn try_parse_optional_cost_with_cast_trigger(
     if !actors_are_cost_payer
         || count.min != 1
         || count.max.is_some()
-        || !matches!(sacrificed_filter, crate::target::ObjectFilter { tagged_constraints, .. } if tagged_constraints.iter().any(|constraint| constraint.tag == tag.key))
+        || !sacrificed_filter.tagged_constraints.iter().any(|constraint| constraint.tag == tag.key)
     {
         return Ok(None);
     }

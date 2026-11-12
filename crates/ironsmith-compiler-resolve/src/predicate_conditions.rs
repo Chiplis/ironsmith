@@ -44,11 +44,11 @@ pub fn resolve_condition_from_predicate(
             Condition::SourceControllersMainPhase
         }
         PredicateAst::ItIsLandCard => {
-            let mut filter = ObjectFilter {
+            let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: None,
                 card_types: vec![CardType::Land],
                 ..Default::default()
-            };
+            });
             filter.zone = None;
             if let Some(tag) = saved_last_tag.clone() {
                 Condition::TaggedObjectMatches(tag.into(), filter)
@@ -1227,7 +1227,7 @@ pub fn resolve_condition_from_predicate(
                 } else {
                     let probe = ObjectFilter::default().shares_color_with_tagged(tag.clone());
                     resolve_it_tag(&probe, &refs)?
-                        .tagged_constraints
+                        .tagged_constraints.clone()
                         .into_iter()
                         .find(|constraint| {
                             constraint.relation == TaggedOpbjectRelation::SharesColorWithTagged

@@ -204,14 +204,14 @@ pub fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
         return Ok(None);
     };
 
-    let land_filter = ObjectFilter {
+    let land_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![CardType::Land],
         ..Default::default()
-    };
-    let nonland_filter = ObjectFilter {
+    });
+    let nonland_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         excluded_card_types: vec![CardType::Land],
         ..Default::default()
-    };
+    });
 
     Ok(Some(vec![
         EffectAst::subject_verb_choose_named_option(

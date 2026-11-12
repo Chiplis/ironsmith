@@ -1384,7 +1384,7 @@ pub fn bind_condition_filter_antecedent(filter: &mut ObjectFilter, antecedent: &
     merge_filter_overlay(&mut replacement, overlay);
     // Binding the executable identity must retain the authored noun used by
     // this reference (for example "that creature" after an attached-host test).
-    replacement.source_surface = filter.source_surface.clone().or(replacement.source_surface);
+    replacement.source_surface = filter.source_surface.clone().or(replacement.source_surface.clone());
     *filter = replacement;
 }
 
@@ -1393,18 +1393,18 @@ pub fn merge_filter_overlay(base: &mut ObjectFilter, overlay: ObjectFilter) {
         base.zone.get_or_insert(zone);
     }
     if base.controller.is_none() {
-        base.controller = overlay.controller;
+        base.controller = overlay.controller.clone();
     }
     if base.owner.is_none() {
-        base.owner = overlay.owner;
+        base.owner = overlay.owner.clone();
     }
     base.other |= overlay.other;
-    for card_type in overlay.card_types {
+    for card_type in overlay.card_types.clone() {
         if !base.card_types.contains(&card_type) {
             base.card_types.push(card_type);
         }
     }
-    for subtype in overlay.subtypes {
+    for subtype in overlay.subtypes.clone() {
         if !base.subtypes.contains(&subtype) {
             base.subtypes.push(subtype);
         }

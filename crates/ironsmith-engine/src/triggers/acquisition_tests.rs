@@ -17,7 +17,7 @@ fn definition(stamp: u8, trigger: Trigger, amount: i32) -> Ability {
         .with_trigger_definition(LinkedExileDefinition([stamp; 32])))
 }
 fn colored_trigger() -> Trigger {
-    Trigger::spell_cast(Some(ObjectFilter { colors: Some(ColorSet::BLACK), ..Default::default() }), PlayerFilter::You)
+    Trigger::spell_cast(Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLACK), ..Default::default() })), PlayerFilter::You)
 }
 fn triggered(ability: &Ability) -> &TriggeredAbility {
     let AbilityKind::Triggered(triggered) = &ability.kind else { panic!("triggered fixture"); };
@@ -256,9 +256,9 @@ fn a_body_edit_does_not_reset_the_first_event_history_owner() {
     let mut authored = definition(9, Trigger::spell_cast(None, PlayerFilter::You), 1);
     let AbilityKind::Triggered(ability) = &mut authored.kind else { unreachable!() };
     ability.intervening_if = Some(crate::ConditionExpr::FirstTimeThisTurn);
-    ability.choices = vec![crate::target::ChooseSpec::Object(ObjectFilter {
+    ability.choices = vec![crate::target::ChooseSpec::Object(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         colors: Some(ColorSet::BLACK), ..Default::default()
-    })];
+    }))];
     let (mut game, source) = body(vec![authored]);
     let original = current(&game, source);
     let identity = compute_trigger_identity(&original);

@@ -555,7 +555,7 @@ mod tests {
         action.selection = CardCreationSelection::RandomMatching {
             // This is an identity predicate over a supplied catalog, not
             // a battlefield-object selector (ObjectFilter::creature()).
-            filter: ObjectFilter { card_types:vec![CardType::Creature],..Default::default() },
+            filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { card_types:vec![CardType::Creature],..Default::default() }),
             independent: false,
         };
         let mut ctx = ExecutionContext::new_default(game.new_object_id(), PlayerId::from_index(0));

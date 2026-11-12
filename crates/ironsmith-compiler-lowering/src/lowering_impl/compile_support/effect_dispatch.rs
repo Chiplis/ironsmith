@@ -4407,12 +4407,12 @@ pub(super) fn bind_value_object_targets(
             return;
         }
         for nested in &mut filter.any_of { bind_filter(nested, ctx, prelude, choices); }
-        for field in [&mut filter.mana_from_source_spent_to_cast, &mut filter.targets_object,
-            &mut filter.targets_only_object, &mut filter.not_targeted_by_ability_from,
-            &mut filter.would_destroy_object, &mut filter.attached_to_object,
-            &mut filter.with_attached_object, &mut filter.without_attached_object,
-            &mut filter.could_enchant_object, &mut filter.controller_controls,
-            &mut filter.blocked_or_was_blocked_by_this_turn] {
+        for field in { let fields__ = &mut **filter; [&mut fields__.mana_from_source_spent_to_cast, &mut fields__.targets_object,
+            &mut fields__.targets_only_object, &mut fields__.not_targeted_by_ability_from,
+            &mut fields__.would_destroy_object, &mut fields__.attached_to_object,
+            &mut fields__.with_attached_object, &mut fields__.without_attached_object,
+            &mut fields__.could_enchant_object, &mut fields__.controller_controls,
+            &mut fields__.blocked_or_was_blocked_by_this_turn] } {
             if let Some(nested) = field.as_mut() { bind_filter(nested, ctx, prelude, choices); }
         }
     }

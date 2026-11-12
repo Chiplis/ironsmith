@@ -120,14 +120,14 @@ fn parse_choice_source_filter_words(
         filter.controller = controller;
     }
     filter.any_of = vec![
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
-            ..ObjectFilter::default()
-        },
-        ObjectFilter {
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }),
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
-            ..ObjectFilter::default()
-        },
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }),
     ];
     Ok(Some(filter))
 }
@@ -363,14 +363,14 @@ fn expand_graveyard_or_hand_disjunction_filter(
     filter.zone = None;
     filter.controller = None;
     filter.any_of = vec![
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Graveyard),
-            ..ObjectFilter::default()
-        },
-        ObjectFilter {
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }),
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Hand),
-            ..ObjectFilter::default()
-        },
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }),
     ];
     filter
 }

@@ -47,10 +47,10 @@ pub(super) fn prevention_recipient_filters(
         crate::word_claims::claim_tokens(&tokens[index..index + 2]);
         return Ok((
             None,
-            Some(ObjectFilter {
+            Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 any_of: vec![left, right],
-                ..ObjectFilter::default()
-            }),
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })),
         ));
     }
     let filter = if is_source_reference_words(&words) {
@@ -673,7 +673,7 @@ mod persistent_relation_tests {
         let spec = payload("Prevent all damage that would be dealt to enchanted creature by artifact sources.");
         assert_eq!(spec.source_filter.card_types, vec![CardType::Artifact]);
         assert_eq!(spec.source_filter.zone, None);
-        assert!(spec.target_object_filter.unwrap().with_attached_object.unwrap().source);
+        assert!(spec.target_object_filter.unwrap().with_attached_object.clone().unwrap().source);
     }
 
     #[test]

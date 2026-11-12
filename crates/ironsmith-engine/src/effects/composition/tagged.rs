@@ -1051,10 +1051,10 @@ mod tests {
                 };
                 let condition = crate::effect::Condition::TaggedObjectMatches(
                     "chosen".into(),
-                    crate::filter::ObjectFilter {
+                    crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         mana_value: Some(crate::target::Comparison::LessThanOrEqual(2)),
                         ..Default::default()
-                    },
+                    }),
                 );
                 let mut program = crate::resolution::ResolutionProgram::from_effects(vec![
                     wrap(Effect::new(prelude)),

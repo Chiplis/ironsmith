@@ -6771,10 +6771,10 @@ fn describe_payment_action_predicate(
 mod craft_material_surface_tests {
     use super::*;
     fn materials(material: ObjectFilter) -> ObjectFilter {
-        ObjectFilter { any_of: vec![
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { any_of: vec![
             material.clone().in_zone(Zone::Battlefield).controlled_by(PlayerFilter::You).other(),
             material.in_zone(Zone::Graveyard).owned_by(PlayerFilter::You).other(),
-        ], ..Default::default() }
+        ], ..Default::default() })
     }
     #[test]
     fn shared_card_type_materials_keep_the_selection_relation() {

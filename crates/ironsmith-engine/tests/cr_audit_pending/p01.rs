@@ -584,9 +584,9 @@ fn cr_105_2a_2b_2c_5_monocolored_multicolored_colorless_and_color_pairs() {
         ironsmith::effects::helpers::resolve_value(&game, &ironsmith::Value::Count(filter), &ctx)
             .unwrap()
     };
-    let mono = ObjectFilter { monocolored: true, ..ObjectFilter::creature() };
-    let multi = ObjectFilter { multicolored: true, ..ObjectFilter::creature() };
-    let colorless = ObjectFilter { colorless: true, ..ObjectFilter::creature() };
+    let mono = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { monocolored: true, ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature()) });
+    let multi = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { multicolored: true, ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature()) });
+    let colorless = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colorless: true, ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature()) });
     assert_eq!(count(mono), 2, "CR 105.2a: monocolored is exactly one color");
     assert_eq!(count(multi), 4, "CR 105.2b: multicolored is two or more colors");
     assert_eq!(count(colorless), 2, "CR 105.2c: colorless has no color");

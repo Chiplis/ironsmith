@@ -91,12 +91,12 @@ fn read_conditional_price_reduction(tokens: &[OwnedLexToken], instructions: &mut
     let condition = if matches!(condition_words.as_slice(),
         ["this", "card", "was", "put", "into", "your", "graveyard", "from", "the", "battlefield", "this", "turn"])
     {
-        let filter = ironsmith_core::ObjectFilter {
+        let filter = ironsmith_core::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             source: true,
             zone: Some(Zone::Graveyard),
             entered_graveyard_from_battlefield_this_turn: true,
             ..Default::default()
-        };
+        });
         crate::word_claims::claim_tokens(condition_tokens);
         Some(ThisSpellCostCondition::ConditionExpr {
             condition: ironsmith_core::Condition::SourceMatches(filter),

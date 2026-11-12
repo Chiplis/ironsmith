@@ -477,10 +477,10 @@ fn parse_filtered_spells_from_among_tagged_tokens(
                 surface: None,
             },
             fact.tail_tokens,
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![CardType::Land],
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
         )));
     }
     let Some(mut filter) =
@@ -1151,13 +1151,13 @@ pub(crate) fn parse_graveyard_cast_additional_cost_tokens(
         } => CompilerCost::ExileChosen {
             count_value: None,
             count: crate::cards::builders::ChoiceCount::exactly(count as usize),
-            filter: ObjectFilter {
+            filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Graveyard),
                 owner: Some(PlayerFilter::You),
                 card_types,
                 other,
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
             top_only: false,
             turn_face_up: false,
             binding: None,
@@ -1920,10 +1920,10 @@ pub fn parse_permission_clause_spec_lexed(
             player,
             spec: crate::model::CompilerGrantSpecCore::new(
                 crate::model::CompilerGrantableCore::play_from(),
-                ObjectFilter {
+                ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     card_types: vec![CardType::Land],
-                    ..ObjectFilter::default()
-                },
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }),
                 Zone::Library,
             ),
             lifetime: PermissionLifetime::Static,
@@ -1950,16 +1950,16 @@ pub fn parse_permission_clause_spec_lexed(
                 return Ok(None);
             };
             exclude_lands_from_spell_filter(&mut spell_filter);
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 any_of: vec![
-                    ObjectFilter {
+                    ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         card_types: vec![CardType::Land],
-                        ..ObjectFilter::default()
-                    },
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                    }),
                     spell_filter,
                 ],
-                ..ObjectFilter::default()
-            }
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })
         };
 
         return Ok(Some(PermissionClauseSpec::GrantBySpec {

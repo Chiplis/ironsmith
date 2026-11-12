@@ -141,10 +141,10 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         None,
     );
 
-    let filter = crate::target::ObjectFilter {
+    let filter = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         owner: Some(PlayerFilter::IteratedPlayer),
         ..Default::default()
-    };
+    });
     let mut spec = crate::model::CompilerGrantSpecCore::new(
         crate::model::CompilerGrantableCore::play_from(),
         filter,

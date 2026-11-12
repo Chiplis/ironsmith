@@ -69,8 +69,8 @@ fn ordinary_grants_do_not_become_all_zone_cdas_and_explicit_functional_zones_sur
   let subtype=ironsmith::static_abilities::StaticAbility::add_subtypes(ObjectFilter::source(),vec![inscription()]);
   for target in [offzone,battlefield]{game.effect_store.continuous_effects.add_effect(
    ContinuousEffect::new(provider,A,EffectTarget::Specific(target),Modification::AddAbility(subtype.clone())));}
-  let mixed=ObjectFilter {any_of:vec![ObjectFilter::default().in_zone(Zone::Exile),
-   ObjectFilter {card_types:vec![ironsmith::CardType::Artifact],..Default::default()}],..Default::default()};
+  let mixed=ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {any_of:vec![ObjectFilter::default().in_zone(Zone::Exile),
+   ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {card_types:vec![ironsmith::CardType::Artifact],..Default::default()})],..Default::default()});
   game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(provider,A,
    EffectTarget::Filter(mixed),Modification::AddAbility(subtype.clone())));
   let ability=ironsmith::ability::Ability::static_ability(subtype).in_zones(vec![Zone::Exile]);

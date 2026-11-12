@@ -321,11 +321,11 @@ fn an_unqualified_milled_card_reference_keeps_face_down_public_identity_and_expl
     execute_effect(&mut game, &Effect::mill(1).tag("milled"), &mut ctx).unwrap();
     let exact = ctx.get_tagged_all("milled").unwrap()[0].object_id;
     assert!(game.set_face_down(exact));
-    let mut filter = ObjectFilter {
+    let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         match_captured_public_destination: true,
         tagged_constraints: vec![TaggedObjectConstraint { tag: TagKey::from("milled"), relation: TaggedOpbjectRelation::IsTaggedObject }],
         ..Default::default()
-    };
+    });
     let resolve = |game: &GameState, filter: &ObjectFilter, ctx: &EffectContext|
         ironsmith::effects::helpers::resolve_objects_from_spec(game, &ChooseSpec::All(filter.clone()), ctx).unwrap();
     assert_eq!(resolve(&game, &filter, &ctx), vec![exact], "a face-down exiled card is still in its original public destination");
@@ -350,11 +350,11 @@ fn missing_public_mill_collection_is_incomplete_even_when_no_candidate_exists_or
         let mut dm = SelectFirstDecisionMaker;
         let mut ctx = EffectContext::new(ObjectId::new(), A, &mut dm);
         if known_empty { ctx.set_tagged_objects(ironsmith::tag::TagKey::from("milled"), vec![]); }
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             match_captured_public_destination: true,
             tagged_constraints: vec![TaggedObjectConstraint { tag: "milled".into(), relation: TaggedOpbjectRelation::IsTaggedObject }],
             ..Default::default()
-        };
+        });
         let followup = match query {
             0 => Effect::move_to_zone(ChooseSpec::All(filter), Zone::Battlefield, false),
             1 => Effect::gain_life(Value::Count(filter)),

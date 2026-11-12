@@ -136,14 +136,14 @@ pub(super) fn explicit_permanent_card_filters_remain_restricted() {
 
 #[test]
 pub(super) fn nonbattlefield_land_subtypes_keep_the_card_noun_after_the_subtype() {
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Library),
         owner: Some(PlayerFilter::You),
         card_types: vec![CardType::Land],
         subtypes: vec![Subtype::Forest],
         supertypes: vec![Supertype::Basic],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
 
     assert_eq!(filter.description(), "basic Forest card in your library");
 }

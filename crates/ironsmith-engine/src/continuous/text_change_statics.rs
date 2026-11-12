@@ -1045,8 +1045,8 @@ mod tests {
     use ironsmith_core::{Color, ColorSet, ManaCost, ManaSymbol, Zone};
 
     fn change() -> TextChange { TextChange::color(Color::Black, Color::Blue).unwrap() }
-    fn black() -> ObjectFilter { ObjectFilter { colors: Some(ColorSet::BLACK), ..ObjectFilter::default() } }
-    fn blue() -> ObjectFilter { ObjectFilter { colors: Some(ColorSet::BLUE), ..ObjectFilter::default() } }
+    fn black() -> ObjectFilter { ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLACK), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) }) }
+    fn blue() -> ObjectFilter { ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLUE), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) }) }
     fn word_effect() -> Effect { Effect::new(DrawCardsEffect::you(Value::Count(black()))) }
     fn pair() -> ironsmith_core::LinkedExilePair {
         ironsmith_core::LinkedExilePair { definition: ironsmith_core::LinkedExileDefinition([9; 32]), pair: 71 }

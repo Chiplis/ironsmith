@@ -59,7 +59,7 @@ fn test_anthem() {
 
 #[test]
 fn compound_anthem_pluralizes_branch_local_other() {
-    let mut filter = ObjectFilter {
+    let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         controller: Some(PlayerFilter::You),
         any_of: vec![
@@ -68,8 +68,8 @@ fn compound_anthem_pluralizes_branch_local_other() {
                 .with_subtype(Subtype::Zombie)
                 .other(),
         ],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     filter.set_conjunctive_set_surface(true);
 
     assert_eq!(
@@ -87,15 +87,15 @@ fn serial_compound_anthem_pluralizes_every_characteristic_arm() {
         ObjectFilter::default().with_subtype(Subtype::Insect),
         ObjectFilter::default().with_subtype(Subtype::Snake),
     ];
-    let mut filter = ObjectFilter {
+    let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         controller: Some(PlayerFilter::You),
         any_of: vec![
             leading,
             ObjectFilter::default().with_subtype(Subtype::Spider),
         ],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     filter.set_conjunctive_set_surface(true);
 
     assert_eq!(
@@ -295,11 +295,11 @@ fn team_controller_subject_pluralizes_the_subtype_not_the_control_verb() {
 
 #[test]
 fn anthem_scales_per_affected_objects_controller_hand() {
-    let count = AnthemCountExpression::MatchingFilter(ObjectFilter {
+    let count = AnthemCountExpression::MatchingFilter(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(PlayerFilter::ControllerOf(ObjectRef::Target)),
         ..Default::default()
-    });
+    }));
     let anthem = Anthem::for_source(0, 0).with_values(
         AnthemValue::scaled(1, count.clone()),
         AnthemValue::scaled(1, count),
@@ -313,11 +313,11 @@ fn anthem_scales_per_affected_objects_controller_hand() {
 
 #[test]
 fn anthem_scales_per_card_in_your_hand() {
-    let count = AnthemCountExpression::MatchingFilter(ObjectFilter {
+    let count = AnthemCountExpression::MatchingFilter(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(PlayerFilter::You),
         ..Default::default()
-    });
+    }));
     let anthem = Anthem::for_source(0, 0).with_values(
         AnthemValue::scaled(1, count.clone()),
         AnthemValue::scaled(1, count),
@@ -331,11 +331,11 @@ fn anthem_scales_per_card_in_your_hand() {
 
 #[test]
 fn anthem_scales_per_card_opponents_own_in_exile() {
-    let mut count_filter = ObjectFilter {
+    let mut count_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Exile),
         owner: Some(PlayerFilter::Opponent),
         ..Default::default()
-    };
+    });
     count_filter.set_explicit_card_noun(true);
     let count = AnthemCountExpression::MatchingFilter(count_filter);
     let anthem = Anthem::for_source(0, 0).with_values(
@@ -351,22 +351,22 @@ fn anthem_scales_per_card_opponents_own_in_exile() {
 
 #[test]
 fn anthem_scales_over_each_typed_conjunctive_count_domain() {
-    let mut hand = ObjectFilter {
+    let mut hand = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     hand.set_explicit_card_noun(true);
-    let mut foretold = ObjectFilter {
+    let mut foretold = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Exile),
         foretold: true,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     foretold.set_explicit_card_noun(true);
-    let mut count_filter = ObjectFilter {
+    let mut count_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         owner: Some(PlayerFilter::You),
         any_of: vec![hand, foretold],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     count_filter.set_conjunctive_set_surface(true);
     let count = AnthemCountExpression::MatchingFilter(count_filter);
     let anthem = Anthem::for_source(0, 0).with_values(
@@ -635,7 +635,7 @@ fn conditioned_set_card_types_reaches_the_generated_continuous_effect() {
 fn compiled_conditioned_type_union_applies_through_the_layer_system() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let mut filter = ObjectFilter {
+    let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         controller: Some(PlayerFilter::You),
         mana_value: Some(crate::filter::Comparison::GreaterThanOrEqual(4)),
@@ -647,8 +647,8 @@ fn compiled_conditioned_type_union_applies_through_the_layer_system() {
                 .with_type(CardType::Enchantment)
                 .without_subtype(Subtype::Aura),
         ],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     filter.set_conjunctive_set_surface(true);
     let ability = StaticAbility::from_model(
         crate::static_abilities::CompiledStaticAbility::add_card_types(
@@ -713,7 +713,7 @@ fn test_single_global_land_subtype_addition_uses_each_land_surface() {
 
 #[test]
 fn test_add_card_types_display_pluralizes_compound_spell_subjects() {
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Stack),
         controller: Some(PlayerFilter::You),
         stack_kind: Some(StackObjectKind::Spell),
@@ -727,7 +727,7 @@ fn test_add_card_types_display_pluralizes_compound_spell_subjects() {
             CardType::Battle,
         ],
         ..Default::default()
-    };
+    });
 
     let add = AddCardTypesForFilter::new(filter, vec![CardType::Artifact]);
     assert_eq!(
@@ -736,10 +736,10 @@ fn test_add_card_types_display_pluralizes_compound_spell_subjects() {
     );
 
     let opponent_add = AddCardTypesForFilter::new(
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             controller: Some(PlayerFilter::Opponent),
-            ..add.filter.clone()
-        },
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(add.filter.clone())
+        }),
         vec![CardType::Artifact],
     );
     assert_eq!(
@@ -920,12 +920,12 @@ fn remove_card_types_display_keeps_source_creature_subject() {
 
 #[test]
 fn test_add_all_subtypes_display_pluralizes_compound_card_subjects() {
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(PlayerFilter::You),
         card_types: vec![CardType::Creature],
         ..Default::default()
-    };
+    });
 
     let add = AddAllSubtypesOfFamilyForFilter::new(filter, SubtypeFamily::Creature);
     assert_eq!(
@@ -1919,12 +1919,12 @@ fn empty_land_subtype_reset_describes_type_loss() {
 
 #[test]
 fn test_set_land_subtypes() {
-    let nonbasic_land_filter = ObjectFilter {
+    let nonbasic_land_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         card_types: vec![CardType::Land],
         excluded_supertypes: vec![Supertype::Basic],
         ..Default::default()
-    };
+    });
     let ability = SetLandSubtypesForFilter::new(nonbasic_land_filter, vec![Subtype::Mountain]);
     assert_eq!(ability.id(), StaticAbilityId::SetLandSubtypes);
     assert_eq!(ability.display(), "nonbasic lands are mountains");
@@ -1932,12 +1932,12 @@ fn test_set_land_subtypes() {
 
 #[test]
 fn test_set_land_subtypes_generates_type_and_ability_effects() {
-    let nonbasic_land_filter = ObjectFilter {
+    let nonbasic_land_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         card_types: vec![CardType::Land],
         excluded_supertypes: vec![Supertype::Basic],
         ..Default::default()
-    };
+    });
     let ability = SetLandSubtypesForFilter::new(nonbasic_land_filter, vec![Subtype::Mountain]);
     let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = ObjectId::from_raw(1);
@@ -2079,19 +2079,19 @@ fn test_grant_ability_displays_spell_subjects_with_cast_and_origin() {
         "enchantment spells you cast from your hand have cascade"
     );
 
-    let first_from_exile = ObjectFilter {
+    let first_from_exile = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Exile),
         cast_by: Some(PlayerFilter::You),
         first_spell_cast_each_turn: true,
         has_mana_cost: true,
         ..Default::default()
-    };
+    });
     assert_eq!(
         GrantAbility::new(first_from_exile, StaticAbility::cascade()).display(),
         "the first spell you cast from exile each turn has cascade"
     );
 
-    let treasure_mana_spell = ObjectFilter {
+    let treasure_mana_spell = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Stack),
         cast_by: Some(PlayerFilter::You),
         first_spell_cast_each_turn: true,
@@ -2100,7 +2100,7 @@ fn test_grant_ability_displays_spell_subjects_with_cast_and_origin() {
         )),
         has_mana_cost: true,
         ..Default::default()
-    };
+    });
     assert_eq!(
         GrantAbility::new(treasure_mana_spell, StaticAbility::cascade()).display(),
         "the first spell you cast each turn that mana from a Treasure was spent to cast has cascade"
@@ -2133,12 +2133,12 @@ fn test_grant_ability_displays_spell_subjects_with_cast_and_origin() {
         "without the authored trailing-if bit, the same executable predicate stays canonical"
     );
 
-    let all_from_exile = ObjectFilter {
+    let all_from_exile = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Exile),
         cast_by: Some(PlayerFilter::You),
         has_mana_cost: true,
         ..Default::default()
-    };
+    });
     assert_eq!(
         GrantAbility::new(all_from_exile, StaticAbility::cascade()).display(),
         "spells you cast from exile have cascade"
@@ -2183,7 +2183,7 @@ fn compound_spell_keyword_grants_keep_shared_typed_cast_scope() {
 
 #[test]
 fn parsed_first_spell_mana_source_grant_keeps_exact_surface() {
-    let filter = ObjectFilter {
+    let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Stack),
         cast_by: Some(PlayerFilter::You),
         first_spell_cast_each_turn: true,
@@ -2192,7 +2192,7 @@ fn parsed_first_spell_mana_source_grant_keeps_exact_surface() {
         )),
         has_mana_cost: true,
         ..Default::default()
-    };
+    });
     assert_eq!(
         GrantAbility::new(filter, StaticAbility::cascade()).display(),
         "the first spell you cast each turn that mana from a Treasure was spent to cast has cascade"
@@ -2279,13 +2279,13 @@ fn first_matching_spell_cast_from_zone_grant_resets_each_turn() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let first_from_exile = ObjectFilter {
+    let first_from_exile = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Exile),
         cast_by: Some(PlayerFilter::You),
         first_spell_cast_each_turn: true,
         has_mana_cost: true,
         ..Default::default()
-    };
+    });
     let source_definition = CardDefinitionBuilder::new(CardId::new(), "First Exile Grant")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(4, 3))
@@ -2385,7 +2385,7 @@ fn first_matching_spell_cast_with_mana_source_uses_spent_source_lki() {
 
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
-    let treasure_mana_spell = ObjectFilter {
+    let treasure_mana_spell = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Stack),
         cast_by: Some(PlayerFilter::You),
         first_spell_cast_each_turn: true,
@@ -2394,7 +2394,7 @@ fn first_matching_spell_cast_with_mana_source_uses_spent_source_lki() {
         )),
         has_mana_cost: true,
         ..Default::default()
-    };
+    });
     let source_definition = CardDefinitionBuilder::new(CardId::new(), "Mana Source Grant")
         .card_types(vec![CardType::Enchantment])
         .with_ability(Ability::static_ability(StaticAbility::new(

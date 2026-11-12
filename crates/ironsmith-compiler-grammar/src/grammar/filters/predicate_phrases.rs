@@ -797,7 +797,7 @@ fn parse_copy_identity_descriptor(tokens:&[OwnedLexToken])->Option<ObjectFilter>
     let base=identity.as_ref().map(|(base,_,_)|base.as_slice()).unwrap_or(tokens);
     let words=crate::lexer::token_word_refs(base);
     if !matches!(words.as_slice(),["a","copy"]|["copy"]){return None}
-    let mut filter=ObjectFilter {zone:Some(Zone::Stack),spell_copy:true,..ObjectFilter::default()};
+    let mut filter=ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {zone:Some(Zone::Stack),spell_copy:true,..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())});
     if let Some((_,name,negative))=identity {let exact=format!("custom keyword:{name}");if negative{filter.excluded_ability_markers.push(exact)}else{filter.ability_markers.push(exact)}}
     crate::word_claims::claim_tokens(tokens);Some(filter)
 }
@@ -1543,10 +1543,10 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
         .is_some_and(|token| token_word_is(token, NO_WORD))
     {
         if surface::exact_any(counter_clause, &[&["no", "counter"], &["no", "counters"]]) {
-            let filter = ObjectFilter {
+            let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 without_counter: Some(crate::filter::CounterConstraint::Any),
                 ..Default::default()
-            };
+            });
             return Some(
                 if is_explicit_source_state_subject_clause(relation.subject_clause) {
                     PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
@@ -1559,10 +1559,10 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
         // The negating quantifier "no" before the counter kind.
         crate::word_claims::claim_tokens(&counter_clause.tokens()[..1]);
         if !is_explicit_source_state_subject_clause(relation.subject_clause) {
-            return Some(PredicateAst::ItMatches(ObjectFilter {
+            return Some(PredicateAst::ItMatches(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 without_counter: Some(crate::filter::CounterConstraint::Typed(counter_type)),
                 ..Default::default()
-            }));
+            })));
         }
         return Some(PredicateAst::Source(
             SourcePredicateAst::SourceHasNoCounter(counter_type),
@@ -2060,10 +2060,10 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
     {
         if surface::exact_any(counter_clause, &[&["no", "counter"], &["no", "counters"]]) {
             crate::word_claims::claim_tokens(counter_clause.tokens());
-            return Some(PredicateAst::ItMatchedLastKnown(ObjectFilter {
+            return Some(PredicateAst::ItMatchedLastKnown(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 without_counter: Some(crate::filter::CounterConstraint::Any),
                 ..Default::default()
-            }));
+            })));
         }
         let counter_type = parse_terminal_counter_phrase(counter_clause.tokens().get(1..)?)??;
         // "had no <kind> counters": the negated count read here.
@@ -4526,12 +4526,12 @@ fn parse_single_card_type_card_descriptor_tokens(tokens: &[OwnedLexToken]) -> Op
     {
         // "<type> card": the type and the card noun.
         crate::word_claims::claim_tokens(tokens);
-        return Some(ObjectFilter {
+        return Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![card_type],
             use_face_up_characteristics: true,
             nontoken: true,
             ..Default::default()
-        });
+        }));
     }
     None
 }
@@ -5082,10 +5082,10 @@ fn parse_demonstrative_total_power_toughness_predicate(
     else {
         return Ok(None);
     };
-    Ok(Some(PredicateAst::ItMatches(ObjectFilter {
+    Ok(Some(PredicateAst::ItMatches(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         total_power_toughness: Some(cmp),
         ..Default::default()
-    })))
+    }))))
 }
 
 fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {

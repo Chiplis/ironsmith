@@ -80,13 +80,13 @@ pub(in crate::compiled_text) fn describe_source_exiled_return_partition(
     else {
         return None;
     };
-    let expected_membership = ObjectFilter {
+    let expected_membership = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         tagged_constraints: vec![crate::target::TaggedObjectConstraint {
             tag: returned_tag.clone(),
             relation: crate::filter::TaggedOpbjectRelation::SameStableId,
         }],
         ..Default::default()
-    };
+    });
     if condition_tag.as_str() != "__it__"
         || membership != &expected_membership
         || !conditional.if_true.is_empty()
@@ -139,13 +139,13 @@ mod tests {
             .under_owner_control(),
         )
         .tag_all(returned_tag);
-        let membership = ObjectFilter {
+        let membership = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             tagged_constraints: vec![crate::target::TaggedObjectConstraint {
                 tag: TagKey::from(membership_tag),
                 relation: crate::filter::TaggedOpbjectRelation::SameStableId,
             }],
             ..Default::default()
-        };
+        });
         let bottom = Effect::new(crate::effects::MoveToZoneEffect::new(
             ChooseSpec::Iterated,
             Zone::Library,

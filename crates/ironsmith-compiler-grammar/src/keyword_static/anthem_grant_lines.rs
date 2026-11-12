@@ -1211,23 +1211,23 @@ fn parse_you_and_subject_protection_grant_line(
 fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<ObjectFilter> {
     fn from_keyword(action: &KeywordAction) -> Option<ObjectFilter> {
         match action {
-            KeywordAction::ProtectionFrom(colors) => Some(ObjectFilter {
+            KeywordAction::ProtectionFrom(colors) => Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 colors: Some(*colors),
-                ..ObjectFilter::default()
-            }),
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })),
             KeywordAction::ProtectionFromFilter(filter) => Some(filter.clone()),
-            KeywordAction::ProtectionFromSubtype(subtype) => Some(ObjectFilter {
+            KeywordAction::ProtectionFromSubtype(subtype) => Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 subtypes: vec![*subtype],
-                ..ObjectFilter::default()
-            }),
-            KeywordAction::ProtectionFromCardType(card_type) => Some(ObjectFilter {
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })),
+            KeywordAction::ProtectionFromCardType(card_type) => Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![*card_type],
-                ..ObjectFilter::default()
-            }),
-            KeywordAction::ProtectionFromChosenColor => Some(ObjectFilter {
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })),
+            KeywordAction::ProtectionFromChosenColor => Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 chosen_color: true,
-                ..ObjectFilter::default()
-            }),
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })),
             KeywordAction::ProtectionFromEverything => Some(ObjectFilter::default()),
             _ => None,
         }
@@ -1243,18 +1243,18 @@ fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<Object
                 }
                 ironsmith_core::StaticAbilityPayload::Protection(from) => match from {
                     crate::ability::ProtectionFrom::Permanents(filter) => Some(filter.clone()),
-                    crate::ability::ProtectionFrom::Color(colors) => Some(ObjectFilter {
+                    crate::ability::ProtectionFrom::Color(colors) => Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         colors: Some(*colors),
-                        ..ObjectFilter::default()
-                    }),
-                    crate::ability::ProtectionFrom::CardType(card_type) => Some(ObjectFilter {
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                    })),
+                    crate::ability::ProtectionFrom::CardType(card_type) => Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         card_types: vec![*card_type],
-                        ..ObjectFilter::default()
-                    }),
-                    crate::ability::ProtectionFrom::ChosenColor => Some(ObjectFilter {
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                    })),
+                    crate::ability::ProtectionFrom::ChosenColor => Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         chosen_color: true,
-                        ..ObjectFilter::default()
-                    }),
+                        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                    })),
                     crate::ability::ProtectionFrom::Everything => Some(ObjectFilter::default()),
                     _ => None,
                 },
@@ -3712,10 +3712,10 @@ fn source_and_condition_counted_subject(
     }
     let mut those = counted.clone();
     those.set_plural_pronoun_reference_surface(true);
-    let mut subject = ObjectFilter {
+    let mut subject = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![ObjectFilter::source(), those],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     subject.set_conjunctive_set_surface(true);
     Some(subject)
 }

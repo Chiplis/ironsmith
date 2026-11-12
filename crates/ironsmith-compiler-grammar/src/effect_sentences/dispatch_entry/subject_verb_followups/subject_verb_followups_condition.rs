@@ -1017,8 +1017,11 @@ pub(super) fn pre_rule_phase_in_while_source_tapped_followup(
         let view = crate::lexer::TokenWordView::new(sentence_tokens);
         let (Some(start), Some(end)) = (view.map_word_to_token_start(8), view.map_word_to_token_start(words.len() - 2))
             else { return Ok(None); };
-        if !matches!(crate::util::parse_target_phrase(&sentence_tokens[start..end]),
-            Ok(TargetAst::Source(_)) | Ok(TargetAst::Object(ObjectFilter { source: true, .. }, ..)))
+        if !(match crate::util::parse_target_phrase(&sentence_tokens[start..end]) {
+            Ok(TargetAst::Source(_)) => true,
+            Ok(TargetAst::Object(filter, ..)) => filter.source,
+            _ => false,
+        })
         { return Ok(None); }
     }
     let Some(next) = sentences.get(sentence_idx + 1) else {
@@ -1038,8 +1041,11 @@ pub(super) fn pre_rule_phase_in_while_source_tapped_followup(
             view.map_word_to_token_start(next_source.len() + 1))
             else { return Ok(None); };
         let next_subject = &next.lexed()[start..end];
-        if !matches!(crate::util::parse_target_phrase(next_subject),
-            Ok(TargetAst::Source(_)) | Ok(TargetAst::Object(ObjectFilter { source: true, .. }, ..)))
+        if !(match crate::util::parse_target_phrase(next_subject) {
+            Ok(TargetAst::Source(_)) => true,
+            Ok(TargetAst::Object(filter, ..)) => filter.source,
+            _ => false,
+        })
             && !(source.first() == Some(&"this")
                 && crate::grammar::source_surface_shapes::parse_named_surface(next_subject).is_some())
         { return Ok(None); }

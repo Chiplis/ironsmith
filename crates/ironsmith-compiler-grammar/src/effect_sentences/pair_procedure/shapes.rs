@@ -241,7 +241,7 @@ pub(super) fn search_two_disposition_then_shuffle(
 /// The tempting offer: the targeted spell, each opponent's optional copy, and
 /// your copy once plus once per opponent who copied.
 pub(super) fn tempting_offer_copy_effects() -> Vec<EffectAst> {
-    let stack_spell_filter = ObjectFilter {
+    let stack_spell_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Stack),
         card_types: vec![
             crate::types::CardType::Instant,
@@ -249,7 +249,7 @@ pub(super) fn tempting_offer_copy_effects() -> Vec<EffectAst> {
         ],
         has_mana_cost: true,
         ..Default::default()
-    };
+    });
     let target_spell = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
     let opponent_copy = EffectAst::subject_verb_copy_spell(
         target_spell.clone(),

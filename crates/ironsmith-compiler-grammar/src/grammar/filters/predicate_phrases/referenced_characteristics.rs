@@ -12,19 +12,19 @@ pub(super) fn parse_referenced_characteristic_state(
     if let ["it", "is", rest @ ..] | ["its" | "it's", rest @ ..] = words.as_slice()
         && crate::word_primitives::equals(&rest, &["at", "least", "one", "of", "the", "chosen", "colors"])
     {
-        return Ok(Some(PredicateAst::ItMatches(ObjectFilter {
+        return Ok(Some(PredicateAst::ItMatches(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             chosen_color: true,
             ..Default::default()
-        })));
+        }))));
     }
     if let Some(reference) = demonstrative_reference_prefix(clause)
         && words.get(reference.word_len..) == Some(&["was", "blocked", "this", "turn"][..])
     {
         crate::word_claims::claim_words(&words[..]);
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             was_blocked_this_turn: true,
             ..Default::default()
-        };
+        });
         filter.set_demonstrative_antecedent_surface(reference.antecedent_surface);
         return Ok(Some(PredicateAst::ItMatches(filter)));
     }
@@ -42,20 +42,20 @@ pub(super) fn parse_referenced_characteristic_state(
             "power"
         ]
     ) {
-        return Ok(Some(PredicateAst::ItMatchedLastKnown(ObjectFilter {
+        return Ok(Some(PredicateAst::ItMatchedLastKnown(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             power_comparison_to_base: Some(crate::effect::ValueComparisonOperator::NotEqual),
             ..Default::default()
-        })));
+        }))));
     }
     // Singular descriptor authenticates the object role of the plural-form
     // personal pronoun; do not widen arbitrary "they ..." player clauses.
     if let ["they", "were", "a" | "an", noun] = words.as_slice()
         && let Some(kind) = crate::util::parse_card_type(noun)
     {
-        return Ok(Some(PredicateAst::ItMatchedLastKnown(ObjectFilter {
+        return Ok(Some(PredicateAst::ItMatchedLastKnown(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![kind],
             ..Default::default()
-        })));
+        }))));
     }
     if let Some((descriptor, negative, _, _, when)) = demonstrative_descriptor_filter_tokens(tokens)
         && !negative
@@ -63,11 +63,11 @@ pub(super) fn parse_referenced_characteristic_state(
         && let Some((power, toughness)) = crate::util::parse_unsigned_pt_word(pair)
     {
         crate::word_claims::claim_tokens(&descriptor);
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             power: Some(crate::filter::Comparison::Equal(power)),
             toughness: Some(crate::filter::Comparison::Equal(toughness)),
             ..Default::default()
-        };
+        });
         filter.set_demonstrative_antecedent_surface(demonstrative_antecedent_surface(tokens));
         return Ok(Some(demonstrative_match_predicate(filter, when)));
     }
@@ -77,10 +77,10 @@ pub(super) fn parse_referenced_characteristic_state(
         && LexedClause::new(&descriptor).word_refs().as_slice() == ["all", "colors"]
     {
         crate::word_claims::claim_tokens(&descriptor);
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             all_colors: Some(!negative),
             ..Default::default()
-        };
+        });
         filter.set_demonstrative_antecedent_surface(demonstrative_antecedent_surface(tokens));
         return Ok(Some(demonstrative_match_predicate(filter, when)));
     }
@@ -107,10 +107,10 @@ pub(super) fn parse_referenced_characteristic_state(
             })
             .collect();
         let attachment = parse_object_filter_lexed(&normalized, false)?;
-        return Ok(Some(PredicateAst::ItMatchedLastKnown(ObjectFilter {
+        return Ok(Some(PredicateAst::ItMatchedLastKnown(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             with_attached_object: Some(Box::new(attachment)),
             ..Default::default()
-        })));
+        }))));
     }
     Ok(None)
 }

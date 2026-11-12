@@ -197,10 +197,10 @@ fn tagged_power_comparison_binds_difference_to_the_tested_creature() {
     let compared = crate::tag::declared_key("tapped_creature");
     let predicate = PredicateAst::TaggedMatches(
         compared.clone(),
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             power: Some(Comparison::GreaterThanExpr(Box::new(Value::SourcePower))),
             ..Default::default()
-        },
+        }),
     );
     let mut env = ReferenceEnv::default();
     // A later antecedent must not redirect the explicitly tagged comparison.
@@ -226,11 +226,11 @@ fn tagged_base_power_comparison_retains_the_base_power_reader() {
     let compared = crate::tag::declared_key("compared_creature");
     let predicate = PredicateAst::TaggedMatches(
         compared.clone(),
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             power: Some(Comparison::LessThanExpr(Box::new(Value::SourcePower))),
             power_reference: ironsmith_core::PtReference::Base,
             ..Default::default()
-        },
+        }),
     );
     assert_eq!(
         predicate_comparison_operands(&predicate, &ReferenceEnv::default()),

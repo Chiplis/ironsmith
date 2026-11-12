@@ -288,11 +288,11 @@ pub(in crate::compiled_text) fn describe_discard_hand_add_mana_draw_sequence(
         .downcast_ref::<crate::effects::AddScaledManaEffect>()?;
     let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
 
-    let hand_filter = ObjectFilter {
+    let hand_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(PlayerFilter::You),
         ..Default::default()
-    };
+    });
     let discards_entire_hand = match discard.count.unhinted() {
         Value::CardsInHand(player) => player == &PlayerFilter::You && discard.card_filter.is_none(),
         Value::Count(count_filter) => {
@@ -396,11 +396,11 @@ pub(in crate::compiled_text) fn describe_move_hand_to_library_then_draw(
         }
         _ => return None,
     };
-    let expected_filter = ObjectFilter {
+    let expected_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         owner: Some(PlayerFilter::You),
         ..Default::default()
-    };
+    });
     if filter != &expected_filter {
         return None;
     }

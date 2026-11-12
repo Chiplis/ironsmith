@@ -206,11 +206,11 @@ mod tests {
 
     #[test]
     fn controller_of_affected_object_count_reports_dependency() {
-        let cards_in_hand = ObjectFilter {
+        let cards_in_hand = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Hand),
             owner: Some(PlayerFilter::ControllerOf(ObjectRef::Target)),
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
 
         assert!(
             AnthemValue::scaled(1, AnthemCountExpression::MatchingFilter(cards_in_hand))
@@ -284,7 +284,7 @@ fn controller_state_filter(filter: &ObjectFilter) -> bool {
     // including future fields. In particular, `other`, chosen characteristics,
     // source/target relations and nested filters are not accidentally admitted.
     // Presentation-only surfaces have semantic PartialEq and need no rewriting.
-    let independent = ObjectFilter {
+    let independent = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
         zone: filter.zone,
         controller: player(&filter.controller),
         owner: player(&filter.owner),
@@ -306,8 +306,8 @@ fn controller_state_filter(filter: &ObjectFilter) -> bool {
         nontoken: filter.nontoken,
         entered_battlefield_this_turn: filter.entered_battlefield_this_turn,
         entered_battlefield_controller: player(&filter.entered_battlefield_controller),
-        ..ObjectFilter::default()
-    };
+        ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     filter == &independent
 }
 

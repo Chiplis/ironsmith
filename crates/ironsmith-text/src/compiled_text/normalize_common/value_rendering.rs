@@ -1332,8 +1332,8 @@ pub(crate) fn describe_domain_union_count_filter_subject(filter: &ObjectFilter) 
             .map(|branch| {
                 let mut merged = outer.clone();
                 merged.zone = branch.zone.or(merged.zone);
-                merged.controller = branch.controller.clone().or(merged.controller);
-                merged.owner = branch.owner.clone().or(merged.owner);
+                merged.controller = branch.controller.clone().or(merged.controller.clone());
+                merged.owner = branch.owner.clone().or(merged.owner.clone());
                 merged.single_graveyard |= branch.single_graveyard;
                 merged.other |= branch.other;
                 merged
@@ -2509,9 +2509,9 @@ mod suspended_union_render_tests {
         let suspended = ObjectFilter::default().in_zone(Zone::Exile)
             .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
             .with_counter_type(crate::object::CounterType::Time);
-        let filter = ObjectFilter {
-            any_of: vec![ObjectFilter::permanent(), suspended], ..ObjectFilter::default()
-        };
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
+            any_of: vec![ObjectFilter::permanent(), suspended], ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         assert_eq!(describe_permanent_or_suspended_card_union(&filter).as_deref(),
             Some("permanent or suspended card"));
         let mut put = filter.clone();
@@ -7687,10 +7687,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
             {
                 return "their total power".to_string();
             }
-            let zone_change_group = ObjectFilter {
+            let zone_change_group = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![CardType::Creature],
                 ..Default::default()
-            }
+            })
             .match_tagged(
                 ironsmith_core::ZONE_CHANGE_GROUP_TAG,
                 TaggedOpbjectRelation::IsTaggedObject,

@@ -3162,10 +3162,10 @@ mod tests {
             Grantable::once_each_turn_graveyard_cast_from_cards_mana_cost(vec![
                 crate::costs::Cost::sacrifice(ObjectFilter::land().you_control()),
             ]),
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![CardType::Artifact],
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
             Zone::Graveyard,
         );
         game.object_mut(source_id)
@@ -3242,12 +3242,12 @@ mod tests {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
 
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Graveyard),
             owner: Some(PlayerFilter::You),
             surveilled_this_turn: true,
             ..Default::default()
-        };
+        });
         let play_grant = StaticAbility::grants(
             crate::grant::GrantSpec::new(Grantable::play_from(), filter.clone(), Zone::Graveyard)
                 .with_beneficiary(PlayerFilter::You),

@@ -282,7 +282,7 @@ mod deferred_draw_tests {
                         .with_ability(crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::grants(
                             crate::grant::GrantSpec::new(
                                 crate::grant::Grantable::AlternativeCast(crate::alternative_cast::AlternativeCastingMethod::Miracle { cost: crate::mana::ManaCost::new() }),
-                                crate::target::ObjectFilter { card_types: vec![crate::types::CardType::Instant], ..Default::default() },
+                                crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { card_types: vec![crate::types::CardType::Instant], ..Default::default() }),
                                 Zone::Hand,
                             )
                         ))).build();

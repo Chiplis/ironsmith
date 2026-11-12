@@ -862,7 +862,7 @@ fn except_for_cant_attack_static_ability(
             .copied()
             .filter(|card_type| !crate::slice_primitives::contains(&affected_types, card_type))
             .collect::<Vec<_>>();
-        if let Some(name) = exception.name {
+        if let Some(name) = exception.name.clone() {
             if !additional_types.is_empty()
                 || affected.excluded_name.is_some()
                 || !exception.subtypes.is_empty()
@@ -1166,10 +1166,10 @@ fn bind_static_restriction_pronoun_to_source(mut ability: StaticAbility) -> Stat
         };
         constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            && ObjectFilter {
+            && ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 tagged_constraints: Vec::new(),
-                ..filter.clone()
-            } == ObjectFilter::default()
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+            }) == ObjectFilter::default()
     }
     let ironsmith_core::StaticAbilityPayload::RuleRestriction {
         restriction,

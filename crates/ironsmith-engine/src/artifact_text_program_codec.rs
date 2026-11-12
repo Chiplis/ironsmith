@@ -246,7 +246,7 @@ mod tests {
     use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
     use ironsmith_core::{Color, ColorSet, TextChange};
 
-    fn black() -> ObjectFilter { ObjectFilter { colors: Some(ColorSet::BLACK), ..ObjectFilter::default() } }
+    fn black() -> ObjectFilter { ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLACK), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) }) }
     fn quantity() -> Value { Value::Count(black()) }
     fn child() -> Effect { Effect::new(DrawCardsEffect::you(quantity())) }
 
@@ -368,7 +368,7 @@ mod tests {
         let encoded = super::super::encode_runtime_ability(rewritten).unwrap();
         let restored = super::super::restore_runtime_ability(encoded.clone()).unwrap();
         let crate::ability::AbilityKind::Activated(model) = restored.kind else { panic!("activation lost"); };
-        let blue = ObjectFilter { colors: Some(ColorSet::BLUE), ..ObjectFilter::default() };
+        let blue = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLUE), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) });
         assert_eq!(model.mana_cost.costs()[0].compiled_model(), Some(&ironsmith_core::Cost::Sacrifice(blue.clone())));
         let tagged = model.effects.flattened_default_effects()[0].downcast_ref::<TaggedEffect>().unwrap();
         assert_eq!(tagged.tag.as_str(), "black-link");
@@ -398,7 +398,7 @@ mod tests {
         let wire = encode_runtime_effect(changed).unwrap();
         let restored = crate::artifact_materializer::materialize_effect(wire).unwrap();
         let model = restored.downcast_ref::<AttachObjectsEffect>().unwrap();
-        let blue = ObjectFilter { colors: Some(ColorSet::BLUE), ..ObjectFilter::default() };
+        let blue = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLUE), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) });
         assert_eq!(model.objects, ChooseSpec::Tagged("black-entered-auras".into()));
         assert_eq!(model.target, ChooseSpec::target(ChooseSpec::Player(
             PlayerFilter::ControlsMost { filter: Box::new(blue) })));

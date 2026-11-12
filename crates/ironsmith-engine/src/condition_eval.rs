@@ -1698,13 +1698,13 @@ mod tests {
             ),
             crate::provenance::ProvNodeId::default(),
         );
-        let condition = Condition::TargetMatches(crate::target::ObjectFilter {
+        let condition = Condition::TargetMatches(crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Creature],
             power: Some(crate::target::Comparison::GreaterThanExpr(Box::new(
                 Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)),
             ))),
-            ..crate::target::ObjectFilter::default()
-        });
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::target::ObjectFilter::default())
+        }));
         let ctx = ExternalEvaluationContext {
             controller: alice,
             source,
@@ -7262,11 +7262,11 @@ mod referenced_characteristic_frame_tests {
         );
         change.destination_snapshots = vec![before.clone()];
         let event = TriggerEvent::new_with_provenance(change, ProvNodeId::default());
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             power: Some(crate::filter::Comparison::Equal(1)),
             toughness: Some(crate::filter::Comparison::Equal(1)),
             ..Default::default()
-        };
+        });
         let context = FilterContext::new(a);
         assert!(triggering_event_object_matches_at_resolution(
             &game, &event, &filter, &context
@@ -7311,10 +7311,10 @@ mod referenced_characteristic_frame_tests {
             game.object(subject).unwrap(),
             &game,
         );
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             power_comparison_to_base: Some(crate::effect::ValueComparisonOperator::NotEqual),
             ..Default::default()
-        };
+        });
         let context = FilterContext::new(a);
         for (power, expected) in [(0, true), (1, false), (2, true)] {
             snapshot.power = Some(power);
@@ -7344,14 +7344,14 @@ mod referenced_characteristic_frame_tests {
             &game,
         );
         assert_eq!(snapshot.attachment_snapshots.len(), 1);
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             with_attached_object: Some(Box::new(
                 ObjectFilter::default()
                     .with_subtype(crate::types::Subtype::Aura)
                     .you_control(),
             )),
             ..Default::default()
-        };
+        });
         let context = FilterContext::new(a);
         game.move_object(subject, Zone::Graveyard, EventCause::effect())
             .unwrap();

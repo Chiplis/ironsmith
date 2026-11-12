@@ -146,10 +146,10 @@ pub fn scope_types_away_from_requantified_bare_card_domains(
         return original;
     }
 
-    let mut scoped = ObjectFilter {
+    let mut scoped = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: branches,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     scoped.set_conjunctive_set_surface(true);
     scoped
 }
@@ -1977,14 +1977,14 @@ mod tests {
             0,
         )
         .expect("near miss should lex");
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Artifact],
             any_of: vec![
                 ObjectFilter::default().in_zone(Zone::Battlefield),
                 ObjectFilter::default().in_zone(Zone::Graveyard),
             ],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         filter.set_conjunctive_set_surface(true);
         assert_eq!(
             scope_types_away_from_requantified_bare_card_domains(&tokens, filter.clone()),

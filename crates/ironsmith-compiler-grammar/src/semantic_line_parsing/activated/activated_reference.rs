@@ -215,7 +215,7 @@ fn recognize_delayed_source_characteristic_surface(info: &LineInfo, effects: &mu
         }
     }
     fn filter(f: &mut ObjectFilter, power: bool, visit: &mut impl FnMut(&mut Value)) {
-        for comparison in [&mut f.mana_value, &mut f.power, &mut f.toughness]
+        for comparison in { let fields__ = &mut **f; [&mut fields__.mana_value, &mut fields__.power, &mut fields__.toughness] }
             .into_iter()
             .flatten()
         {

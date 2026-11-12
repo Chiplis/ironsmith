@@ -31,9 +31,9 @@ fn complete_union_is_owned_before_characteristic_classification() {
                 let permanent = if put {
                     ObjectFilter::permanent().with_counter_type(crate::object::CounterType::Time)
                 } else { ObjectFilter::permanent() };
-                let expected = ObjectFilter {
-                    other, any_of: vec![permanent, suspended()], ..ObjectFilter::default()
-                };
+                let expected = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
+                    other, any_of: vec![permanent, suspended()], ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                });
                 let actual = reader(&tokens, other).unwrap();
                 assert_eq!(actual, expected, "{text}, other={other}");
                 if text.starts_with("all ") {
@@ -47,23 +47,23 @@ fn complete_union_is_owned_before_characteristic_classification() {
 #[test]
 fn each_arm_keeps_its_own_zone_controller_owner_and_counter_constraints() {
     for (text, expected) in [
-        ("permanent you control or suspended card you own", ObjectFilter {
+        ("permanent you control or suspended card you own", ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![ObjectFilter::permanent().you_control(), suspended().owned_by(PlayerFilter::You)],
-            ..ObjectFilter::default()
-        }),
-        ("suspended card you own and each other permanent you control with a time counter on it", ObjectFilter {
-            any_of: vec![suspended().owned_by(PlayerFilter::You), ObjectFilter {
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })),
+        ("suspended card you own and each other permanent you control with a time counter on it", ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
+            any_of: vec![suspended().owned_by(PlayerFilter::You), ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 other: true,
-                ..ObjectFilter::permanent().you_control().with_counter_type(crate::object::CounterType::Time)
-            }],
-            ..ObjectFilter::default()
-        }),
-        ("nonland permanent or suspended card", ObjectFilter {
-            any_of: vec![ObjectFilter {
-                excluded_card_types: vec![CardType::Land], ..ObjectFilter::permanent()
-            }, suspended()],
-            ..ObjectFilter::default()
-        }),
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::permanent().you_control().with_counter_type(crate::object::CounterType::Time))
+            })],
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })),
+        ("nonland permanent or suspended card", ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
+            any_of: vec![ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
+                excluded_card_types: vec![CardType::Land], ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::permanent())
+            }), suspended()],
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })),
     ] {
         let tokens = crate::lexer::lex_line(text, 0).unwrap();
         for reader in readers() {
@@ -163,9 +163,9 @@ fn an_enclosing_target_relation_keeps_its_supported_union_operand() {
                 assert_eq!(actual.zone, Some(Zone::Stack), "{text}");
                 assert_eq!(actual.other, other, "{text}");
                 assert!(actual.any_of.is_empty(), "the union must stay inside the relation: {text}");
-                assert_eq!(actual.targets_object.as_deref(), Some(&ObjectFilter {
-                    any_of: vec![suspended(), ObjectFilter::permanent()], ..ObjectFilter::default()
-                }), "{text}");
+                assert_eq!(actual.targets_object.as_deref(), Some(&ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
+                    any_of: vec![suspended(), ObjectFilter::permanent()], ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                })), "{text}");
                 assert!(actual.targets_player.is_none());
                 assert!(actual.targets_only_object.is_none());
                 assert!(actual.targets_only_player.is_none());

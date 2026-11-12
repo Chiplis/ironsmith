@@ -47123,7 +47123,7 @@ fn source_maximum_blockers<T, E, C, Cond, ICond>(
             additional_restrictions,
             ..
         } if additional_restrictions.is_empty()
-            && (ObjectFilter { source_surface: None, ..filter.clone() }) == ObjectFilter::source() =>
+            && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { source_surface: None, ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone()) })) == ObjectFilter::source() =>
         {
             Some(*maximum)
         }

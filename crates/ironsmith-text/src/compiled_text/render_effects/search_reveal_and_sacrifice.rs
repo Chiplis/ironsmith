@@ -4070,10 +4070,10 @@ pub(super) fn describe_look_top_card_if_matching_may_reveal_put_hand_else_bottom
     else {
         return None;
     };
-    let hand_filter = ObjectFilter {
+    let hand_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Hand),
         ..Default::default()
-    };
+    });
     if player != &PlayerFilter::You
         || *mode != crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown
         || tag.as_str() != look_at_top.tag.as_str()
@@ -5358,10 +5358,10 @@ pub(super) fn describe_each_player_mill_exile_milled_creatures_create_power_toke
 
 pub(super) fn is_plain_land_card_filter(filter: &ObjectFilter) -> bool {
     *filter
-        == ObjectFilter {
+        == ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Land],
             ..Default::default()
-        }
+        })
 }
 
 pub(super) fn is_tagged_revealed_hand_card_filter(filter: &ObjectFilter, tag: &TagKey) -> bool {

@@ -93,10 +93,10 @@ fn parse_passive_zone_change(
     } else if let Some((source, other)) =
         parse_source_or_another_trigger_subject_filters(subject_tokens)
     {
-        ObjectFilter {
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![source, other],
-            ..ObjectFilter::default()
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })
     } else {
         parse_object_filter_lexed(subject_tokens, false)?
     };
@@ -107,7 +107,7 @@ fn parse_passive_zone_change(
         filter.nontoken = true;
         filter.set_explicit_card_noun(true);
         if subject_mentions_permanent(subject_words) && filter.card_types.is_empty() {
-            filter.card_types = ObjectFilter::permanent_card().card_types;
+            filter.card_types = ObjectFilter::permanent_card().card_types.clone();
         }
     }
     let mut event = ironsmith_core::trigger_model::ZoneChangeTrigger::new();

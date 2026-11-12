@@ -2854,7 +2854,7 @@ pub fn parse_bargain_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCos
         return Ok(None);
     }
 
-    let filter = crate::target::ObjectFilter {
+    let filter = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(crate::zone::Zone::Battlefield),
         controller: Some(crate::target::PlayerFilter::You),
         any_of: vec![
@@ -2863,7 +2863,7 @@ pub fn parse_bargain_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCos
             crate::target::ObjectFilter::default().token(),
         ],
         ..Default::default()
-    };
+    });
 
     Ok(Some(OptionalCost::custom(
         "Bargain",
@@ -3801,7 +3801,7 @@ pub(crate) fn is_entry_exiled_reference_words(words: &[&str]) -> bool {
         && is_source_reference_words(&words[3..words.len()-1])
 }
 pub(crate) fn entry_exiled_reference_filter() -> crate::target::ObjectFilter {
-    crate::target::ObjectFilter { zone: Some(crate::zone::Zone::Exile), ..Default::default() }
+    crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { zone: Some(crate::zone::Zone::Exile), ..Default::default() })
         .match_tagged(ENTRY_EXILED_REFERENCE_TAG, crate::target::TaggedOpbjectRelation::SameObjectId)
 }
 
@@ -3841,7 +3841,7 @@ pub(crate) fn entry_exiled_reference_tag_for_tokens(tokens:&[OwnedLexToken])->Op
         .then(||entry_exiled_tag(label.as_deref(),false))
 }
 pub(crate) fn entry_exiled_filter_for_tag(tag:crate::tag::TagKey)->crate::target::ObjectFilter {
-    crate::target::ObjectFilter {zone:Some(crate::zone::Zone::Exile),..Default::default()}
+    crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {zone:Some(crate::zone::Zone::Exile),..Default::default()})
         .match_tagged(tag,crate::target::TaggedOpbjectRelation::SameObjectId)
 }
 

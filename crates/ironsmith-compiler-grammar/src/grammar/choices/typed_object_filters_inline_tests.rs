@@ -45,7 +45,7 @@ fn typed_choice_preserves_greatest_value_domain_and_implicit_actor() {
         Some(crate::target::PlayerFilter::IteratedPlayer)
     );
     assert!(matches!(
-        parsed.filter.mana_value,
+        parsed.filter.mana_value.clone(),
         Some(Comparison::EqualExpr(value))
             if matches!(value.as_ref(), Value::GreatestManaValue(scope)
                 if scope.controller == Some(crate::target::PlayerFilter::IteratedPlayer))

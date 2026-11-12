@@ -538,9 +538,9 @@ mod tests {
             .power_toughness(crate::card::PowerToughness::fixed(2, 4));
         if with_protection {
             builder = builder.with_ability(Ability::static_ability(crate::static_abilities::StaticAbility::protection(
-                crate::ability::ProtectionFrom::Permanents(crate::filter::ObjectFilter {
-                    subtypes: vec![crate::types::Subtype::Human], ..crate::filter::ObjectFilter::creature()
-                }))));
+                crate::ability::ProtectionFrom::Permanents(crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
+                    subtypes: vec![crate::types::Subtype::Human], ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::filter::ObjectFilter::creature())
+                })))));
         }
         let source = game.create_object_from_definition(&builder.build(), alice, Zone::Battlefield);
         let mut lands = Vec::new();

@@ -207,7 +207,7 @@ mod tests {
     use ironsmith_core::{ChooseSpec, Color, ColorSet, Condition, ObjectFilter, PlayerFilter, TextChange, Until, Value};
 
     fn filter(colors: ColorSet) -> ObjectFilter {
-        ObjectFilter { colors: Some(colors), ..ObjectFilter::default() }
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(colors), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) })
     }
     fn grant(colors: ColorSet) -> Ability {
         let program = ResolutionProgram::from_effects(vec![Effect::new(DrawCardsEffect::you(Value::Count(filter(colors))))])

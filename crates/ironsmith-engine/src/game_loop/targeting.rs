@@ -3006,7 +3006,7 @@ pub(super) fn relax_target_player_relation(spec: &ChooseSpec) -> ChooseSpec {
             if filter.blocked_by == Some(crate::filter::ObjectRef::Target) {
                 filter.blocked_by = None;
             }
-            for player_filter in [&mut filter.controller, &mut filter.owner] {
+            for player_filter in { let fields__ = &mut *filter; [&mut fields__.controller, &mut fields__.owner] } {
                 if let Some(original) = player_filter.as_ref() {
                     let relaxed = relax_prior_target_player_filter(original);
                     *player_filter = if relaxed == PlayerFilter::Any {
@@ -5296,17 +5296,17 @@ fn specialize_target_player_relation_in_object_filter(
     player: PlayerId,
     relation: ResolutionPlayerRelation,
 ) {
-    for player_filter in [
-        &mut filter.controller,
-        &mut filter.cast_by,
-        &mut filter.owner,
-        &mut filter.targets_player,
-        &mut filter.targets_only_player,
-        &mut filter.attacking_player_or_planeswalker_controlled_by,
-        &mut filter.protected_by,
-        &mut filter.attached_to_player,
-        &mut filter.entered_battlefield_controller,
-    ]
+    for player_filter in { let fields__ = &mut **filter; [
+        &mut fields__.controller,
+        &mut fields__.cast_by,
+        &mut fields__.owner,
+        &mut fields__.targets_player,
+        &mut fields__.targets_only_player,
+        &mut fields__.attacking_player_or_planeswalker_controlled_by,
+        &mut fields__.protected_by,
+        &mut fields__.attached_to_player,
+        &mut fields__.entered_battlefield_controller,
+    ] }
     .into_iter()
     .flatten()
     {
@@ -5318,13 +5318,13 @@ fn specialize_target_player_relation_in_object_filter(
     for nested in &mut filter.any_of {
         specialize_target_player_relation_in_object_filter(nested, player, relation);
     }
-    for nested in [
-        &mut filter.targets_object,
-        &mut filter.targets_only_object,
-        &mut filter.attached_to_object,
-        &mut filter.with_attached_object,
-        &mut filter.without_attached_object,
-    ]
+    for nested in { let fields__ = &mut **filter; [
+        &mut fields__.targets_object,
+        &mut fields__.targets_only_object,
+        &mut fields__.attached_to_object,
+        &mut fields__.with_attached_object,
+        &mut fields__.without_attached_object,
+    ] }
     .into_iter()
     .flatten()
     {
@@ -6685,10 +6685,10 @@ mod completed_cast_capture_tests {
         let source_card = CardBuilder::new(CardId::new(), "Cast observers")
             .card_types(vec![CardType::Enchantment]).build();
         let source = game.create_object_from_card(&source_card, player, Zone::Battlefield);
-        let filtered = ObjectFilter {
+        let filtered = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             mana_value_eq_counters_on_source: Some(CounterType::Charge),
-            ..ObjectFilter::spell()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::spell())
+        });
         {
             let object = game.object_mut(source).unwrap();
             object.counters.insert(CounterType::Charge, 1);

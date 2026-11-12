@@ -275,10 +275,10 @@ pub(super) fn read_demonstrative_descriptor(
                 return Ok(Some(if negative { PredicateAst::Not(Box::new(predicate)) } else { predicate }));
             }
             if surface::exact(descriptor_clause, &["renowned"]) {
-                let predicate = demonstrative_match_predicate(ObjectFilter {
+                let predicate = demonstrative_match_predicate(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     renowned: true,
                     ..Default::default()
-                }, match_time);
+                }), match_time);
                 return Ok(Some(if negative {
                     PredicateAst::Not(Box::new(predicate))
                 } else {
@@ -742,10 +742,10 @@ pub(super) fn read_same_name_as_filter_predicate(
                 relation: TaggedOpbjectRelation::SameNameAsTagged,
             });
         }
-        Some(ObjectFilter {
+        Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![left, right],
-            ..ObjectFilter::default()
-        })
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        }))
     });
     let filter = if let Some(union_filter) = union_filter {
         union_filter

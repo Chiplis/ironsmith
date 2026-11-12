@@ -2651,14 +2651,14 @@ mod tests {
         game.add_object(hand_object);
         game.push_to_stack(crate::game_state::StackEntry::new(spell_id, bob));
 
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![
                 ObjectFilter::spell(),
                 ObjectFilter::nonland_permanent(),
                 ObjectFilter::default().in_zone(Zone::Graveyard),
             ],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         let spec = ChooseSpec::target(ChooseSpec::Object(filter));
         let legal_targets = compute_legal_targets(&game, &spec, alice, Some(source_id));
 
@@ -2816,10 +2816,10 @@ mod tests {
 
         // Target has "Hexproof from black"
         let mut target = create_creature(1, "Protected Creature", p1);
-        let black_filter = ObjectFilter {
+        let black_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             colors: Some(ColorSet::from(Color::Black)),
             ..Default::default()
-        };
+        });
         add_static_ability(&mut target, StaticAbility::hexproof_from(black_filter));
 
         // Create a black source
@@ -2874,10 +2874,10 @@ mod tests {
             .player_hexproof_from
             .push(crate::game_state::PlayerCantBeTargetedFrom {
                 player: p1,
-                source_filter: ObjectFilter {
+                source_filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     colors: Some(ColorSet::from(Color::Blue)),
                     ..Default::default()
-                },
+                }),
                 controller: p1,
             });
 

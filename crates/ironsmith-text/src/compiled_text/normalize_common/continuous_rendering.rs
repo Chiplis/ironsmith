@@ -763,11 +763,11 @@ mod unhinted_count_pt_for_each_tests {
         let count = graveyard_permanent_count();
         let hinted = count.clone().with_surface_hint(ValueSurfaceHint::WhereXIs);
         let scaled = Value::Scaled(Box::new(count.clone()), 2);
-        let hand_count = Value::Count(ObjectFilter {
+        let hand_count = Value::Count(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Hand),
             owner: Some(PlayerFilter::You),
             ..Default::default()
-        });
+        }));
 
         for (power, toughness, until) in [
             (&hinted, &hinted, Until::EndOfTurn),
@@ -6149,10 +6149,10 @@ pub(crate) fn describe_damage_filter(filter: &crate::prevention::DamageFilter) -
 /// prevented this way". A bare color names only the source's color.
 pub(crate) fn prevention_rider_source_text(filter: &ObjectFilter) -> String {
     if let Some(colors) = filter.colors
-        && (ObjectFilter {
+        && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             colors: None,
-            ..filter.clone()
-        }) == ObjectFilter::default()
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+        })) == ObjectFilter::default()
     {
         let mut color_words = Vec::new();
         for (color, word) in [
@@ -6982,7 +6982,7 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } => {
             // A back-referenced blocker ("Target creature can't block this
             // creature this turn") keeps the blocker as the subject.
-            if (ObjectFilter { source_surface: None, ..attacker.clone() })
+            if (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { source_surface: None, ..ironsmith_core::filter_model::ObjectFilterFields::from(attacker.clone()) }))
                 == ObjectFilter::source()
                 && !blockers.tagged_constraints.iter().any(|constraint| {
                     constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
@@ -7595,10 +7595,10 @@ fn describe_block_exception_allowed(blockers: &ObjectFilter) -> Option<String> {
         allowed.push(pluralize_noun_phrase(&subtype.to_string()));
     }
     for card_type in &card_types {
-        allowed.push(creature_noun(ObjectFilter {
+        allowed.push(creature_noun(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![*card_type, CardType::Creature],
-            ..ObjectFilter::default()
-        }));
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })));
     }
     for color in [
         crate::color::Color::White,
@@ -7608,21 +7608,21 @@ fn describe_block_exception_allowed(blockers: &ObjectFilter) -> Option<String> {
         crate::color::Color::Green,
     ] {
         if colors.contains(color) {
-            allowed.push(creature_noun(ObjectFilter {
+            allowed.push(creature_noun(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 colors: Some(crate::color::ColorSet::from_color(color)),
                 card_types: vec![CardType::Creature],
-                ..ObjectFilter::default()
-            }));
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })));
         }
     }
     if !abilities.is_empty() {
         let mut labels = Vec::new();
         for ability in &abilities {
-            let description = ObjectFilter {
+            let description = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 static_abilities: vec![*ability],
                 card_types: vec![CardType::Creature],
-                ..ObjectFilter::default()
-            }
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })
             .description();
             let label = strip_indefinite_article(description.trim())
                 .strip_prefix("creature with ")?

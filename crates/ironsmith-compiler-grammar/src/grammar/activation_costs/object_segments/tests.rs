@@ -18,10 +18,10 @@ fn sacrifice_segments_preserve_source_and_choice_shapes() {
         parse_sacrifice_segment_tokens(&chosen, |_| None).unwrap(),
         ActivationCostSegmentCst::SacrificeChosen {
             count: ChoiceCount::up_to(2),
-            filter: ObjectFilter {
+            filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 other: true,
-                ..ObjectFilter::artifact()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::artifact())
+            }),
         }
     );
 
@@ -108,10 +108,10 @@ fn unattach_and_tap_segments_return_typed_filters() {
         .unwrap(),
         ActivationCostSegmentCst::UnattachChosen {
             count: 1,
-            filter: ObjectFilter {
+            filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 attached_to_object: Some(Box::new(ObjectFilter::source())),
-                ..ObjectFilter::artifact().with_subtype(crate::types::Subtype::Equipment)
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::artifact().with_subtype(crate::types::Subtype::Equipment))
+            }),
         }
     );
 
@@ -120,11 +120,11 @@ fn unattach_and_tap_segments_return_typed_filters() {
         parse_tap_chosen_segment_tokens(&tap).unwrap(),
         ActivationCostSegmentCst::TapChosen {
             count: ChoiceCount::exactly(2),
-            filter: ObjectFilter {
+            filter: ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 other: true,
                 untapped: true,
-                ..ObjectFilter::creature().you_control()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature().you_control())
+            }),
         }
     );
 
@@ -168,11 +168,11 @@ fn tap_x_untapped_costs_preserve_exact_variable_count_and_filter() {
         assert_eq!(count, ChoiceCount::dynamic_x());
         assert_eq!(
             filter,
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Battlefield),
                 untapped: true,
-                ..expected
-            }
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(expected)
+            })
         );
     }
     for text in [
@@ -279,7 +279,7 @@ fn complete_discard_selectors_preserve_color_historic_x_and_other() {
         panic!("missing X filter")
     };
     assert!(
-        matches!(mana.mana_value, Some(crate::filter::Comparison::EqualExpr(value)) if matches!(value.unhinted(), crate::effect::Value::X))
+        matches!(mana.mana_value.clone(), Some(crate::filter::Comparison::EqualExpr(value)) if matches!(value.unhinted(), crate::effect::Value::X))
     );
     assert!(matches!(
         parse("discard x cards"),
@@ -345,7 +345,7 @@ fn tap_state_costs_preserve_unbounded_counts_and_aggregate_power() {
         assert_eq!(count.max, None);
         assert!(filter.other);
         assert_eq!(filter.power, None);
-        let aggregate = filter.target_set_aggregate_constraint.unwrap();
+        let aggregate = filter.target_set_aggregate_constraint.clone().unwrap();
         assert_eq!(aggregate.metric, crate::effect::ChoiceAggregateMetric::Power);
         assert_eq!(aggregate.minimum, Some(crate::effect::Value::Fixed(10)));
     }

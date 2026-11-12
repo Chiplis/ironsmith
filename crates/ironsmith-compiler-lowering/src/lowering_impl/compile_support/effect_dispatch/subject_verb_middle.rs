@@ -1491,13 +1491,13 @@ fn attach_created_token_copies(
     // token, not a choice among every permanent with the name.
     if let ChooseSpec::Object(filter) = &mut target_spec
         && let Some(name) = filter.name.clone()
-        && (ObjectFilter {
+        && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             name: None,
             zone: None,
             union_surface: Default::default(),
             name_surface: Default::default(),
-            ..filter.clone()
-        }) == ObjectFilter::default()
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+        })) == ObjectFilter::default()
         && let Some((_, created)) = ctx
             .created_token_names
             .iter()
@@ -3430,10 +3430,11 @@ pub(super) fn compile_subject_verb_middle(
                         .resolve_set_pt_values_at_resolution(),
                     )
                 })?;
-            if matches!(
-                target,
-                TargetAst::Source(_) | TargetAst::Object(ObjectFilter { source: true, .. }, _, _)
-            ) && let Some(spec) = value_object_target_spec(&power)
+            if (match target {
+                TargetAst::Source(_) => true,
+                TargetAst::Object(filter, _, _) => filter.source,
+                _ => false,
+            }) && let Some(spec) = value_object_target_spec(&power)
             {
                 effects.insert(
                     0,
@@ -3464,10 +3465,11 @@ pub(super) fn compile_subject_verb_middle(
                         .resolve_set_pt_values_at_resolution(),
                     )
                 })?;
-            if matches!(
-                target,
-                TargetAst::Source(_) | TargetAst::Object(ObjectFilter { source: true, .. }, _, _)
-            ) && let Some(spec) = value_object_target_spec(&toughness)
+            if (match target {
+                TargetAst::Source(_) => true,
+                TargetAst::Object(filter, _, _) => filter.source,
+                _ => false,
+            }) && let Some(spec) = value_object_target_spec(&toughness)
             {
                 effects.insert(
                     0,

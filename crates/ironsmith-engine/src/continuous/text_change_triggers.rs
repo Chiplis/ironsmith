@@ -817,10 +817,10 @@ mod tests {
     const A: PlayerId = PlayerId::from_index(0);
     fn red_to_blue() -> TextChange { TextChange::color(Color::Red, Color::Blue).unwrap() }
     fn red() -> ObjectFilter {
-        ObjectFilter { colors: Some(ColorSet::RED), ..ObjectFilter::creature() }
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::RED), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature()) })
     }
     fn blue() -> ObjectFilter {
-        ObjectFilter { colors: Some(ColorSet::BLUE), ..ObjectFilter::creature() }
+        ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::BLUE), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature()) })
     }
     fn retained(kind: model::TriggerKind) -> Trigger {
         Trigger::from_model(model::Trigger {
@@ -900,7 +900,7 @@ mod tests {
         let source = creature(&mut game, ColorSet::COLORLESS, Subtype::Human);
         let human = creature(&mut game, ColorSet::RED, Subtype::Human);
         let vampire = creature(&mut game, ColorSet::BLUE, Subtype::Vampire);
-        let filter = ObjectFilter { excluded_subtypes: vec![Subtype::Human], ..ObjectFilter::creature() };
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { excluded_subtypes: vec![Subtype::Human], ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature()) });
         let original = Trigger::new(ZoneChangeTrigger::new()
             .from(Zone::Battlefield).to(Zone::Graveyard).filter(filter));
         let changed = rewrite_trigger_words(&original,
@@ -945,15 +945,15 @@ mod tests {
 
     #[test]
     fn retained_union_visits_cause_origin_and_player_predicates_without_changing_names_or_choices() {
-        let chosen = ObjectFilter {
+        let chosen = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             colors: Some(ColorSet::RED), chosen_color: true, chosen_creature_type: true,
             name: Some("Red Human".into()),
             exact_mana_cost: Some(ManaCost::from_pips(vec![vec![ManaSymbol::Red]])),
             tagged_constraints: vec![TaggedObjectConstraint {
                 tag: "red-captured".into(), relation: TaggedOpbjectRelation::SameObjectId,
             }],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         let mut zone = model::ZoneChangeTrigger::new().from(Zone::Hand).to(Zone::Battlefield)
             .filter(chosen.clone()).this_surface(SourceReferenceSurface::FullName("Red Human".into()))
             .cause_filter(Some(ironsmith_core::CauseFilter::from_source(red())));
@@ -1093,7 +1093,7 @@ mod tests {
 
     #[test]
     fn native_spell_predicate_survives_model_round_trip_and_second_replacement() {
-        let filter = ObjectFilter { colors: Some(ColorSet::RED), ..ObjectFilter::default() };
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { colors: Some(ColorSet::RED), ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default()) });
         let original = Trigger::spell_cast(Some(filter.clone()), PlayerFilter::You)
             .with_intro_surface(TriggerIntroSurface::Whenever);
         let changed = rewrite_trigger_words(&original, red_to_blue()).unwrap();

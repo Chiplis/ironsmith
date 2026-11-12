@@ -774,12 +774,12 @@ fn lower_materialization_costs_with(
                     {
                         None
                     } else {
-                        let mut filter = ObjectFilter {
+                        let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                             zone: Some(crate::zone::Zone::Hand),
                             card_types: card_types.clone(),
                             supertypes: supertypes.clone(),
                             ..Default::default()
-                        };
+                        });
                         if let Some(name) = name {
                             filter = filter.named(name.clone());
                         }
@@ -1080,12 +1080,12 @@ fn lower_materialization_costs_with(
                         "exile_cost_{exile_tag_id}"
                     ));
                     exile_tag_id += 1;
-                    let mut filter = ObjectFilter {
+                    let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                         zone: Some(crate::zone::Zone::Battlefield),
                         controller: Some(PlayerFilter::You),
                         card_types: vec![CardType::Artifact],
                         ..Default::default()
-                    };
+                    });
                     filter.name = Some(name.clone());
                     costs.push(Cost::validated_effect(Effect::choose_objects(
                         filter,
@@ -1225,11 +1225,11 @@ fn lower_materialization_costs_with(
                     "graveyard_cost_{return_tag_id}"
                 ));
                 return_tag_id += 1;
-                let filter = ObjectFilter {
+                let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     zone: Some(crate::zone::Zone::Exile),
                     owner: Some(PlayerFilter::Opponent),
                     ..Default::default()
-                };
+                });
                 costs.push(Cost::validated_effect(Effect::choose_objects(
                     filter,
                     ChoiceCount::exactly(1),

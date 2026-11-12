@@ -301,10 +301,10 @@ fn library_destination_groups_distinct_origins_and_never_same_zone_reordering() 
             let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
             resource(&mut game, A, Zone::Graveyard, "Type: Sorcery");
             resource(&mut game, B, Zone::Graveyard, "Type: Sorcery");
-            let filter = ObjectFilter {
+            let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Graveyard),
-                ..ObjectFilter::default()
-            };
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            });
             execute(
                 &mut game,
                 source,

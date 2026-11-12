@@ -993,17 +993,17 @@ fn bind_relative_iterated_player_filters_to_chooser(
     }
     let chooser = as_followup_player_alias(chooser.clone());
 
-    for relative in [
-        &mut filter.owner,
-        &mut filter.controller,
-        &mut filter.cast_by,
-        &mut filter.targets_player,
-        &mut filter.targets_only_player,
-        &mut filter.attacking_player_or_planeswalker_controlled_by,
-        &mut filter.protected_by,
-        &mut filter.entered_battlefield_controller,
-        &mut filter.attached_to_player,
-    ] {
+    for relative in { let fields__ = &mut **filter; [
+        &mut fields__.owner,
+        &mut fields__.controller,
+        &mut fields__.cast_by,
+        &mut fields__.targets_player,
+        &mut fields__.targets_only_player,
+        &mut fields__.attacking_player_or_planeswalker_controlled_by,
+        &mut fields__.protected_by,
+        &mut fields__.entered_battlefield_controller,
+        &mut fields__.attached_to_player,
+    ] } {
         if let Some(relative) = relative.as_mut() {
             bind_relative_iterated_player_filter_to_player_filter(relative, &chooser);
         }

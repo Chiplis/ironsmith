@@ -404,13 +404,13 @@ fn characteristic_filter_from_choose_spec(spec: &ChooseSpec) -> Option<ObjectFil
     {
         return None;
     }
-    Some(ObjectFilter {
+    Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: filter.card_types.clone(),
         all_card_types: filter.all_card_types.clone(),
         subtypes: filter.subtypes.clone(),
         supertypes: filter.supertypes.clone(),
         ..Default::default()
-    })
+    }))
 }
 
 fn producer_characteristic_filter(effect: &Effect, tag: &TagKey) -> Option<ObjectFilter> {
@@ -1179,10 +1179,10 @@ mod tests {
         );
         let condition = Condition::TaggedObjectMatches(
             tag.clone().into(),
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 mana_value: Some(crate::filter::Comparison::LessThanOrEqual(3)),
                 ..Default::default()
-            },
+            }),
         );
         let mut effects = vec![
             producer,

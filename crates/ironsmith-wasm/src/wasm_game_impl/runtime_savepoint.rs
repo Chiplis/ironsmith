@@ -247,9 +247,9 @@ mod trigger_acquisition_savepoint_contracts {
         let player = PlayerId(0);
         let program = ironsmith::resolution::ResolutionProgram::from_effects(vec![ironsmith::effect::Effect::gain_life(1)])
             .with_trigger_definition(LinkedExileDefinition([219; 32]));
-        let ability = Ability::triggered(Trigger::spell_cast(Some(ironsmith::target::ObjectFilter {
+        let ability = Ability::triggered(Trigger::spell_cast(Some(ironsmith::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             colors: Some(ColorSet::BLACK), ..Default::default()
-        }), ironsmith::target::PlayerFilter::You), program);
+        })), ironsmith::target::PlayerFilter::You), program);
         let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Retained trigger witness")
             .card_types(vec![CardType::Enchantment]).with_ability(ability).build();
         let source = wasm.game.create_object_from_definition(&definition, player, Zone::Battlefield);

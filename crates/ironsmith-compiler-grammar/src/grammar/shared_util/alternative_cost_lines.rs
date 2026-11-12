@@ -360,10 +360,10 @@ pub fn parse_self_zone_alternative_cost(
         crate::word_claims::claim_tokens(&first[end..]);
         crate::word_claims::claim_tokens(sentences[1]);
         let condition = ThisSpellCostCondition::ConditionExpr {
-            condition: crate::effect::Condition::SourceMatches(crate::target::ObjectFilter {
+            condition: crate::effect::Condition::SourceMatches(crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![crate::types::CardType::Instant, crate::types::CardType::Sorcery],
                 ..Default::default()
-            }),
+            })),
             display: "the resulting spell is an instant or sorcery spell".into(),
         };
         return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(

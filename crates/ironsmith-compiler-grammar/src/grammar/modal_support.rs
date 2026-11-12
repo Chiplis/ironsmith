@@ -1325,10 +1325,10 @@ fn parse_modal_header_prefix_effects(
                 IfResultPredicate::DiesThisWay => EffectPredicate::PriorEffectResult(
                     ironsmith_core::PriorEffectResultSurface::new(
                         ironsmith_core::PriorEffectAction::Died,
-                        crate::filter::ObjectFilter {
+                        crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                             zone: None,
-                            ..crate::filter::ObjectFilter::creature()
-                        },
+                            ..ironsmith_core::filter_model::ObjectFilterFields::from(crate::filter::ObjectFilter::creature())
+                        }),
                         ironsmith_core::PriorEffectResultActor::Passive,
                         ironsmith_core::PriorEffectResultQuantifier::One,
                     ),

@@ -204,7 +204,7 @@ fn return_graveyard_player_surface(
     if filter.zone != Some(Zone::Graveyard) {
         return Ok(None);
     }
-    Ok(resolve_it_tag(filter, &current_reference_env(ctx))?.owner)
+    Ok(resolve_it_tag(filter, &current_reference_env(ctx))?.owner.clone())
 }
 
 pub(super) fn compile_return_to_hand(
@@ -3965,7 +3965,7 @@ fn exact_tap_reference(spec: ChooseSpec) -> ChooseSpec {
                 constraint.relation = crate::filter::TaggedOpbjectRelation::SameObjectId;
             }
         }
-        filter.any_of = filter.any_of.into_iter().map(exact_filter).collect();
+        filter.any_of = filter.any_of.clone().into_iter().map(exact_filter).collect();
         filter
     }
     match spec {

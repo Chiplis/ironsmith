@@ -1009,8 +1009,8 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
             .unwrap_or(start);
         let previous = std::mem::take(&mut filter.any_of);
         filter.any_of = vec![
-            ObjectFilter { attacked_this_turn: true, any_of: previous.clone(), ..Default::default() },
-            ObjectFilter { blocked_this_turn: true, any_of: previous, ..Default::default() },
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { attacked_this_turn: true, any_of: previous.clone(), ..Default::default() }),
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { blocked_this_turn: true, any_of: previous, ..Default::default() }),
         ];
         crate::word_claims::claim_drained(all_words.drain((clause_start).min(all_words.len())..));
         if let Some(start) = token_boundary_for_non_article_word(segment_tokens, clause_start) {
@@ -1036,8 +1036,8 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
         // Keep an earlier union conjunctive with this independent qualification.
         let previous = std::mem::take(&mut filter.any_of);
         filter.any_of = vec![
-            ObjectFilter { blocked_this_turn: true, any_of: previous.clone(), ..Default::default() },
-            ObjectFilter { was_blocked_this_turn: true, any_of: previous, ..Default::default() },
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { blocked_this_turn: true, any_of: previous.clone(), ..Default::default() }),
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields { was_blocked_this_turn: true, any_of: previous, ..Default::default() }),
         ];
     } else {
         if words.get(tail_start) != Some(&"by") || tail_start + 1 >= this_turn_idx {
@@ -1345,6 +1345,7 @@ pub fn parse_object_filter_with_grammar_entrypoint_lexed(
     super::simple::preserve_branch_scoped_card_type_union(&mut filter, tokens, other);
     apply_chosen_type_domain(&mut filter, tokens);
     fn remove_explicitly_excluded_positive_subtypes(filter: &mut ObjectFilter) {
+        let filter = &mut **filter;
         filter.subtypes.retain(|subtype| {
             !filter
                 .excluded_subtypes
@@ -1495,14 +1496,14 @@ pub fn apply_supertype_or_mana_capability_union(
 
         filter.supertypes.remove(supertype_idx);
         filter.any_of = vec![
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 supertypes: vec![supertype],
-                ..ObjectFilter::default()
-            },
-            ObjectFilter {
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 could_produce_mana: vec![mana_symbol],
-                ..ObjectFilter::default()
-            },
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }),
         ];
         // "that is snow or could produce {C}" (Break the Ice).
         crate::word_claims::claim_tokens(&tokens[window[0].0..=window[6].0]);

@@ -2209,11 +2209,11 @@ pub fn parse_subject_object_filter(
     let normalized_words = normalize_cant_word_refs(tokens);
     match restriction_grammar::parse_restriction_subject_surface_words(&normalized_words) {
         Some(restriction_grammar::RestrictionSubjectSurface::StackAbility(kind)) => {
-            return Ok(Some(ObjectFilter {
+            return Ok(Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(crate::zone::Zone::Stack),
                 stack_kind: Some(kind),
                 ..Default::default()
-            }));
+            })));
         }
         Some(restriction_grammar::RestrictionSubjectSurface::Damage) => {
             return Ok(Some(ObjectFilter::default()));

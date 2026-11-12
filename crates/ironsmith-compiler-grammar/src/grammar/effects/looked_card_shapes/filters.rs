@@ -215,7 +215,7 @@ fn parse_noncreature_nonland_permanent(
         crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&elided, false))
             .unwrap_or_else(ObjectFilter::permanent_card);
     if filter.card_types.is_empty() && filter.all_card_types.is_empty() {
-        filter.card_types = ObjectFilter::permanent_card().card_types;
+        filter.card_types = ObjectFilter::permanent_card().card_types.clone();
     }
     push_excluded_type(&mut filter, CardType::Creature);
     push_excluded_type(&mut filter, CardType::Land);
@@ -278,7 +278,7 @@ fn parse_land_or_legendary_permanent(
     land.any_of.clear();
 
     let mut legendary_permanent = base;
-    legendary_permanent.card_types = ObjectFilter::permanent_card().card_types;
+    legendary_permanent.card_types = ObjectFilter::permanent_card().card_types.clone();
     legendary_permanent.supertypes = vec![Supertype::Legendary];
     legendary_permanent.any_of.clear();
 
@@ -310,7 +310,7 @@ fn parse_modified_permanent_cards(
     let mut filter =
         crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&elided, false))
             .filter(|filter| filter.card_types.is_empty() && filter.all_card_types.is_empty())?;
-    filter.card_types = ObjectFilter::permanent_card().card_types;
+    filter.card_types = ObjectFilter::permanent_card().card_types.clone();
     Some(filter)
 }
 

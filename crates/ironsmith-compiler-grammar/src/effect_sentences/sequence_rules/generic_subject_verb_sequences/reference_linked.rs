@@ -2739,10 +2739,10 @@ pub fn parse_counter_spell_then_artifact_or_creature_enters_under_your_control(
     };
     let target = target.clone();
     let counter = EffectAst::SubjectVerb(counter.clone());
-    let matching_spell = ObjectFilter {
+    let matching_spell = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![CardType::Artifact, CardType::Creature],
-        ..ObjectFilter::spell()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::spell())
+    });
     let mut chosen_spell = matching_spell.clone();
     chosen_spell.is_target_object = true;
     let registrations = vec![

@@ -788,14 +788,14 @@ fn attached_union_count_filter(
         });
         branch
     };
-    ObjectFilter {
+    ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         any_of: vec![
             branch(Subtype::Aura, first_tag),
             branch(Subtype::Equipment, second_tag),
         ],
-        ..ObjectFilter::default()
-    }
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    })
 }
 
 #[test]
@@ -837,7 +837,7 @@ fn attached_union_count_surface_requires_current_attachment_to_one_shared_tag() 
 
 #[test]
 fn greatest_mana_value_spell_history_keeps_aggregate_and_cast_surface() {
-    let mut filter = ObjectFilter {
+    let mut filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Stack),
         cast_by: Some(PlayerFilter::You),
         cast_this_turn: true,
@@ -845,8 +845,8 @@ fn greatest_mana_value_spell_history_keeps_aggregate_and_cast_surface() {
             ObjectFilter::default().with_type(CardType::Instant),
             ObjectFilter::default().with_type(CardType::Sorcery),
         ],
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     filter.set_conjunctive_set_surface(true);
 
     assert_eq!(

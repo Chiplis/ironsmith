@@ -1315,7 +1315,7 @@ mod current_blocked_attacker_count_tests {
         assert_eq!(consumed, words.len());
         assert!(filter.attacking);
         assert!(!filter.blocking);
-        assert!(matches!(filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(tag)) if tag == crate::tag::CompilerReferenceTag::It.bind().into()));
+        assert!(matches!(filter.in_combat_with.clone(), Some(crate::filter::ObjectRef::Tagged(tag)) if tag == crate::tag::CompilerReferenceTag::It.bind().into()));
         assert!(!filter.blocked_by_source, "do not substitute an implicit source for the antecedent");
     }
 }

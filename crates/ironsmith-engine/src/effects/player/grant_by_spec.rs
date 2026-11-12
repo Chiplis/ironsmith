@@ -244,10 +244,10 @@ mod tests {
 
         let mut ctx = ExecutionContext::new_default(source, alice);
         let effect = GrantBySpecEffect::new(
-            GrantSpec::flash_to_spells_matching(ObjectFilter {
+            GrantSpec::flash_to_spells_matching(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 card_types: vec![CardType::Sorcery],
-                ..ObjectFilter::default()
-            }),
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            })),
             PlayerFilter::You,
             GrantDuration::UntilYourNextTurnEnd,
         );

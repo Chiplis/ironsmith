@@ -660,10 +660,10 @@ pub fn parse_domain_union_object_filter_lexed(
         }
     }
 
-    let mut union = ObjectFilter {
+    let mut union = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: branches,
-        ..ObjectFilter::default()
-    };
+        ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     if tokens.iter().any(|token| token.is_word("and/or")) {
         union.set_union_connective(ObjectFilterUnionConnective::AndOr);
     }

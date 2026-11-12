@@ -51,11 +51,11 @@ pub(crate) fn parse_live_name_relation(
             crate::word_claims::claim_tokens(&tail[..1]);
         }
         let mut comparison = if is_hand_comparison {
-            ObjectFilter {
+            ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Hand),
                 owner: Some(PlayerFilter::OwnerOf(ObjectRef::FilterCandidate)),
                 ..Default::default()
-            }
+            })
         } else {
             let rest = if exclude_candidate { &tail[1..] } else { tail };
             super::parse_object_filter_with_grammar_entrypoint_lexed(rest, false)?

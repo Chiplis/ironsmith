@@ -718,13 +718,13 @@ fn replace_it_tag_in_filter(filter: &mut ObjectFilter, tag: &TagKey) {
     {
         *reference_tag = tag.clone();
     }
-    for comparison in [
-        filter.power.as_mut(),
-        filter.toughness.as_mut(),
-        filter.mana_value.as_mut(),
-        filter.color_count.as_mut(),
-        filter.card_type_count.as_mut(),
-    ]
+    for comparison in { let fields__ = &mut **filter; [
+        fields__.power.as_mut(),
+        fields__.toughness.as_mut(),
+        fields__.mana_value.as_mut(),
+        fields__.color_count.as_mut(),
+        fields__.card_type_count.as_mut(),
+    ] }
     .into_iter()
     .flatten()
     {
@@ -738,12 +738,12 @@ fn replace_it_tag_in_filter(filter: &mut ObjectFilter, tag: &TagKey) {
             replace_it_tag_in_value(value, tag);
         }
     }
-    for nested in [
-        filter.attached_to_object.as_deref_mut(),
-        filter.blocked_or_was_blocked_by_this_turn.as_deref_mut(),
-        filter.targets_object.as_deref_mut(),
-        filter.targets_only_object.as_deref_mut(),
-    ]
+    for nested in { let fields__ = &mut **filter; [
+        fields__.attached_to_object.as_deref_mut(),
+        fields__.blocked_or_was_blocked_by_this_turn.as_deref_mut(),
+        fields__.targets_object.as_deref_mut(),
+        fields__.targets_only_object.as_deref_mut(),
+    ] }
     .into_iter()
     .flatten()
     {
@@ -1348,10 +1348,10 @@ fn resolve_it_tag_inner(
         // In a source-triggered clause, "attached to it" relates the
         // counted objects to the source; it is not a disposable identity
         // qualifier on those objects.
-        resolved.attached_to_object = Some(Box::new(ObjectFilter {
+        resolved.attached_to_object = Some(Box::new(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             source: true,
-            ..ObjectFilter::default()
-        }));
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })));
         resolved.tagged_constraints.retain(|constraint| {
             constraint.tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
                 || constraint.relation != TaggedOpbjectRelation::AttachedToTaggedObject
@@ -1476,6 +1476,7 @@ fn resolve_it_tag_inner(
 }
 
 fn clear_redundant_live_combat_role_for_event_tag(filter: &mut ObjectFilter) {
+    let filter = &mut **filter;
     for constraint in &filter.tagged_constraints {
         if constraint.relation != TaggedOpbjectRelation::IsTaggedObject {
             continue;
@@ -3486,12 +3487,12 @@ mod tests {
 
     #[test]
     fn demonstrative_superseded_antecedent_rejects_recursive_markers() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             source_surface: Some(SourceReferenceSurface::ThisPermanentType(
                 "that creature".into(),
             )),
-            ..ObjectFilter::creature()
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature())
+        })
         .match_tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
@@ -3512,12 +3513,12 @@ mod tests {
 
     #[test]
     fn demonstrative_superseded_antecedent_preserves_concrete_object() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             source_surface: Some(SourceReferenceSurface::ThisPermanentType(
                 "that creature".into(),
             )),
-            ..ObjectFilter::creature()
-        }
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::creature())
+        })
         .match_tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
@@ -3807,7 +3808,7 @@ mod tests {
         let resolved = resolve_it_tag(&filter, &refs).expect("resolve blocking antecedent");
 
         assert!(matches!(
-            resolved.blocked_by,
+            resolved.blocked_by.clone(),
             Some(ObjectRef::Tagged(tag)) if tag.as_str() == "targeted_0"
         ));
     }
@@ -3828,7 +3829,7 @@ mod tests {
         let resolved = resolve_it_tag(&filter, &refs).expect("resolve combat antecedent");
 
         assert!(matches!(
-            resolved.in_combat_with,
+            resolved.in_combat_with.clone(),
             Some(ObjectRef::Tagged(tag)) if tag.as_str() == "targeted_0"
         ));
     }

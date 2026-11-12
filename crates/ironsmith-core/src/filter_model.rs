@@ -44,8 +44,8 @@ pub fn describe_shared_combat_role_union(filter: &ObjectFilter) -> Option<String
     let mut combined = filter.clone();
     combined.any_of.clear();
     combined.set_explicit_card_type_noun(common.explicit_card_type_noun());
-    combined.card_types = common.card_types;
-    combined.all_card_types = common.all_card_types;
+    combined.card_types = common.card_types.clone();
+    combined.all_card_types = common.all_card_types.clone();
     combined.attacking = first.attacking;
     combined.blocking = first.blocking;
     let (role, alternatives) = if first.attacking {
@@ -72,9 +72,9 @@ pub fn describe_shared_combat_history_union(filter: &ObjectFilter) -> Option<Str
         branch.union_surface = ObjectFilter::default().union_surface;
         branch
     };
-    let attacked = ObjectFilter { attacked_this_turn: true, ..Default::default() };
-    let blocked = ObjectFilter { blocked_this_turn: true, ..Default::default() };
-    let was_blocked = ObjectFilter { was_blocked_this_turn: true, ..Default::default() };
+    let attacked = ObjectFilter::from(crate::filter_model::ObjectFilterFields { attacked_this_turn: true, ..Default::default() });
+    let blocked = ObjectFilter::from(crate::filter_model::ObjectFilterFields { blocked_this_turn: true, ..Default::default() });
+    let was_blocked = ObjectFilter::from(crate::filter_model::ObjectFilterFields { was_blocked_this_turn: true, ..Default::default() });
     let (left, right) = (bare(first), bare(second));
     let (base, from, to) = if (left == attacked && right == blocked) || (left == blocked && right == attacked) {
         (attacked, "that attacked this turn", "that attacked or blocked this turn")
@@ -1575,11 +1575,11 @@ impl ObjectCharacteristicRelation {
     pub fn comparison_description(&self) -> String {
         if self.comparison.zone == Some(Zone::Hand)
             && self.comparison.owner == Some(PlayerFilter::OwnerOf(ObjectRef::FilterCandidate))
-            && (ObjectFilter {
+            && (ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                 zone: None,
                 owner: None,
-                ..self.comparison.clone()
-            }) == ObjectFilter::default()
+                ..crate::filter_model::ObjectFilterFields::from(self.comparison.clone())
+            })) == ObjectFilter::default()
         {
             return if self.exclude_candidate {
                 "another card in their hand"
@@ -2666,9 +2666,67 @@ pub struct RelatedExileMembers {
 }
 
 /// Filter for selecting objects (permanents, spells, cards).
+///
+/// A shared handle to [`ObjectFilterFields`]. The field record is several
+/// kilobytes, and filters sit inside conditions, values, restrictions and
+/// effects that are moved and cloned constantly; keeping the record behind
+/// one pointer makes every such container small and every clone a reference
+/// count. Reads go through `Deref`; a write through `DerefMut` copies the
+/// record first when it is shared, so handles never observe each other's
+/// edits. Serialized form is exactly that of the field record.
+#[derive(Clone, PartialEq, Default, TagKeyWalk)]
+pub struct ObjectFilter(std::sync::Arc<ObjectFilterFields>);
+
+impl std::ops::Deref for ObjectFilter {
+    type Target = ObjectFilterFields;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ObjectFilter {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        std::sync::Arc::make_mut(&mut self.0)
+    }
+}
+
+impl From<ObjectFilterFields> for ObjectFilter {
+    fn from(fields: ObjectFilterFields) -> Self {
+        Self(std::sync::Arc::new(fields))
+    }
+}
+
+impl From<ObjectFilter> for ObjectFilterFields {
+    fn from(filter: ObjectFilter) -> Self {
+        std::sync::Arc::unwrap_or_clone(filter.0)
+    }
+}
+
+impl From<&ObjectFilter> for ObjectFilterFields {
+    fn from(filter: &ObjectFilter) -> Self {
+        (*filter.0).clone()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ObjectFilter {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        (*self.0).serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ObjectFilter {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        ObjectFilterFields::deserialize(deserializer).map(Self::from)
+    }
+}
+
+/// The fields of an [`ObjectFilter`].
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, PartialEq, Default, TagKeyWalk)]
-pub struct ObjectFilter {
+pub struct ObjectFilterFields {
     pub zone: Option<Zone>,
     /// Members of a persistent group owned by the referenced object.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
@@ -3318,7 +3376,7 @@ pub fn with_claim_origins_in_debug<T>(f: impl FnOnce() -> T) -> T {
 // exhaustive, so a new field does not compile until it is listed here.
 impl std::fmt::Debug for ObjectFilter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self {
+        let ObjectFilterFields {
             zone,
             group_member_of,
             same_group_as,
@@ -3557,7 +3615,7 @@ impl std::fmt::Debug for ObjectFilter {
             castable_face_match,
             excluded_rules,
             claim_origin,
-        } = self;
+        } = &*self.0;
         let mut out = f.debug_struct("ObjectFilter");
         out.field("zone", zone);
         out.field("group_member_of", group_member_of);
@@ -3901,7 +3959,7 @@ impl ObjectFilter {
             .with_trailing_candidate_ability_condition(trailing);
     }
 
-    pub const fn has_trailing_candidate_ability_condition_surface(&self) -> bool {
+    pub fn has_trailing_candidate_ability_condition_surface(&self) -> bool {
         self.union_surface.trailing_candidate_ability_condition()
     }
 
@@ -3909,7 +3967,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_chosen_type_this_way(this_way);
     }
 
-    pub const fn has_chosen_type_this_way_surface(&self) -> bool {
+    pub fn has_chosen_type_this_way_surface(&self) -> bool {
         self.union_surface.chosen_type_this_way()
     }
 
@@ -3981,7 +4039,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_connective(connective);
     }
 
-    pub const fn union_connective(&self) -> ObjectFilterUnionConnective {
+    pub fn union_connective(&self) -> ObjectFilterUnionConnective {
         self.union_surface.connective()
     }
 
@@ -3991,7 +4049,7 @@ impl ObjectFilter {
             .with_subtype_before_card_type(subtype_first);
     }
 
-    pub const fn has_subtype_before_card_type_union_surface(&self) -> bool {
+    pub fn has_subtype_before_card_type_union_surface(&self) -> bool {
         self.union_surface.subtype_before_card_type()
     }
 
@@ -4001,7 +4059,7 @@ impl ObjectFilter {
             .with_terminal_noun_after_type_subtype_union(terminal);
     }
 
-    pub const fn has_terminal_noun_after_type_subtype_union_surface(&self) -> bool {
+    pub fn has_terminal_noun_after_type_subtype_union_surface(&self) -> bool {
         self.union_surface.terminal_noun_after_type_subtype_union()
     }
 
@@ -4009,7 +4067,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_conjunctive_set_surface(conjunctive);
     }
 
-    pub const fn has_conjunctive_set_surface(&self) -> bool {
+    pub fn has_conjunctive_set_surface(&self) -> bool {
         self.union_surface.conjunctive_set_surface()
     }
 
@@ -4017,7 +4075,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_serial_or_list(serial);
     }
 
-    pub const fn has_serial_or_list_surface(&self) -> bool {
+    pub fn has_serial_or_list_surface(&self) -> bool {
         self.union_surface.serial_or_list()
     }
 
@@ -4025,7 +4083,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_shared_indefinite_article(shared);
     }
 
-    pub const fn has_shared_indefinite_article_surface(&self) -> bool {
+    pub fn has_shared_indefinite_article_surface(&self) -> bool {
         self.union_surface.shared_indefinite_article()
     }
 
@@ -4033,7 +4091,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_one_or_more(one_or_more);
     }
 
-    pub const fn union_is_one_or_more(&self) -> bool {
+    pub fn union_is_one_or_more(&self) -> bool {
         self.union_surface.one_or_more()
     }
 
@@ -4041,7 +4099,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_explicit_branch_articles(explicit);
     }
 
-    pub const fn has_explicit_union_branch_articles(&self) -> bool {
+    pub fn has_explicit_union_branch_articles(&self) -> bool {
         self.union_surface.explicit_branch_articles()
     }
 
@@ -4049,7 +4107,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_one_of_tagged_set(one_of_tagged_set);
     }
 
-    pub const fn has_one_of_tagged_set_surface(&self) -> bool {
+    pub fn has_one_of_tagged_set_surface(&self) -> bool {
         self.union_surface.one_of_tagged_set()
     }
 
@@ -4057,7 +4115,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_plural_pronoun_reference(pronoun);
     }
 
-    pub const fn has_plural_pronoun_reference_surface(&self) -> bool {
+    pub fn has_plural_pronoun_reference_surface(&self) -> bool {
         self.union_surface.plural_pronoun_reference()
     }
 
@@ -4065,7 +4123,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_singular_pronoun_reference(pronoun);
     }
 
-    pub const fn has_singular_pronoun_reference_surface(&self) -> bool {
+    pub fn has_singular_pronoun_reference_surface(&self) -> bool {
         self.union_surface.singular_pronoun_reference()
     }
 
@@ -4078,7 +4136,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_set_quantifier(surface);
     }
 
-    pub const fn set_quantifier_surface(&self) -> Option<crate::effect::SetQuantifierSurface> {
+    pub fn set_quantifier_surface(&self) -> Option<crate::effect::SetQuantifierSurface> {
         self.union_surface.set_quantifier()
     }
 
@@ -4089,7 +4147,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_plural_object_noun(plural);
     }
 
-    pub const fn has_plural_object_noun_surface(&self) -> bool {
+    pub fn has_plural_object_noun_surface(&self) -> bool {
         self.union_surface.plural_object_noun()
     }
 
@@ -4101,7 +4159,7 @@ impl ObjectFilter {
             .with_return_destination_first(destination_first);
     }
 
-    pub const fn has_return_destination_first_surface(&self) -> bool {
+    pub fn has_return_destination_first_surface(&self) -> bool {
         self.union_surface.return_destination_first()
     }
 
@@ -4113,7 +4171,7 @@ impl ObjectFilter {
             .with_explicit_card_noun(explicit_card_noun);
     }
 
-    pub const fn has_explicit_card_noun(&self) -> bool {
+    pub fn has_explicit_card_noun(&self) -> bool {
         self.union_surface.explicit_card_noun()
     }
 
@@ -4123,7 +4181,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_explicit_card_type_noun(card_type);
     }
 
-    pub const fn explicit_card_type_noun(&self) -> Option<CardType> {
+    pub fn explicit_card_type_noun(&self) -> Option<CardType> {
         self.union_surface.explicit_card_type_noun()
     }
 
@@ -4143,7 +4201,7 @@ impl ObjectFilter {
         );
     }
 
-    pub const fn counter_requirement_surface(&self) -> (bool, bool, bool) {
+    pub fn counter_requirement_surface(&self) -> (bool, bool, bool) {
         self.union_surface.counter_requirement_surface()
     }
 
@@ -4151,7 +4209,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_owner_before_zone(owner_before_zone);
     }
 
-    pub const fn has_owner_before_zone_surface(&self) -> bool {
+    pub fn has_owner_before_zone_surface(&self) -> bool {
         self.union_surface.owner_before_zone()
     }
 
@@ -4161,7 +4219,7 @@ impl ObjectFilter {
             .with_counter_requirement_after_zone(after_zone);
     }
 
-    pub const fn has_counter_requirement_after_zone_surface(&self) -> bool {
+    pub fn has_counter_requirement_after_zone_surface(&self) -> bool {
         self.union_surface.counter_requirement_after_zone()
     }
 
@@ -4169,7 +4227,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_for_each_leading_then(leading_then);
     }
 
-    pub const fn has_for_each_leading_then_surface(&self) -> bool {
+    pub fn has_for_each_leading_then_surface(&self) -> bool {
         self.union_surface.for_each_leading_then()
     }
 
@@ -4181,7 +4239,7 @@ impl ObjectFilter {
             .with_counter_exclusion_surface(plural_noun, plural_subject);
     }
 
-    pub const fn counter_exclusion_surface(&self) -> (bool, bool) {
+    pub fn counter_exclusion_surface(&self) -> (bool, bool) {
         self.union_surface.counter_exclusion_surface()
     }
 
@@ -4190,7 +4248,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_relative_attachment_state(relative);
     }
 
-    pub const fn has_relative_attachment_state_surface(&self) -> bool {
+    pub fn has_relative_attachment_state_surface(&self) -> bool {
         self.union_surface.relative_attachment_state()
     }
 
@@ -4201,7 +4259,7 @@ impl ObjectFilter {
             .with_relative_characteristic_list(relative);
     }
 
-    pub const fn has_relative_characteristic_list_surface(&self) -> bool {
+    pub fn has_relative_characteristic_list_surface(&self) -> bool {
         self.union_surface.relative_characteristic_list()
     }
 
@@ -4211,7 +4269,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_prior_effect_action(action);
     }
 
-    pub const fn prior_effect_action_surface(&self) -> Option<PriorEffectAction> {
+    pub fn prior_effect_action_surface(&self) -> Option<PriorEffectAction> {
         self.union_surface.prior_effect_action()
     }
 
@@ -4223,7 +4281,7 @@ impl ObjectFilter {
             .with_put_into_graveyard_this_way(authored);
     }
 
-    pub const fn has_put_into_graveyard_this_way_surface(&self) -> bool {
+    pub fn has_put_into_graveyard_this_way_surface(&self) -> bool {
         self.union_surface.put_into_graveyard_this_way()
     }
 
@@ -4242,7 +4300,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_same_name_antecedent(surface);
     }
 
-    pub const fn same_name_antecedent_surface(&self) -> Option<SameNameAntecedentSurface> {
+    pub fn same_name_antecedent_surface(&self) -> Option<SameNameAntecedentSurface> {
         self.union_surface.same_name_antecedent()
     }
 
@@ -4252,14 +4310,14 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_chosen_name_source(surface);
     }
 
-    pub const fn chosen_name_source_surface(&self) -> Option<ChosenNameSourceSurface> {
+    pub fn chosen_name_source_surface(&self) -> Option<ChosenNameSourceSurface> {
         self.union_surface.chosen_name_source()
     }
 
     pub fn set_shared_type_antecedent_surface(&mut self, surface: Option<DemonstrativeAntecedentSurface>) {
         self.union_surface = self.union_surface.with_shared_type_antecedent(surface);
     }
-    pub const fn shared_type_antecedent_surface(&self) -> Option<DemonstrativeAntecedentSurface> {
+    pub fn shared_type_antecedent_surface(&self) -> Option<DemonstrativeAntecedentSurface> {
         self.union_surface.shared_type_antecedent()
     }
 
@@ -4269,7 +4327,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_continuous_control_exception(exception);
     }
 
-    pub const fn has_continuous_control_exception_surface(&self) -> bool {
+    pub fn has_continuous_control_exception_surface(&self) -> bool {
         self.union_surface.continuous_control_exception()
     }
 
@@ -4279,7 +4337,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_continuous_control_ignore_effect(ignore);
     }
 
-    pub const fn has_continuous_control_ignore_effect_surface(&self) -> bool {
+    pub fn has_continuous_control_ignore_effect_surface(&self) -> bool {
         self.union_surface.continuous_control_ignore_effect()
     }
 
@@ -4289,7 +4347,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_single_target_if_that_target(surface);
     }
 
-    pub const fn has_single_target_if_that_target_surface(&self) -> bool {
+    pub fn has_single_target_if_that_target_surface(&self) -> bool {
         self.union_surface.single_target_if_that_target()
     }
 
@@ -4299,7 +4357,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_craft_material_reference(authored);
     }
 
-    pub const fn has_craft_material_reference(&self) -> bool {
+    pub fn has_craft_material_reference(&self) -> bool {
         self.union_surface.craft_material_reference()
     }
 
@@ -4309,7 +4367,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_definite_exiled_reference(authored);
     }
 
-    pub const fn has_definite_exiled_reference(&self) -> bool {
+    pub fn has_definite_exiled_reference(&self) -> bool {
         self.union_surface.definite_exiled_reference()
     }
 
@@ -4322,7 +4380,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_demonstrative_antecedent(surface);
     }
 
-    pub const fn demonstrative_antecedent_surface(&self) -> Option<DemonstrativeAntecedentSurface> {
+    pub fn demonstrative_antecedent_surface(&self) -> Option<DemonstrativeAntecedentSurface> {
         self.union_surface.demonstrative_antecedent()
     }
 
@@ -4335,7 +4393,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_graveyard_entry_history(surface);
     }
 
-    pub const fn graveyard_entry_history_surface(&self) -> Option<GraveyardEntryHistorySurface> {
+    pub fn graveyard_entry_history_surface(&self) -> Option<GraveyardEntryHistorySurface> {
         self.union_surface.graveyard_entry_history()
     }
 
@@ -4351,7 +4409,7 @@ impl ObjectFilter {
             .with_global_characteristic_domain(surface);
     }
 
-    pub const fn global_characteristic_domain_surface(
+    pub fn global_characteristic_domain_surface(
         &self,
     ) -> Option<GlobalCharacteristicDomainSurface> {
         self.union_surface.global_characteristic_domain()
@@ -4364,7 +4422,7 @@ impl ObjectFilter {
             .with_activation_source_battlefield_surface(explicit);
     }
 
-    pub const fn has_activation_source_battlefield_surface(&self) -> bool {
+    pub fn has_activation_source_battlefield_surface(&self) -> bool {
         self.union_surface.activation_source_battlefield_surface()
     }
 
@@ -4375,7 +4433,7 @@ impl ObjectFilter {
             .with_entered_battlefield_explicit_surface(explicit);
     }
 
-    pub const fn has_entered_battlefield_explicit_surface(&self) -> bool {
+    pub fn has_entered_battlefield_explicit_surface(&self) -> bool {
         self.union_surface.entered_battlefield_explicit_surface()
     }
 
@@ -4387,7 +4445,7 @@ impl ObjectFilter {
             .with_player_puts_onto_battlefield_surface(authored);
     }
 
-    pub const fn has_player_puts_onto_battlefield_surface(&self) -> bool {
+    pub fn has_player_puts_onto_battlefield_surface(&self) -> bool {
         self.union_surface.player_puts_onto_battlefield_surface()
     }
 
@@ -4397,7 +4455,7 @@ impl ObjectFilter {
         self.union_surface = self.union_surface.with_you_had_entry_surface(authored);
     }
 
-    pub const fn has_you_had_entry_surface(&self) -> bool {
+    pub fn has_you_had_entry_surface(&self) -> bool {
         self.union_surface.you_had_entry_surface()
     }
 
@@ -4407,7 +4465,7 @@ impl ObjectFilter {
             .with_mana_source_spent_trailing_if_surface(trailing);
     }
 
-    pub const fn has_mana_source_spent_trailing_if_surface(&self) -> bool {
+    pub fn has_mana_source_spent_trailing_if_surface(&self) -> bool {
         self.union_surface.mana_source_spent_trailing_if_surface()
     }
 
@@ -4417,11 +4475,11 @@ impl ObjectFilter {
             .with_as_you_cast_this_turn_surface(authored);
     }
 
-    pub const fn has_as_you_cast_this_turn_surface(&self) -> bool {
+    pub fn has_as_you_cast_this_turn_surface(&self) -> bool {
         self.union_surface.as_you_cast_this_turn_surface()
     }
 
-    pub const fn additional_cost_object_surface(&self) -> Option<AdditionalCostObjectSurface> {
+    pub fn additional_cost_object_surface(&self) -> Option<AdditionalCostObjectSurface> {
         self.union_surface.additional_cost_object()
     }
 
@@ -4586,14 +4644,14 @@ impl ObjectFilter {
     }
 
     pub fn permanent() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             ..Default::default()
-        }
+        })
     }
 
     pub fn permanent_card() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             card_types: vec![
                 CardType::Artifact,
                 CardType::Creature,
@@ -4603,125 +4661,125 @@ impl ObjectFilter {
                 CardType::Battle,
             ],
             ..Default::default()
-        }
+        })
     }
 
     pub fn specific(id: ObjectId) -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             specific: Some(id),
             ..Default::default()
-        }
+        })
     }
 
     pub fn creature() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             card_types: vec![CardType::Creature],
             ..Default::default()
-        }
+        })
     }
 
     pub fn artifact() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             card_types: vec![CardType::Artifact],
             ..Default::default()
-        }
+        })
     }
 
     pub fn enchantment() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             card_types: vec![CardType::Enchantment],
             ..Default::default()
-        }
+        })
     }
 
     pub fn land() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             card_types: vec![CardType::Land],
             ..Default::default()
-        }
+        })
     }
 
     pub fn planeswalker() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             card_types: vec![CardType::Planeswalker],
             ..Default::default()
-        }
+        })
     }
 
     pub fn spell() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             stack_kind: Some(StackObjectKind::Spell),
             ..Default::default()
-        }
+        })
     }
 
     pub fn spell_or_ability() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             stack_kind: Some(StackObjectKind::SpellOrAbility),
             ..Default::default()
-        }
+        })
     }
 
     pub fn ability() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             stack_kind: Some(StackObjectKind::Ability),
             ..Default::default()
-        }
+        })
     }
 
     pub fn activated_ability() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             stack_kind: Some(StackObjectKind::ActivatedAbility),
             ..Default::default()
-        }
+        })
     }
 
     pub fn instant_or_sorcery() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             card_types: vec![CardType::Instant, CardType::Sorcery],
             stack_kind: Some(StackObjectKind::Spell),
             ..Default::default()
-        }
+        })
     }
 
     pub fn noncreature_spell() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             excluded_card_types: vec![CardType::Creature, CardType::Land],
             ..Default::default()
-        }
+        })
     }
 
     pub fn nonland_permanent() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             excluded_card_types: vec![CardType::Land],
             ..Default::default()
-        }
+        })
     }
 
     pub fn noncreature_permanent() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             excluded_card_types: vec![CardType::Creature],
             ..Default::default()
-        }
+        })
     }
 
     pub fn nonland() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             excluded_card_types: vec![CardType::Land],
             ..Default::default()
-        }
+        })
     }
 
     pub fn in_zone(mut self, zone: Zone) -> Self {
@@ -4739,7 +4797,7 @@ impl ObjectFilter {
     }
 
     pub fn has_search_stated_quality(&self) -> bool {
-        let generic = Self {
+        let generic = Self::from(crate::filter_model::ObjectFilterFields {
             zone: self.zone,
             owner: self.owner.clone(),
             controller: self.controller.clone(),
@@ -4761,8 +4819,8 @@ impl ObjectFilter {
                     | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered
                 ))
                 .cloned().collect(),
-            ..Self::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(Self::default())
+        });
         self != &generic
     }
 
@@ -5102,11 +5160,11 @@ impl ObjectFilter {
     /// Emissary) covers every object of that type, not only permanents.
     pub fn protection_chosen_card_type_quality(&self) -> Option<&'static str> {
         (self.chosen_card_type
-            && (ObjectFilter {
+            && (ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                 chosen_card_type: false,
                 union_surface: Default::default(),
-                ..self.clone()
-            }) == ObjectFilter::default())
+                ..crate::filter_model::ObjectFilterFields::from(self.clone())
+            })) == ObjectFilter::default())
         .then_some("the chosen card type")
     }
 
@@ -5230,12 +5288,12 @@ impl ObjectFilter {
     /// The unique current designation for the ability's controller. This
     /// noun remains meaningful if the designated permanent stops being a creature.
     pub fn your_ring_bearer() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             ring_bearer: true,
             controller: Some(PlayerFilter::You),
             zone: Some(Zone::Battlefield),
-            ..Self::default()
-        }
+            ..crate::filter_model::ObjectFilterFields::from(Self::default())
+        })
     }
 
     pub fn ring_bearer(mut self) -> Self {
@@ -5456,18 +5514,18 @@ impl ObjectFilter {
     }
 
     pub fn any_of_types(types: &[CardType]) -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             card_types: types.to_vec(),
             ..Default::default()
-        }
+        })
     }
 
     pub fn source() -> Self {
-        Self {
+        Self::from(crate::filter_model::ObjectFilterFields {
             source: true,
             ..Default::default()
-        }
+        })
     }
 
     /// A source reference with no characteristic restriction. Presentation of
@@ -5551,16 +5609,16 @@ impl ObjectFilter {
         // with either recent history.
         if let [left, right] = self.any_of.as_slice()
             && *left
-                == (ObjectFilter {
+                == (ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                     discarded_or_cycled_this_turn_by: Some(PlayerFilter::Any),
-                    ..ObjectFilter::default()
-                })
+                    ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }))
             && *right
-                == (ObjectFilter {
+                == (ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                     entered_graveyard_this_turn: true,
                     entered_graveyard_from_library_this_turn: true,
-                    ..ObjectFilter::default()
-                })
+                    ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+                }))
         {
             let mut base = self.clone();
             base.any_of.clear();
@@ -5580,11 +5638,11 @@ impl ObjectFilter {
                 && right.excluded_supertypes.as_slice() == [Supertype::Basic]
                 && left.excluded_supertypes.is_empty()
                 && right.excluded_card_types.is_empty()
-                && (ObjectFilter {
+                && (ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                     any_of: Vec::new(),
                     union_surface: Default::default(),
-                    ..self.clone()
-                }) == ObjectFilter::default()
+                    ..crate::filter_model::ObjectFilterFields::from(self.clone())
+                })) == ObjectFilter::default()
             {
                 let mut common = left.clone();
                 common.excluded_card_types.clear();
@@ -5801,11 +5859,11 @@ impl ObjectFilter {
                     if self.zone.is_none()
                         && shared_colors.is_none()
                         && branch.zone.is_some()
-                        && (ObjectFilter {
+                        && (ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                             zone: None,
                             union_surface: Default::default(),
-                            ..branch.clone()
-                        }) == ObjectFilter::default()
+                            ..crate::filter_model::ObjectFilterFields::from(branch.clone())
+                        })) == ObjectFilter::default()
                         && (!self.card_types.is_empty() || !self.subtypes.is_empty())
                         && self.tagged_constraints.is_empty()
                     {
@@ -8860,10 +8918,10 @@ pub fn describe_controlled_battlefield_and_owned_nonbattlefield_card_union(
         .filter(|(index, _)| *index != battlefield_index)
         .map(|(_, branch)| branch.clone())
         .collect::<Vec<_>>();
-    let nonbattlefield = ObjectFilter {
+    let nonbattlefield = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
         any_of: nonbattlefield_branches,
-        ..ObjectFilter::default()
-    };
+        ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     let mut common = nonbattlefield_card_union_basis(&nonbattlefield)?;
     if common.owner != Some(PlayerFilter::You) || common.controller.is_some() {
         return None;
@@ -8920,10 +8978,10 @@ fn group_nonbattlefield_card_domains(filter: &ObjectFilter) -> Option<ObjectFilt
             .enumerate()
             .filter_map(|(i, arm)| (basis(arm).as_ref() == Some(&common)).then_some(i))
             .collect();
-        let grouped = ObjectFilter {
+        let grouped = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             any_of: indices.iter().map(|&i| filter.any_of[i].clone()).collect(),
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         if describe_nonbattlefield_card_union(&grouped).is_none() {
             continue;
         }
@@ -9030,10 +9088,10 @@ pub fn describe_owner_scoped_zone_union(filter: &ObjectFilter) -> Option<String>
     let mut zones = Vec::with_capacity(filter.any_of.len());
     for branch in &filter.any_of {
         let zone = branch.zone?;
-        let probe = ObjectFilter {
+        let probe = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(zone),
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         if branch != &probe {
             return None;
         }
@@ -9044,12 +9102,12 @@ pub fn describe_owner_scoped_zone_union(filter: &ObjectFilter) -> Option<String>
             _ => return None,
         });
     }
-    let outer_probe = ObjectFilter {
+    let outer_probe = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
         owner: filter.owner.clone(),
         any_of: filter.any_of.clone(),
         union_surface: filter.union_surface,
-        ..ObjectFilter::default()
-    };
+        ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+    });
     if filter != &outer_probe {
         return None;
     }
@@ -9264,10 +9322,10 @@ pub fn describe_color_or_card_type_union(filter: &ObjectFilter) -> Option<String
     let color_only = |branch: &ObjectFilter| {
         let color = branch.colors?;
         (*branch
-            == ObjectFilter {
+            == ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                 colors: Some(color),
-                ..ObjectFilter::default()
-            })
+                ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+            }))
         .then_some(color)
     };
     let type_only = |branch: &ObjectFilter| match branch.card_types.as_slice() {
@@ -9349,7 +9407,7 @@ pub fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<S
             let mut container = branch.clone();
             container.any_of.clear();
             if !branch.any_of.is_empty() && container == ObjectFilter::default() {
-                flattened.extend(branch.any_of);
+                flattened.extend(branch.any_of.clone());
             } else {
                 flattened.push(branch);
             }
@@ -10388,11 +10446,11 @@ fn describe_same_power_or_toughness_as_union(filter: &ObjectFilter) -> Option<St
     let [power_branch, toughness_branch] = filter.any_of.as_slice() else {
         return None;
     };
-    if (ObjectFilter {
+    if (ObjectFilter::from(crate::filter_model::ObjectFilterFields {
         any_of: Vec::new(),
         union_surface: Default::default(),
-        ..filter.clone()
-    }) != ObjectFilter::default()
+        ..crate::filter_model::ObjectFilterFields::from(filter.clone())
+    })) != ObjectFilter::default()
     {
         return None;
     }
@@ -11275,23 +11333,23 @@ mod tests {
     #[test]
     fn mirrored_owner_or_controller_branches_share_the_object_noun() {
         let permanent = ObjectFilter::permanent();
-        let union = ObjectFilter {
+        let union = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             any_of: vec![
                 permanent.clone().owned_by(PlayerFilter::You),
                 permanent.controlled_by(PlayerFilter::You),
             ],
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
 
         assert_eq!(union.description(), "a permanent you own or control");
 
-        let distinct = ObjectFilter {
+        let distinct = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             any_of: vec![
                 ObjectFilter::permanent().owned_by(PlayerFilter::You),
                 ObjectFilter::creature().controlled_by(PlayerFilter::You),
             ],
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         assert_eq!(
             distinct.description(),
             "a permanent you own or a creature you control"
@@ -11316,13 +11374,13 @@ mod tests {
 
     #[test]
     fn flat_subtype_set_uses_its_conjunctive_list_surface() {
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             controller: Some(PlayerFilter::You),
             subtypes: vec![Subtype::Spider, Subtype::Boar, Subtype::Bat],
             other: true,
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         filter.set_conjunctive_set_surface(true);
 
         assert_eq!(
@@ -11333,21 +11391,21 @@ mod tests {
 
     #[test]
     fn shared_outer_controller_qualifies_union_with_spell_fields_on_branches() {
-        let spell_branch = |card_type| ObjectFilter {
+        let spell_branch = |card_type| ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             stack_kind: Some(StackObjectKind::Spell),
             card_types: vec![card_type],
             has_mana_cost: true,
-            ..ObjectFilter::default()
-        };
-        let mut filter = ObjectFilter {
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
+        let mut filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             controller: Some(PlayerFilter::You),
             any_of: vec![
                 spell_branch(CardType::Instant),
                 spell_branch(CardType::Sorcery),
             ],
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         filter.set_conjunctive_set_surface(true);
 
         assert_eq!(
@@ -11360,11 +11418,11 @@ mod tests {
     fn outer_controller_materializes_on_mixed_domain_union_branches() {
         let mut creature_spell = ObjectFilter::spell().with_type(CardType::Creature);
         creature_spell.has_mana_cost = true;
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             controller: Some(PlayerFilter::You),
             any_of: vec![ObjectFilter::creature(), creature_spell],
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         filter.set_conjunctive_set_surface(true);
 
         assert_eq!(
@@ -11375,7 +11433,7 @@ mod tests {
 
     #[test]
     fn outer_other_materializes_on_mixed_domain_union_branches() {
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             controller: Some(PlayerFilter::You),
             other: true,
             any_of: vec![
@@ -11387,8 +11445,8 @@ mod tests {
                     .nontoken(),
                 ObjectFilter::default().with_subtype(Subtype::Vehicle),
             ],
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         filter.set_conjunctive_set_surface(true);
 
         assert_eq!(
@@ -11453,19 +11511,19 @@ mod tests {
 
     #[test]
     fn branch_scoped_type_union_factors_shared_card_domain() {
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Graveyard),
             owner: Some(PlayerFilter::You),
             any_of: vec![
                 ObjectFilter::default().with_type(CardType::Artifact),
-                ObjectFilter {
+                ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                     card_types: vec![CardType::Enchantment],
                     excluded_subtypes: vec![Subtype::Aura],
                     ..Default::default()
-                },
+                }),
             ],
             ..Default::default()
-        };
+        });
         filter.set_explicit_card_noun(true);
 
         assert_eq!(
@@ -11476,14 +11534,14 @@ mod tests {
 
     #[test]
     fn branch_scoped_characteristic_union_keeps_comparison_on_its_arm() {
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             any_of: vec![
                 ObjectFilter::creature().with_power(Comparison::LessThanOrEqual(2)),
                 ObjectFilter::default().with_subtype(Subtype::Wall),
             ],
             ..Default::default()
-        };
+        });
         for branch in &mut filter.any_of {
             branch.zone = None;
         }
@@ -11497,7 +11555,7 @@ mod tests {
 
     #[test]
     fn branch_scoped_characteristic_union_factors_conjunctive_controller_scope() {
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             controller: Some(PlayerFilter::You),
             any_of: vec![
@@ -11505,7 +11563,7 @@ mod tests {
                 ObjectFilter::default().with_subtype(Subtype::Treefolk),
             ],
             ..Default::default()
-        };
+        });
         filter.set_conjunctive_set_surface(true);
 
         assert_eq!(filter.description(), "a Plant and Treefolk you control");
@@ -11513,7 +11571,7 @@ mod tests {
 
     #[test]
     fn branch_scoped_conjunctive_union_accepts_intersecting_card_type_selector() {
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             controller: Some(PlayerFilter::You),
             any_of: vec![
@@ -11522,8 +11580,8 @@ mod tests {
                     .with_all_type(CardType::Creature),
                 ObjectFilter::default().with_subtype(Subtype::Hero),
             ],
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         filter.set_conjunctive_set_surface(true);
 
         assert_eq!(
@@ -11534,7 +11592,7 @@ mod tests {
 
     #[test]
     fn branch_scoped_characteristic_union_keeps_other_on_one_arm() {
-        let mut filter = ObjectFilter {
+        let mut filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             controller: Some(PlayerFilter::You),
             any_of: vec![
@@ -11544,7 +11602,7 @@ mod tests {
                     .other(),
             ],
             ..Default::default()
-        };
+        });
         filter.set_conjunctive_set_surface(true);
 
         assert_eq!(
@@ -11555,24 +11613,24 @@ mod tests {
 
     #[test]
     fn branch_scoped_characteristic_union_flattens_a_serial_list_container() {
-        let leading = ObjectFilter {
+        let leading = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             any_of: vec![
                 ObjectFilter::default().with_subtype(Subtype::Pest).other(),
                 ObjectFilter::default().with_subtype(Subtype::Bat),
                 ObjectFilter::default().with_subtype(Subtype::Insect),
                 ObjectFilter::default().with_subtype(Subtype::Snake),
             ],
-            ..ObjectFilter::default()
-        };
-        let mut filter = ObjectFilter {
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
+        let mut filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             controller: Some(PlayerFilter::You),
             any_of: vec![
                 leading,
                 ObjectFilter::default().with_subtype(Subtype::Spider),
             ],
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         filter.set_conjunctive_set_surface(true);
 
         assert_eq!(
@@ -11597,12 +11655,12 @@ mod tests {
             let mut creature = ObjectFilter::default().with_type(CardType::Creature);
             creature.tapped = tapped;
             creature.untapped = untapped;
-            let filter = ObjectFilter {
+            let filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                 zone: Some(Zone::Battlefield),
                 controller: Some(PlayerFilter::You),
                 any_of: vec![artifact, creature],
                 ..Default::default()
-            }
+            })
             .with_union_connective(ObjectFilterUnionConnective::AndOr);
 
             assert_eq!(filter.description(), expected);
@@ -11613,7 +11671,7 @@ mod tests {
     fn branch_scoped_type_union_keeps_arm_tap_state_and_outer_controller_scope() {
         let mut artifact = ObjectFilter::default().with_type(CardType::Artifact);
         artifact.untapped = true;
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             controller: Some(PlayerFilter::You),
             any_of: vec![
@@ -11621,7 +11679,7 @@ mod tests {
                 ObjectFilter::default().with_type(CardType::Creature),
             ],
             ..Default::default()
-        }
+        })
         .with_union_connective(ObjectFilterUnionConnective::AndOr);
 
         assert_eq!(
@@ -11634,7 +11692,7 @@ mod tests {
     fn branch_scoped_type_union_does_not_repeat_a_shared_card_noun() {
         let mut creature_card = ObjectFilter::default().with_type(CardType::Creature);
         creature_card.set_explicit_card_noun(true);
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Library),
             owner: Some(PlayerFilter::You),
             any_of: vec![
@@ -11642,7 +11700,7 @@ mod tests {
                 creature_card,
             ],
             ..Default::default()
-        }
+        })
         .with_union_connective(ObjectFilterUnionConnective::AndOr);
 
         assert_eq!(
@@ -11653,21 +11711,21 @@ mod tests {
 
     #[test]
     fn branch_scoped_supertype_or_subtype_union_uses_one_shared_card_noun() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Graveyard),
             owner: Some(PlayerFilter::You),
             any_of: vec![
-                ObjectFilter {
+                ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                     supertypes: vec![Supertype::Legendary],
                     ..Default::default()
-                },
-                ObjectFilter {
+                }),
+                ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                     subtypes: vec![Subtype::Rat],
                     ..Default::default()
-                },
+                }),
             ],
             ..Default::default()
-        };
+        });
 
         assert_eq!(
             filter.description(),
@@ -11677,19 +11735,19 @@ mod tests {
 
     #[test]
     fn branch_scoped_type_union_factors_shared_battlefield_domain() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             any_of: vec![
                 ObjectFilter::default().with_type(CardType::Artifact),
-                ObjectFilter {
+                ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                     card_types: vec![CardType::Enchantment],
                     excluded_subtypes: vec![Subtype::Aura],
                     ..Default::default()
-                },
+                }),
                 ObjectFilter::default().with_type(CardType::Land),
             ],
             ..Default::default()
-        };
+        });
 
         assert_eq!(
             filter.description(),
@@ -11739,13 +11797,13 @@ mod tests {
             "a Vehicle and/or creature you control"
         );
 
-        let mut shared_spell_noun = ObjectFilter {
+        let mut shared_spell_noun = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             card_types: vec![CardType::Creature],
             subtypes: vec![Subtype::Aura],
             type_or_subtype_union: true,
             ..Default::default()
-        };
+        });
         shared_spell_noun.set_union_connective(ObjectFilterUnionConnective::Or);
         shared_spell_noun.set_terminal_noun_after_type_subtype_union_surface(true);
         assert_eq!(shared_spell_noun.description(), "creature or Aura spell");
@@ -11799,12 +11857,12 @@ mod tests {
 
     #[test]
     fn original_printing_set_predicate_renders_as_a_typed_qualifier() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Artifact],
             nontoken: true,
             name_originally_printed_in_set: Some("Antiquities".to_string()),
             ..Default::default()
-        };
+        });
 
         assert!(filter.uses_non_pt_battlefield_characteristics());
         assert_eq!(
@@ -11849,21 +11907,21 @@ mod tests {
 
     #[test]
     fn characteristic_or_mana_capability_union_factors_the_shared_domain() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
             card_types: vec![CardType::Land],
             any_of: vec![
-                ObjectFilter {
+                ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                     supertypes: vec![Supertype::Snow],
                     ..Default::default()
-                },
-                ObjectFilter {
+                }),
+                ObjectFilter::from(crate::filter_model::ObjectFilterFields {
                     could_produce_mana: vec![ManaSymbol::Colorless],
                     ..Default::default()
-                },
+                }),
             ],
             ..Default::default()
-        };
+        });
 
         assert!(filter.uses_non_pt_battlefield_characteristics());
         assert_eq!(
@@ -11932,13 +11990,13 @@ mod tests {
 
         // Group-reference fields precede current-state matching in the model;
         // neither their payloads nor their positions may disappear from Debug.
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             zone: Some(Zone::Exile),
             group_member_of: Some(Box::new(crate::target_model::ChooseSpec::Source)),
             same_group_as: Some(Box::new(crate::target_model::ChooseSpec::SourceController)),
             match_current_state: true,
             ..Default::default()
-        };
+        });
         let text = format!("{filter:?}");
         assert!(text.starts_with("ObjectFilter { zone: Some(Exile), group_member_of: Some(Source), same_group_as: Some(SourceController), match_current_state: true, "));
         assert!(text.ends_with("excluded_rules: [] }"));
@@ -11949,7 +12007,7 @@ mod tests {
 mod nonbattlefield_union_rendering_tests {
     use super::*;
     fn owned_creature_cards() -> ObjectFilter {
-        ObjectFilter {
+        ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             any_of: [
                 Zone::Hand,
                 Zone::Library,
@@ -11970,8 +12028,8 @@ mod nonbattlefield_union_rendering_tests {
                 arm
             })
             .collect(),
-            ..ObjectFilter::default()
-        }
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        })
     }
 
     #[test]
@@ -12102,11 +12160,11 @@ mod nonbattlefield_union_rendering_tests {
     }
     #[test]
     fn common_color_predicate_is_rendered_over_coordinated_domains() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(crate::filter_model::ObjectFilterFields {
             colors: Some(ColorSet::BLUE),
             any_of: vec![ObjectFilter::creature(), ObjectFilter::spell()],
-            ..ObjectFilter::default()
-        };
+            ..crate::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
         assert_eq!(filter.description(), "blue creature or spell");
     }
 }

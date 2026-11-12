@@ -7698,7 +7698,7 @@ mod permanent_spell_description_tests {
 
     #[test]
     fn complete_permanent_spell_type_set_compacts_to_permanent_spell() {
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             stack_kind: Some(StackObjectKind::Spell),
             card_types: vec![
@@ -7708,8 +7708,8 @@ mod permanent_spell_description_tests {
                 CardType::Planeswalker,
                 CardType::Battle,
             ],
-            ..ObjectFilter::default()
-        };
+            ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
+        });
 
         assert_eq!(filter.description(), "permanent spell");
     }

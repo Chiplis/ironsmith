@@ -47,12 +47,12 @@ fn exact_chosen_stack_spell(effect: &Effect, chosen_tag: &TagKey) -> bool {
     else {
         return false;
     };
-    let expected_filter = ObjectFilter {
+    let expected_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Stack),
         card_types: vec![CardType::Instant, CardType::Sorcery],
         has_mana_cost: true,
         ..Default::default()
-    };
+    });
     target_only.explicit_declaration
         && target_only.chooser.is_none()
         && matches!(
@@ -162,12 +162,12 @@ mod tests {
 
     fn copy_shape() -> Vec<Effect> {
         let chosen = TagKey::from("chosen_spell");
-        let filter = ObjectFilter {
+        let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Stack),
             card_types: vec![CardType::Instant, CardType::Sorcery],
             has_mana_cost: true,
             ..Default::default()
-        };
+        });
         let target = Effect::new(crate::effects::TargetOnlyEffect::explicit(
             ChooseSpec::target(ChooseSpec::Object(filter)),
         ))

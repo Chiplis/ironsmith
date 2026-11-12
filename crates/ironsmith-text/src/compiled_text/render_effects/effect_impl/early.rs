@@ -1103,13 +1103,13 @@ if filter.zone == Some(Zone::Hand)
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
                 && let [card_type] = filter.card_types.as_slice()
-                && (ObjectFilter {
+                && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                     tagged_constraints: Vec::new(),
                     card_types: Vec::new(),
                     zone: None,
                     union_surface: Default::default(),
-                    ..filter.clone()
-                }) == ObjectFilter::default()
+                    ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+                })) == ObjectFilter::default()
             {
                 return format!(
                     "Double the number of {counter_text} on {} {}",
@@ -1262,10 +1262,10 @@ if filter.zone == Some(Zone::Hand)
             && let [constraint] = target.tagged_constraints.as_slice()
             && constraint.relation == crate::filter::TaggedOpbjectRelation::SameObjectId
             && is_implicit_reference_tag(constraint.tag.as_str())
-            && (ObjectFilter {
+            && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 tagged_constraints: Vec::new(),
-                ..target.clone()
-            }) == ObjectFilter::default()
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(target.clone())
+            })) == ObjectFilter::default()
             && matches!(
                 &sacrifice.player,
                 Some(PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag)))
@@ -1550,11 +1550,11 @@ if filter.zone == Some(Zone::Hand)
                     [constraint] if constraint.tag.as_str() == "__it__"
                         && constraint.relation
                             == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                        && (ObjectFilter {
+                        && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                             tagged_constraints: Vec::new(),
                             union_surface: Default::default(),
-                            ..for_each.filter.clone()
-                        }) == ObjectFilter::default()
+                            ..ironsmith_core::filter_model::ObjectFilterFields::from(for_each.filter.clone())
+                        })) == ObjectFilter::default()
                 )
             {
                 "of them".to_string()
@@ -1941,10 +1941,10 @@ if filter.zone == Some(Zone::Hand)
             && iterated_tag.as_str() == "__it__"
             && let [constraint] = filter.tagged_constraints.as_slice()
             && constraint.relation == crate::filter::TaggedOpbjectRelation::SameStableId
-            && (ObjectFilter {
+            && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 tagged_constraints: Vec::new(),
-                ..filter.clone()
-            }) == ObjectFilter::default()
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+            })) == ObjectFilter::default()
             && conditional.if_true.is_empty()
             && let [rest_move] = conditional.if_false.as_slice()
             && let Some(moved) = structural_unwrap_render_wrappers(rest_move)
@@ -4775,13 +4775,13 @@ if filter.zone == Some(Zone::Hand)
             && filter.nontoken
             && filter.zone == Some(Zone::Graveyard)
             && let Some(owner) = filter.owner.as_ref()
-            && (ObjectFilter {
+            && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 nontoken: false,
                 zone: None,
                 owner: None,
                 union_surface: Default::default(),
-                ..filter.clone()
-            }) == ObjectFilter::default()
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(filter.clone())
+            })) == ObjectFilter::default()
         {
             return format!(
                 "Exile all cards from {} graveyard",
@@ -12726,11 +12726,11 @@ if filter.zone == Some(Zone::Hand)
             && choose.additional_zones.is_empty()
             && let Some(crate::filter::CounterConstraint::Typed(counter_type)) =
                 choose.filter.with_counter
-            && (ObjectFilter {
+            && (ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 zone: None,
                 with_counter: None,
-                ..choose.filter.clone()
-            }) == ObjectFilter::default()
+                ..ironsmith_core::filter_model::ObjectFilterFields::from(choose.filter.clone())
+            })) == ObjectFilter::default()
             && let Some(cast) = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()
             && (*cast == crate::effects::CastTaggedEffect::new(choose.tag.clone(), PlayerFilter::You)
                 || *cast

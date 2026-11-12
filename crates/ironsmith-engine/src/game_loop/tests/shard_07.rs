@@ -1732,11 +1732,11 @@ pub(super) fn resolving_spell_with_tag_and_untap_then_additional_phases_runs_all
         .card_types(vec![CardType::Sorcery])
         .build();
     let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
-    let filter = crate::filter::ObjectFilter {
+    let filter = crate::filter::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(Zone::Battlefield),
         card_types: vec![CardType::Creature],
         ..Default::default()
-    };
+    });
     game.object_mut(spell_id).expect("spell").spell_effect = Some(
         crate::resolution::ResolutionProgram::from_effects(vec![
             Effect::new(crate::effects::TagMatchingObjectsEffect::new(

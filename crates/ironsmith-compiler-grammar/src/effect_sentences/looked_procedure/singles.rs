@@ -1069,10 +1069,10 @@ pub(super) fn any_number_revealed_land_split(
         tag: group.tag.clone(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
-    let land_filter = ObjectFilter {
+    let land_filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         card_types: vec![crate::types::CardType::Land],
         ..Default::default()
-    };
+    });
     group.effects.push(EffectAst::ObjectChoices(
         ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,

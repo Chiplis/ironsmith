@@ -352,7 +352,7 @@ mod tests {
   for remove_observer in [false,true] {
    let mut game=GameState::new(vec!["A".into(),"B".into()],20);
    let provider=game.create_object_from_definition(&definition("Chosen provider",1,true,false),A,Zone::Battlefield);
-   let filter=ObjectFilter {specific:Some(provider),..Default::default()};
+   let filter=ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {specific:Some(provider),..Default::default()});
    let observer=CardDefinitionBuilder::new(CardId::new(),"Trigger observer").card_types(vec![CardType::Artifact])
     .with_ability(Ability::triggered(Trigger::ability_triggered_qualified(false,Some(filter),false),vec![Effect::gain_life(10)])).build();
    game.create_object_from_definition(&observer,A,Zone::Battlefield);
