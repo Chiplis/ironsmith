@@ -865,9 +865,9 @@ impl<'a> DerivedGameView<'a> {
             // Inactive static rules remain in the ability list; only the
             // active-static cache filters them. Removing them here shifts
             // the indexes used to dispatch subsequent activated abilities.
-            crate::continuous::unmodified_ability_occurrences(
-                object, self.game.turn.turn_number,
-            ).shared()
+            crate::continuous::shared_printed_abilities(
+                object, self.game.turn.turn_number, self.game,
+            )
         } else {
             // The calculated abilities already live behind an `Arc`; sharing it
             // avoids deep-cloning every `Ability` (each carrying filters and

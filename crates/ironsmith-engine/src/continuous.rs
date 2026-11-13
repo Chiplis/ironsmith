@@ -2977,6 +2977,132 @@ thread_local! {
 
 const OBJECT_TEXT_BOX_MEMO_LIMIT: usize = 8192;
 
+thread_local! {
+    /// Whether an object's printed ability list holds a static ability, by
+    /// shared allocation as `OBJECT_TEXT_BOX_CHARACTERISTICS`.
+    static OBJECT_PRINTED_STATIC: std::cell::RefCell<HashMap<usize, (std::sync::Weak<Object>, bool)>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// Whether the ability list an untouched card has (`unmodified_ability_occurrences`)
+/// holds a static ability. `object` must have no temporary grants, which
+/// makes that list independent of the turn.
+fn printed_abilities_include_static(object: &Object) -> bool {
+    unmodified_ability_occurrences(object, 0)
+        .iter()
+        .any(|ability| matches!(ability.kind, AbilityKind::Static(_)))
+}
+
+fn shared_printed_abilities_include_static(
+    object: &Object,
+    game: &crate::game_state::GameState,
+) -> bool {
+    let address = object as *const Object;
+    let held = OBJECT_PRINTED_STATIC.with(|memo| {
+        memo.borrow()
+            .get(&(address as usize))
+            .filter(|(handle, _)| std::ptr::eq(handle.as_ptr(), address))
+            .map(|(_, answer)| *answer)
+    });
+    if let Some(answer) = held {
+        #[cfg(feature = "paranoid-invariants")]
+        assert_eq!(answer, printed_abilities_include_static(object));
+        return answer;
+    }
+    let answer = printed_abilities_include_static(object);
+    if let Some(shared) = game.objects_map().get(&object.id)
+        && std::ptr::eq(Arc::as_ptr(shared), address)
+    {
+        OBJECT_PRINTED_STATIC.with(|memo| {
+            let mut memo = memo.borrow_mut();
+            if memo.len() >= OBJECT_TEXT_BOX_MEMO_LIMIT {
+                memo.clear();
+            }
+            memo.insert(address as usize, (Arc::downgrade(shared), answer));
+        });
+    }
+    answer
+}
+
+thread_local! {
+    /// An object's printed ability list, by shared allocation as
+    /// `OBJECT_TEXT_BOX_CHARACTERISTICS`.
+    static OBJECT_PRINTED_ABILITIES: std::cell::RefCell<
+        HashMap<usize, (std::sync::Weak<Object>, Arc<Vec<crate::ability::Ability>>)>,
+    > = std::cell::RefCell::new(HashMap::new());
+}
+
+/// `unmodified_ability_occurrences(object, current_turn).shared()`. An object
+/// with no temporary grants has the same list on every turn, and then the
+/// list is shared between every reader of that object.
+pub(crate) fn shared_printed_abilities(
+    object: &Object,
+    current_turn: u32,
+    game: &crate::game_state::GameState,
+) -> Arc<Vec<crate::ability::Ability>> {
+    if object.temporary_static_ability_grants.iter().next().is_some() {
+        return unmodified_ability_occurrences(object, current_turn).shared();
+    }
+    let address = object as *const Object;
+    let held = OBJECT_PRINTED_ABILITIES.with(|memo| {
+        memo.borrow()
+            .get(&(address as usize))
+            .filter(|(handle, _)| std::ptr::eq(handle.as_ptr(), address))
+            .map(|(_, abilities)| Arc::clone(abilities))
+    });
+    if let Some(abilities) = held {
+        #[cfg(feature = "paranoid-invariants")]
+        assert!(*abilities == *unmodified_ability_occurrences(object, current_turn).shared());
+        return abilities;
+    }
+    let abilities = unmodified_ability_occurrences(object, 0).shared();
+    if let Some(shared) = game.objects_map().get(&object.id)
+        && std::ptr::eq(Arc::as_ptr(shared), address)
+    {
+        OBJECT_PRINTED_ABILITIES.with(|memo| {
+            let mut memo = memo.borrow_mut();
+            if memo.len() >= OBJECT_TEXT_BOX_MEMO_LIMIT {
+                memo.clear();
+            }
+            memo.insert(address as usize, (Arc::downgrade(shared), Arc::clone(&abilities)));
+        });
+    }
+    abilities
+}
+
+/// A card in a library, hand or graveyard that the layer system leaves
+/// exactly as printed and that has no static ability.
+///
+/// No effect applies to it: `effect_target_definitely_excludes_object` is the
+/// first test of `effect_applies_to_direct`, and an effect group starts only
+/// for an object one of its effects applied to. With no counters, no
+/// temporary grants and no face-down status, the steps that remain add only
+/// intrinsic and level abilities, so its ability list is the printed one.
+/// Without a static ability in that list it has no optional text fragments,
+/// and without counters its power and toughness are the printed ones, so its
+/// characteristics carry no error and it is the source of no static or
+/// replacement effect.
+pub(crate) fn is_inert_hidden_card(
+    game: &crate::game_state::GameState,
+    object: &Object,
+    effects: &[ContinuousEffect],
+) -> bool {
+    matches!(object.zone, Zone::Library | Zone::Hand | Zone::Graveyard)
+        && object.face_down_cast_state.is_none()
+        && object.counters.counts().is_empty()
+        && !object.counters.has_ability_occurrences()
+        && object.temporary_static_ability_grants.iter().next().is_none()
+        && !game.is_face_down(object.id)
+        && game.characteristicless_face_down_characteristics(object.id).is_none()
+        && !shared_printed_abilities_include_static(object, game)
+        && {
+            let objects = game.objects_map();
+            effects
+                .iter()
+                .all(|effect| effect_target_definitely_excludes_object(effect, object, objects))
+        }
+}
+
 /// `object_text_box_characteristics`, from the memo when `object` is one a
 /// game holds. A lookup needs only the address; recording an entry needs the
 /// game that holds the object.
