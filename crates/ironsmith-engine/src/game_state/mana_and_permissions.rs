@@ -220,6 +220,163 @@ impl GameState {
         self.update_replacement_effects()
     }
 
+    /// Paranoid oracle for the refresh fixed point: a full recomputation of a
+    /// copy of this state must publish exactly the derived state held here.
+    /// A difference means some mutation did not invalidate what it changed.
+    #[cfg(feature = "paranoid-invariants")]
+    pub(crate) fn assert_refreshed_fixed_point_is_exact(&self, site: &'static str) {
+        thread_local! {
+            static ACTIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        }
+        if ACTIVE.get() || crate::continuous::nested_regeneration_context(self).is_some() {
+            return;
+        }
+        ACTIVE.set(true);
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                ACTIVE.set(false);
+            }
+        }
+        let _reset = Reset;
+        let mut fresh = self.clone();
+        fresh.forget_dirty_characteristics();
+        fresh.mark_continuous_state_dirty();
+        if fresh.refresh_continuous_state().is_err() {
+            return;
+        }
+        let held = self.paranoid_derived_fingerprint();
+        let recomputed = fresh.paranoid_derived_fingerprint();
+        assert_eq!(held.len(), recomputed.len(), "paranoid oracle at {site}: derived part count");
+        // Lazily filled caches and change journals are not derived rules state.
+        fn strip_balanced(text: &str, prefix: &str, open: u8, close: u8) -> String {
+            let mut out = String::with_capacity(text.len());
+            let mut rest = text;
+            while let Some(at) = rest.find(prefix) {
+                out.push_str(&rest[..at]);
+                let body = &rest.as_bytes()[at + prefix.len()..];
+                let mut depth = 1usize;
+                let mut end = body.len();
+                for (index, byte) in body.iter().enumerate() {
+                    if *byte == open {
+                        depth += 1;
+                    } else if *byte == close {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = index + 1;
+                            break;
+                        }
+                    }
+                }
+                rest = &rest[at + prefix.len() + end..];
+            }
+            out.push_str(rest);
+            out
+        }
+        fn normalized(text: &str) -> String {
+            let text = strip_balanced(text, "OnceLock(", b'(', b')');
+            let text = strip_balanced(&text, "ChangeJournal {", b'{', b'}');
+            let text = strip_balanced(&text, "ReplacementEffectId(", b'(', b')');
+            let text = strip_balanced(&text, "effect_sources: {", b'{', b'}');
+            let text = strip_balanced(&text, "StaticAbilityInstanceId(", b'(', b')');
+            // The replacement manager's id allocator.
+            let mut text = match text.rfind("next_id: ") {
+                Some(at) => text[..at].to_string(),
+                None => text,
+            };
+            // Further identity-only fragments: `prefix(;prefix{;...`.
+            if let Ok(extra) = std::env::var("IRONSMITH_PARANOID_STRIP") {
+                for prefix in extra.split(';').filter(|prefix| !prefix.is_empty()) {
+                    let (open, close) = match prefix.as_bytes()[prefix.len() - 1] {
+                        b'{' => (b'{', b'}'),
+                        b'[' => (b'[', b']'),
+                        _ => (b'(', b')'),
+                    };
+                    text = strip_balanced(&text, prefix, open, close);
+                }
+            }
+            text
+        }
+        fn canonical(text: &str) -> Vec<u8> {
+            let mut bytes = text.as_bytes().to_vec();
+            bytes.sort_unstable();
+            bytes
+        }
+        thread_local! {
+            static REPORTED: std::cell::RefCell<std::collections::HashSet<String>> = Default::default();
+        }
+        for ((label, held), (_, recomputed)) in held.iter().zip(&recomputed) {
+            if held == recomputed {
+                continue;
+            }
+            let (held, recomputed) = (&normalized(held), &normalized(recomputed));
+            if held != recomputed && canonical(held) != canonical(recomputed) {
+                let at = held
+                    .bytes()
+                    .zip(recomputed.bytes())
+                    .position(|(a, b)| a != b)
+                    .unwrap_or(held.len().min(recomputed.len()));
+                let window = |text: &str| {
+                    let mut from = at.saturating_sub(240);
+                    while !text.is_char_boundary(from) { from -= 1; }
+                    let mut to = (at + 240).min(text.len());
+                    while !text.is_char_boundary(to) { to += 1; }
+                    text[from..to].to_string()
+                };
+                let report = format!(
+                    "paranoid oracle at {site}: stale derived state in {label} (turn {} {:?}/{:?})\n held:       ...{}...\n recomputed: ...{}...",
+                    self.turn.turn_number, self.turn.phase, self.turn.step, window(held), window(recomputed)
+                );
+                if std::env::var("IRONSMITH_PARANOID_REPORT").is_ok() {
+                    let kind: String = label.chars().filter(|c| !c.is_ascii_digit()).collect();
+                    let key = format!("{site}|{kind}|{}", &window(held)[..window(held).len().min(60)]);
+                    if REPORTED.with(|seen| seen.borrow_mut().insert(key)) {
+                        eprintln!("{report}\n{}", std::backtrace::Backtrace::force_capture());
+                    }
+                } else {
+                    panic!("{report}");
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "paranoid-invariants")]
+    fn paranoid_derived_fingerprint(&self) -> Vec<(String, String)> {
+        let mut parts = vec![
+            ("continuous effects".to_string(), format!("{:?}", self.all_continuous_effects_arc())),
+            ("replacement effects".to_string(), format!("{:?}", self.effect_store.replacement_effects)),
+            ("cant effects".to_string(), format!("{:?}", self.effect_store.cant_effects)),
+            ("players".to_string(), format!("{:?}", self.players)),
+            ("controllers at last refresh".to_string(), {
+                let mut controllers: Vec<_> =
+                    self.battlefield_flags.controller_at_last_refresh.iter().collect();
+                controllers.sort();
+                format!("{controllers:?}")
+            }),
+            ("summoning sickness".to_string(), {
+                let mut sick: Vec<_> = self.battlefield_flags.summoning_sick.iter().collect();
+                sick.sort();
+                format!("{sick:?}")
+            }),
+        ];
+        for id in self.object_ids_in_deterministic_order() {
+            if self.object(id).is_some_and(|object| object.zone == Zone::Library) {
+                continue;
+            }
+            parts.push((
+                format!("characteristics of object #{}", id.0),
+                format!("{:?}", self.calculated_characteristics_arc(id)),
+            ));
+        }
+        for &id in self.battlefield.iter() {
+            parts.push((
+                format!("controller of object #{}", id.0),
+                format!("{:?}", self.current_controller(id)),
+            ));
+        }
+        parts
+    }
+
     /// Whether a full continuous refresh has completed for the current state
     /// and nothing it reads has changed since: every refresh procedure would
     /// reproduce the current derived state exactly.
@@ -246,6 +403,8 @@ impl GameState {
     ) -> Result<std::borrow::Cow<'_, Self>, crate::static_ability_processor::StaticEffectDiscoveryError> {
         if self.continuous_state_is_refreshed_fixed_point() {
             crate::static_ability_processor::validate_mana_scalar_domain(self)?;
+            #[cfg(feature = "paranoid-invariants")]
+            self.assert_refreshed_fixed_point_is_exact("continuous_query_view");
             return Ok(std::borrow::Cow::Borrowed(self));
         }
         self.continuous_query_snapshot().map(std::borrow::Cow::Owned)
@@ -266,6 +425,8 @@ impl GameState {
         // re-running them would rebuild every static effect for nothing.
         // Priority analysis takes this snapshot once per candidate source.
         if self.continuous_state_is_refreshed_fixed_point() {
+            #[cfg(feature = "paranoid-invariants")]
+            self.assert_refreshed_fixed_point_is_exact("continuous_query_snapshot");
             return Ok(snapshot);
         }
         // Static effects already published for this exact clean state: the
@@ -336,6 +497,8 @@ impl GameState {
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         crate::static_ability_processor::validate_mana_scalar_domain(self)?;
         if self.continuous_state_is_refreshed_fixed_point() {
+            #[cfg(feature = "paranoid-invariants")]
+            self.assert_refreshed_fixed_point_is_exact("refresh_continuous_state");
             self.publish_completed_control_transitions();
             return Ok(());
         }
