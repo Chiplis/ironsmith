@@ -885,15 +885,20 @@ pub(crate) fn validate_mana_scalar_domain(game: &GameState) -> Result<(), Static
     Ok(())
 }
 
+/// The final characteristics of every object that is not phased out, derived
+/// from `effects` in the order given.
+pub(crate) type FinalCharacteristics =
+    std::collections::HashMap<ObjectId, crate::continuous::CalculatedCharacteristics>;
+
 fn validate_final_pt_characteristics(game: &GameState, effects: &[ContinuousEffect])
-    -> Result<(), StaticEffectDiscoveryError>
+    -> Result<FinalCharacteristics, StaticEffectDiscoveryError>
 {
     let ids: Vec<_> = game.object_ids_in_deterministic_order().into_iter().filter(|id|
         game.object(*id).is_some_and(|object| object.zone != Zone::Battlefield || !game.is_phased_out(*id))).collect();
     let chars = crate::continuous::calculate_characteristics_batch_with_effects(&ids,
         game.objects_map(), effects, &game.battlefield, game.commander_objects(), game);
     for value in chars.values() { value.validate_numeric_range()?; }
-    Ok(())
+    Ok(chars)
 }
 
 /// Discover a complete snapshot without publishing static effects or a static snapshot.
@@ -906,6 +911,18 @@ pub fn try_generate_continuous_effects_from_static_abilities(
     game: &GameState,
     limits: StaticEffectDiscoveryLimits,
 ) -> Result<Vec<ContinuousEffect>, StaticEffectDiscoveryError> {
+    try_generate_continuous_effects_and_final_characteristics(game, limits)
+        .map(|(effects, _)| effects)
+}
+
+/// `try_generate_continuous_effects_from_static_abilities`, keeping what the
+/// discovery derived on the way: when it had to validate final power and
+/// toughness it computed every object's characteristics from the registered
+/// effects (in registration order) followed by exactly the returned effects.
+pub(crate) fn try_generate_continuous_effects_and_final_characteristics(
+    game: &GameState,
+    limits: StaticEffectDiscoveryLimits,
+) -> Result<(Vec<ContinuousEffect>, Option<FinalCharacteristics>), StaticEffectDiscoveryError> {
     let _tap_reads = game.derived_tap_read_scope();
     validate_mana_scalar_domain(game)?;
     let mut mana_pt = false;
@@ -995,11 +1012,13 @@ pub fn try_generate_continuous_effects_from_static_abilities(
                     object.counters.iter().any(|(counter, count)| *count != 0 && counter.pt_delta().is_some()));
             let has_text_rewrite = registered.iter().chain(effects.iter())
                 .any(|effect| matches!(effect.modification, Modification::RewriteText(_)));
-            if has_pt || has_text_rewrite {
+            let validated = if has_pt || has_text_rewrite {
                 let mut complete = registered.clone(); complete.extend(effects.iter().cloned());
-                validate_final_pt_characteristics(game, &complete)?;
-            }
-            return Ok(effects);
+                Some(validate_final_pt_characteristics(game, &complete)?)
+            } else {
+                None
+            };
+            return Ok((effects, validated));
         }
     }
     Err(StaticEffectDiscoveryError::RoundLimit {

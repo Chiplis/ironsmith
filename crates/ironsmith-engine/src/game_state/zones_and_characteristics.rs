@@ -5753,22 +5753,43 @@ retain_original_types: false, retain_original_name: false,
         }
         let marker = crate::continuous::provisional_condition_marker();
         // `try_get_all_continuous_effects`, keeping the discovered part.
-        let statics = Arc::new(
-            crate::static_ability_processor::try_generate_continuous_effects_from_static_abilities(
+        let (statics, validated) =
+            crate::static_ability_processor::try_generate_continuous_effects_and_final_characteristics(
                 self,
                 self.static_effect_discovery_limits(),
-            )?,
-        );
-        let mut effects = self
-            .effect_store
-            .continuous_effects
-            .effects_sorted()
-            .into_iter()
-            .cloned()
-            .collect::<Vec<_>>();
+            )?;
+        let statics = Arc::new(statics);
+        let sorted = self.effect_store.continuous_effects.effects_sorted();
+        // The discovery derived every object's characteristics from the
+        // registered effects in registration order followed by `statics`.
+        // That is the list built here whenever sorting moves nothing, and
+        // then those characteristics are the ones a read of this state
+        // derives (a batch answers each object as its single read does).
+        let registered = self.effect_store.continuous_effects.effects();
+        let validated = validated.filter(|_| {
+            registered.len() == sorted.len()
+                && registered.iter().zip(&sorted).all(|(registered, sorted)| registered.id == sorted.id)
+        });
+        let mut effects = sorted.into_iter().cloned().collect::<Vec<_>>();
         effects.extend(statics.iter().cloned());
         let effects = Arc::new(effects);
         if !crate::continuous::computed_provisionally(marker) && key == self.dirty_state_key() {
+            // Face-down objects without characteristics are never answered
+            // from a layer result.
+            let validated: Vec<_> = validated
+                .into_iter()
+                .flatten()
+                .filter(|(id, _)| self.characteristicless_face_down_characteristics(*id).is_none())
+                .collect();
+            #[cfg(feature = "paranoid-invariants")]
+            for (id, chars) in &validated {
+                assert_eq!(
+                    format!("{:?}", Some(chars)),
+                    format!("{:?}", self.calculated_characteristics_with_effects(*id, &effects).as_ref()),
+                    "discovery characteristics differ from a read for object #{}",
+                    id.0
+                );
+            }
             let mut memo = self.runtime_cache.dirty_characteristics_memo.borrow_mut();
             if memo.key != Some(key) {
                 memo.key = Some(key);
@@ -5779,6 +5800,12 @@ retain_original_types: false, retain_original_name: false,
             memo.effects = Some(Arc::clone(&effects));
             memo.effects_checked = true;
             memo.static_effects = Some(statics);
+            if !validated.is_empty() {
+                let known = Arc::make_mut(&mut memo.characteristics);
+                for (id, chars) in validated {
+                    known.entry(id).or_insert_with(|| Some(Arc::new(chars)));
+                }
+            }
         }
         Ok(effects)
     }
