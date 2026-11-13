@@ -2952,8 +2952,8 @@ fn initial_unmerged_text_box_characteristics(object: &Object, game: Option<&crat
         restored
     });
     let mut chars = match (game, restored.as_ref()) {
-        (Some(game), None) => shared_object_text_box_characteristics(object, game),
-        (_, restored) => object_text_box_characteristics(restored.unwrap_or(object)),
+        (game, None) => shared_object_text_box_characteristics(object, game),
+        (_, Some(restored)) => object_text_box_characteristics(restored),
     };
     let object = restored.as_ref().unwrap_or(object);
     if let Some(game) = game {
@@ -2977,9 +2977,12 @@ thread_local! {
 
 const OBJECT_TEXT_BOX_MEMO_LIMIT: usize = 8192;
 
+/// `object_text_box_characteristics`, from the memo when `object` is one a
+/// game holds. A lookup needs only the address; recording an entry needs the
+/// game that holds the object.
 fn shared_object_text_box_characteristics(
     object: &Object,
-    game: &crate::game_state::GameState,
+    game: Option<&crate::game_state::GameState>,
 ) -> CalculatedCharacteristics {
     let address = object as *const Object;
     let held = OBJECT_TEXT_BOX_CHARACTERISTICS.with(|memo| {
@@ -2999,7 +3002,7 @@ fn shared_object_text_box_characteristics(
         return chars;
     }
     let chars = object_text_box_characteristics(object);
-    if let Some(shared) = game.objects_map().get(&object.id)
+    if let Some(shared) = game.and_then(|game| game.objects_map().get(&object.id))
         && std::ptr::eq(Arc::as_ptr(shared), address)
     {
         OBJECT_TEXT_BOX_CHARACTERISTICS.with(|memo| {
