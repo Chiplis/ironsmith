@@ -6468,6 +6468,10 @@ retain_original_types: false, retain_original_name: false,
                 self,
             );
             if needing.len() < 2 {
+                // A caller that names exactly one card asked for that card.
+                if let [id] = ids {
+                    let _ = self.calculated_characteristics_arc(*id);
+                }
                 return;
             }
             needing
