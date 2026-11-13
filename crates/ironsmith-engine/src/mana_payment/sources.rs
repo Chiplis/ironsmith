@@ -389,13 +389,24 @@ impl<'a> ManaSourceAnalysis<'a> {
 /// Until a trigger is represented in the compact model it must participate in
 /// exact simulation, and a printed-output bound cannot prove unpayability.
 pub(crate) fn has_potential_mana_triggers(game: &GameState, view: &DerivedGameView<'_>) -> bool {
-    has_unprojected_queued_mana_triggers(game)
-        || game.objects_map().values().any(|object| {
+    if has_unprojected_queued_mana_triggers(game) {
+        return true;
+    }
+    let scan = || {
+        game.objects_map().values().any(|object| {
             view.abilities_rc(object.id).is_some_and(|abilities| abilities.iter().any(|ability| {
                 ability.functions_in(&object.zone) && matches!(&ability.kind, AbilityKind::Triggered(trigger)
                     if trigger.effects.all_effects().into_iter().any(|effect| effect.contains_mana_production()))
             }))
         })
+    };
+    // The scan reads only objects and their abilities: the same answer for
+    // every candidate a menu asks about on one session root.
+    if view.answers_as_the_game_alone() {
+        crate::decision::root_flag(game, crate::decision::RootFlag::ManaTriggerObjects, scan)
+    } else {
+        scan()
+    }
 }
 
 /// Compile the state-independent immediate trigger sublanguage. Any unknown

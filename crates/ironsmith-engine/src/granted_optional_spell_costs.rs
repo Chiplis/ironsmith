@@ -296,30 +296,38 @@ fn preview_for_cast(
     if original.zone == Zone::Stack {
         return None;
     }
-    let view = crate::derived_view::DerivedGameView::new(game);
-    let has_provider = game
-        .objects_in_deterministic_order()
-        .into_iter()
-        .map(|object| object.id)
-        .filter(|source| !game.is_phased_out(*source))
-        .any(|source| {
-            view.static_abilities_rc(source).is_some_and(|abilities| {
-                abilities.iter().any(|ability| {
-                    let Some(model) = ability.compiled_model() else {
-                        return false;
-                    };
-                    let payload = match &model.payload {
-                        StaticAbilityPayload::Conditional { ability, .. } => &ability.payload,
-                        payload => payload,
-                    };
-                    matches!(payload, StaticAbilityPayload::GrantOptionalSpellCost { .. })
+    // Whether any permanent grants an optional spell cost is the same answer
+    // for every card a menu asks about on one session root.
+    let has_provider = crate::decision::root_flag(
+        game,
+        crate::decision::RootFlag::OptionalSpellCostProvider,
+        || {
+            let view = crate::derived_view::DerivedGameView::new(game);
+            game.objects_in_deterministic_order()
+                .into_iter()
+                .map(|object| object.id)
+                .filter(|source| !game.is_phased_out(*source))
+                .any(|source| {
+                    view.static_abilities_rc(source).is_some_and(|abilities| {
+                        abilities.iter().any(|ability| {
+                            let Some(model) = ability.compiled_model() else {
+                                return false;
+                            };
+                            let payload = match &model.payload {
+                                StaticAbilityPayload::Conditional { ability, .. } => {
+                                    &ability.payload
+                                }
+                                payload => payload,
+                            };
+                            matches!(payload, StaticAbilityPayload::GrantOptionalSpellCost { .. })
+                        })
+                    })
                 })
-            })
-        });
+        },
+    );
     if !has_provider {
         return None;
     }
-    drop(view);
     let mut working = game.clone();
     {
         let candidate = working.object_mut(spell)?;

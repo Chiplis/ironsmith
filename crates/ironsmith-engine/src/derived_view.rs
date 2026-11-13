@@ -79,7 +79,7 @@ pub(crate) struct DerivedGameView<'a> {
     has_activated_ability_cost_modifiers: RefCell<Option<bool>>,
     available_payment_sources:
         RefCell<FxMap<PlayerId, Rc<Vec<crate::decision::AvailableManaSource>>>>,
-    simple_battlefield_mana_analysis: RefCell<FxMap<PlayerId, Rc<SimpleBattlefieldManaAnalysis>>>,
+    simple_battlefield_mana_analysis: RefCell<FxMap<PlayerId, Arc<SimpleBattlefieldManaAnalysis>>>,
     spell_target_legality: RefCell<FxMap<SpellTargetLegalityKey, bool>>,
     /// The card whose castability is being checked before it is put on the
     /// stack (CR 601.2c). A targeting source that is this card is a spell, not
@@ -97,7 +97,7 @@ struct SpellTargetLegalityKey {
     as_spell_cast: bool,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct SimpleBattlefieldManaAnalysis {
     relevant_source_ids: Vec<ObjectId>,
     mana_source_ids: Vec<ObjectId>,
@@ -1195,12 +1195,43 @@ impl<'a> DerivedGameView<'a> {
     pub(crate) fn simple_battlefield_mana_analysis(
         &self,
         player: PlayerId,
-    ) -> Rc<SimpleBattlefieldManaAnalysis> {
+    ) -> Arc<SimpleBattlefieldManaAnalysis> {
         self.ensure_memo_context();
         if let Some(cached) = self.simple_battlefield_mana_analysis.borrow().get(&player) {
-            return Rc::clone(cached);
+            return Arc::clone(cached);
         }
 
+        // Nothing below reads this view's own parameters, so a view that
+        // answers as its game alone shares the analysis with every other
+        // such view of the same session root.
+        let analysis = if self.answers_as_the_game_alone() {
+            crate::decision::root_simple_mana_analysis(self.game, player, || {
+                Arc::new(self.build_simple_battlefield_mana_analysis(player))
+            })
+        } else {
+            Arc::new(self.build_simple_battlefield_mana_analysis(player))
+        };
+        self.simple_battlefield_mana_analysis
+            .borrow_mut()
+            .insert(player, Arc::clone(&analysis));
+        analysis
+    }
+
+    /// Whether this view answers exactly as a fresh `DerivedGameView::new`
+    /// of its game would: no target or counter bindings of its own, and
+    /// characteristics read from the game's own derived state.
+    pub(crate) fn answers_as_the_game_alone(&self) -> bool {
+        self.target_reference_bindings.is_empty()
+            && self.counter_removal_declaration.is_none()
+            && ((self.use_game_characteristics_cache && self.game.continuous_state_is_clean())
+                || (self.shares_game_effects
+                    && crate::continuous::characteristic_memo_context(self.game).is_none()))
+    }
+
+    fn build_simple_battlefield_mana_analysis(
+        &self,
+        player: PlayerId,
+    ) -> SimpleBattlefieldManaAnalysis {
         let mut analysis = SimpleBattlefieldManaAnalysis::default();
 
         // This analysis may be requested immediately after a semantic mutation
@@ -1350,10 +1381,6 @@ impl<'a> DerivedGameView<'a> {
                 .insert(carrier, mana_ability_indices);
         }
 
-        let analysis = Rc::new(analysis);
-        self.simple_battlefield_mana_analysis
-            .borrow_mut()
-            .insert(player, Rc::clone(&analysis));
         analysis
     }
 

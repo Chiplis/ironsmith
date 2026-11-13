@@ -300,6 +300,7 @@ pub struct ManaAnalysisSession {
     searches: HashMap<u64, Vec<(ManaQuery, Search)>>,
     facts: HashMap<SnapshotFactKey, Vec<(SnapshotFactContext, bool)>>,
     payment_searches: Vec<(PaymentQueryContext, crate::mana_payment::ManaPaymentRequest, PaymentSearch)>,
+    root_facts: Vec<(PaymentQueryContext, RootFacts)>,
     proposals: Vec<RetainedProposal>,
     /// Identity checks only: these addresses are never dereferenced. The owner
     /// must retain its immutable snapshot for the session's lifetime.
@@ -551,6 +552,141 @@ pub(crate) fn analysis_failure() -> Option<crate::effects::ExecutionError> {
     SESSION.with(|slot| slot.borrow().as_ref().and_then(|session| session.failure.clone()))
 }
 
+/// Answers about one session root that do not depend on which action asks.
+///
+/// A menu asks whether each candidate's cost might be payable, and every ask
+/// used to rebuild the same inventory of the same unchanged game: which
+/// permanents make mana, whether any trigger could add more, whether any
+/// permanent grants an optional spell cost. The session's root is immutable
+/// while it is bound, so each of those is computed once per root.
+#[derive(Debug, Default)]
+struct RootFacts {
+    mana_trigger_objects: Option<bool>,
+    optional_spell_cost_provider: Option<bool>,
+    simple_mana_analysis:
+        Vec<(PlayerId, std::sync::Arc<crate::derived_view::SimpleBattlefieldManaAnalysis>)>,
+    /// `payment_may_be_possible` per exact request.
+    payment_bounds: Vec<(crate::mana_payment::ManaPaymentRequest, bool)>,
+}
+
+/// A yes/no fact about a session root, see `RootFacts`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum RootFlag {
+    /// Some object has a functioning triggered ability that makes mana.
+    ManaTriggerObjects,
+    /// Some phased-in object grants an optional spell cost.
+    OptionalSpellCostProvider,
+}
+
+/// The facts of the root `game` is bound as, when it is one and nothing
+/// about the current calculation makes its answers provisional: a failed
+/// session proved nothing, and a characteristic calculation in progress on
+/// this game exposes partial characteristics.
+fn with_root_facts<T>(game: &GameState, access: impl FnOnce(&mut RootFacts) -> T) -> Option<T> {
+    if crate::continuous::characteristic_memo_context(game).is_some()
+        || crate::continuous::nested_regeneration_context(game).is_some()
+    {
+        return None;
+    }
+    SESSION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let session = slot.as_mut()?;
+        if session.active_root != Some(game as *const GameState as usize)
+            || session.failure.is_some()
+        {
+            return None;
+        }
+        let index = match session
+            .root_facts
+            .iter()
+            .position(|(context, _)| *context == session.active_context)
+        {
+            Some(index) => index,
+            None => {
+                session
+                    .root_facts
+                    .push((session.active_context.clone(), RootFacts::default()));
+                session.root_facts.len() - 1
+            }
+        };
+        Some(access(&mut session.root_facts[index].1))
+    })
+}
+
+/// What must be unchanged across a computation for its answer to be kept.
+fn root_fact_guard(game: &GameState) -> Option<(u64, PaymentQueryContext)> {
+    SESSION.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .filter(|session| {
+                session.active_root == Some(game as *const GameState as usize)
+                    && session.failure.is_none()
+            })
+            .map(|session| (session.suspensions, session.active_context.clone()))
+    })
+}
+
+fn root_fact<T: Clone + PartialEq + std::fmt::Debug>(
+    game: &GameState,
+    read: impl FnOnce(&RootFacts) -> Option<T>,
+    compute: impl FnOnce() -> T,
+    write: impl FnOnce(&mut RootFacts, T),
+) -> T {
+    if let Some(Some(known)) = with_root_facts(game, |facts| read(facts)) {
+        #[cfg(feature = "paranoid-invariants")]
+        assert_eq!(known, compute(), "a session root fact changed under its root");
+        return known;
+    }
+    let guard = root_fact_guard(game);
+    let had_failure = game.token_resource_failure().is_some();
+    let value = compute();
+    // A suspended, failed or re-rooted computation answered provisionally.
+    if guard.is_some()
+        && guard == root_fact_guard(game)
+        && !had_failure
+        && game.token_resource_failure().is_none()
+    {
+        with_root_facts(game, |facts| write(facts, value.clone()));
+    }
+    value
+}
+
+pub(crate) fn root_flag(game: &GameState, flag: RootFlag, compute: impl FnOnce() -> bool) -> bool {
+    root_fact(
+        game,
+        |facts| match flag {
+            RootFlag::ManaTriggerObjects => facts.mana_trigger_objects,
+            RootFlag::OptionalSpellCostProvider => facts.optional_spell_cost_provider,
+        },
+        compute,
+        |facts, value| match flag {
+            RootFlag::ManaTriggerObjects => facts.mana_trigger_objects = Some(value),
+            RootFlag::OptionalSpellCostProvider => {
+                facts.optional_spell_cost_provider = Some(value)
+            }
+        },
+    )
+}
+
+pub(crate) fn root_simple_mana_analysis(
+    game: &GameState,
+    player: PlayerId,
+    compute: impl FnOnce() -> std::sync::Arc<crate::derived_view::SimpleBattlefieldManaAnalysis>,
+) -> std::sync::Arc<crate::derived_view::SimpleBattlefieldManaAnalysis> {
+    root_fact(
+        game,
+        |facts| {
+            facts
+                .simple_mana_analysis
+                .iter()
+                .find(|(known, _)| *known == player)
+                .map(|(_, analysis)| std::sync::Arc::clone(analysis))
+        },
+        compute,
+        |facts, analysis| facts.simple_mana_analysis.push((player, analysis)),
+    )
+}
+
 thread_local! {
     static BOUNDED_RECHECK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
@@ -596,7 +732,19 @@ pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::Man
     });
     let recheck = BOUNDED_RECHECK.with(std::cell::Cell::get);
     if menu_session || recheck {
-        if !crate::mana_payment::payment_may_be_possible(game, request) {
+        let may_be_possible = root_fact(
+            game,
+            |facts| {
+                facts
+                    .payment_bounds
+                    .iter()
+                    .find(|(known, _)| known == request)
+                    .map(|(_, possible)| *possible)
+            },
+            || crate::mana_payment::payment_may_be_possible(game, request),
+            |facts, possible| facts.payment_bounds.push((request.clone(), possible)),
+        );
+        if !may_be_possible {
             // A bound that failed to calculate proved nothing. Surface the
             // failure as an incomplete query instead of a negative answer.
             return match game.token_resource_failure() {
