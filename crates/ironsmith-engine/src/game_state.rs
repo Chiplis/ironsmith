@@ -11792,11 +11792,14 @@ impl GameState {
 
     /// Complete the CR 704.5b observation window for a real SBA pass.
     pub(crate) fn clear_empty_library_draw_attempts_since_sba(&mut self) {
-        // The mutable access below marks the continuous state dirty on every
-        // state-based-action pass even when no flag is set. That is load
-        // bearing: mutations that do not invalidate on their own (combat
-        // state ended by an effect, for one) are picked up by the refresh it
-        // forces. Do not skip it when there is nothing to clear.
+        // Mutable access to `players` invalidates the continuous state, so
+        // touch them only when a flag is set. This used to run on every pass
+        // and hid mutations that did not invalidate on their own; those are
+        // now observed directly (`observe_combat_mutations`) and checked by
+        // the paranoid fixed-point oracle.
+        if !self.players.iter().any(|player| player.attempted_draw_from_empty_library) {
+            return;
+        }
         for player in &mut self.players {
             player.attempted_draw_from_empty_library = false;
         }
