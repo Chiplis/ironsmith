@@ -40,7 +40,20 @@ pub fn generate_replacement_effects_from_abilities(
     let mut effects = Vec::new();
 
     let object_ids = game.object_ids_in_deterministic_order();
-    let mut characteristics = game.try_current_characteristics_batch(&object_ids)?;
+    // An inert hidden card is the source of no replacement effect and its
+    // characteristics carry no error (see `is_inert_hidden_card`), so they
+    // are not asked for; the loop below skips an object without them.
+    let continuous = game.try_all_continuous_effects_arc()?;
+    let asked: Vec<_> = object_ids
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id).is_none_or(|object| {
+                !crate::continuous::is_inert_hidden_card(game, object, &continuous)
+            })
+        })
+        .collect();
+    let mut characteristics = game.try_current_characteristics_batch(&asked)?;
 
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {

@@ -885,16 +885,19 @@ pub(crate) fn validate_mana_scalar_domain(game: &GameState) -> Result<(), Static
     Ok(())
 }
 
-/// The final characteristics of every object that is not phased out, derived
-/// from `effects` in the order given.
+/// The final characteristics of every object that is neither phased out nor
+/// an inert hidden card, derived from `effects` in the order given.
 pub(crate) type FinalCharacteristics =
     std::collections::HashMap<ObjectId, crate::continuous::CalculatedCharacteristics>;
 
 fn validate_final_pt_characteristics(game: &GameState, effects: &[ContinuousEffect])
     -> Result<FinalCharacteristics, StaticEffectDiscoveryError>
 {
+    // An inert hidden card cannot fail this check (see `is_inert_hidden_card`),
+    // and most of a game's objects are such cards.
     let ids: Vec<_> = game.object_ids_in_deterministic_order().into_iter().filter(|id|
-        game.object(*id).is_some_and(|object| object.zone != Zone::Battlefield || !game.is_phased_out(*id))).collect();
+        game.object(*id).is_some_and(|object| (object.zone != Zone::Battlefield || !game.is_phased_out(*id))
+            && !crate::continuous::is_inert_hidden_card(game, object, effects))).collect();
     let chars = crate::continuous::calculate_characteristics_batch_with_effects(&ids,
         game.objects_map(), effects, &game.battlefield, game.commander_objects(), game);
     for value in chars.values() { value.validate_numeric_range()?; }
