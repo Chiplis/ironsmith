@@ -3073,6 +3073,36 @@ pub(crate) fn shared_printed_abilities(
     abilities
 }
 
+/// A card in a hidden zone or graveyard whose current ability list is its
+/// printed one: nothing of its own (face-down state, ability counters, live
+/// temporary grants) and no continuous effect can change it.
+pub(crate) fn hidden_card_keeps_printed_abilities(
+    game: &crate::game_state::GameState,
+    object: &Object,
+    effects: &[ContinuousEffect],
+) -> bool {
+    if !matches!(object.zone, Zone::Library | Zone::Hand | Zone::Graveyard)
+        || object.face_down_cast_state.is_some()
+        || game.is_face_down(object.id)
+        || object.counters.has_ability_occurrences()
+    {
+        return false;
+    }
+    let current_turn = game.turn.turn_number;
+    if object
+        .temporary_static_ability_grants
+        .iter()
+        .any(|grant| !grant.is_expired(current_turn))
+        || game.characteristicless_face_down_characteristics(object.id).is_some()
+    {
+        return false;
+    }
+    let objects = game.objects_map();
+    effects
+        .iter()
+        .all(|effect| effect_target_definitely_excludes_object(effect, object, objects))
+}
+
 /// A card in a library, hand or graveyard that the layer system leaves
 /// exactly as printed and that has no static ability functioning there.
 ///
@@ -3251,12 +3281,25 @@ fn refresh_active_static_abilities(
     // A permanent's conditional static on the stack is equally dormant unless
     // it is one of the abilities that functions there (CR 113.6, 721.2: a
     // Spacecraft spell's station rows grant nothing).
+    chars.static_abilities = active_static_abilities(&chars.abilities, game, source).into();
+    chars.aura_attach_filter = chars
+        .static_abilities
+        .iter()
+        .find_map(|ability| ability.enchant_filter().cloned());
+}
+
+/// The active static abilities of `source` given its final ability list (see
+/// `refresh_active_static_abilities`).
+pub(crate) fn active_static_abilities(
+    abilities: &[Ability],
+    game: &crate::game_state::GameState,
+    source: ObjectId,
+) -> Vec<StaticAbility> {
     let dormant_zone = game
         .object(source)
         .map(|object| object.zone)
         .filter(|zone| !matches!(zone, Zone::Battlefield));
-    chars.static_abilities = chars
-        .abilities
+    abilities
         .iter()
         .filter_map(|ability| match &ability.kind {
             AbilityKind::Static(static_ability) => Some((ability, static_ability)),
@@ -3272,12 +3315,7 @@ fn refresh_active_static_abilities(
             static_ability.is_active(game, source)
         })
         .map(|(_, static_ability)| static_ability.clone())
-        .collect::<Vec<_>>()
-        .into();
-    chars.aura_attach_filter = chars
-        .static_abilities
-        .iter()
-        .find_map(|ability| ability.enchant_filter().cloned());
+        .collect()
 }
 
 fn static_ability_has_condition(ability: &StaticAbility) -> bool {

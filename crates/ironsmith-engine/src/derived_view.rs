@@ -829,13 +829,7 @@ impl<'a> DerivedGameView<'a> {
         }
 
         let object = self.game.object(object_id)?;
-        // Held characteristics are cheaper than rebuilding the printed list.
-        let held = matches!(object.zone, Zone::Library | Zone::Hand | Zone::Graveyard)
-            && (self.characteristics.borrow().contains_key(&object_id)
-                || ((self.use_game_characteristics_cache
-                    || (self.shares_game_effects
-                        && crate::continuous::characteristic_memo_context(self.game).is_none()))
-                    && self.game.calculated_characteristics_if_held(object_id).is_some()));
+        let held = self.hidden_card_characteristics_held(object);
         let needs_calculated_abilities = if held {
             true
         } else if self.hidden_zone_card_keeps_printed_abilities(object) {
@@ -932,7 +926,34 @@ impl<'a> DerivedGameView<'a> {
         }
 
         let object = self.game.object(object_id)?;
-        let static_abilities = if !self.requires_battlefield_characteristic_calculation(object_id) {
+        let static_abilities = if !self.hidden_card_characteristics_held(object)
+            && self.hidden_zone_card_keeps_printed_abilities(object)
+        {
+            // The ability list is the printed one (see `abilities_rc`); the
+            // active statics are derived from it as the layer pass derives them.
+            let printed = crate::continuous::shared_printed_abilities(
+                object, self.game.turn.turn_number, self.game,
+            );
+            let active = if printed
+                .iter()
+                .any(|ability| matches!(ability.kind, AbilityKind::Static(_)))
+            {
+                crate::continuous::active_static_abilities(&printed, self.game, object_id)
+            } else {
+                Vec::new()
+            };
+            #[cfg(feature = "paranoid-invariants")]
+            {
+                let calculated = self.calculated_characteristics_arc(object_id)
+                    .map(|chars| chars.static_abilities.shared());
+                assert!(
+                    calculated.as_deref() == Some(&active),
+                    "printed static fast path disagrees with the layer calculation for {object_id:?} ({}) in {:?}",
+                    object.name, object.zone,
+                );
+            }
+            Arc::new(active)
+        } else if !self.requires_battlefield_characteristic_calculation(object_id) {
             Arc::new(
                 object
                     .abilities
@@ -2229,27 +2250,50 @@ impl<'a> DerivedGameView<'a> {
     /// the layer system's own test, and no effect group can start for an
     /// object that no effect applies to. The remaining conditions are the
     /// ones the battlefield fast path already requires.
+    /// A hidden-zone card whose characteristics this view or the game already
+    /// holds: reading them is cheaper than rebuilding from the printed list.
+    fn hidden_card_characteristics_held(&self, object: &crate::object::Object) -> bool {
+        matches!(object.zone, Zone::Library | Zone::Hand | Zone::Graveyard)
+            && (self.characteristics.borrow().contains_key(&object.id)
+                || ((self.use_game_characteristics_cache
+                    || (self.shares_game_effects
+                        && crate::continuous::characteristic_memo_context(self.game).is_none()))
+                    && self.game.calculated_characteristics_if_held(object.id).is_some()))
+    }
+
+    /// A hidden-zone card whose current abilities are its printed list (the
+    /// `abilities_rc` fast path), none of which satisfies `wanted`. A caller
+    /// scanning every object for one kind of ability skips such a card
+    /// without deriving its characteristics.
+    pub(crate) fn hidden_card_printed_abilities_lack(
+        &self,
+        object: &crate::object::Object,
+        wanted: impl Fn(&crate::ability::Ability) -> bool,
+    ) -> bool {
+        if !matches!(object.zone, Zone::Library | Zone::Hand | Zone::Graveyard) {
+            return false;
+        }
+        let lacks = !crate::continuous::shared_printed_abilities(
+            object, self.game.turn.turn_number, self.game,
+        )
+        .iter()
+        .any(&wanted)
+            && self.hidden_zone_card_keeps_printed_abilities(object);
+        #[cfg(feature = "paranoid-invariants")]
+        if lacks {
+            assert!(
+                self.game
+                    .current_characteristics(object.id)
+                    .is_none_or(|chars| !chars.abilities.iter().any(&wanted)),
+                "printed-ability scan disagrees with the layer calculation for {:?} ({}) in {:?}",
+                object.id, object.name, object.zone,
+            );
+        }
+        lacks
+    }
+
     fn hidden_zone_card_keeps_printed_abilities(&self, object: &crate::object::Object) -> bool {
-        if !matches!(object.zone, Zone::Library | Zone::Hand | Zone::Graveyard)
-            || object.face_down_cast_state.is_some()
-            || self.game.is_face_down(object.id)
-            || object.counters.has_ability_occurrences()
-        {
-            return false;
-        }
-        let current_turn = self.game.turn.turn_number;
-        if object
-            .temporary_static_ability_grants
-            .iter()
-            .any(|grant| !grant.is_expired(current_turn))
-            || self.game.characteristicless_face_down_characteristics(object.id).is_some()
-        {
-            return false;
-        }
-        let objects = self.game.objects_map();
-        self.all_effects.iter().all(|effect| {
-            crate::continuous::effect_target_definitely_excludes_object(effect, object, objects)
-        })
+        crate::continuous::hidden_card_keeps_printed_abilities(self.game, object, &self.all_effects)
     }
 
     pub(crate) fn requires_battlefield_characteristic_calculation(

@@ -2198,10 +2198,14 @@ fn compute_legal_actions_checked(
     // current abilities, so losing the permission removes the action at once.
     for object in game.objects_in_deterministic_order() {
         if !requested_action_source(object.id) { continue; }
+        let is_intrinsic_action = |ability: &crate::ability::Ability| {
+            matches!(&ability.kind, crate::ability::AbilityKind::Static(rule)
+                if matches!(rule.compiled_model().map(|model| &model.payload), Some(ironsmith_core::StaticAbilityPayload::IntrinsicImmediateAction { .. })))
+        };
+        if view.hidden_card_printed_abilities_lack(object, is_intrinsic_action) { continue; }
         let Some(characteristics) = game.current_characteristics(object.id) else { continue; };
         for (index, ability) in characteristics.abilities.iter().enumerate() {
-            if !matches!(&ability.kind, crate::ability::AbilityKind::Static(rule)
-                if matches!(rule.compiled_model().map(|model| &model.payload), Some(ironsmith_core::StaticAbilityPayload::IntrinsicImmediateAction { .. }))) { continue; }
+            if !is_intrinsic_action(ability) { continue; }
             let action = crate::special_actions::SpecialAction::PerformIntrinsicAction {
                 source_id: object.id, ability_index: index,
             };

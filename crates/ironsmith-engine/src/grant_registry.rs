@@ -2361,6 +2361,12 @@ impl GrantRegistry {
         let mut grants = Vec::new();
         let mut inspection = Vec::new();
 
+        // Outside a nested derivation the effects are the ones every read
+        // below derives against.
+        let effects = crate::continuous::nested_regeneration_context(game)
+            .is_none()
+            .then(|| game.try_all_continuous_effects_arc().ok())
+            .flatten();
         let mut collect_from_source = |source_id: ObjectId, source_is_battlefield: bool| {
             if source_is_battlefield && game.is_phased_out(source_id) {
                 return;
@@ -2386,6 +2392,26 @@ impl GrantRegistry {
                     )
                 })
                 .flatten();
+            // Only static abilities grant anything below. A graveyard card
+            // whose abilities are its printed ones, none of them static, has
+            // nothing to collect.
+            if linked_half.is_none()
+                && let Some(effects) = effects.as_deref()
+                && !crate::continuous::shared_printed_abilities(source, game.turn.turn_number, game)
+                    .iter()
+                    .any(|ability| matches!(ability.kind, AbilityKind::Static(_)))
+                && crate::continuous::hidden_card_keeps_printed_abilities(game, source, effects)
+            {
+                #[cfg(feature = "paranoid-invariants")]
+                assert!(
+                    game.current_characteristics(source_id).is_none_or(|chars| !chars
+                        .abilities
+                        .iter()
+                        .any(|ability| matches!(ability.kind, AbilityKind::Static(_)))),
+                    "printed-ability grant scan disagrees with the layer calculation for {source_id:?}",
+                );
+                return;
+            }
             let Some(characteristics) = game.current_characteristics(source_id) else {
                 return;
             };
