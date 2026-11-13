@@ -41,7 +41,7 @@ pub(crate) struct RetainedAttackingRole {
 }
 
 /// Combat state tracking.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CombatState {
     /// Direct-player declarations from the latest begun declare attackers
     /// step in this combat. None is absent/uncommitted, Some(empty) is a
@@ -185,7 +185,7 @@ impl CombatState {
 }
 
 /// Information about an attacking creature.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AttackerInfo {
     /// The attacking creature's ObjectId.
     pub creature: ObjectId,

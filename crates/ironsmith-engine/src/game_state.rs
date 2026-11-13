@@ -1692,6 +1692,9 @@ struct RuntimeCacheState {
     originless_card_entries: HashMap<ObjectId, crate::events::CreateCardsEvent>,
     observed_players: RefCell<Option<crate::incremental::ChangeCursor>>,
     observed_stack: RefCell<Option<crate::incremental::ChangeCursor>>,
+    /// `GameState::combat` as last observed. The field is public and written
+    /// directly, so a change is detected by value (`observe_combat_mutations`).
+    observed_combat: RefCell<Option<Arc<Option<crate::combat_state::CombatState>>>>,
     random_state: Cell<u64>,
     irreversible_random_count: Cell<u64>,
     forced_die_rolls: RefCell<VecDeque<u32>>,
@@ -1779,6 +1782,7 @@ impl Clone for RuntimeCacheState {
             originless_card_entries: self.originless_card_entries.clone(),
             observed_players: RefCell::new(self.observed_players.borrow().clone()),
             observed_stack: RefCell::new(self.observed_stack.borrow().clone()),
+            observed_combat: RefCell::new(self.observed_combat.borrow().clone()),
             random_state: Cell::new(self.random_state.get()),
             irreversible_random_count: Cell::new(self.irreversible_random_count.get()),
             forced_die_rolls: RefCell::new(self.forced_die_rolls.borrow().clone()),
@@ -1851,6 +1855,7 @@ impl RuntimeCacheState {
             originless_card_entries: HashMap::new(),
             observed_players: RefCell::new(None),
             observed_stack: RefCell::new(None),
+            observed_combat: RefCell::new(None),
             random_state: Cell::new(GameState::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
             forced_die_rolls: RefCell::new(VecDeque::new()),
@@ -7340,6 +7345,7 @@ impl GameState {
     pub(crate) fn continuous_context_revision(&self) -> u64 {
         self.observe_player_mutations();
         self.observe_stack_mutations();
+        self.observe_combat_mutations();
         self.runtime_cache.continuous_context_revision.get()
     }
 
@@ -7371,6 +7377,22 @@ impl GameState {
     /// change must invalidate it.
     pub(crate) fn derived_state_read_stack(&self) -> bool {
         self.stack.derived_read() || self.runtime_cache.derived_stack_reads_before_dirty.get()
+    }
+
+    /// Combat membership is an input of calculated characteristics and of
+    /// static conditions ("as long as this is attacking"). Every assignment
+    /// to `combat`, including one that ends combat, invalidates them here.
+    fn observe_combat_mutations(&self) {
+        let unchanged = self
+            .runtime_cache
+            .observed_combat
+            .borrow()
+            .as_ref()
+            .is_some_and(|observed| **observed == self.combat);
+        if !unchanged {
+            *self.runtime_cache.observed_combat.borrow_mut() = Some(Arc::new(self.combat.clone()));
+            self.mark_continuous_state_dirty();
+        }
     }
 
     fn observe_player_mutations(&self) {
@@ -7647,6 +7669,7 @@ impl GameState {
     pub(crate) fn continuous_state_is_clean(&self) -> bool {
         self.observe_player_mutations();
         self.observe_stack_mutations();
+        self.observe_combat_mutations();
         !self.runtime_cache.continuous_state_dirty.get()
             && self.runtime_cache.continuous_state_revision.get()
                 == self.effect_store.continuous_effects.revision()
