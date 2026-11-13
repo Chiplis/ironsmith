@@ -46,7 +46,7 @@ impl GameState {
             })
             .collect();
         let sources = self
-            .current_trigger_source_snapshots()
+            .shared_current_trigger_source_snapshots()
             .into_iter()
             .filter(|snapshot| {
                 snapshot.zone != Zone::Battlefield || !self.is_phased_out(snapshot.object_id)
@@ -59,20 +59,39 @@ impl GameState {
         flags.control_transition_pending = false;
     }
 
-    fn current_control_snapshots(&self) -> HashMap<ObjectId, ObjectSnapshot> {
+    fn current_control_snapshots(&self) -> HashMap<ObjectId, Arc<ObjectSnapshot>> {
         self.battlefield
             .iter()
             .copied()
             .filter(|id| !self.is_phased_out(*id))
             .filter_map(|id| {
                 self.object(id).map(|object| {
-                    (
-                        id,
-                        self.cached_object_snapshot_with_calculated_characteristics(object),
-                    )
+                    (id, self.shared_object_snapshot_with_calculated_characteristics(object))
                 })
             })
             .collect()
+    }
+
+    /// As `cached_object_snapshot_with_calculated_characteristics`, sharing
+    /// the cached snapshot.
+    fn shared_object_snapshot_with_calculated_characteristics(
+        &self,
+        object: &Object,
+    ) -> Arc<ObjectSnapshot> {
+        self.try_all_continuous_effects_arc()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)
+            .and_then(|effects| {
+                self.try_shared_object_snapshot_with_calculated_characteristics_and_effects(
+                    object, &effects,
+                )
+            })
+            .expect("legacy snapshot cache caller requires complete evidence")
+    }
+
+    fn shared_current_trigger_source_snapshots(&self) -> Vec<Arc<ObjectSnapshot>> {
+        self.try_shared_current_trigger_source_snapshots()
+            .inspect_err(|error| self.record_token_resource_failure(error))
+            .unwrap_or_default()
     }
 
     pub(crate) fn publish_completed_control_transitions(&mut self) {
@@ -92,15 +111,11 @@ impl GameState {
             .control_event_snapshots
             .values()
             .filter(|snapshot| snapshots.contains_key(&snapshot.object_id))
-            .cloned()
+            .map(|snapshot| snapshot.as_ref())
             .collect::<Vec<_>>();
         before.sort_by_key(|snapshot| snapshot.object_id);
-        // An observer departing in this same operation belongs to the old
-        // source set. A separate completed instruction already advances this
-        // baseline, so a previously departed observer is not resurrected.
-        let lookback = self.battlefield_flags.control_source_lookback.clone();
         let current_sources = self
-            .current_trigger_source_snapshots()
+            .shared_current_trigger_source_snapshots()
             .into_iter()
             .filter(|snapshot| {
                 snapshot.zone != Zone::Battlefield || !self.is_phased_out(snapshot.object_id)
@@ -108,18 +123,18 @@ impl GameState {
             .collect();
         let transitions = before
             .iter()
-            .filter_map(|previous| {
+            .filter_map(|&previous| {
                 let current = snapshots.get(&previous.object_id)?;
                 (previous.controller != current.controller)
-                    .then(|| (previous.clone(), current.clone()))
+                    .then(|| (previous.clone(), current.as_ref().clone()))
             })
             .collect::<Vec<_>>();
         // Compare only continuing, unphased battlefield incarnations. Entry,
         // phase-in, and unchanged characteristics are not type-gain events.
         // All differences are computed from the same completed-state pair.
         let mut characteristic_gains = Vec::new();
-        for previous in &before {
-            let current = &snapshots[&previous.object_id];
+        for &previous in &before {
+            let current = snapshots[&previous.object_id].as_ref();
             for value in &current.card_types {
                 if !previous.card_types.contains(value) {
                     characteristic_gains.push((previous.clone(), current.clone(), ironsmith_core::trigger_model::GainedCharacteristic::CardType(*value)));
@@ -142,7 +157,21 @@ impl GameState {
         // Publish a completed baseline before queueing observations; a later
         // refresh, including one caused while matching, cannot duplicate them.
         self.battlefield_flags_mut().control_event_snapshots = snapshots;
-        self.battlefield_flags_mut().control_source_lookback = current_sources;
+        // An observer departing in this same operation belongs to the old
+        // source set. A separate completed instruction already advances this
+        // baseline, so a previously departed observer is not resurrected.
+        let lookback = std::mem::replace(
+            &mut self.battlefield_flags_mut().control_source_lookback,
+            current_sources,
+        );
+        let lookback = if transitions.is_empty() {
+            Vec::new()
+        } else {
+            lookback
+                .iter()
+                .map(|snapshot| snapshot.as_ref().clone())
+                .collect::<Vec<_>>()
+        };
         for (previous, current, characteristic) in characteristic_gains {
             // A typed fact has no performed-action identity or action receipt.
             // Match after-state observers; control-loss lookback is separate.

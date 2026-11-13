@@ -503,8 +503,10 @@ struct BattlefieldFlags {
     controller_at_last_refresh: HashMap<ObjectId, PlayerId>,
     /// Exact-incarnation characteristics at the previous authoritative
     /// instruction/continuous-state boundary, for CR 603.10d lookback.
-    control_event_snapshots: HashMap<ObjectId, ObjectSnapshot>,
-    control_source_lookback: Vec<ObjectSnapshot>,
+    /// Shared: these flags are copied on write, and each baseline snapshot
+    /// is replaced whole, never edited.
+    control_event_snapshots: HashMap<ObjectId, Arc<ObjectSnapshot>>,
+    control_source_lookback: Vec<Arc<ObjectSnapshot>>,
     control_transition_pending: bool,
     /// Damage marked on creatures (cleared at cleanup step).
     damage_marked: HashMap<ObjectId, u32>,

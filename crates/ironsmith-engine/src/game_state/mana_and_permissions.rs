@@ -4961,6 +4961,16 @@ impl GameState {
         object: &Object,
         effects: &[ContinuousEffect],
     ) -> Result<ObjectSnapshot, crate::effects::ExecutionError> {
+        self.try_shared_object_snapshot_with_calculated_characteristics_and_effects(object, effects)
+            .map(|snapshot| snapshot.as_ref().clone())
+    }
+
+    /// The cached snapshot itself, for a holder that only reads it.
+    pub(crate) fn try_shared_object_snapshot_with_calculated_characteristics_and_effects(
+        &self,
+        object: &Object,
+        effects: &[ContinuousEffect],
+    ) -> Result<Arc<ObjectSnapshot>, crate::effects::ExecutionError> {
         let mutation_revision = self.mutation_revision;
         // Global invalidation (including source designations such as saddled)
         // need not mutate an object or add a continuous effect. Its snapshots
@@ -4979,7 +4989,7 @@ impl GameState {
                 cache.effect_revision = effect_revision;
             }
             if let Some(snapshot) = cache.entries.get(&object.id) {
-                return Ok(snapshot.as_ref().clone());
+                return Ok(Arc::clone(snapshot));
             }
         }
         let snapshot = Arc::new(
@@ -4994,7 +5004,7 @@ impl GameState {
         {
             cache.entries.insert(object.id, Arc::clone(&snapshot));
         }
-        Ok(snapshot.as_ref().clone())
+        Ok(snapshot)
     }
 
     pub(crate) fn cached_object_snapshot_with_calculated_characteristics(
@@ -5041,6 +5051,16 @@ impl GameState {
     pub(crate) fn try_current_trigger_source_snapshots(
         &self,
     ) -> Result<Vec<ObjectSnapshot>, crate::effects::ExecutionError> {
+        Ok(self
+            .try_shared_current_trigger_source_snapshots()?
+            .iter()
+            .map(|snapshot| snapshot.as_ref().clone())
+            .collect())
+    }
+
+    pub(crate) fn try_shared_current_trigger_source_snapshots(
+        &self,
+    ) -> Result<Vec<Arc<ObjectSnapshot>>, crate::effects::ExecutionError> {
         let effects = self
             .try_all_continuous_effects_arc()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
@@ -5060,7 +5080,7 @@ impl GameState {
             })
         {
             let snapshot = self
-                .try_cached_object_snapshot_with_calculated_characteristics_and_effects(
+                .try_shared_object_snapshot_with_calculated_characteristics_and_effects(
                     object, &effects,
                 )?;
             if snapshot
