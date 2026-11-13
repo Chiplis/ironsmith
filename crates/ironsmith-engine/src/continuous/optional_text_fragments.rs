@@ -14,6 +14,13 @@ fn plan(chars:&CalculatedCharacteristics)->Option<(usize,crate::ability::Ability
   Some((slot,ability.clone(),model.clone(),(**spec).clone()))
  })
 }
+/// Whether `plan` would select this ability: the same two tests, in order.
+pub(crate) fn is_plan_ability(ability:&crate::ability::Ability)->bool{
+ let crate::ability::AbilityKind::Static(ability_model)=&ability.kind else{return false};
+ if let Some(compiled)=ability_model.compiled_model()
+  && !matches!(compiled.payload,ironsmith_core::StaticAbilityPayload::OptionalTextFragments(_)){return false}
+ ability_model.canonical_model().is_some_and(|model|matches!(model.payload,ironsmith_core::StaticAbilityPayload::OptionalTextFragments(_)))
+}
 pub(crate) fn declared_plan(object:&crate::object::Object)->Option<FragmentSpec>{
  object.abilities.iter().find_map(|ability|{
   let crate::ability::AbilityKind::Static(ability)=&ability.kind else{return None};

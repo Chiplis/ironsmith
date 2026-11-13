@@ -2985,12 +2985,15 @@ thread_local! {
 }
 
 /// Whether the ability list an untouched card has (`unmodified_ability_occurrences`)
-/// holds a static ability. `object` must have no temporary grants, which
-/// makes that list independent of the turn.
+/// holds a static ability that functions in the card's zone, or the one
+/// that selects optional text fragments. `object` must have no temporary
+/// grants, which makes that list independent of the turn.
 fn printed_abilities_include_static(object: &Object) -> bool {
-    unmodified_ability_occurrences(object, 0)
-        .iter()
-        .any(|ability| matches!(ability.kind, AbilityKind::Static(_)))
+    unmodified_ability_occurrences(object, 0).iter().any(|ability| {
+        matches!(ability.kind, AbilityKind::Static(_))
+            && (ability.functions_in(&object.zone)
+                || optional_text_fragments::is_plan_ability(ability))
+    })
 }
 
 fn shared_printed_abilities_include_static(
@@ -3071,17 +3074,18 @@ pub(crate) fn shared_printed_abilities(
 }
 
 /// A card in a library, hand or graveyard that the layer system leaves
-/// exactly as printed and that has no static ability.
+/// exactly as printed and that has no static ability functioning there.
 ///
 /// No effect applies to it: `effect_target_definitely_excludes_object` is the
 /// first test of `effect_applies_to_direct`, and an effect group starts only
 /// for an object one of its effects applied to. With no counters, no
 /// temporary grants and no face-down status, the steps that remain add only
 /// intrinsic and level abilities, so its ability list is the printed one.
-/// Without a static ability in that list it has no optional text fragments,
-/// and without counters its power and toughness are the printed ones, so its
-/// characteristics carry no error and it is the source of no static or
-/// replacement effect.
+/// Without the static ability that selects optional text fragments, and
+/// without counters to change its printed power and toughness, its
+/// characteristics carry no error. A static ability that does not function
+/// in its zone generates nothing, so it is the source of no replacement
+/// effect.
 pub(crate) fn is_inert_hidden_card(
     game: &crate::game_state::GameState,
     object: &Object,
