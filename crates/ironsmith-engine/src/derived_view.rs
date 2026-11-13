@@ -829,9 +829,34 @@ impl<'a> DerivedGameView<'a> {
         }
 
         let object = self.game.object(object_id)?;
-        let needs_calculated_abilities = self
-            .requires_battlefield_characteristic_calculation(object_id)
-            || (self.game.deploy_creatures_enabled() && object.zone == Zone::Battlefield);
+        // Held characteristics are cheaper than rebuilding the printed list.
+        let held = matches!(object.zone, Zone::Library | Zone::Hand | Zone::Graveyard)
+            && (self.characteristics.borrow().contains_key(&object_id)
+                || ((self.use_game_characteristics_cache
+                    || (self.shares_game_effects
+                        && crate::continuous::characteristic_memo_context(self.game).is_none()))
+                    && self.game.calculated_characteristics_if_held(object_id).is_some()));
+        let needs_calculated_abilities = if held {
+            true
+        } else if self.hidden_zone_card_keeps_printed_abilities(object) {
+            #[cfg(feature = "paranoid-invariants")]
+            {
+                let printed = crate::continuous::unmodified_ability_occurrences(
+                    object, self.game.turn.turn_number,
+                ).shared();
+                let calculated = self.calculated_characteristics_arc(object_id)
+                    .map(|chars| chars.abilities.shared());
+                assert!(
+                    calculated.as_deref() == Some(&*printed),
+                    "printed-ability fast path disagrees with the layer calculation for {object_id:?} ({}) in {:?}",
+                    object.name, object.zone,
+                );
+            }
+            false
+        } else {
+            self.requires_battlefield_characteristic_calculation(object_id)
+                || (self.game.deploy_creatures_enabled() && object.zone == Zone::Battlefield)
+        };
         let abilities = if !needs_calculated_abilities {
             // This fast path must produce the same list, in the same order, as
             // the calculated characteristics `GameState::current_ability`
@@ -2196,6 +2221,35 @@ impl<'a> DerivedGameView<'a> {
         self.calculated_characteristics_arc(object_id)
             .map(|chars| chars.controller)
             .or(Some(object.owner))
+    }
+
+    /// A card in a library, hand or graveyard that no continuous effect can
+    /// reach has exactly its printed ability list: the layer calculation
+    /// applies nothing to it. `effect_target_definitely_excludes_object` is
+    /// the layer system's own test, and no effect group can start for an
+    /// object that no effect applies to. The remaining conditions are the
+    /// ones the battlefield fast path already requires.
+    fn hidden_zone_card_keeps_printed_abilities(&self, object: &crate::object::Object) -> bool {
+        if !matches!(object.zone, Zone::Library | Zone::Hand | Zone::Graveyard)
+            || object.face_down_cast_state.is_some()
+            || self.game.is_face_down(object.id)
+            || object.counters.has_ability_occurrences()
+        {
+            return false;
+        }
+        let current_turn = self.game.turn.turn_number;
+        if object
+            .temporary_static_ability_grants
+            .iter()
+            .any(|grant| !grant.is_expired(current_turn))
+            || self.game.characteristicless_face_down_characteristics(object.id).is_some()
+        {
+            return false;
+        }
+        let objects = self.game.objects_map();
+        self.all_effects.iter().all(|effect| {
+            crate::continuous::effect_target_definitely_excludes_object(effect, object, objects)
+        })
     }
 
     pub(crate) fn requires_battlefield_characteristic_calculation(

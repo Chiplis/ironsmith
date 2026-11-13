@@ -6098,6 +6098,32 @@ retain_original_types: false, retain_original_name: false,
 
     /// A characteristic read on a dirty state outside any calculation. One
     /// board pass answers every permanent, exactly as each single read would.
+    /// The characteristics `calculated_characteristics_arc` would return
+    /// for `id` without calculating anything, when it already holds them.
+    pub(crate) fn calculated_characteristics_if_held(
+        &self,
+        id: ObjectId,
+    ) -> Option<Option<Arc<crate::continuous::CalculatedCharacteristics>>> {
+        if crate::continuous::characteristics_calculation_in_progress(self, id) {
+            return None;
+        }
+        if self.continuous_state_is_clean() {
+            return self
+                .runtime_cache
+                .characteristics_cache
+                .get(id, self.effect_store.continuous_effects.revision());
+        }
+        if crate::continuous::nested_regeneration_context(self).is_some() {
+            return None;
+        }
+        let key = self.dirty_state_key();
+        let memo = self.runtime_cache.dirty_characteristics_memo.borrow();
+        if memo.key != Some(key) {
+            return None;
+        }
+        memo.characteristics.get(&id).cloned()
+    }
+
     fn dirty_calculated_characteristics(
         &self,
         id: ObjectId,
