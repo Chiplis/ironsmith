@@ -399,10 +399,48 @@ impl CopiableValues {
         object: &Object,
         game: &crate::game_state::GameState,
     ) -> Self {
-        let mut values = if game.is_room_fully_unlocked(object.id) {
+        let values = if game.is_room_fully_unlocked(object.id) {
             object.split_combined.as_ref().and_then(|combined| combined.unfused_half.as_deref())
                 .cloned().unwrap_or_else(|| Self::from_object(object))
         } else { Self::from_object(object) };
+        Self::with_linked_face(values, object, game)
+    }
+
+    /// `from_object_with_linked_face` given `from_object(object)` already
+    /// built and shared. Most cards have no linked face to add, and then the
+    /// shared values are returned as they are.
+    pub(crate) fn shared_with_linked_face(
+        base: &Arc<Self>,
+        object: &Object,
+        game: &crate::game_state::GameState,
+    ) -> Arc<Self> {
+        let unfused = if game.is_room_fully_unlocked(object.id) {
+            object.split_combined.as_ref().and_then(|combined| combined.unfused_half.as_deref())
+        } else { None };
+        let unchanged = || unfused.map_or_else(|| Arc::clone(base), |half| Arc::new(half.clone()));
+        // The same three exits as `with_linked_face`, taken before copying.
+        if object.copied_face_values.is_some() || object.face_down_cast_state.is_some() {
+            return unchanged();
+        }
+        let Some(other) = game.linked_face_definition_by_name_or_id(
+            object.other_face_name.as_deref(), object.other_face,
+        ) else { return unchanged(); };
+        if !matches!(object.linked_face_layout,
+            LinkedFaceLayout::Flip | LinkedFaceLayout::Split
+                | LinkedFaceLayout::Prepare | LinkedFaceLayout::TransformLike)
+            && !other.card.subtypes.contains(&Subtype::Adventure)
+        {
+            return unchanged();
+        }
+        let values = unfused.cloned().unwrap_or_else(|| base.as_ref().clone());
+        Arc::new(Self::with_linked_face(values, object, game))
+    }
+
+    fn with_linked_face(
+        mut values: Self,
+        object: &Object,
+        game: &crate::game_state::GameState,
+    ) -> Self {
         if object.copied_face_values.is_some() || object.face_down_cast_state.is_some() {
             return values;
         }

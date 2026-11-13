@@ -2951,7 +2951,71 @@ fn initial_unmerged_text_box_characteristics(object: &Object, game: Option<&crat
         restored.end_face_down_cast_overlay();
         restored
     });
+    let mut chars = match (game, restored.as_ref()) {
+        (Some(game), None) => shared_object_text_box_characteristics(object, game),
+        (_, restored) => object_text_box_characteristics(restored.unwrap_or(object)),
+    };
     let object = restored.as_ref().unwrap_or(object);
+    if let Some(game) = game {
+        let base = chars.copy_values.take().expect("the object-only step always fills copy values");
+        chars.copy_values = Some(CopiableValues::shared_with_linked_face(&base, object, game));
+        canonicalize_subtype_associations(&mut chars.subtypes, game);
+    }
+    chars
+}
+
+thread_local! {
+    /// `object_text_box_characteristics` of objects held by a game, by the
+    /// address of the shared allocation. The weak handle keeps that address
+    /// from being reused and makes every mutation of the object move it to a
+    /// new allocation first (`Arc::make_mut` with a weak handle outstanding),
+    /// so an entry always describes the object found at its address.
+    static OBJECT_TEXT_BOX_CHARACTERISTICS: std::cell::RefCell<
+        HashMap<usize, (std::sync::Weak<Object>, CalculatedCharacteristics)>,
+    > = std::cell::RefCell::new(HashMap::new());
+}
+
+const OBJECT_TEXT_BOX_MEMO_LIMIT: usize = 8192;
+
+fn shared_object_text_box_characteristics(
+    object: &Object,
+    game: &crate::game_state::GameState,
+) -> CalculatedCharacteristics {
+    let address = object as *const Object;
+    let held = OBJECT_TEXT_BOX_CHARACTERISTICS.with(|memo| {
+        memo.borrow()
+            .get(&(address as usize))
+            .filter(|(handle, _)| std::ptr::eq(handle.as_ptr(), address))
+            .map(|(_, chars)| chars.clone())
+    });
+    if let Some(chars) = held {
+        #[cfg(feature = "paranoid-invariants")]
+        assert_eq!(
+            format!("{chars:?}"),
+            format!("{:?}", object_text_box_characteristics(object)),
+            "stale object-only characteristics for {:?}",
+            object.id,
+        );
+        return chars;
+    }
+    let chars = object_text_box_characteristics(object);
+    if let Some(shared) = game.objects_map().get(&object.id)
+        && std::ptr::eq(Arc::as_ptr(shared), address)
+    {
+        OBJECT_TEXT_BOX_CHARACTERISTICS.with(|memo| {
+            let mut memo = memo.borrow_mut();
+            if memo.len() >= OBJECT_TEXT_BOX_MEMO_LIMIT {
+                memo.clear();
+            }
+            memo.insert(address as usize, (Arc::downgrade(shared), chars.clone()));
+        });
+    }
+    chars
+}
+
+/// The part of an object's starting characteristics that depends on the
+/// object alone. It takes no game, so nothing else can reach its result.
+fn object_text_box_characteristics(object: &Object) -> CalculatedCharacteristics {
     // CR 709.4: outside the stack and battlefield a split card starts from
     // both halves' combined types (colors() already combines them).
     let split_combined = object.split_combined_active();
@@ -2961,10 +3025,7 @@ fn initial_unmerged_text_box_characteristics(object: &Object, game: Option<&crat
         |combined| combined.supertypes.clone(),
     );
     let mut chars = CalculatedCharacteristics {
-        copy_values: Some(Arc::new(game.map_or_else(
-            || CopiableValues::from_object(object),
-            |game| CopiableValues::from_object_with_linked_face(object, game),
-        ))),
+        copy_values: Some(Arc::new(CopiableValues::from_object(object))),
         alternate_name: object.split_other_half_name().map(str::to_string),
         name: object.name.clone(),
         mana_cost: object
@@ -3002,7 +3063,6 @@ fn initial_unmerged_text_box_characteristics(object: &Object, game: Option<&crat
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.initial_controller,
     };
-    if let Some(game)=game {canonicalize_subtype_associations(&mut chars.subtypes,game);}
     chars.abilities.bind_host(object.id);
     chars.record_base_pt();
     chars
@@ -5605,7 +5665,7 @@ impl Drop for ConditionPredicateEvaluationGuard {
 // Reject identity/zone mismatches before evaluating conditions, which may
 // themselves query characteristics of other objects. Leave dynamic filters
 // and characteristics-dependent targeting to the normal layer evaluation.
-fn effect_target_definitely_excludes_object(
+pub(crate) fn effect_target_definitely_excludes_object(
     effect: &ContinuousEffect,
     object: &Object,
     objects: &ObjectMap,
