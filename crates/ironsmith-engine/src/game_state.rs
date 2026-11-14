@@ -1421,11 +1421,11 @@ pub struct SourceObjectCollection {
 #[derive(Debug, Clone)]
 pub struct EffectStore {
     pub continuous_effects: ContinuousEffectManager,
-    pub replacement_effects: ReplacementEffectManager,
+    pub replacement_effects: crate::cow::CowArc<ReplacementEffectManager>,
     pub prevention_effects: PreventionEffectManager,
     /// Tracker for "can't" effects (Rule 614.17).
     /// These are checked BEFORE events happen, not as replacements.
-    pub cant_effects: CantEffectTracker,
+    pub cant_effects: crate::cow::CowArc<CantEffectTracker>,
     /// Tracker for "spend mana as though it were mana of any color" effects.
     pub mana_spend_effects: ManaSpendEffectTracker,
     pub activation_cost_alternatives: Vec<crate::activation_cost_alternatives::ActivationCostAlternative>,
@@ -1435,7 +1435,7 @@ pub struct EffectStore {
     pub pending_trigger_events: Vec<crate::triggers::TriggerEvent>,
     pub(crate) departure_hand_reveal_frames: std::collections::HashMap<ObjectId,crate::effects::player::HandRevealFrame>,
     pub(crate) pending_hand_reveal_windows: Vec<crate::effects::player::HandRevealWindow>,
-    pub(crate) hand_reveal_events_captured: std::collections::HashMap<(u32,usize),crate::triggers::TriggerEvent>,
+    pub(crate) hand_reveal_events_captured: crate::cow::CowArc<std::collections::HashMap<(u32,usize),crate::triggers::TriggerEvent>>,
     /// Scoped committed-action evidence, independent of trigger queue draining.
     pub(crate) instruction_result_records: Vec<Vec<crate::effect::ExecutionFact>>,
     /// Scoped observations retained for deferred action completion, independent
@@ -1532,9 +1532,9 @@ impl Default for EffectStore {
     fn default() -> Self {
         Self {
             continuous_effects: ContinuousEffectManager::new(),
-            replacement_effects: ReplacementEffectManager::new(),
+            replacement_effects: crate::cow::CowArc::new(ReplacementEffectManager::new()),
             prevention_effects: PreventionEffectManager::new(),
-            cant_effects: CantEffectTracker::new(),
+            cant_effects: crate::cow::CowArc::new(CantEffectTracker::new()),
             mana_spend_effects: ManaSpendEffectTracker::new(),
             activation_cost_alternatives: Vec::new(),
             named_action_uses: HashMap::new(),
@@ -1543,7 +1543,7 @@ impl Default for EffectStore {
             pending_trigger_events: Vec::new(),
             pending_hand_reveal_windows: Vec::new(),
             departure_hand_reveal_frames: std::collections::HashMap::new(),
-            hand_reveal_events_captured: std::collections::HashMap::new(),
+            hand_reveal_events_captured: Default::default(),
             instruction_result_records: Vec::new(),
             action_observation_records: Vec::new(),
             retained_original_observation_scopes: Vec::new(),
@@ -5330,7 +5330,7 @@ pub struct GameState {
 
     // Turn tracking
     pub turn: TurnState,
-    pub turn_store: TurnStore,
+    pub turn_store: crate::cow::CowArc<TurnStore>,
     pub effect_store: EffectStore,
     /// Present only when the Planechase casual variant is active.
     pub planechase: Option<PlanechaseState>,
@@ -6024,7 +6024,7 @@ impl GameState {
             object_store: ObjectStore::default(),
             stack: Vec::new().into(),
             turn: TurnState::new(active_player),
-            turn_store: TurnStore {
+            turn_store: crate::cow::CowArc::new(TurnStore {
                 turn_order,
                 turn_history: {
                     let mut history = TurnHistory::default();
@@ -6033,7 +6033,7 @@ impl GameState {
                     history
                 },
                 ..TurnStore::default()
-            },
+            }),
             effect_store: EffectStore::default(),
             planechase: None,
             vanguard: None,

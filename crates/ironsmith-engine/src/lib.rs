@@ -88,6 +88,7 @@ pub mod object;
 pub(crate) mod object_query;
 pub(crate) mod party;
 pub(crate) mod perf;
+pub mod cow;
 pub use perf::{cow_copy_report, take_work_counts};
 pub mod player;
 pub mod prevention;

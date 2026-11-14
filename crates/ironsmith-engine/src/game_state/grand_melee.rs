@@ -151,7 +151,7 @@ impl GameState {
     fn grand_melee_lane(&self) -> GrandMeleeTurnLane {
         GrandMeleeTurnLane {
             turn: self.turn.clone(),
-            turn_store: self.turn_store.clone(),
+            turn_store: (*self.turn_store).clone(),
             stack: self.stack.to_vec(),
             combat: self.combat.clone(),
             range_of_influence: self.range_of_influence.clone(),
@@ -160,7 +160,7 @@ impl GameState {
 
     fn load_grand_melee_lane(&mut self, lane: &GrandMeleeTurnLane) {
         self.turn = lane.turn.clone();
-        self.turn_store = lane.turn_store.clone();
+        self.turn_store = crate::cow::CowArc::new(lane.turn_store.clone());
         self.stack = lane.stack.clone().into();
         self.combat = lane.combat.clone();
         self.range_of_influence = lane.range_of_influence.clone();
@@ -351,7 +351,7 @@ impl GameState {
                     },
                     turn_store: {
                         let mut store = if marker.number == state.focused_marker {
-                            self.turn_store.clone()
+                            (*self.turn_store).clone()
                         } else { marker.lane.turn_store.clone() };
                         store.copy_global_scheduled_skips_from(&self.turn_store);
                         store

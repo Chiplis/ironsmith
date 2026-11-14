@@ -379,12 +379,12 @@ impl GameState {
                 .push(Some(addition.step));
         }
 
-        let mut entries = self
-            .turn_store
+        let store = &mut *self.turn_store;
+        let mut entries = store
             .additional_phases
             .drain(..)
-            .zip(self.turn_store.additional_phase_orders.drain(..))
-            .zip(self.turn_store.additional_phase_only_steps.drain(..))
+            .zip(store.additional_phase_orders.drain(..))
+            .zip(store.additional_phase_only_steps.drain(..))
             .map(|((phase, order), only_step)| (phase, order, only_step))
             .collect::<Vec<_>>();
         entries.sort_by(|left, right| right.1.cmp(&left.1));

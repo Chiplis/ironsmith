@@ -3630,6 +3630,10 @@ pub fn compute_commander_actions(
     game: &GameState,
     player: PlayerId,
 ) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
+    // Without commanders there is nothing to offer; don't build a query.
+    if game.player(player).is_none_or(|player| player.get_commanders().is_empty()) {
+        return Ok(Vec::new());
+    }
     with_complete_legality_query(game, |checked| {
         Ok(compute_commander_actions_checked(checked, player))
     })
