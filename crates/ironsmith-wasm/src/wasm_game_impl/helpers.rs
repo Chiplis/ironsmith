@@ -1301,12 +1301,44 @@ pub(super) fn object_visible_to_perspective(
                 || game.can_review_teammate_hand(perspective, obj.owner)
                 || visible_via_view_effect;
         }
-        Zone::Library => return visible_via_view_effect,
+        Zone::Library => {
+            return visible_via_view_effect
+                || library_top_visible_to_perspective(game, perspective, obj.owner, id);
+        }
         _ if !obj.zone.is_hidden() => return true,
         _ => {}
     }
 
     visible_via_view_effect
+}
+
+/// The library-top rule the snapshot's `library_cards` uses ("You may look at
+/// the top card of your library any time", tops revealed by a static, or a
+/// granted look at another player's top), so an action on that card (Mystic
+/// Forge casting it) names the same card the pseudo-hand already shows.
+fn library_top_visible_to_perspective(
+    game: &GameState,
+    perspective: PlayerId,
+    owner: PlayerId,
+    id: ObjectId,
+) -> bool {
+    if game.player(owner).and_then(|player| player.library.last()) != Some(&id) {
+        return false;
+    }
+    // While a library-top announcement is open, a changed top stays hidden.
+    if game.has_library_top_announcement()
+        && !game.static_library_top_visible_during_announcements(owner)
+    {
+        return false;
+    }
+    let own = owner == perspective || game.controlling_player_for(owner) == perspective;
+    (own && crate::can_view_own_library_top(game, owner))
+        || crate::library_top_revealed_by_static_ability(game, owner)
+        || (!own
+            && game
+                .effect_store
+                .grant_registry
+                .grants_private_library_top_view_of(game, perspective, owner))
 }
 
 fn turn_face_up_permanent(action: &LegalAction) -> Option<ObjectId> {

@@ -5945,6 +5945,18 @@ retain_original_types: false, retain_original_name: false,
             assert_eq!(cards[0].name, "Library spell");
             assert_eq!(cards[0].show_in_pseudo_hand, playable);
             assert!(snapshot(&game, bob).players[0].library_cards.is_empty());
+            // A cast of the viewable top names that card (Mystic Forge), so the
+            // pseudo-hand entry can be dragged; the owner's opponent still sees
+            // a redacted action.
+            let cast = LegalAction::CastSpell {
+                spell_id: top,
+                from_zone: Zone::Library,
+                casting_method: ironsmith::alternative_cast::CastingMethod::Normal,
+            };
+            let own_view = crate::wasm_game_impl::build_action_view(&game, alice, None, 0, &cast, None);
+            assert_eq!(own_view.object_id, Some(top.0));
+            let other_view = crate::wasm_game_impl::build_action_view(&game, bob, None, 0, &cast, None);
+            assert_eq!(other_view.object_id, None);
             let land = CardBuilder::new(CardId::new(), "Library land")
                 .card_types(vec![CardType::Land])
                 .build();

@@ -3940,18 +3940,19 @@ fn mana_cost_can_be_paid_with_view_at_x(
     if resumable::mana_payment_is_assumed() {
         return true;
     }
-    let has_restricted_mana = game
+    let pool_restricted_mana = game
         .player(player)
-        .is_some_and(|player| !player.restricted_mana.is_empty())
-        || game.battlefield.iter().any(|source| {
-            view.abilities_rc(*source).is_some_and(|abilities| {
-                abilities.iter().any(|ability| {
-                    ability.functions_in(&Zone::Battlefield)
-                        && matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated)
-                        if !activated.mana_usage_restrictions.is_empty())
-                })
+        .is_some_and(|player| !player.restricted_mana.is_empty());
+    let restricted_mana_sources = game.battlefield.iter().any(|source| {
+        view.abilities_rc(*source).is_some_and(|abilities| {
+            abilities.iter().any(|ability| {
+                ability.functions_in(&Zone::Battlefield)
+                    && matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated)
+                    if !activated.mana_usage_restrictions.is_empty())
             })
-        });
+        })
+    });
+    let has_restricted_mana = pool_restricted_mana || restricted_mana_sources;
     if !cost.spending_restrictions().is_empty() || cost.has_waterbend_obligation()
         || has_restricted_mana
         || payment_requires_stateful_sources(game, player, view)
@@ -3973,12 +3974,13 @@ fn mana_cost_can_be_paid_with_view_at_x(
         .with_spend_policy(game.mana_spend_policy_for_cast(player, Some(spell_id)));
         request.x_value = x_value;
         // A menu bound overestimates spending permissions anyway, so it needs
-        // no proposal on the stack and therefore no copy of the game.
-        if resumable::bounding_payments()
-            && game
-                .player(player)
-                .is_some_and(|payer| payer.restricted_mana.is_empty())
-        {
+        // no proposal on the stack and therefore no copy of the game. Not
+        // when a source's mana is restricted ("Spend this mana only to cast
+        // an artifact spell", Mishra's Workshop): the menu's exact search
+        // that follows the bound would judge that restriction against the
+        // card in its origin zone, which is never a spell, and leave out a
+        // payable cast.
+        if resumable::bounding_payments() && !pool_restricted_mana && !restricted_mana_sources {
             return resumable::check_payment(game, &request);
         }
         // CR 601.2a: spending restrictions inspect the proposed spell on the
