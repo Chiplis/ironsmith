@@ -45,6 +45,40 @@ impl TapAction {
         })
     }
 
+    /// A batch that taps only permanents among `objects` needs the before
+    /// state of those alone: capture them at batch start, as `new` does for
+    /// the whole battlefield.
+    pub(crate) fn new_for(
+        game: &GameState,
+        actor: crate::ids::PlayerId,
+        provenance: crate::provenance::ProvNodeId,
+        objects: &[crate::ids::ObjectId],
+    ) -> Result<Self, ExecutionError> {
+        let mut before = std::collections::HashMap::new();
+        for &id in objects {
+            if before.contains_key(&id) || !game.battlefield.contains(&id) {
+                continue;
+            }
+            if let Some(object) = game.object(id) {
+                before.insert(
+                    id,
+                    ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)?,
+                );
+            }
+        }
+        Ok(Self {
+            cost_kind: None,
+            before,
+            events: Vec::new(),
+            objects: Vec::new(),
+            memory: Vec::new(),
+            actor,
+            provenance,
+            attack_declaration: false,
+            cost_source: None,
+        })
+    }
+
     /// Record the ability source whose cost this batch pays.
     pub(crate) fn paying_cost_of(mut self, source: Option<crate::ids::ObjectId>) -> Self {
         self.cost_source = source;
@@ -112,8 +146,16 @@ impl TapAction {
         crate::events::other::group_tap_state_events(game, &mut self.events, self.provenance)?;
         let mut sources=game.try_trigger_source_lookback_snapshots()?;
         let mut seen=sources.iter().map(|snapshot|snapshot.object_id).collect::<std::collections::HashSet<_>>();
-        for snapshot in crate::events::other::before_tap_state_snapshots(game)?.into_values() {
-            if seen.insert(snapshot.object_id){sources.push(snapshot);}
+        // The completed battlefield, through the shared snapshot cache so the
+        // control-transition publication that follows reads the same frames.
+        let effects = game.try_all_continuous_effects_arc()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
+        for id in game.battlefield.iter().copied().collect::<Vec<_>>() {
+            if seen.contains(&id) { continue; }
+            let Some(object) = game.object(id) else { continue; };
+            let snapshot = game.try_shared_object_snapshot_with_calculated_characteristics_and_effects(object, &effects)?;
+            seen.insert(id);
+            sources.push(snapshot.as_ref().clone());
         }
         for event in &mut self.events {*event=event.clone().with_lookback_source_snapshots(sources.clone());}
         Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -239,7 +281,7 @@ fn commit_tap_cost_objects_for_kind(
                 return Ok(EffectOutcome::count(0));
             }
         }
-        let mut action = TapAction::new(game, ctx.controller, ctx.provenance)?
+        let mut action = TapAction::new_for(game, ctx.controller, ctx.provenance, objects)?
             .with_cost_kind(cost_kind)
             .paying_cost_of(Some(ctx.source));
         for id in objects {
@@ -320,7 +362,7 @@ impl EffectExecutor for TapEffect {
             // The original tap batch begins after its mandatory face-up actions.
             let cost_source = (ctx.cause.cause_type == crate::events::cause::CauseType::Cost)
                 .then_some(ctx.source);
-            let mut action = TapAction::new(game, actor, ctx.provenance)?.paying_cost_of(cost_source);
+            let mut action = TapAction::new_for(game, actor, ctx.provenance, &selected)?.paying_cost_of(cost_source);
             let result_policy = if self.target.is_target() && self.target.is_single() && !crate::effects::target_packets::multiple(ctx,&self.target) {
                 ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
             } else { ObjectApplyResultPolicy::CountApplied };

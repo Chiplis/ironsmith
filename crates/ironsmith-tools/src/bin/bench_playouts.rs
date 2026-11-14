@@ -18,6 +18,7 @@
 //!   BENCH_VERBOSE=1      per-turn timing lines
 //!   BENCH_TRACE=1        per-decision trace lines
 //!   BENCH_ONLY=<n>       play only game index n of the sequence
+//!   BENCH_DECKS=a,b      play two text deck lists ("4 Name" lines) instead of the catalog
 //!   BENCH_SIZES=1        print the in-memory size of the main model types and exit
 //!   BENCH_EXACT_MENU=1   offer only actions with an exact payment proof (the engine
 //!                        default); otherwise menus are bounded like the browser's
@@ -157,6 +158,14 @@ impl DecisionMaker for RandomAgent<'_> {
                 ctx.actions
             );
             text.hash(&mut self.digest);
+        }
+        if std::env::var("BENCH_CLONE_PROBE").ok().and_then(|v| v.parse::<u64>().ok())
+            == Some(self.stats.priority_decisions)
+        {
+            eprintln!("clone probe at decision {} (battlefield {}):", self.stats.priority_decisions, game.battlefield.len());
+            for (name, ns) in game.clone_cost_report(200).into_iter().take(40) {
+                eprintln!("  {ns:>9} ns  {name}");
+            }
         }
         if self.flags.probe && self.stats.priority_decisions % PROBE_EVERY == 0 {
             self.probe(game, ctx.player);
@@ -579,13 +588,43 @@ fn run() {
     }
     let only: Option<usize> = std::env::var("BENCH_ONLY").ok().and_then(|s| s.parse().ok());
 
-    let decks = load_decks(&format);
+    // BENCH_DECKS=a.txt,b.txt plays only those two text lists ("4 Lightning Bolt"
+    // lines, '#' comments), seats swapping every other game, so a run can use the
+    // same decks as another engine's benchmark.
+    let fixed_decks: Option<Vec<Deck>> = std::env::var("BENCH_DECKS").ok().map(|list| {
+        list.split(',')
+            .map(|path| {
+                let text = std::fs::read_to_string(path)
+                    .unwrap_or_else(|e| panic!("read {path}: {e}"));
+                let mut cards = Vec::new();
+                for line in text.lines() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    let (count, name) = line.split_once(' ').expect("count name");
+                    let count: usize = count.trim_end_matches('x').parse().expect("count");
+                    cards.extend(std::iter::repeat_n(name.trim().to_string(), count));
+                }
+                let name = std::path::Path::new(path)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                Deck { name, cards }
+            })
+            .collect()
+    });
+    let fixed = fixed_decks.is_some();
+    let decks = fixed_decks.unwrap_or_else(|| load_decks(&format));
     assert!(decks.len() >= 2, "need at least two decks for {format}");
 
     // Fix the schedule first so only the scheduled decks' cards are compiled.
     let mut rng = Rng(seed);
     let schedule: Vec<(usize, usize, u64)> = (0..games)
-        .map(|_| {
+        .map(|g| {
+            if fixed {
+                return if g % 2 == 0 { (0, 1, rng.next()) } else { (1, 0, rng.next()) };
+            }
             let a = rng.below(decks.len());
             let mut b = rng.below(decks.len());
             if b == a {

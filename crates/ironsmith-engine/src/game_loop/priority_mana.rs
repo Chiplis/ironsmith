@@ -1106,6 +1106,13 @@ fn revalidate_authoritative_payment_plan(
     payment: &crate::mana_payment::PendingManaPayment,
     label: &str,
 ) -> Result<crate::mana_payment::ManaPaymentPlan, GameLoopError> {
+    // Bounded synchronous callers confirm the proposal in the world it was
+    // planned in; replanning it would repeat the same search.
+    if crate::game_loop::priority_analysis_bounded()
+        && crate::mana_payment::proposal_is_current(game, &payment.plan)
+    {
+        return Ok(payment.plan.clone());
+    }
     // A displayed first plan is already authoritative. Validate that same
     // proposal without running the optional ranking pass on confirmation.
     match crate::mana_payment::plan_first_mana_payment(game, &payment.request) {

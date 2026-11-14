@@ -44,6 +44,10 @@ impl WouldCreateTokensUnderControlMatcher {
 }
 
 impl ReplacementMatcher for WouldCreateTokensUnderControlMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::CreateTokens)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::CreateTokens {

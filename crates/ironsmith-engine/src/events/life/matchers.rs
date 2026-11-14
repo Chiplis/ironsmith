@@ -36,6 +36,10 @@ impl WouldGainLifeMatcher {
 }
 
 impl ReplacementMatcher for WouldGainLifeMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::LifeGain)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::LifeGain {
@@ -88,6 +92,10 @@ impl WouldLoseLifeMatcher {
 }
 
 impl ReplacementMatcher for WouldLoseLifeMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::LifeLoss)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::LifeLoss {

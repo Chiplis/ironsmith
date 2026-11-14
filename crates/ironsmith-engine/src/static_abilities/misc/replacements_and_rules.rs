@@ -18,6 +18,10 @@ struct ChosenTypeDamageSourceMatcher {
 }
 
 impl ReplacementMatcher for ChosenTypeDamageSourceMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Damage)
+    }
+
 
     fn matches_prepared_event(
         &self,
@@ -455,6 +459,10 @@ impl DamageAmountReplacementMatcher {
 }
 
 impl ReplacementMatcher for DamageAmountReplacementMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Damage)
+    }
+
 
     fn matches_prepared_event(
         &self,
@@ -2169,6 +2177,10 @@ struct DredgeDrawMatcher {
 }
 
 impl ReplacementMatcher for DredgeDrawMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Draw)
+    }
+
 
     fn matches_prepared_event(
         &self,

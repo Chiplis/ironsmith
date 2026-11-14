@@ -77,7 +77,14 @@ impl TurnEventRecord {
 /// append/retain/truncate changes only this collection; recorded snapshots are
 /// never edited through the collection's API.
 #[derive(Clone, Default)]
-pub struct TurnEventRecords(im::Vector<Arc<TurnEventRecord>>, SpellCastIndex);
+pub struct TurnEventRecords(im::Vector<Arc<TurnEventRecord>>, SpellCastIndex, OccurrenceIndex);
+
+/// Record positions by event occurrence (`TriggerEvent::occurrence_key`, the
+/// occurrence's allocation address, which stays unique while a record holds
+/// it). Identity lookups used to scan the whole turn's records once per
+/// event, making every event linear in the turn's length. Each mutator below
+/// keeps this equal to a fresh scan.
+type OccurrenceIndex = im::HashMap<usize, Arc<Vec<usize>>>;
 
 /// The spells of this collection's `SpellCastEvent` records, in record order.
 /// Every object snapshot asks for a spell's cast order, and scanning the
@@ -123,12 +130,65 @@ impl TurnEventRecords {
     fn reindex_cast_spells(&mut self) {
         self.1 = self.iter().filter_map(record_cast_spell).collect();
     }
+    fn reindex_occurrences(&mut self) {
+        let mut index: std::collections::HashMap<usize, Vec<usize>> = Default::default();
+        for (position, record) in self.0.iter().enumerate() {
+            index.entry(record.event.occurrence_key()).or_default().push(position);
+        }
+        self.2 = index.into_iter().map(|(key, positions)| (key, Arc::new(positions))).collect();
+    }
+    fn index_occurrence(&mut self, key: usize, position: usize) {
+        let mut positions = self.2.get(&key).map(|p| p.as_ref().clone()).unwrap_or_default();
+        let at = positions.partition_point(|&p| p < position);
+        positions.insert(at, position);
+        self.2.insert(key, Arc::new(positions));
+    }
+    fn unindex_occurrence(&mut self, key: usize, position: usize) {
+        let Some(existing) = self.2.get(&key) else { return };
+        let mut positions = existing.as_ref().clone();
+        positions.retain(|&p| p != position);
+        if positions.is_empty() {
+            self.2.remove(&key);
+        } else {
+            self.2.insert(key, Arc::new(positions));
+        }
+    }
+    /// Positions of the records of one occurrence, in record order.
+    pub(crate) fn occurrence_positions(&self, key: usize) -> &[usize] {
+        #[cfg(feature = "paranoid-invariants")]
+        {
+            let scanned: Vec<usize> = self
+                .iter()
+                .enumerate()
+                .filter(|(_, record)| record.event.occurrence_key() == key)
+                .map(|(position, _)| position)
+                .collect();
+            assert_eq!(
+                scanned.as_slice(),
+                self.2.get(&key).map_or(&[][..], |p| p.as_slice()),
+                "occurrence index diverged from the turn's records"
+            );
+        }
+        self.2.get(&key).map_or(&[], |positions| positions.as_slice())
+    }
+    pub(crate) fn contains_occurrence(&self, key: usize) -> bool {
+        !self.occurrence_positions(key).is_empty()
+    }
+    fn first_occurrence(&self, event: &TriggerEvent) -> Option<usize> {
+        self.occurrence_positions(event.occurrence_key()).first().copied()
+    }
     /// Replace the record at `index`; the index is rebuilt only when either
     /// record is a spell cast.
     fn set_record(&mut self, index: usize, record: Arc<TurnEventRecord>) {
         let touches_cast = record_cast_spell(&self.0[index]).is_some()
             || record_cast_spell(&record).is_some();
+        let old_key = self.0[index].event.occurrence_key();
+        let new_key = record.event.occurrence_key();
         self.0.set(index, record);
+        if old_key != new_key {
+            self.unindex_occurrence(old_key, index);
+            self.index_occurrence(new_key, index);
+        }
         if touches_cast {
             self.reindex_cast_spells();
         }
@@ -137,14 +197,13 @@ impl TurnEventRecords {
         if let Some(spell) = record_cast_spell(&record) {
             self.1.push_back(spell);
         }
+        let key = record.event.occurrence_key();
         self.0.push_back(record);
+        self.index_occurrence(key, self.0.len() - 1);
     }
     /// Preserve the original position while replacing an immutable receipt.
     pub(crate) fn replace_shared(&mut self, record: Arc<TurnEventRecord>) -> bool {
-        let Some(index) = self
-            .iter()
-            .position(|previous| previous.event.ptr_eq(&record.event))
-        else {
+        let Some(index) = self.first_occurrence(&record.event) else {
             return false;
         };
         self.set_record(index, record);
@@ -154,7 +213,7 @@ impl TurnEventRecords {
         &mut self,
         event: &TriggerEvent,
     ) -> Option<Arc<TurnEventRecord>> {
-        let index = self.iter().position(|record| record.event.ptr_eq(event))?;
+        let index = self.first_occurrence(event)?;
         let previous = &self[index];
         let mut observation = previous.event.clone();
         observation.inherit_trigger_capture(event);
@@ -178,7 +237,7 @@ impl TurnEventRecords {
         if event.completed_action_provenance().is_none() {
             return None;
         }
-        let Some(index) = self.iter().position(|record| record.event.ptr_eq(event)) else {
+        let Some(index) = self.first_occurrence(event) else {
             return None;
         };
         let previous = &self[index];
@@ -215,18 +274,32 @@ impl TurnEventRecords {
     pub fn clear(&mut self) {
         self.0.clear();
         self.1.clear();
+        self.2.clear();
     }
     pub fn truncate(&mut self, len: usize) {
+        if len >= self.0.len() {
+            return;
+        }
         self.0.truncate(len);
         if !self.1.is_empty() {
             self.reindex_cast_spells();
         }
+        self.reindex_occurrences();
     }
     pub fn retain(&mut self, mut keep: impl FnMut(&TurnEventRecord) -> bool) {
+        let before = self.0.len();
         self.0.retain(|record| keep(record));
+        if self.0.len() == before {
+            return;
+        }
         if !self.1.is_empty() {
             self.reindex_cast_spells();
         }
+        self.reindex_occurrences();
+    }
+    /// Records of one occurrence, in record order.
+    pub(crate) fn occurrence_records(&self, key: usize) -> impl Iterator<Item = &TurnEventRecord> {
+        self.occurrence_positions(key).iter().map(|&position| self.0[position].as_ref())
     }
 }
 
@@ -439,6 +512,16 @@ impl TurnHistory {
         self.checkpoint_targeted_objects.contains(&id)
     }
 
+    /// `projected_records` restricted to one occurrence, in the same order.
+    pub(crate) fn projected_occurrence_records(
+        &self,
+        key: usize,
+    ) -> impl Iterator<Item = &TurnEventRecord> {
+        self.event_records
+            .occurrence_records(key)
+            .chain(self.staged_event_records.occurrence_records(key))
+    }
+
     pub(crate) fn projected_records(&self) -> impl DoubleEndedIterator<Item = &TurnEventRecord> {
         self.event_records
             .iter()
@@ -591,19 +674,13 @@ impl TurnHistory {
     ) {
         // Republishing an observation already committed to history must not
         // create a second staged copy of the same physical event.
-        if self
-            .event_records
-            .iter()
-            .any(|record| record.event.occurrence_key() == event.occurrence_key())
-        {
+        if self.event_records.contains_occurrence(event.occurrence_key()) {
             return;
         }
         let completed = self
             .staged_event_records
-            .iter()
-            .find(|record| {
-                record.event.ptr_eq(event) && record.event.completed_action_provenance().is_some()
-            })
+            .occurrence_records(event.occurrence_key())
+            .find(|record| record.event.completed_action_provenance().is_some())
             .cloned();
         let (event, object_snapshot, source_snapshot) = match completed {
             Some(record) => (
@@ -613,8 +690,10 @@ impl TurnHistory {
             ),
             None => (event.clone(), object_snapshot, source_snapshot),
         };
-        self.staged_event_records
-            .retain(|record| record.event.occurrence_key() != event.occurrence_key());
+        if self.staged_event_records.contains_occurrence(event.occurrence_key()) {
+            self.staged_event_records
+                .retain(|record| record.event.occurrence_key() != event.occurrence_key());
+        }
         self.remove_staged_event(event.provenance());
         let record = Arc::new(TurnEventRecord {
             event: event.clone(),
@@ -635,10 +714,8 @@ impl TurnHistory {
         // the staged owner's frozen payload instead of downgrading its receipt.
         let completed = self
             .staged_event_records
-            .iter()
-            .find(|record| {
-                record.event.ptr_eq(event) && record.event.completed_action_provenance().is_some()
-            })
+            .occurrence_records(event.occurrence_key())
+            .find(|record| record.event.completed_action_provenance().is_some())
             .cloned();
         let (event, object_snapshot, source_snapshot) = match completed {
             Some(record) => (
@@ -648,14 +725,12 @@ impl TurnHistory {
             ),
             None => (event.clone(), object_snapshot, source_snapshot),
         };
-        self.staged_event_records
-            .retain(|record| record.event.occurrence_key() != event.occurrence_key());
+        if self.staged_event_records.contains_occurrence(event.occurrence_key()) {
+            self.staged_event_records
+                .retain(|record| record.event.occurrence_key() != event.occurrence_key());
+        }
         self.remove_staged_event(event.provenance());
-        if self
-            .event_records
-            .iter()
-            .any(|record| record.event.occurrence_key() == event.occurrence_key())
-        {
+        if self.event_records.contains_occurrence(event.occurrence_key()) {
             return;
         }
         self.turn_counters.increment_event_kind(event.kind());

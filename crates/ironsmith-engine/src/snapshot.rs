@@ -1365,9 +1365,11 @@ impl ObjectSnapshot {
             snapshot.loyalty = calculated.loyalty;
             snapshot.defense = calculated.defense;
             snapshot.aura_attach_filter = calculated.aura_attach_filter.clone();
-            snapshot.abilities = Arc::new(calculated.abilities.to_vec());
-            snapshot.ability_origins = Some(Arc::new((0..calculated.abilities.len())
-                .map(|slot| calculated.abilities.origin(slot).expect("calculated origin").clone()).collect()));
+            snapshot.abilities = calculated.abilities.shared();
+            snapshot.ability_origins = Some(calculated.abilities.shared_slot_origins().unwrap_or_else(|| {
+                Arc::new((0..calculated.abilities.len())
+                    .map(|slot| calculated.abilities.origin(slot).expect("calculated origin").clone()).collect())
+            }));
         }
     }
 

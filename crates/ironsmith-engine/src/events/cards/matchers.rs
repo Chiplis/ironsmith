@@ -37,6 +37,10 @@ impl WouldDrawCardMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawCardMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Draw)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Draw {
@@ -79,6 +83,10 @@ impl WouldDrawCardWhileLibraryEmptyMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawCardWhileLibraryEmptyMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Draw)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Draw {
@@ -127,6 +135,10 @@ impl WouldDrawFirstCardMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawFirstCardMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Draw)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Draw {
@@ -239,6 +251,10 @@ impl WouldDiscardMatcher {
 }
 
 impl ReplacementMatcher for WouldDiscardMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Discard)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Discard {

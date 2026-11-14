@@ -2777,7 +2777,7 @@ impl GameState {
             flags.tapped_permanents.remove(&id);
             flags.summoning_sick.remove(&id);
             flags.controller_at_last_refresh.remove(&id);
-            flags.control_event_snapshots.remove(&id);
+            flags.control_baseline_departed.insert(id);
             flags.damage_marked.remove(&id);
             flags.damage_marked_by_source.remove(&id);
             flags.tap_on_held_phase_in.remove(&id);
@@ -5358,12 +5358,16 @@ impl GameState {
                 return event;
             }
         }
-        for receipt in self.retained_action_observations() {
-            // Any other occurrence leaves the event as it is; skipping it here
-            // avoids one whole-event copy per history record.
-            if !event.ptr_eq(receipt) {
-                continue;
-            }
+        // Any other occurrence leaves the event as it is: visit only this
+        // occurrence's records, in `retained_action_observations` order.
+        let key = event.occurrence_key();
+        let receipts = self
+            .turn_store
+            .turn_history
+            .projected_occurrence_records(key)
+            .chain(self.turn_store.action_history.occurrence_records(key))
+            .map(|record| &record.event);
+        for receipt in receipts {
             event = event.with_retained_trigger_capture(receipt);
             if event.triggers_captured() {
                 break;

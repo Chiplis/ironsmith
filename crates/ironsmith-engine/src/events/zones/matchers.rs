@@ -188,6 +188,10 @@ impl WouldDieMatcher {
 }
 
 impl ReplacementMatcher for WouldDieMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -273,6 +277,10 @@ impl WouldDieDamagedBySourceThisTurnMatcher {
 }
 
 impl ReplacementMatcher for WouldDieDamagedBySourceThisTurnMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -411,6 +419,10 @@ impl WouldDieDamagedByFilteredSourceThisTurnMatcher {
 }
 
 impl ReplacementMatcher for WouldDieDamagedByFilteredSourceThisTurnMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -488,6 +500,10 @@ impl WouldGoToGraveyardMatcher {
 }
 
 impl ReplacementMatcher for WouldGoToGraveyardMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -576,6 +592,10 @@ impl WouldChangeZoneMatcher {
 }
 
 impl ReplacementMatcher for WouldChangeZoneMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange)
+    }
+
 
     fn applies_from_entering_source(&self) -> bool {
         self.filter.source
@@ -733,6 +753,10 @@ impl WouldBeExiledMatcher {
 }
 
 impl ReplacementMatcher for WouldBeExiledMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -825,6 +849,10 @@ impl WouldGoToHandMatcher {
 }
 
 impl ReplacementMatcher for WouldGoToHandMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {
@@ -878,6 +906,10 @@ impl WouldLeaveBattlefieldMatcher {
 }
 
 impl ReplacementMatcher for WouldLeaveBattlefieldMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::ZoneChange {

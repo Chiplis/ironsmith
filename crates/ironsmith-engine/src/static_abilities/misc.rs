@@ -2209,6 +2209,10 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLand
 struct ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
+    }
+
 
     fn applies_from_entering_source(&self) -> bool {
         true
@@ -2250,6 +2254,10 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLands
 struct ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
+    }
+
 
     fn applies_from_entering_source(&self) -> bool {
         true
@@ -2283,6 +2291,10 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatc
 struct ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
+    }
+
 
     fn applies_from_entering_source(&self) -> bool {
         true
@@ -2422,6 +2434,10 @@ struct ThisWouldEnterTappedUnlessConditionMatcher {
 }
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessConditionMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
+    }
+
 
     fn applies_from_entering_source(&self) -> bool {
         true
@@ -2548,6 +2564,10 @@ impl StaticAbilityKind for Bloodthirst {
 struct ThisWouldEnterWithBloodthirstMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
+    }
+
 
     fn applies_from_entering_source(&self) -> bool {
         true
@@ -3084,6 +3104,10 @@ struct ThisWouldEnterWithCountersIfConditionMatcher {
 }
 
 impl ReplacementMatcher for ThisWouldEnterWithCountersIfConditionMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
+    }
+
 
     fn applies_from_entering_source(&self) -> bool {
         true

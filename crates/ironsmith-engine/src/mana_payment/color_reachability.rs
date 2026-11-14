@@ -59,7 +59,7 @@ fn production(game: &GameState, controller: crate::ids::PlayerId,
     Some(())
 }
 
-fn stable_characteristics(game: &GameState, view: &DerivedGameView<'_>) -> bool {
+pub(super) fn stable_characteristics(game: &GameState, view: &DerivedGameView<'_>) -> bool {
     // Explicit object targets and fixed scalar modifications cannot change from
     // paying mana, tapping, or recording a chosen color. Unknown descriptors are
     // intentionally excluded, including duration predicates and copy/text roots.
@@ -88,7 +88,7 @@ fn stable_characteristics(game: &GameState, view: &DerivedGameView<'_>) -> bool 
 // A reduction bound to an inactive/non-mana ability of its own source cannot
 // change this mana closure. Keep all unbound, cross-source and potentially
 // mana-relevant modifiers conservative; increases may add state-changing costs.
-fn has_relevant_cost_modifiers(game: &GameState, view: &DerivedGameView<'_>) -> bool {
+pub(super) fn has_relevant_cost_modifiers(game: &GameState, view: &DerivedGameView<'_>) -> bool {
     use crate::static_abilities::ActivatedAbilityCostCondition;
     view.activated_ability_cost_modifier_sources().into_iter().any(|source| {
         let Some(object) = game.object(source) else { return true; };

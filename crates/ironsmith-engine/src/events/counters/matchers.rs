@@ -45,6 +45,10 @@ impl WouldPutCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldPutCountersMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::PutCounters)
+    }
+
     fn matches_prepared_event(
         &self,
         event: &dyn GameEventType,
@@ -116,6 +120,10 @@ impl WouldRemoveCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldRemoveCountersMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::RemoveCounters)
+    }
+
     fn matches_prepared_event(
         &self,
         event: &dyn GameEventType,

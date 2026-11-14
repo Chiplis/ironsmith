@@ -65,6 +65,7 @@ mod opaque_library_epochs;
 pub(crate) use announcement_visibility::{LibraryTopAnnouncement, LibraryTopVisibilityBoundary};
 mod attachment_transitions;
 mod control_transitions;
+mod clone_probe;
 mod phasing_transitions;
 mod planechase;
 mod range_of_influence;
@@ -501,12 +502,9 @@ struct BattlefieldFlags {
     /// controller lets refreshes turn every control transition (including a
     /// static control effect appearing or expiring) into summoning sickness.
     controller_at_last_refresh: HashMap<ObjectId, PlayerId>,
-    /// Exact-incarnation characteristics at the previous authoritative
-    /// instruction/continuous-state boundary, for CR 603.10d lookback.
-    /// Shared: these flags are copied on write, and each baseline snapshot
-    /// is replaced whole, never edited.
-    control_event_snapshots: HashMap<ObjectId, Arc<ObjectSnapshot>>,
-    control_source_lookback: Vec<Arc<ObjectSnapshot>>,
+    /// Permanents that left the battlefield since the last control-transition
+    /// publication; they are not continuing incarnations for its comparison.
+    control_baseline_departed: HashSet<ObjectId>,
     control_transition_pending: bool,
     /// Damage marked on creatures (cleared at cleanup step).
     damage_marked: HashMap<ObjectId, u32>,
@@ -5422,6 +5420,9 @@ pub struct GameState {
     /// Players who have an enduring story (Storied) this game.
     enduring_story: HashSet<PlayerId>,
     battlefield_flags: Arc<BattlefieldFlags>,
+    /// The world at the last control-transition publication, with compact
+    /// per-permanent facts (see `control_transitions.rs`).
+    control_baseline: Option<Arc<control_transitions::ControlBaseline>>,
 
     combat_transients: Arc<CombatTransientState>,
 
@@ -6062,6 +6063,7 @@ impl GameState {
             named_player_designations: HashMap::new(),
             enduring_story: HashSet::new(),
             battlefield_flags: Arc::new(BattlefieldFlags::default()),
+            control_baseline: None,
             combat_transients: Arc::new(CombatTransientState::default()),
             auxiliary_tracking: Arc::new(AuxiliaryTrackingState::default()),
             object_annotations: Arc::new(ObjectAnnotationStore::default()),
@@ -7342,6 +7344,10 @@ impl GameState {
         // A characteristic query can populate the cache while another refresh
         // is pending. Every later context mutation must invalidate that view.
         self.runtime_cache.characteristics_cache.bump_epoch();
+    }
+
+    pub(crate) fn mutation_revision_for_fingerprint(&self) -> u64 {
+        self.mutation_revision
     }
 
     pub(crate) fn continuous_context_revision(&self) -> u64 {

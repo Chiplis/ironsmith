@@ -438,6 +438,11 @@ impl CalculatedAbilities {
     pub fn shared(&self) -> Arc<Vec<Ability>> {
         self.definitions.shared()
     }
+    /// The origin of every ability slot, shared when the list holds exactly
+    /// one origin per slot.
+    pub fn shared_slot_origins(&self) -> Option<Arc<Vec<AbilityOrigin>>> {
+        (self.origins.len() == self.definitions.len()).then(|| Arc::clone(&self.origins))
+    }
     pub fn to_vec(&self) -> Vec<Ability> {
         self.definitions.to_vec()
     }

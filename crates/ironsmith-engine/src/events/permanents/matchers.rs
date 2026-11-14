@@ -80,6 +80,10 @@ impl WouldBecomeUntappedMatcher {
 }
 
 impl ReplacementMatcher for WouldBecomeUntappedMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::BecomeUntapped)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::BecomeUntapped {
@@ -125,6 +129,10 @@ impl WouldBeDestroyedMatcher {
 }
 
 impl ReplacementMatcher for WouldBeDestroyedMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Destroy)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
@@ -152,6 +160,10 @@ impl ReplacementMatcher for WouldBeDestroyedMatcher {
 pub struct ThisWouldBeDestroyedMatcher;
 
 impl ReplacementMatcher for ThisWouldBeDestroyedMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Destroy)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
@@ -187,6 +199,10 @@ impl AttachedPermanentWouldBeDestroyedMatcher {
 }
 
 impl ReplacementMatcher for AttachedPermanentWouldBeDestroyedMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Destroy)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
@@ -231,6 +247,10 @@ impl WouldBeSacrificedMatcher {
 }
 
 impl ReplacementMatcher for WouldBeSacrificedMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Sacrifice)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Sacrifice {
@@ -274,6 +294,10 @@ impl RegenerationShieldMatcher {
 }
 
 impl ReplacementMatcher for RegenerationShieldMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::Destroy)
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {

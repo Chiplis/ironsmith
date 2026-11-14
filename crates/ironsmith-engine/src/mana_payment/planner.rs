@@ -26,6 +26,8 @@ const MAX_PLANS_PER_SELECTION: usize = 16;
 const MAX_TOTAL_PLANS: usize = 32;
 /// Search units a deferred prompt may spend before opening unfunded.
 const PROMPT_FIRST_PLAN_BUDGET: usize = 16;
+/// First-plan budget for synchronous callers that chose bounded priority menus.
+const BOUNDED_FIRST_PLAN_BUDGET: usize = 64;
 
 /// Diagnostic counters for the most recent `plan_mana_payment` call.
 ///
@@ -145,11 +147,95 @@ pub fn plan_prompt_mana_payment(
     request: &ManaPaymentRequest,
     initial: bool,
 ) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
-    if initial && crate::game_loop::priority_analysis_deferred() {
+    let started = std::time::Instant::now();
+    let result = plan_prompt_mana_payment_inner(game, request, initial);
+    LAST_PROMPT_PLAN.with(|slot| {
+        *slot.borrow_mut() = match &result {
+            Ok(plan) if plan.payable && crate::game_loop::priority_analysis_bounded() => {
+                Some((payment_world_fingerprint(game), plan.id, plan.request_hash))
+            }
+            _ => None,
+        };
+    });
+    static DIAG: std::sync::OnceLock<Option<u128>> = std::sync::OnceLock::new();
+    if let Some(threshold) = *DIAG.get_or_init(|| {
+        std::env::var("IRONSMITH_PLAN_DIAG").ok().and_then(|v| v.parse::<u128>().ok())
+    }) && started.elapsed().as_micros() >= threshold
+    {
+        eprintln!(
+            "PLANDIAG {:?} us={} payable={:?} perf={:?} reason={:?} cost={:?}",
+            game.object(request.source).map(|o| o.name.to_string()),
+            started.elapsed().as_micros(),
+            result.as_ref().map(|plan| plan.payable),
+            last_mana_payment_perf(),
+            request.reason,
+            request.cost,
+        );
+    }
+    result
+}
+
+thread_local! {
+    /// The last proposal this thread planned, with the payment-world
+    /// fingerprint it was planned in (see `payment_world_fingerprint`).
+    static LAST_PROMPT_PLAN: std::cell::RefCell<Option<(u64, u64, u64)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Everything a whole-cost mana plan reads, condensed: object and effect
+/// revisions, turn position, every player's pools, the battlefield with its
+/// tapped flags, and the stack. Equal fingerprints mean the plan's world is
+/// unchanged.
+pub(crate) fn payment_world_fingerprint(game: &GameState) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    game.mutation_revision_for_fingerprint().hash(&mut hasher);
+    game.effect_store.continuous_effects.revision().hash(&mut hasher);
+    game.continuous_context_revision().hash(&mut hasher);
+    game.turn.turn_number.hash(&mut hasher);
+    format!("{:?}{:?}", game.turn.phase, game.turn.step).hash(&mut hasher);
+    for player in game.players.iter() {
+        player.id.hash(&mut hasher);
+        player.life.hash(&mut hasher);
+        format!("{:?}{:?}", player.mana_pool, player.restricted_mana).hash(&mut hasher);
+        player.hand.len().hash(&mut hasher);
+    }
+    for &id in game.battlefield.iter() {
+        id.hash(&mut hasher);
+        game.is_tapped(id).hash(&mut hasher);
+    }
+    game.stack.len().hash(&mut hasher);
+    game.effect_store.pending_trigger_events.len().hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Whether `plan` is the proposal this thread made for an unchanged world, so
+/// confirming it needs no second search. Planned activations still validate
+/// each step as they execute, and the payment itself is checked after them.
+pub(crate) fn proposal_is_current(game: &GameState, plan: &ManaPaymentPlan) -> bool {
+    LAST_PROMPT_PLAN.with(|slot| {
+        slot.borrow().is_some_and(|(fingerprint, id, hash)| {
+            id == plan.id && hash == plan.request_hash && fingerprint == payment_world_fingerprint(game)
+        })
+    })
+}
+
+fn plan_prompt_mana_payment_inner(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    initial: bool,
+) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
+    let deferred = crate::game_loop::priority_analysis_deferred();
+    if initial && (deferred || crate::game_loop::priority_analysis_bounded()) {
         // Simple boards finish the ordinary first-plan search in a handful of
         // nodes. Only a search that exceeds this deterministic budget opens
-        // unfunded and leaves the funded proposal to the background worker.
-        match ManaPaymentAnalysis::new(game, request.clone()).step(PROMPT_FIRST_PLAN_BUDGET) {
+        // unfunded and leaves the funded proposal to the background worker
+        // (browser) or to the player's own activations (bounded synchronous
+        // callers). The proposal is a convenience: proving a cost unpayable is
+        // the search's exponential worst case, and the payment window itself
+        // still validates every activation exactly.
+        let budget = if deferred { PROMPT_FIRST_PLAN_BUDGET } else { BOUNDED_FIRST_PLAN_BUDGET };
+        match ManaPaymentAnalysis::new(game, request.clone()).step(budget) {
             Some(Ok(plan)) => return Ok(plan),
             Some(Err(ManaPaymentFailure::NoLegalPlan
                 | ManaPaymentFailure::SearchLimitReached
@@ -1120,6 +1206,10 @@ fn remaining_mana_is_unpayable(game: &GameState, request: &ManaPaymentRequest) -
     if finite_fixed_production_is_insufficient(game, request, &view) {
         return true;
     }
+    if super::tally_bound::rules_out_payment(game, request, &view) {
+        debug_check_tally_veto(game, request);
+        return true;
+    }
     if super::sources::has_potential_mana_triggers(game, &view)
         || super::sources::has_mana_modifying_replacements(game)
         || !every_mana_ability_is_single_use(game, request, &view)
@@ -1166,6 +1256,37 @@ fn remaining_mana_is_unpayable(game: &GameState, request: &ManaPaymentRequest) -
         &view,
         &reserved,
     )
+}
+
+/// `IRONSMITH_TALLY_CHECK=1`: every tally veto is checked against the
+/// complete search with the affordability gate disabled. A plan found there
+/// means the bound is unsound; that is a bug, so stop loudly.
+fn debug_check_tally_veto(game: &GameState, request: &ManaPaymentRequest) {
+    thread_local! {
+        static CHECKING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !*ENABLED.get_or_init(|| std::env::var_os("IRONSMITH_TALLY_CHECK").is_some())
+        || CHECKING.with(|c| c.get())
+    {
+        return;
+    }
+    CHECKING.with(|c| c.set(true));
+    let found = ManaPaymentPlanner {
+        skip_affordability_gate: true,
+        lazy_candidates: true,
+        ..Default::default()
+    }
+    .first_plan(game, request);
+    CHECKING.with(|c| c.set(false));
+    if let Ok(plan) = found {
+        panic!(
+            "tally bound vetoed a payable cost: source={:?} cost={:?} plan={:?}",
+            game.object(request.source).map(|o| o.name.to_string()),
+            request.cost,
+            plan.mana_ability_steps
+        );
+    }
 }
 
 /// Reserved permanents whose every mana ability taps them. A reserved source

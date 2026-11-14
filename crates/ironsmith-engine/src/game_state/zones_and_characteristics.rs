@@ -7382,6 +7382,22 @@ retain_original_types: false, retain_original_name: false,
             let Some(perm) = self.object(perm_id) else {
                 continue;
             };
+            let chars = self.calculated_characteristics_arc(perm_id);
+            // Only a permanent with such a grant can matter; build its filter
+            // context only then.
+            let grants = |ability: &crate::static_abilities::StaticAbility| {
+                ability.activate_abilities_as_though_haste().is_some()
+            };
+            let has_grant = match &chars {
+                Some(chars) => chars.static_abilities.iter().any(grants),
+                None => perm.abilities.iter().any(|ability| {
+                    matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+                        if ability.functions_in(&perm.zone) && grants(static_ability))
+                }),
+            };
+            if !has_grant {
+                continue;
+            }
             let controller = self.controller_of(perm);
             let filter_ctx = self.filter_context_for(controller, Some(perm_id));
             let matches_grant = |ability: &crate::static_abilities::StaticAbility| {
@@ -7390,7 +7406,7 @@ retain_original_types: false, retain_original_name: false,
                         .activate_abilities_as_though_haste()
                         .is_some_and(|grant| grant.filter.matches(object, &filter_ctx, self))
             };
-            let granted = if let Some(chars) = self.calculated_characteristics(perm_id) {
+            let granted = if let Some(chars) = chars {
                 chars
                     .static_abilities
                     .iter()
