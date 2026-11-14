@@ -31,12 +31,12 @@ struct Opportunity {
     required_face_name:Option<String>,
     eligibility:Option<(crate::target::ObjectFilter,crate::filter::FilterContext)>,
 }
-fn opportunities(game:&GameState,hands:&[(PlayerId,Vec<ObjectSnapshot>)])->Result<Vec<Opportunity>,ExecutionError> {
+fn opportunities(game:&GameState,hands:&[(PlayerId,Vec<crate::ids::ObjectId>)])->Result<Vec<Opportunity>,ExecutionError> {
     let mut result=Vec::new();
-    for (player,cards) in hands {for card in cards {
-        let Some(object)=game.object(card.object_id).filter(|object|object.zone==Zone::Hand && object.stable_id==card.stable_id && object.owner==*player) else{continue};
+    for (player,cards) in hands {for &card_id in cards {
+        let Some(object)=game.object(card_id).filter(|object|object.zone==Zone::Hand && object.owner==*player) else{continue};
         let mut methods=object.alternative_casts.iter().cloned().enumerate().map(|(index,method)|(method,Some(index),None,None)).collect::<Vec<_>>();
-        for grant in game.effect_store.grant_registry.potential_hand_reveal_grants(game,card.object_id,Zone::Hand,*player) {
+        for grant in game.effect_store.grant_registry.potential_hand_reveal_grants(game,card_id,Zone::Hand,*player) {
             if let Grantable::AlternativeCast(method)=&grant.grantable {
                 let source=grant.source.source_id();
                 let context=crate::grant_registry::grant_filter_context(&game.filter_context_for(*player,None),&grant,game).with_source_snapshot(ObjectSnapshot::from_object_id(game,source));
@@ -48,7 +48,8 @@ fn opportunities(game:&GameState,hands:&[(PlayerId,Vec<ObjectSnapshot>)])->Resul
             // Freeze authority, not a decision against one proposal's event.
             // The completed simultaneous event may contain other matching
             // departures. Each distinct grant instance remains independent.
-            result.push(Opportunity {card:ObjectSnapshot::from_object_id(game,card.object_id).unwrap_or_else(||card.clone()),player:*player,method:method.clone(),intrinsic,required_face_name:required_face_name.clone(),eligibility:eligibility.clone()});
+            let Some(card)=ObjectSnapshot::from_object_id(game,card_id) else{continue};
+            result.push(Opportunity {card,player:*player,method:method.clone(),intrinsic,required_face_name:required_face_name.clone(),eligibility:eligibility.clone()});
         }
     }}
     Ok(result)
@@ -68,8 +69,16 @@ fn expand_occurrences(game:&GameState,event:&TriggerEvent,offers:Vec<Opportunity
 /// only if a real departure subsequently completes; a prevented proposal never
 /// reveals a card. Grants lost in this same departure remain in this packet.
 pub(crate) fn freeze_hand_reveal_frame(game:&GameState,_event:&TriggerEvent)->Result<HandRevealFrame,ExecutionError> {
-    let hands=game.players.iter().map(|player|(player.id,player.hand.iter().filter_map(|id|ObjectSnapshot::from_object_id(game,*id)).collect::<Vec<_>>())).collect::<Vec<_>>();
-    let opportunities=opportunities(game,&hands)?;
+    let hand_ids=game.players.iter().map(|player|(player.id,player.hand.iter().copied().filter(|id|game.object(*id).is_some()).collect::<Vec<_>>())).collect::<Vec<_>>();
+    let opportunities=opportunities(game,&hand_ids)?;
+    // A frame without opportunities is used only for a private hidden
+    // identity, and only tracked hidden cards have one: skip the hand
+    // snapshots nothing will read.
+    if opportunities.is_empty() && !game.tracks_hidden_cards() {
+        let hands=game.players.iter().map(|player|(player.id,Vec::new())).collect();
+        return Ok(HandRevealFrame {frozen_revision:game.mutation_revision(),hands,opportunities,identity_world:None});
+    }
+    let hands=hand_ids.iter().map(|(player,ids)|(*player,ids.iter().filter_map(|id|ObjectSnapshot::from_object_id(game,*id)).collect::<Vec<_>>())).collect::<Vec<_>>();
     let identity_world=if !opportunities.is_empty() || hands.iter().any(|(_,cards)|cards.iter().any(|card|game.hidden_identity_is_private(card.object_id))) {
         let mut world=game.clone();
         world.effect_store.pending_hand_reveal_windows.clear();
@@ -157,7 +166,11 @@ pub(crate) fn answer_hand_reveal_windows(game:&mut GameState,ctx:&mut ExecutionC
             }
         }
         if !opened.is_empty() {
-            let opened_hands=window.frame.hands.iter().map(|(player,cards)|(*player,cards.iter().filter(|card|opened.contains(&card.object_id)).cloned().collect())).collect::<Vec<_>>();
+            // The event-time card is still that incarnation only with its stable id.
+            let opened_hands=window.frame.hands.iter().map(|(player,cards)|(*player,cards.iter()
+                .filter(|card|opened.contains(&card.object_id)
+                    && event_world.object(card.object_id).is_some_and(|object|object.stable_id==card.stable_id))
+                .map(|card|card.object_id).collect())).collect::<Vec<_>>();
             let new=opportunities(event_world,&opened_hands)?;
             let old=offers.iter().filter_map(|offer|offer.intrinsic.map(|index|(offer.card.object_id,index))).collect::<std::collections::HashSet<_>>();
             offers.extend(new.into_iter().filter(|offer|offer.intrinsic.is_some_and(|index|!old.contains(&(offer.card.object_id,index)))));

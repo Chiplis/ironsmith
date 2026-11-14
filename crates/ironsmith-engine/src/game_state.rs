@@ -1725,6 +1725,8 @@ struct RuntimeCacheState {
     /// Memo of whether any continuous effect can change when a permanent taps
     /// or a mana pool changes, keyed on the continuous-effects revision.
     tap_sensitivity: Cell<Option<(u64, bool)>>,
+    /// `object_ids_in_deterministic_order` for one object membership.
+    deterministic_object_ids: RefCell<Option<(u64, Arc<Vec<ObjectId>>)>>,
     /// While a batch of simultaneous untaps runs, `untap` records that the
     /// can't-effect tracker is stale here instead of rebuilding it once per
     /// permanent. `None` outside a batch; `Some(pending)` inside one.
@@ -1806,6 +1808,7 @@ impl Clone for RuntimeCacheState {
             continuous_state_turn_number: Cell::new(self.continuous_state_turn_number.get()),
             turn_sensitivity: Cell::new(self.turn_sensitivity.get()),
             tap_sensitivity: Cell::new(self.tap_sensitivity.get()),
+            deterministic_object_ids: RefCell::new(self.deterministic_object_ids.borrow().clone()),
             cant_update_deferral: Cell::new(self.cant_update_deferral.get()),
             // A clone taken inside a derivation is not itself inside one.
             derived_tap_read_depth: Cell::new(0),
@@ -1871,6 +1874,7 @@ impl RuntimeCacheState {
             continuous_state_turn_number: Cell::new(1),
             turn_sensitivity: Cell::new(None),
             tap_sensitivity: Cell::new(None),
+            deterministic_object_ids: RefCell::new(None),
             cant_update_deferral: Cell::new(None),
             derived_tap_read_depth: Cell::new(0),
             derived_state_read_tapped: Cell::new(false),
@@ -5424,6 +5428,8 @@ pub struct GameState {
     /// per-permanent facts (see `control_transitions.rs`).
     control_baseline: Option<Arc<control_transitions::ControlBaseline>>,
     clone_counter: crate::perf::CloneCounter,
+    /// Bumped whenever an object enters or leaves the object map.
+    object_membership_revision: u64,
 
     combat_transients: Arc<CombatTransientState>,
 
@@ -6086,6 +6092,7 @@ impl GameState {
             battlefield_flags: Arc::new(BattlefieldFlags::default()),
             control_baseline: None,
             clone_counter: Default::default(),
+            object_membership_revision: 0,
             combat_transients: Arc::new(CombatTransientState::default()),
             auxiliary_tracking: Arc::new(AuxiliaryTrackingState::default()),
             object_annotations: Arc::new(ObjectAnnotationStore::default()),
@@ -11301,6 +11308,7 @@ impl GameState {
 
         self.next_object_id = self.next_object_id.max(id.0.saturating_add(1));
         self.object_store.changes.record(id);
+        self.object_membership_revision += 1;
         self.objects.insert(id, Arc::new(object));
         self.object_store.render_changes.record(id);
         self.stable_id_index.insert(stable_id, id);

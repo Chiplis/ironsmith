@@ -4929,6 +4929,24 @@ impl GameState {
 
     /// Returns all object IDs in deterministic order.
     pub fn object_ids_in_deterministic_order(&self) -> Vec<ObjectId> {
+        // Without merged permanents the order is the sorted membership, which
+        // changes only as objects enter or leave the map.
+        let merged = !self.commander_tracking.merged_permanents.is_empty();
+        if !merged
+            && let Some((revision, ids)) = self.runtime_cache.deterministic_object_ids.borrow().as_ref()
+            && *revision == self.object_membership_revision
+        {
+            return ids.as_ref().clone();
+        }
+        let ids = self.compute_object_ids_in_deterministic_order();
+        if !merged {
+            *self.runtime_cache.deterministic_object_ids.borrow_mut() =
+                Some((self.object_membership_revision, Arc::new(ids.clone())));
+        }
+        ids
+    }
+
+    fn compute_object_ids_in_deterministic_order(&self) -> Vec<ObjectId> {
         // A battlefield merge has already absorbed its incoming permanent
         // before transferring counters/attachments. Its exact old Object is
         // retained only for those state-transfer operations, not as another
