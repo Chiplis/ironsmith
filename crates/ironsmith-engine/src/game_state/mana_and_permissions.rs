@@ -618,7 +618,9 @@ impl GameState {
             self.battlefield_flags_mut().control_transition_pending = true;
             return;
         }
-        self.battlefield_flags_mut().control_transition_pending = false;
+        if self.battlefield_flags.control_transition_pending {
+            self.battlefield_flags_mut().control_transition_pending = false;
+        }
         let controllers = self
             .battlefield
             .iter()
@@ -659,7 +661,10 @@ impl GameState {
             self.clear_ring_bearer(player);
         }
 
-        self.battlefield_flags_mut().controller_at_last_refresh = controllers;
+        // The flags are copied on write: assign only what changed.
+        if self.battlefield_flags.controller_at_last_refresh != controllers {
+            self.battlefield_flags_mut().controller_at_last_refresh = controllers;
+        }
         self.remember_face_down_exile_source_controllers();
         self.remember_linked_exile_inspection_entitlements();
         for &id in &changed {

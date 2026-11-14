@@ -713,6 +713,13 @@ fn run() {
         }
     }
 
+    if std::env::var_os("IRONSMITH_COW_PROBE").is_some() {
+        eprintln!("copy-on-write copies by site:");
+        for (site, count) in ironsmith::cow_copy_report().into_iter().take(40) {
+            eprintln!("  {count:>8}  {site}");
+        }
+    }
+
     // Aggregate.
     let n = results.len().max(1) as f64;
     let engine_total: f64 = results.iter().map(|r| r.engine.as_secs_f64()).sum();

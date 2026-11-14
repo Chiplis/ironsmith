@@ -43,3 +43,36 @@ pub(crate) fn maybe_grow<R>(
 ) -> R {
     callback()
 }
+
+/// `IRONSMITH_COW_PROBE=1`: count copy-on-write copies of shared game-state
+/// parts by call site (`cow_copy_report`).
+fn cow_probe_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("IRONSMITH_COW_PROBE").is_some())
+}
+
+thread_local! {
+    static COW_COPIES: std::cell::RefCell<std::collections::HashMap<(&'static str, &'static std::panic::Location<'static>), u64>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+#[track_caller]
+pub(crate) fn note_shared_copy(part: &'static str, copies: bool) {
+    if copies && cow_probe_enabled() {
+        let site = std::panic::Location::caller();
+        COW_COPIES.with(|map| *map.borrow_mut().entry((part, site)).or_insert(0) += 1);
+    }
+}
+
+/// Copy counts by (part, call site), most frequent first.
+pub fn cow_copy_report() -> Vec<(String, u64)> {
+    COW_COPIES.with(|map| {
+        let mut out: Vec<_> = map
+            .borrow()
+            .iter()
+            .map(|((part, site), count)| (format!("{part} {}:{}", site.file(), site.line()), *count))
+            .collect();
+        out.sort_by(|a, b| b.1.cmp(&a.1));
+        out
+    })
+}

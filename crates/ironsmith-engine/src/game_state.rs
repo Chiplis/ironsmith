@@ -5475,16 +5475,22 @@ fn normalize_draft_note_card_name(name: &str) -> String {
 }
 
 impl GameState {
+    #[track_caller]
     fn battlefield_flags_mut(&mut self) -> &mut BattlefieldFlags {
+        crate::perf::note_shared_copy("battlefield_flags", Arc::strong_count(&self.battlefield_flags) > 1);
         Arc::make_mut(&mut self.battlefield_flags)
     }
 
+    #[track_caller]
     fn combat_transients_mut(&mut self) -> &mut CombatTransientState {
+        crate::perf::note_shared_copy("combat_transients", Arc::strong_count(&self.combat_transients) > 1);
         Arc::make_mut(&mut self.combat_transients)
     }
 
+    #[track_caller]
     fn auxiliary_tracking_mut(&mut self) -> &mut AuxiliaryTrackingState {
         self.zone_view_changes.record(());
+        crate::perf::note_shared_copy("auxiliary_tracking", Arc::strong_count(&self.auxiliary_tracking) > 1);
         Arc::make_mut(&mut self.auxiliary_tracking)
     }
 
@@ -5933,7 +5939,9 @@ impl GameState {
         std::mem::replace(&mut self.choice_store_mut().resolving_mode_context, context)
     }
 
+    #[track_caller]
     fn choice_store_mut(&mut self) -> &mut ChoiceStore {
+        crate::perf::note_shared_copy("choice_store", Arc::strong_count(&self.choice_store) > 1);
         Arc::make_mut(&mut self.choice_store)
     }
 
@@ -5956,22 +5964,30 @@ impl GameState {
             .copied()
     }
 
+    #[track_caller]
     fn cast_permission_flags_mut(&mut self) -> &mut CastPermissionFlags {
         self.zone_view_changes.record(());
+        crate::perf::note_shared_copy("cast_permission_flags", Arc::strong_count(&self.cast_permission_flags) > 1);
         Arc::make_mut(&mut self.cast_permission_flags)
     }
 
+    #[track_caller]
     fn object_annotations_mut(&mut self) -> &mut ObjectAnnotationStore {
+        crate::perf::note_shared_copy("object_annotations", Arc::strong_count(&self.object_annotations) > 1);
         Arc::make_mut(&mut self.object_annotations)
     }
 
+    #[track_caller]
     fn commander_tracking_mut(&mut self) -> &mut CommanderTracking {
         self.zone_view_changes.record(());
+        crate::perf::note_shared_copy("commander_tracking", Arc::strong_count(&self.commander_tracking) > 1);
         Arc::make_mut(&mut self.commander_tracking)
     }
 
+    #[track_caller]
     fn exile_tracking_mut(&mut self) -> &mut ExileTracking {
         self.zone_view_changes.record(());
+        crate::perf::note_shared_copy("exile_tracking", Arc::strong_count(&self.exile_tracking) > 1);
         Arc::make_mut(&mut self.exile_tracking)
     }
 

@@ -2348,6 +2348,27 @@ impl GrantRegistry {
         &self,
         game: &crate::GameState,
     ) -> Vec<(ObjectId, PlayerId)> {
+        // Only a battlefield source's static inspection pair entitles anyone
+        // (see `collect_static_grants`); most boards have none, and then the
+        // whole static-grant collection would be discarded.
+        let may_entitle = game.battlefield.iter().any(|&id| {
+            if game.is_phased_out(id) {
+                return false;
+            }
+            let Some(chars) = game.calculated_characteristics_arc(id) else {
+                return true;
+            };
+            chars.abilities.iter().any(|ability| {
+                matches!(&ability.kind, crate::ability::AbilityKind::Static(s)
+                    if s.source_exiled_inspection_pair().is_some())
+            }) || chars
+                .static_abilities
+                .iter()
+                .any(|s| s.source_exiled_inspection_pair().is_some())
+        });
+        if !may_entitle {
+            return Vec::new();
+        }
         self.collect_static_grants(game).1
     }
 
@@ -2412,7 +2433,7 @@ impl GrantRegistry {
                 );
                 return;
             }
-            let Some(characteristics) = game.current_characteristics(source_id) else {
+            let Some(characteristics) = game.current_characteristics_shared(source_id) else {
                 return;
             };
             let linked_half_abilities = linked_half

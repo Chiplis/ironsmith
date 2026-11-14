@@ -6797,6 +6797,34 @@ retain_original_types: false, retain_original_name: false,
         Some(chars)
     }
 
+    /// `current_characteristics`, sharing the cached calculation instead of
+    /// copying it whenever the current value is exactly that calculation.
+    pub fn current_characteristics_shared(
+        &self,
+        id: ObjectId,
+    ) -> Option<Arc<CalculatedCharacteristics>> {
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield && self.is_phased_out(id) {
+            return None;
+        }
+        let Some(chars) = self.calculated_characteristics_arc(id) else {
+            return self.current_characteristics(id).map(Arc::new);
+        };
+        if chars.validate_numeric_range().is_err() {
+            return None;
+        }
+        let renormalizes = object.zone != crate::zone::Zone::Battlefield
+            && chars.static_abilities.iter().any(|ability| {
+                ability.id() == crate::static_abilities::StaticAbilityId::Changeling
+            });
+        if renormalizes {
+            let mut chars = chars.as_ref().clone();
+            self.normalize_current_characteristic_subtypes(object, &mut chars);
+            return Some(Arc::new(chars));
+        }
+        Some(chars)
+    }
+
     fn normalize_current_characteristic_subtypes(
         &self,
         object: &Object,
@@ -6962,7 +6990,7 @@ retain_original_types: false, retain_original_name: false,
 
     /// Return the object's current name in its zone.
     pub fn current_name(&self, id: ObjectId) -> Option<String> {
-        Some(self.current_characteristics(id)?.name.to_owned_string())
+        Some(self.current_characteristics_shared(id)?.name.to_owned_string())
     }
 
     /// Return the object's current controller in its zone.
@@ -7214,37 +7242,37 @@ retain_original_types: false, retain_original_name: false,
 
     /// Return the object's current card types in its zone.
     pub fn current_card_types(&self, id: ObjectId) -> Option<Vec<crate::types::CardType>> {
-        Some(self.current_characteristics(id)?.card_types.to_vec())
+        Some(self.current_characteristics_shared(id)?.card_types.to_vec())
     }
 
     /// Return the object's current subtypes in its zone.
     pub fn current_subtypes(&self, id: ObjectId) -> Option<Vec<crate::types::Subtype>> {
-        Some(self.current_characteristics(id)?.subtypes.to_vec())
+        Some(self.current_characteristics_shared(id)?.subtypes.to_vec())
     }
 
     /// Return the object's current supertypes in its zone.
     pub fn current_supertypes(&self, id: ObjectId) -> Option<Vec<crate::types::Supertype>> {
-        Some(self.current_characteristics(id)?.supertypes.to_vec())
+        Some(self.current_characteristics_shared(id)?.supertypes.to_vec())
     }
 
     /// Return the object's current colors in its zone.
     pub fn current_colors(&self, id: ObjectId) -> Option<crate::color::ColorSet> {
-        Some(self.current_characteristics(id)?.colors)
+        Some(self.current_characteristics_shared(id)?.colors)
     }
 
     /// Return the object's current power in its zone, if any.
     pub fn current_power(&self, id: ObjectId) -> Option<i32> {
-        self.current_characteristics(id)?.power
+        self.current_characteristics_shared(id)?.power
     }
 
     /// Return the object's current toughness in its zone, if any.
     pub fn current_toughness(&self, id: ObjectId) -> Option<i32> {
-        self.current_characteristics(id)?.toughness
+        self.current_characteristics_shared(id)?.toughness
     }
 
     /// Return the abilities an object currently has in its zone.
     pub fn current_abilities(&self, id: ObjectId) -> Option<Vec<Ability>> {
-        Some(self.current_characteristics(id)?.abilities.to_vec())
+        Some(self.current_characteristics_shared(id)?.abilities.to_vec())
     }
 
     /// Return a specific current ability by index.
