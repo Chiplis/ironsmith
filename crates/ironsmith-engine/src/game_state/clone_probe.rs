@@ -10,7 +10,7 @@ impl GameState {
                 let started = std::time::Instant::now();
                 for _ in 0..iterations {
                     let copy = std::hint::black_box(&$field).clone();
-                    drop(std::hint::black_box(copy));
+                    let _ = std::hint::black_box(copy);
                 }
                 out.push(($name, started.elapsed().as_nanos() / u128::from(iterations.max(1))));
             }};

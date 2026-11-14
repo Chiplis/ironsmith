@@ -147,7 +147,13 @@ pub fn plan_prompt_mana_payment(
     request: &ManaPaymentRequest,
     initial: bool,
 ) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
-    let started = std::time::Instant::now();
+    // `Instant::now` panics on wasm32-unknown-unknown: read the clock only
+    // for the native diagnostic (the env lookup is always None on wasm).
+    static DIAG: std::sync::OnceLock<Option<u128>> = std::sync::OnceLock::new();
+    let diag = *DIAG.get_or_init(|| {
+        std::env::var("IRONSMITH_PLAN_DIAG").ok().and_then(|v| v.parse::<u128>().ok())
+    });
+    let started = diag.map(|_| std::time::Instant::now());
     let result = plan_prompt_mana_payment_inner(game, request, initial);
     LAST_PROMPT_PLAN.with(|slot| {
         *slot.borrow_mut() = match &result {
@@ -157,10 +163,8 @@ pub fn plan_prompt_mana_payment(
             _ => None,
         };
     });
-    static DIAG: std::sync::OnceLock<Option<u128>> = std::sync::OnceLock::new();
-    if let Some(threshold) = *DIAG.get_or_init(|| {
-        std::env::var("IRONSMITH_PLAN_DIAG").ok().and_then(|v| v.parse::<u128>().ok())
-    }) && started.elapsed().as_micros() >= threshold
+    if let (Some(threshold), Some(started)) = (diag, started)
+        && started.elapsed().as_micros() >= threshold
     {
         eprintln!(
             "PLANDIAG {:?} us={} payable={:?} perf={:?} reason={:?} cost={:?}",
