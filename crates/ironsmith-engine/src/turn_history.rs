@@ -77,7 +77,17 @@ impl TurnEventRecord {
 /// append/retain/truncate changes only this collection; recorded snapshots are
 /// never edited through the collection's API.
 #[derive(Clone, Default)]
-pub struct TurnEventRecords(im::Vector<Arc<TurnEventRecord>>);
+pub struct TurnEventRecords(im::Vector<Arc<TurnEventRecord>>, SpellCastIndex);
+
+/// The spells of this collection's `SpellCastEvent` records, in record order.
+/// Every object snapshot asks for a spell's cast order, and scanning the
+/// whole turn's records for it made each snapshot linear in the turn's
+/// length. Each mutator below keeps this equal to a fresh scan.
+type SpellCastIndex = im::Vector<ObjectId>;
+
+fn record_cast_spell(record: &TurnEventRecord) -> Option<ObjectId> {
+    record.event.downcast::<SpellCastEvent>().map(|event| event.spell)
+}
 
 impl std::fmt::Debug for TurnEventRecords {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -101,7 +111,32 @@ impl TurnEventRecords {
     pub(crate) fn last_shared(&self) -> Option<Arc<TurnEventRecord>> {
         self.0.back().cloned()
     }
+    /// The spells cast by this collection's records, in record order.
+    pub(crate) fn cast_spells(&self) -> &im::Vector<ObjectId> {
+        #[cfg(feature = "paranoid-invariants")]
+        assert!(
+            self.1.iter().copied().eq(self.iter().filter_map(record_cast_spell)),
+            "spell-cast index diverged from the turn's records"
+        );
+        &self.1
+    }
+    fn reindex_cast_spells(&mut self) {
+        self.1 = self.iter().filter_map(record_cast_spell).collect();
+    }
+    /// Replace the record at `index`; the index is rebuilt only when either
+    /// record is a spell cast.
+    fn set_record(&mut self, index: usize, record: Arc<TurnEventRecord>) {
+        let touches_cast = record_cast_spell(&self.0[index]).is_some()
+            || record_cast_spell(&record).is_some();
+        self.0.set(index, record);
+        if touches_cast {
+            self.reindex_cast_spells();
+        }
+    }
     pub(crate) fn push_shared(&mut self, record: Arc<TurnEventRecord>) {
+        if let Some(spell) = record_cast_spell(&record) {
+            self.1.push_back(spell);
+        }
         self.0.push_back(record);
     }
     /// Preserve the original position while replacing an immutable receipt.
@@ -112,7 +147,7 @@ impl TurnEventRecords {
         else {
             return false;
         };
-        self.0.set(index, record);
+        self.set_record(index, record);
         true
     }
     pub(crate) fn retain_trigger_capture_receipt(
@@ -128,7 +163,7 @@ impl TurnEventRecords {
             object_snapshot: previous.object_snapshot.clone(),
             source_snapshot: previous.source_snapshot.clone(),
         });
-        self.0.set(index, record.clone());
+        self.set_record(index, record.clone());
         Some(record)
     }
 
@@ -170,21 +205,28 @@ impl TurnEventRecords {
                     .or(source_snapshot),
             })
         };
-        self.0.set(index, record.clone());
+        self.set_record(index, record.clone());
         Some(record)
     }
 
     pub fn push(&mut self, record: TurnEventRecord) {
-        self.0.push_back(Arc::new(record));
+        self.push_shared(Arc::new(record));
     }
     pub fn clear(&mut self) {
         self.0.clear();
+        self.1.clear();
     }
     pub fn truncate(&mut self, len: usize) {
         self.0.truncate(len);
+        if !self.1.is_empty() {
+            self.reindex_cast_spells();
+        }
     }
     pub fn retain(&mut self, mut keep: impl FnMut(&TurnEventRecord) -> bool) {
         self.0.retain(|record| keep(record));
+        if !self.1.is_empty() {
+            self.reindex_cast_spells();
+        }
     }
 }
 
@@ -2014,12 +2056,14 @@ impl TurnHistory {
 
     pub fn spell_cast_order(&self, spell: ObjectId) -> Option<u32> {
         let mut order = 0u32;
-        for record in self.projected_records() {
-            let Some(event) = record.event.downcast::<SpellCastEvent>() else {
-                continue;
-            };
+        for cast in self
+            .event_records
+            .cast_spells()
+            .iter()
+            .chain(self.staged_event_records.cast_spells().iter())
+        {
             order = order.saturating_add(1);
-            if event.spell == spell {
+            if *cast == spell {
                 return Some(order);
             }
         }
