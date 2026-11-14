@@ -7249,7 +7249,22 @@ retain_original_types: false, retain_original_name: false,
 
     /// Return a specific current ability by index.
     pub fn current_ability(&self, id: ObjectId, ability_index: usize) -> Option<Ability> {
-        self.current_abilities(id)?.get(ability_index).cloned()
+        // `current_characteristics` answers from the calculated value when
+        // there is one, rejecting only a numeric range error; nothing it does
+        // afterwards touches the abilities. Read that one ability from the
+        // shared value instead of cloning every characteristic and the whole
+        // ability list for it.
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield && self.is_phased_out(id) {
+            return None;
+        }
+        let Some(chars) = self.calculated_characteristics_arc(id) else {
+            return self.current_abilities(id)?.get(ability_index).cloned();
+        };
+        if chars.validate_numeric_range().is_err() {
+            return None;
+        }
+        chars.abilities.get(ability_index).cloned()
     }
 
     /// Return a specific current activated ability by index.
