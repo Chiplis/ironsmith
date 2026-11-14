@@ -78,7 +78,7 @@ fn check_and_apply_sbas_with_inner(
     if !complete_trigger_class_choices_before_continuation(game,trigger_queue,decision_maker)? {return Ok(());}
     // Between actions every zone move has redirected the effects that follow
     // an object, so effects locked only to departed objects can go.
-    //AB game.remove_effects_with_retired_locked_targets();
+    game.remove_effects_with_retired_locked_targets();
     // Refresh continuous state (static ability effects and "can't" effect tracking)
     // before checking SBAs. This ensures the layer system is up to date.
     game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
