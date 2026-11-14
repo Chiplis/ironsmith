@@ -2036,7 +2036,8 @@ fn add_non_battlefield_ability_actions(
                     continue;
                 };
                 if !ability.functions_in(&obj.zone)
-                    && crate::activation_zone_permissions::permission(game, source_id, ability_index).is_none() {
+                    && (!view.may_have_zone_activation_permissions()
+                        || crate::activation_zone_permissions::permission(game, source_id, ability_index).is_none()) {
                     continue;
                 }
                 let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {

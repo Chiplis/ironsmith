@@ -419,6 +419,7 @@ fn execute_transaction_with_policy<T, E, P: TransactionParticipant + ?Sized>(
             return Ok(pending_value());
         }
     }
+    crate::perf::work(crate::perf::Work::Transaction);
     let context = ctx.capture_checkpoint();
     let checkpoint = game.clone();
     let result = body(game, ctx, &checkpoint);

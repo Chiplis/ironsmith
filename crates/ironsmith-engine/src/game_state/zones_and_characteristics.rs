@@ -1539,8 +1539,16 @@ impl GameState {
         self.object_store.changes.record(old_id);
         self.object_store.render_changes.record(old_id);
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
-        self.auxiliary_tracking_mut().acquired_spell_keywords.remove(&old_id);
-        self.auxiliary_tracking_mut().duration_windows.remove(&crate::game_state::LibraryTopAnnouncement::Cast(old_id));
+        // The parts below are copied on write: touch them only to change them
+        // (their accessors also mark the zone view changed; keep that).
+        self.zone_view_changes.record(());
+        if self.auxiliary_tracking.acquired_spell_keywords.contains_key(&old_id) {
+            self.auxiliary_tracking_mut().acquired_spell_keywords.remove(&old_id);
+        }
+        let cast_window = crate::game_state::LibraryTopAnnouncement::Cast(old_id);
+        if self.auxiliary_tracking.duration_windows.contains_key(&cast_window) {
+            self.auxiliary_tracking_mut().duration_windows.remove(&cast_window);
+        }
         self.effect_store.continuous_effects.remove_source_bound_static_effects(old_id);
         self.turn_store.forecast_revealed_hand_cards.remove(&old_id);
         self.turn_store
@@ -1564,9 +1572,13 @@ impl GameState {
         self.forget_public_hidden_card_reveal(old_id);
         self.clear_hidden_face_down_cast_claim(old_id);
         self.stable_id_index.remove(&old_object.stable_id);
-        self.commander_tracking_mut()
-            .declined_command_zone_moves
-            .remove(&old_id);
+        if self.commander_tracking.declined_command_zone_moves.contains(&old_id) {
+            self.commander_tracking_mut()
+                .declined_command_zone_moves
+                .remove(&old_id);
+        } else {
+            self.zone_view_changes.record(());
+        }
         let old_zone = old_object.zone;
         let owner = old_object.owner;
 
@@ -1601,7 +1613,9 @@ impl GameState {
 
         // Remove from old zone index
         self.remove_from_zone_index(old_id, old_zone, owner);
-        self.object_annotations_mut().turn_face_up_before_action.remove(&old_id);
+        if self.object_annotations.turn_face_up_before_action.contains(&old_id) {
+            self.object_annotations_mut().turn_face_up_before_action.remove(&old_id);
+        }
 
         self.clear_incarnation_custom_statuses(old_id);
 
@@ -1968,7 +1982,9 @@ impl GameState {
         // The designation belongs to an exact origin and only its immediate
         // spell successor. A different departure consumes the continuation;
         // copies, later recasts, and resolving permanents cannot inherit it.
-        if let Some(statuses)=self.exile_tracking_mut().cast_continuation_statuses.remove(&old_id) {
+        self.zone_view_changes.record(());
+        if let Some(statuses)=self.exile_tracking.cast_continuation_statuses.contains_key(&old_id)
+            .then(|| self.exile_tracking_mut().cast_continuation_statuses.remove(&old_id)).flatten() {
             for name in statuses {
                 if let Some(old_statuses)=self.battlefield_flags_mut().custom_statuses.get_mut(&old_id) { old_statuses.remove(&name); }
                 if new_zone==Zone::Stack { self.set_custom_status_in_zone(new_id,&name,Zone::Stack,true); }
@@ -5024,12 +5040,19 @@ retain_original_types: false, retain_original_name: false,
         // Casting face up from concealed exile is not a turn-face-up action.
         // The isolated declaration clears old concealment; its caller reapplies
         // the face-down flag only for a declared face-down cast.
-        let concealed = {
+        let flags = &self.battlefield_flags;
+        let concealed = if flags.manifested.contains(&id)
+            || flags.cloaked.contains(&id)
+            || flags.described_face_down.contains(&id)
+            || flags.face_down.contains(&id)
+        {
             let flags = self.battlefield_flags_mut();
             flags.manifested.remove(&id);
             flags.cloaked.remove(&id);
             flags.described_face_down.remove(&id);
             flags.face_down.remove(&id)
+        } else {
+            false
         };
         self.object_mut(id).expect("proposal source exists").zone = Zone::Stack;
         if concealed {
@@ -5753,6 +5776,7 @@ retain_original_types: false, retain_original_name: false,
         }
         let marker = crate::continuous::provisional_condition_marker();
         // `try_get_all_continuous_effects`, keeping the discovered part.
+        crate::perf::work(crate::perf::Work::StaticRegeneration);
         let (statics, validated) =
             crate::static_ability_processor::try_generate_continuous_effects_and_final_characteristics(
                 self,
@@ -7609,7 +7633,9 @@ retain_original_types: false, retain_original_name: false,
         self.effect_store
             .mana_spend_effects
             .retain_effect_permissions(self.turn.turn_number);
-        self.battlefield_flags_mut().damage_persists.clear();
+        if !self.battlefield_flags.damage_persists.is_empty() {
+            self.battlefield_flags_mut().damage_persists.clear();
+        }
         let vanguard_hand_modifiers = self
             .vanguard
             .as_ref()

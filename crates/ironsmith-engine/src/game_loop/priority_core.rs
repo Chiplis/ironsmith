@@ -282,6 +282,7 @@ fn priority_menu_actions(
     game: &GameState,
     player: PlayerId,
 ) -> Result<Vec<LegalAction>, GameLoopError> {
+    crate::perf::work(crate::perf::Work::Menu);
     if priority_analysis_bounded() {
         // One menu asks about the same proposed spells and snapshot facts
         // through several payment routes. An analysis session bound to this

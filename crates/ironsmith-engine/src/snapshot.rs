@@ -1026,6 +1026,7 @@ impl ObjectSnapshot {
     /// Captures all relevant characteristics at the current moment.
     /// Game state is required to access battlefield state like tapped, flipped, etc.
     pub fn from_object(obj: &Object, game: &crate::game_state::GameState) -> Self {
+        crate::perf::work(crate::perf::Work::SnapshotBuild);
         let mut abilities = crate::continuous::CalculatedAbilities::from(obj.abilities.clone());
         abilities.bind_host(obj.id);
         let was_enchanted = obj.attachments.iter().any(|&attachment_id| {

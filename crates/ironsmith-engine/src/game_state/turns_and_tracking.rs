@@ -2286,7 +2286,11 @@ impl GameState {
     /// A resumed instruction rebuilds its active scopes from the checkpoint.
     /// Pending routing must not become another active, independently-lived scope.
     pub fn clear_pending_decision_controllers(&mut self) {
-        self.auxiliary_tracking_mut().pending_decision_controllers = None;
+        if self.auxiliary_tracking.pending_decision_controllers.is_some() {
+            self.auxiliary_tracking_mut().pending_decision_controllers = None;
+        } else {
+            self.zone_view_changes.record(());
+        }
     }
 
     /// Capture routing at the prompt before instruction scopes unwind. Capture

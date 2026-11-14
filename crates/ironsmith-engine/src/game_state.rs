@@ -5423,6 +5423,7 @@ pub struct GameState {
     /// The world at the last control-transition publication, with compact
     /// per-permanent facts (see `control_transitions.rs`).
     control_baseline: Option<Arc<control_transitions::ControlBaseline>>,
+    clone_counter: crate::perf::CloneCounter,
 
     combat_transients: Arc<CombatTransientState>,
 
@@ -5636,7 +5637,11 @@ impl GameState {
     }
 
     pub(crate) fn clear_pending_sector_designations(&mut self) {
-        self.auxiliary_tracking_mut().pending_sector_designations = None;
+        if self.auxiliary_tracking.pending_sector_designations.is_some() {
+            self.auxiliary_tracking_mut().pending_sector_designations = None;
+        } else {
+            self.zone_view_changes.record(());
+        }
     }
 
     /// Pin the trigger-source look-back for a batch of simultaneous events:
@@ -6080,6 +6085,7 @@ impl GameState {
             enduring_story: HashSet::new(),
             battlefield_flags: Arc::new(BattlefieldFlags::default()),
             control_baseline: None,
+            clone_counter: Default::default(),
             combat_transients: Arc::new(CombatTransientState::default()),
             auxiliary_tracking: Arc::new(AuxiliaryTrackingState::default()),
             object_annotations: Arc::new(ObjectAnnotationStore::default()),

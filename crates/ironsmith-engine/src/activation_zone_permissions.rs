@@ -9,6 +9,22 @@ use crate::filter::ObjectFilterExt as _;
 
 /// Find a current permission for this exact authored ability occurrence.
 /// A keyword identity on the card alone never qualifies another ability.
+/// Whether any battlefield static could make `permission` answer `Some`.
+/// False proves every `permission` query on this game is `None`.
+pub(crate) fn any_permission_source(view:&crate::derived_view::DerivedGameView<'_>,game:&GameState)->bool {
+    game.battlefield.iter().copied().filter(|id|!game.is_phased_out(*id)).any(|grant_source| {
+        view.static_abilities_rc(grant_source).is_some_and(|statics| statics.iter().any(|ability| {
+            ability.compiled_model().is_some_and(|model| {
+                let payload=match &model.payload {
+                    ironsmith_core::StaticAbilityPayload::Conditional{ability,..}=>&ability.payload,
+                    payload=>payload,
+                };
+                matches!(payload, ironsmith_core::StaticAbilityPayload::ActivateAbilitiesAsThoughZone{..})
+            })
+        }))
+    })
+}
+
 pub fn permission(game:&GameState,source:ObjectId,index:usize)->Option<(Zone,Zone)> {
     let object=game.object(source)?;
     let actor=game.turn.priority_player.unwrap_or_else(||game.controller_of(object));
@@ -23,7 +39,8 @@ pub fn permission(game:&GameState,source:ObjectId,index:usize)->Option<(Zone,Zon
         if controller!=actor {continue;}
         let Some(statics)=view.static_abilities_rc(grant_source) else{continue};
         for ability in statics.iter() {
-            if !ability.is_active(game,grant_source){continue;}
+            // The payload is read first: almost no static grants this, and
+            // whether one is active means evaluating its condition.
             let Some(model)=ability.compiled_model() else{continue};
             let payload=match &model.payload {
                 ironsmith_core::StaticAbilityPayload::Conditional{ability,..}=>&ability.payload,
@@ -31,6 +48,7 @@ pub fn permission(game:&GameState,source:ObjectId,index:usize)->Option<(Zone,Zon
             };
             let ironsmith_core::StaticAbilityPayload::ActivateAbilitiesAsThoughZone{filter,designation,from,as_though,..}=payload else{continue};
             if from==as_though || object.zone!=*from {continue;}
+            if !ability.is_active(game,grant_source){continue;}
             let occurrence=match &mut occurrence {
                 Some(occurrence)=>&*occurrence,
                 slot=>{

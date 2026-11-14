@@ -76,3 +76,69 @@ pub fn cow_copy_report() -> Vec<(String, u64)> {
         out
     })
 }
+
+/// Exact work counters for throughput investigation (thread-local, cheap).
+#[derive(Clone, Copy, Debug)]
+pub enum Work {
+    GameClone,
+    StaticRegeneration,
+    ReplacementRegeneration,
+    BatchCharacteristicObjects,
+    SingleCharacteristic,
+    RefreshFull,
+    RefreshFixedPoint,
+    SnapshotBuild,
+    Transaction,
+    Menu,
+}
+
+const WORK_KINDS: usize = 10;
+const WORK_NAMES: [&str; WORK_KINDS] = [
+    "game clones",
+    "static regenerations",
+    "replacement regenerations",
+    "batch characteristic objects",
+    "single characteristic calcs",
+    "full refreshes",
+    "fixed-point refreshes",
+    "snapshot builds",
+    "transactions",
+    "menus",
+];
+
+thread_local! {
+    static WORK: std::cell::Cell<[u64; WORK_KINDS]> = const { std::cell::Cell::new([0; WORK_KINDS]) };
+}
+
+#[inline]
+pub(crate) fn work(kind: Work) {
+    work_n(kind, 1);
+}
+
+#[inline]
+pub(crate) fn work_n(kind: Work, n: u64) {
+    WORK.with(|cell| {
+        let mut counts = cell.get();
+        counts[kind as usize] += n;
+        cell.set(counts);
+    });
+}
+
+/// Counts since the last call, then reset.
+pub fn take_work_counts() -> Vec<(&'static str, u64)> {
+    WORK.with(|cell| {
+        let counts = cell.replace([0; WORK_KINDS]);
+        WORK_NAMES.iter().copied().zip(counts).collect()
+    })
+}
+
+/// A field whose clone counts game-state clones.
+#[derive(Debug, Default)]
+pub(crate) struct CloneCounter;
+
+impl Clone for CloneCounter {
+    fn clone(&self) -> Self {
+        work(Work::GameClone);
+        CloneCounter
+    }
+}

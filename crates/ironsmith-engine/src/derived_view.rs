@@ -44,6 +44,7 @@ pub(crate) struct DerivedGameView<'a> {
     battlefield_misses: Cell<u8>,
     abilities_cache: RefCell<FxMap<ObjectId, Arc<Vec<Ability>>>>,
     ability_index_summary_cache: RefCell<FxMap<ObjectId, Rc<AbilityIndexSummary>>>,
+    zone_activation_permission_sources: Cell<Option<bool>>,
     static_abilities_cache:
         RefCell<FxMap<ObjectId, Arc<Vec<crate::static_abilities::StaticAbility>>>>,
     zone_candidates: RefCell<FxMap<Option<Zone>, Vec<ObjectId>>>,
@@ -450,6 +451,7 @@ impl<'a> DerivedGameView<'a> {
             battlefield_misses: Cell::new(0),
             abilities_cache: RefCell::new(FxMap::default()),
             ability_index_summary_cache: RefCell::new(FxMap::default()),
+            zone_activation_permission_sources: Cell::new(None),
             static_abilities_cache: RefCell::new(FxMap::default()),
             zone_candidates: RefCell::new(FxMap::default()),
             battlefield_creatures: RefCell::new(None),
@@ -499,6 +501,7 @@ impl<'a> DerivedGameView<'a> {
             battlefield_misses: Cell::new(0),
             abilities_cache: RefCell::new(FxMap::default()),
             ability_index_summary_cache: RefCell::new(FxMap::default()),
+            zone_activation_permission_sources: Cell::new(None),
             static_abilities_cache: RefCell::new(FxMap::default()),
             zone_candidates: RefCell::new(FxMap::default()),
             battlefield_creatures: RefCell::new(None),
@@ -540,6 +543,7 @@ impl<'a> DerivedGameView<'a> {
         self.battlefield_misses.set(0);
         self.abilities_cache.borrow_mut().clear();
         self.ability_index_summary_cache.borrow_mut().clear();
+        self.zone_activation_permission_sources.set(None);
         self.static_abilities_cache.borrow_mut().clear();
         self.zone_candidates.borrow_mut().clear();
         self.battlefield_controlled.borrow_mut().clear();
@@ -879,6 +883,22 @@ impl<'a> DerivedGameView<'a> {
         Some(abilities)
     }
 
+    /// False when no battlefield static can grant activation as though from
+    /// another zone, so `activation_zone_permissions::permission` is `None`.
+    pub(crate) fn may_have_zone_activation_permissions(&self) -> bool {
+        self.ensure_memo_context();
+        if let Some(known) = self.zone_activation_permission_sources.get() {
+            return known;
+        }
+        // `permission` reads a fresh view of the game; so does this proof.
+        let known = crate::activation_zone_permissions::any_permission_source(
+            &DerivedGameView::new(self.game),
+            self.game,
+        );
+        self.zone_activation_permission_sources.set(Some(known));
+        known
+    }
+
     pub(crate) fn ability_index_summary(
         &self,
         object_id: ObjectId,
@@ -897,7 +917,8 @@ impl<'a> DerivedGameView<'a> {
             .unwrap_or_else(|| self.game.controller_of(object));
         for (ability_index, ability) in abilities.iter().enumerate() {
             if !ability.functions_in(&object.zone)
-                && crate::activation_zone_permissions::permission(self.game, object_id, ability_index).is_none() {
+                && (!self.may_have_zone_activation_permissions()
+                    || crate::activation_zone_permissions::permission(self.game, object_id, ability_index).is_none()) {
                 continue;
             }
             if let AbilityKind::Activated(activated) = &ability.kind {

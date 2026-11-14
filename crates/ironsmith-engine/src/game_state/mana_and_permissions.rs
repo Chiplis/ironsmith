@@ -497,11 +497,13 @@ impl GameState {
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         crate::static_ability_processor::validate_mana_scalar_domain(self)?;
         if self.continuous_state_is_refreshed_fixed_point() {
+            crate::perf::work(crate::perf::Work::RefreshFixedPoint);
             #[cfg(feature = "paranoid-invariants")]
             self.assert_refreshed_fixed_point_is_exact("refresh_continuous_state");
             self.publish_completed_control_transitions();
             return Ok(());
         }
+        crate::perf::work(crate::perf::Work::RefreshFull);
         let checkpoint = self.clone();
         // Everything published below is retained until the next invalidation;
         // record what it reads (tapped state, mana, the stack).
@@ -615,7 +617,9 @@ impl GameState {
     /// can change a permanent's controller without executing such an effect.
     pub(crate) fn reconcile_continuous_control_changes(&mut self) {
         if self.control_transition_boundary_is_held() {
-            self.battlefield_flags_mut().control_transition_pending = true;
+            if !self.battlefield_flags.control_transition_pending {
+                self.battlefield_flags_mut().control_transition_pending = true;
+            }
             return;
         }
         if self.battlefield_flags.control_transition_pending {

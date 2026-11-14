@@ -713,6 +713,17 @@ fn run() {
         }
     }
 
+    if std::env::var_os("BENCH_WORK").is_some() {
+        let decisions: u64 = results
+            .iter()
+            .map(|r| r.stats.priority_decisions + r.stats.other_decisions)
+            .sum::<u64>()
+            .max(1);
+        eprintln!("work over {decisions} decisions:");
+        for (name, count) in ironsmith::take_work_counts() {
+            eprintln!("  {count:>10}  {:>9.2}/decision  {name}", count as f64 / decisions as f64);
+        }
+    }
     if std::env::var_os("IRONSMITH_COW_PROBE").is_some() {
         eprintln!("copy-on-write copies by site:");
         for (site, count) in ironsmith::cow_copy_report().into_iter().take(40) {

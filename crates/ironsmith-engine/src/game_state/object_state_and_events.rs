@@ -161,9 +161,11 @@ impl GameState {
         {
             self.object_store.changes.record(id);
         }
-        self.battlefield_flags_mut()
-            .dealt_deathtouch_damage_since_sba
-            .clear();
+        if !self.battlefield_flags.dealt_deathtouch_damage_since_sba.is_empty() {
+            self.battlefield_flags_mut()
+                .dealt_deathtouch_damage_since_sba
+                .clear();
+        }
     }
 
     /// Returns true if `creature` was dealt damage by `source` this turn.
@@ -899,8 +901,12 @@ impl GameState {
     /// Every physical zone transition creates a new incarnation. Zone-bound
     /// designations never follow a StableId across that transition.
     pub(crate) fn clear_incarnation_custom_statuses(&mut self, id: ObjectId) {
-        self.battlefield_flags_mut().custom_statuses.remove(&id);
-        self.battlefield_flags_mut().custom_status_event_expiry.remove(&id);
+        if self.battlefield_flags.custom_statuses.contains_key(&id)
+            || self.battlefield_flags.custom_status_event_expiry.contains_key(&id)
+        {
+            self.battlefield_flags_mut().custom_statuses.remove(&id);
+            self.battlefield_flags_mut().custom_status_event_expiry.remove(&id);
+        }
     }
 
     pub fn cleanup_custom_statuses_end_of_turn(&mut self) {

@@ -3717,6 +3717,7 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
+    crate::perf::work_n(crate::perf::Work::BatchCharacteristicObjects, ids.len() as u64);
     if ids.len() > 1 {
         let mut calculated = HashMap::with_capacity(ids.len());
         let mut pending = Vec::with_capacity(ids.len());
@@ -3852,6 +3853,7 @@ fn calculate_single_with_board_pass(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> CalculatedCharacteristics {
+    crate::perf::work(crate::perf::Work::SingleCharacteristic);
     if let Some(chars) = game.characteristicless_face_down_characteristics(object.id) {
         return chars;
     }

@@ -35,6 +35,7 @@ pub(crate) fn selected_stack_exile_scope(method: &crate::alternative_cast::Alter
 pub fn generate_replacement_effects_from_abilities(
     game: &GameState,
 ) -> Result<Vec<ReplacementEffect>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+    crate::perf::work(crate::perf::Work::ReplacementRegeneration);
     // Validate discovery before allowing the shared layer cache to serve any
     // object. Every zone remains in scope, including hidden-zone replacements.
     let mut effects = Vec::new();
