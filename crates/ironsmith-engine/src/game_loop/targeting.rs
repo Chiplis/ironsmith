@@ -1176,10 +1176,33 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
 /// leaves duration-end returns queued and never introduces player prompts.
 /// A failed simultaneous projection restores the entire queue and pending
 /// event set, even when the caller has no enclosing execution resource scope.
+/// Whether draining would only take empty queues: then nothing changes and
+/// no rollback checkpoint is needed.
+fn nothing_pending_to_drain(game: &GameState) -> bool {
+    game.action_observations_suppressed()
+        || (game.effect_store.pending_trigger_class_choices.is_empty()
+            && game.effect_store.pending_trigger_entries.is_empty()
+            && game.effect_store.pending_trigger_events.is_empty())
+}
+
+/// The drain's outcome when nothing is pending, with its resource scope.
+fn drain_nothing(game: &mut GameState) -> Result<(), crate::effects::ExecutionError> {
+    let (root, meter) = game.begin_token_resource_scope();
+    let result = match game.token_resource_failure() {
+        Some(error) => Err(error),
+        None => Ok(()),
+    };
+    game.end_token_resource_scope(root, &meter);
+    result
+}
+
 pub fn try_drain_pending_trigger_events(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
 ) -> Result<(), crate::effects::ExecutionError> {
+    if nothing_pending_to_drain(game) {
+        return drain_nothing(game);
+    }
     let (root, meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.clone();
@@ -1209,6 +1232,14 @@ pub fn drain_pending_trigger_events_with_dm(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), crate::effects::ExecutionError> {
+    if !decision_maker.awaiting_choice()
+        && nothing_pending_to_drain(game)
+        && game.effect_store.pending_hand_reveal_windows.is_empty()
+        && trigger_queue.class_event_choices.is_empty()
+        && !(decision_maker.answers_player_choices() && game.has_pending_duration_end_returns())
+    {
+        return drain_nothing(game);
+    }
     let (root, meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.clone();

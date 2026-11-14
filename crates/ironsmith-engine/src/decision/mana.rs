@@ -4660,42 +4660,6 @@ pub(crate) fn can_cast_spell_with_context(
         return false;
     }
 
-    let target_started_at = PerfTimer::start();
-    // An explicit face-down view intentionally has no printed program.
-    // Absence on that face must not recover the secret face's targets.
-    let program = cast_view.as_ref().map_or(spell.spell_effect.as_deref(), |view| view.spell_effect.as_deref());
-    // Target legality is a pure function of the analysis snapshot, and this is
-    // the dominant fixed cost of a menu pass. Under a sliced analysis the
-    // snapshot is frozen, so the answer is memoized across slices; synchronous
-    // callers compute it as before.
-    let has_legal_targets = resumable::memo_snapshot_fact(
-        resumable::SnapshotFactKey {
-            kind: resumable::SnapshotFactKind::CastTargetLegality,
-            object: spell.id,
-            player,
-        },
-        &resumable::SnapshotFactContext {
-            casting_method: casting_method.clone(),
-            mana_cost: base_mana_cost.clone(),
-        },
-        || {
-            spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_view(
-                game,
-                spell_for_checks,
-                spell.id,
-                program,
-                None,
-                player,
-                base_mana_cost.as_ref(),
-                casting_method,
-            )
-        },
-    );
-    ctx.add_target_legality_ms(target_started_at.elapsed_ms());
-    if !has_legal_targets {
-        ctx.add_total_ms(total_started_at.elapsed_ms());
-        return false;
-    }
 
     let commander_tax_life = commander_tax_life_payment_amount(game, spell, spell.zone);
     let mut additional_costs = spell_for_checks.additional_non_mana_costs();
@@ -4847,6 +4811,44 @@ pub(crate) fn can_cast_spell_with_context(
             view,
         )
     {
+        ctx.add_total_ms(total_started_at.elapsed_ms());
+        return false;
+    }
+    // Target legality builds a proposed spell; every check above is cheaper
+    // and independent of it, so it runs last.
+    let target_started_at = PerfTimer::start();
+    // An explicit face-down view intentionally has no printed program.
+    // Absence on that face must not recover the secret face's targets.
+    let program = cast_view.as_ref().map_or(spell.spell_effect.as_deref(), |view| view.spell_effect.as_deref());
+    // Target legality is a pure function of the analysis snapshot, and this is
+    // the dominant fixed cost of a menu pass. Under a sliced analysis the
+    // snapshot is frozen, so the answer is memoized across slices; synchronous
+    // callers compute it as before.
+    let has_legal_targets = resumable::memo_snapshot_fact(
+        resumable::SnapshotFactKey {
+            kind: resumable::SnapshotFactKind::CastTargetLegality,
+            object: spell.id,
+            player,
+        },
+        &resumable::SnapshotFactContext {
+            casting_method: casting_method.clone(),
+            mana_cost: base_mana_cost.clone(),
+        },
+        || {
+            spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_view(
+                game,
+                spell_for_checks,
+                spell.id,
+                program,
+                None,
+                player,
+                base_mana_cost.as_ref(),
+                casting_method,
+            )
+        },
+    );
+    ctx.add_target_legality_ms(target_started_at.elapsed_ms());
+    if !has_legal_targets {
         ctx.add_total_ms(total_started_at.elapsed_ms());
         return false;
     }
