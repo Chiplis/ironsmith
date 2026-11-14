@@ -1631,7 +1631,7 @@ pub trait EffectExecutor:
     }
 
     fn library_movement_policy(&self) -> ironsmith_core::effect_capabilities::LibraryMovementPolicy {
-        ironsmith_core::effect_capabilities::library_movement_policy(std::any::type_name::<Self>())
+        cached_library_movement_policy(std::any::type_name::<Self>())
     }
 
     /// Visit immediately nested runtime effects, if this effect is a wrapper or
@@ -2262,4 +2262,24 @@ mod tests {
         );
         assert!(cost.references_cost_x());
     }
+}
+
+
+/// `library_movement_policy` by type name, memoized by the name's static
+/// address (one entry per executor type).
+fn cached_library_movement_policy(
+    type_name: &'static str,
+) -> ironsmith_core::effect_capabilities::LibraryMovementPolicy {
+    thread_local! {
+        static POLICIES: std::cell::RefCell<
+            std::collections::HashMap<(usize, usize), ironsmith_core::effect_capabilities::LibraryMovementPolicy>,
+        > = std::cell::RefCell::new(std::collections::HashMap::new());
+    }
+    let key = (type_name.as_ptr() as usize, type_name.len());
+    if let Some(policy) = POLICIES.with(|policies| policies.borrow().get(&key).copied()) {
+        return policy;
+    }
+    let policy = ironsmith_core::effect_capabilities::library_movement_policy(type_name);
+    POLICIES.with(|policies| policies.borrow_mut().insert(key, policy));
+    policy
 }

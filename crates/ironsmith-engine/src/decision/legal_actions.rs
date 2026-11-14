@@ -1963,12 +1963,18 @@ fn collect_non_battlefield_source_ids(
     // CR 113.6b: an activated ability that states it functions from the
     // library can be activated there.
     if let Some(owner) = game.player(player) {
+        // `permission` is None everywhere unless some static grants it.
+        let may_permit = std::cell::OnceCell::new();
+        let may_permit = || *may_permit.get_or_init(|| {
+            crate::activation_zone_permissions::any_permission_source(&DerivedGameView::new(game), game)
+        });
         non_battlefield_ids.extend(owner.library.iter().copied().filter(|id| {
             game.object(*id).is_some_and(|obj| {
                 obj.abilities.iter().enumerate().any(|(index,ability)| {
                     matches!(ability.kind, crate::ability::AbilityKind::Activated(_))
                         && (ability.functions_in(&Zone::Library)
-                            || crate::activation_zone_permissions::permission(game,*id,index).is_some())
+                            || (may_permit()
+                                && crate::activation_zone_permissions::permission(game,*id,index).is_some()))
                 })
             })
         }));
