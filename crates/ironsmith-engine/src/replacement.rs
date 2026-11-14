@@ -1715,7 +1715,7 @@ mod tests {
             source, bob, WouldGainLifeMatcher::you(), ReplacementAction::Instead(vec![body.clone(), body]),
         ));
         assert_eq!(original.effects()[0].application_key(), ReplacementEffectKey::Registered(id));
-        game.effect_store.replacement_effects = original.clone();
+        *game.effect_store.replacement_effects = original.clone();
         let effect = crate::effects::GainLifeEffect::new(2, ChooseSpec::Player(PlayerFilter::You));
         let mut context = ExecutionContext::new_default(source, bob);
         let outcome = effect.execute(&mut game, &mut context).unwrap();
@@ -1742,7 +1742,7 @@ mod tests {
         original.add_until_next_turn_effect(ReplacementEffect::with_matcher(
             source, bob, WouldGainLifeMatcher::you(), ReplacementAction::Double,
         ), bob, 4);
-        game.effect_store.replacement_effects = original.clone();
+        *game.effect_store.replacement_effects = original.clone();
         let effect = crate::effects::GainLifeEffect::new(2, ChooseSpec::Player(PlayerFilter::You));
         let mut bob_ctx = ExecutionContext::new_default(source, bob);
         effect.execute(&mut game, &mut bob_ctx).unwrap();

@@ -1371,6 +1371,10 @@ pub struct ContinuousEffectManager {
     /// Timestamps for when auras/equipment became attached.
     /// Per Rule 613.7e, attachments get a new timestamp when attached.
     attachment_timestamps: FxMap<ObjectId, u64>,
+
+    /// Object-membership revision at which resolved effects were last checked
+    /// for locked sets whose objects have all ceased to exist.
+    retired_locked_scan_revision: u64,
 }
 
 /// Entry-only projections are removed between preparation and commit while
@@ -1445,6 +1449,49 @@ impl ContinuousEffectManager {
         Arc::make_mut(&mut self.effects).push(effect);
         self.revision += 1;
         id
+    }
+
+    /// CR 400.7: an object that changes zones becomes a new object, so a
+    /// resolved effect locked only to objects that no longer exist can never
+    /// apply again (CR 611.2c). Remove such effects so "for the rest of the
+    /// game" effects do not accumulate. Locked sets with any live member are
+    /// left untouched: granted abilities take their identity from the whole
+    /// descriptor. Run this only between actions, after zone moves have
+    /// redirected effects that follow an object to its new identity.
+    /// Returns whether any effect was removed.
+    pub(crate) fn remove_effects_with_retired_locked_targets(
+        &mut self,
+        membership_revision: u64,
+        is_live: impl Fn(ObjectId) -> bool,
+    ) -> bool {
+        if self.retired_locked_scan_revision == membership_revision {
+            return false;
+        }
+        self.retired_locked_scan_revision = membership_revision;
+        let retired = |effect: &ContinuousEffect| {
+            matches!(
+                &effect.source_type,
+                EffectSourceType::Resolution { locked_targets }
+                    if !locked_targets.is_empty()
+                        && locked_targets.iter().all(|id| !is_live(*id))
+            )
+        };
+        let ids: Vec<ContinuousEffectId> = self
+            .effects
+            .iter()
+            .filter(|effect| retired(effect))
+            .map(|effect| effect.id)
+            .collect();
+        if ids.is_empty() {
+            return false;
+        }
+        Arc::make_mut(&mut self.effects).retain(|effect| !ids.contains(&effect.id));
+        let latches = self.latched_duration_states.get_mut();
+        for id in &ids {
+            latches.remove(id);
+        }
+        self.revision += 1;
+        true
     }
 
     /// Allocate a shared group id for multiple layer-parts of one effect.

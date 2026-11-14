@@ -2367,7 +2367,7 @@ mod tests {
             blockers: ObjectFilter::default().with_subtype(Subtype::Elf),
         }.apply(&mut game, &mut tracker, alice, Some(attacker), None);
         assert_eq!(tracker.must_be_blocked_by[&attacker][0], HashSet::from([first, second]));
-        game.effect_store.cant_effects = tracker;
+        *game.effect_store.cant_effects = tracker;
         assert!(declare_blockers(&game, &mut combat.clone(), vec![]).is_err());
         assert!(declare_blockers(&game, &mut combat.clone(), vec![(other, attacker)]).is_err());
         // Either matching creature suffices; the requirement is not a lure.

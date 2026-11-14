@@ -43,6 +43,7 @@ mod activated_counter_removal_damage;
 mod coordinated_draw_token_trigger;
 #[cfg(ironsmith_runtime_parser_tests)]
 mod quantified_player_sequence_execution;
+mod retired_locked_targets;
 mod shard_00;
 mod shard_01;
 mod shard_02;

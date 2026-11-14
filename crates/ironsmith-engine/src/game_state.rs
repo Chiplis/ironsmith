@@ -7344,6 +7344,22 @@ impl GameState {
         self.player(player).map(|player| &player.mana_pool)
     }
 
+    /// Retire resolved continuous effects whose locked objects have all left
+    /// their zones (CR 400.7, 611.2c). Cheap when no object left since the
+    /// last scan.
+    pub(crate) fn remove_effects_with_retired_locked_targets(&mut self) {
+        let store = &self.object_store;
+        if self
+            .effect_store
+            .continuous_effects
+            .remove_effects_with_retired_locked_targets(self.object_membership_revision, |id| {
+                store.shared_object(id).is_some()
+            })
+        {
+            self.mark_continuous_state_dirty();
+        }
+    }
+
     pub(crate) fn mark_continuous_state_dirty(&self) {
         let counter = &self
             .runtime_cache

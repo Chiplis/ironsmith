@@ -124,11 +124,12 @@ mod tests {
             ..CombatState::default()
         });
         // Attack declaration records the attacked players (CR 702.121a).
+        let combat_phase = game.turn_store.combat_phases_started_this_turn;
         game.turn_store
             .turn_history
             .players_attacked_in_combat
             .insert(
-                (game.turn_store.combat_phases_started_this_turn, alice),
+                (combat_phase, alice),
                 [bob, cara].into_iter().collect(),
             );
 

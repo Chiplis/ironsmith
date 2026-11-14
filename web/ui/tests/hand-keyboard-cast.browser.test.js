@@ -115,6 +115,7 @@ test("small hands select single digits immediately", { timeout: 120000 }, async 
 test("H and period interchangeably toggle the numbered hand", { timeout: 120000 }, async () => {
   const large = structuredClone(state);
   large.players[0].hand_cards = Array.from({ length: 12 }, (_, i) => ({ ...bears, id: 100 + i }));
+  large.decision.actions = [];
   const { page, casts, errors, close } = await harness(large);
   try {
     assert.equal(await page.locator('.hand-card-number').count(), 0);
@@ -149,6 +150,32 @@ test("H and period interchangeably toggle the numbered hand", { timeout: 120000 
     await page.keyboard.press('h');
     assert.equal(await page.locator('[data-hand-case]').getAttribute('data-hand-open'), 'false');
     assert.deepEqual(await casts(), []);
+    assert.deepEqual(errors, []);
+  } finally { await close(); }
+});
+
+test("playable pseudo-hand cards are numbered after the hand and play from the keyboard", { timeout: 120000 }, async () => {
+  const withExtras = structuredClone(state);
+  withExtras.players[0].exile_cards = [
+    { id: 20, name: "Faithless Looting", card_types: ["sorcery"], type_line: "Sorcery" },
+    // Shown for its play permission only: it cannot be played right now.
+    { id: 21, name: "Ancestral Recall", card_types: ["instant"], type_line: "Instant", show_in_pseudo_hand: true },
+  ];
+  withExtras.decision.actions.push(action({ index: 4, object_id: 20, label: "Cast Faithless Looting", from_zone: "exile" }));
+  const { page, casts, errors, close } = await harness(withExtras);
+  try {
+    await page.keyboard.press('h');
+    assert.deepEqual(await page.locator('.hand-card-number').allTextContents(), ["1", "2", "3", "4"]);
+    assert.equal(await page.locator('.hand-card[data-object-id="20"] .hand-card-number').textContent(), '4');
+    assert.equal(await page.locator('.hand-card[data-object-id="21"] .hand-card-number').count(), 0);
+    await page.keyboard.press('4');
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-object-id')), '20');
+    await page.keyboard.press(' ');
+    await page.waitForTimeout(120);
+    const requested = await casts();
+    assert.equal(requested.length, 1);
+    assert.equal(requested[0].objectId, 20);
+    assert.deepEqual(requested[0].actions, ["Cast Faithless Looting"]);
     assert.deepEqual(errors, []);
   } finally { await close(); }
 });

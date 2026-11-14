@@ -122,6 +122,20 @@ function decisionPreviewSource(objectId) {
     .find(element => element.dataset.decisionOptionObject === String(objectId));
 }
 
+// A card the pseudo-hand surfaces from another zone lifts in the hand when a
+// decision option (or anything else) hovers it, and that lift already shows
+// the card, so the frame stays closed. Pointing at the card in its own zone
+// pile still previews it beside the pile.
+function pseudoHandLiftShowsObject(objectId) {
+  if (objectId == null || typeof document === "undefined") return false;
+  const id = String(objectId);
+  const shownInHand = [...document.querySelectorAll(".game-card.hand-card.pseudo-hand-zone-card[data-object-id]")]
+    .some(element => element.dataset.objectId === id && element.getClientRects().length > 0);
+  if (!shownInHand) return false;
+  return ![...document.querySelectorAll("[data-zone-card][data-object-id]:hover")]
+    .some(element => element.dataset.objectId === id);
+}
+
 function previewPosition(objectId, size, frames = 1) {
   if (objectId == null || typeof document === "undefined" || typeof window === "undefined") return null;
   const decisionSource = decisionPreviewSource(objectId);
@@ -364,6 +378,7 @@ function CardPreviewSurface({
     && (canHoverInspectorObject(state, hoveredObjectId)
       || (decisionPreviewSource(hoveredObjectId) && objectExistsInState(state, hoveredObjectId)))
     && (isFieldObject(hoveredObjectId) || !excludedIds.has(String(hoveredObjectId)))
+    && !pseudoHandLiftShowsObject(hoveredObjectId)
   ) ? String(hoveredObjectId) : null;
   const directHandHover = useMemo(() => {
     if (directlyRequestedObjectId == null) return false;

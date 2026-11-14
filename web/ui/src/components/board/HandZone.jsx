@@ -1389,19 +1389,33 @@ export default function HandZone({
     if (!isMe) return undefined;
     const activate = event => {
       if (!isHandOpen() || actionsPausedForSync || !samePlayerId(state?.decision?.player, state?.perspective)) return;
-      const card = handCards.find(card => String(card.id) === String(event.detail?.objectId ?? selectedHandId));
-      const plays = handCardPriorityActions(state?.decision, card?.id);
+      const objectId = String(event.detail?.objectId ?? selectedHandId);
+      const handCard = handCards.find(card => String(card.id) === objectId);
+      // A card the pseudo-hand surfaces from another zone plays the same way.
+      const extra = handCard ? null : extraCards.find(entry => String(entry.id) === objectId);
+      const card = handCard || (extra ? extra.card || { id: extra.id, name: extra.name } : null);
+      const plays = extra ? extra.actions : handCardPriorityActions(state?.decision, card?.id);
       if (!card || !plays.length) return;
       const list = centerCycleRef.current || handListRef.current;
       const element = [...(list?.querySelectorAll('.game-card.hand-card') || [])].find(node => node.dataset.objectId === String(card.id));
       if (!element || !element.getClientRects().length || element.closest('[inert], [aria-hidden="true"]')) return;
-      handleKeyboardCardActivate({ currentTarget: element, preventDefault() {} }, card, plays, null);
+      handleKeyboardCardActivate({ currentTarget: element, preventDefault() {} }, card, plays, extra ? extra.glowKind || "extra" : null);
     };
     window.addEventListener(HAND_ACTIVATE_SELECTED_EVENT, activate);
     return () => window.removeEventListener(HAND_ACTIVATE_SELECTED_EVENT, activate);
-  }, [isMe, state, handCards, selectedHandId, actionsPausedForSync, handleKeyboardCardActivate]);
+  }, [isMe, state, handCards, extraCards, selectedHandId, actionsPausedForSync, handleKeyboardCardActivate]);
   const showHandNumbers = useHandNumbersVisible() && isMe;
-  const numberedHandIds = JSON.stringify(handCards.map(card => String(card.id)));
+  // Hand cards number first, then the pseudo-hand cards that can be played
+  // right now, in the order the hand shows them. Unplayable pseudo-hand cards
+  // (shown only for their play permission) get no number.
+  const numberedHandIds = JSON.stringify([
+    ...handCards.map(card => String(card.id)),
+    ...[...extraPlayable].filter(([, data]) => data.actions?.length > 0).map(([id]) => String(id)),
+  ]);
+  const handNumberById = useMemo(
+    () => new Map(JSON.parse(numberedHandIds).map((id, index) => [id, index + 1])),
+    [numberedHandIds],
+  );
   useEffect(() => {
     if (!isMe) return undefined;
     const ids = JSON.parse(numberedHandIds);
@@ -1834,7 +1848,7 @@ export default function HandZone({
             key={entry.key}
             card={card}
             variant="hand"
-            handNumber={showHandNumbers && !isKeyboardSelected ? visualIndex + 1 : null}
+            handNumber={showHandNumbers && !isKeyboardSelected ? handNumberById.get(cardObjectId) ?? null : null}
             isPlayable={isPlayable}
             paymentProven={plays.some(action => action.payment_proven !== false)}
             glowKind={glowKind}
@@ -1897,6 +1911,7 @@ export default function HandZone({
           key={entry.key}
           card={card}
           variant="hand"
+          handNumber={showHandNumbers && !isKeyboardSelected ? handNumberById.get(extraObjectId) ?? null : null}
           isPlayable={isPlayable}
           paymentProven={plays.some(action => action.payment_proven !== false)}
           glowKind={glowKind}
@@ -1993,7 +2008,7 @@ export default function HandZone({
             <GameCard
               card={card}
               variant="hand"
-              handNumber={showHandNumbers && !isKeyboardSelected ? visualIndex + 1 : null}
+              handNumber={showHandNumbers && !isKeyboardSelected ? handNumberById.get(cardObjectId) ?? null : null}
               isPlayable={isPlayable}
               paymentProven={plays.some(action => action.payment_proven !== false)}
               glowKind={glowKind}
@@ -2069,6 +2084,7 @@ export default function HandZone({
           <GameCard
             card={card}
             variant="hand"
+            handNumber={showHandNumbers && !isKeyboardSelected ? handNumberById.get(extraObjectId) ?? null : null}
             isPlayable={isPlayable}
             paymentProven={plays.some(action => action.payment_proven !== false)}
             glowKind={glowKind}

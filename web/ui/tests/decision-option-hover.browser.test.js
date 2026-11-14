@@ -92,6 +92,29 @@ test("hovering an option shows its card beside the object on the battlefield", {
   });
 });
 
+test("an option for a pseudo-hand card lifts it in the hand without opening a frame", { timeout: 120000 }, async () => {
+  await withFixture(async (page) => {
+    const handCard = page.locator('[data-hand-host] .game-card.hand-card[data-object-id="50"]');
+    await handCard.waitFor({ timeout: 10000 });
+    await hoverOptionFor(page, 50);
+    await page.waitForFunction(
+      () => document.querySelector('[data-hand-host] .game-card[data-object-id="50"]')?.classList.contains("hovered"),
+      null,
+      { timeout: 10000 },
+    );
+    await page.waitForTimeout(800);
+    // The preview never even picks the card up, so it cannot fade in later.
+    assert.equal(
+      await page.locator('.floating-card-preview[data-preview-object-id="50"]').count(),
+      0,
+      "the hand lift is the preview; no frame opens",
+    );
+    // A battlefield option still takes its object into the preview.
+    await hoverOptionFor(page, 20);
+    await page.locator('.floating-card-preview[data-preview-object-id="20"]').first().waitFor({ state: "attached", timeout: 10000 });
+  });
+});
+
 test("an option with no object behind it leaves the board alone", { timeout: 120000 }, async () => {
   await withFixture(async (page) => {
     await hoverOptionWithoutObject(page);

@@ -9,6 +9,7 @@ import { TooltipProvider } from "../src/components/ui/tooltip";
 import TableCore from "../src/components/board/TableCore";
 import FloatingCardPreview from "../src/components/right-rail/FloatingCardPreview";
 import SelectOptionsDecision from "../src/components/decisions/SelectOptionsDecision";
+import HandZone from "../src/components/board/HandZone";
 import { hoveredObjectZoneViews } from "../src/lib/stack-targets";
 import { optionForClickedObject } from "../src/lib/decision-object-meta";
 import "../src/index.css";
@@ -26,6 +27,21 @@ const permanent = (id, name, controller) => ({
   oracle_text: "",
   semantic_score: 1,
 });
+
+// Exiled with permission to be cast, so the pseudo-hand shows it beside the
+// hand: an option naming it lifts it there instead of opening a frame.
+const pseudoHandCard = {
+  id: 50,
+  stable_id: 50,
+  name: "Fiery Temper",
+  controller: 0,
+  owner: 0,
+  type_line: "Instant",
+  oracle_text: "Fiery Temper deals 3 damage to any target.",
+  card_types: ["Instant"],
+  show_in_pseudo_hand: true,
+  semantic_score: 1,
+};
 
 const graveyardCard = {
   id: 40,
@@ -50,6 +66,7 @@ const decision = {
   options: [
     { index: 0, description: "Sacrifice Devoted Druid", object_id: 20 },
     { index: 1, description: "Return Buried Alive", object_id: 40 },
+    { index: 3, description: "Choose Fiery Temper", object_id: 50 },
     { index: 2, description: "Decline" },
   ],
 };
@@ -69,12 +86,13 @@ const state = {
     index: id,
     name: id ? "Bob" : "Alice",
     life: 20,
+    can_view_hand: id === 0,
     battlefield: id === 0
       ? [permanent(10, "Yawgmoth, Thran Physician", 0), permanent(20, "Devoted Druid", 0)]
       : [],
     hand_cards: [],
     graveyard_cards: id === 0 ? [graveyardCard] : [],
-    exile_cards: [],
+    exile_cards: id === 0 ? [pseudoHandCard] : [],
     command_cards: [],
     mana_pool: {},
   })),
@@ -116,6 +134,9 @@ export function Fixture() {
           middleTopbar={<div style={{ height: 60 }}><div className="topbar-main-decision-host" data-topbar-main-decision-host="true" /></div>}
         />
       </main>
+      <div data-hand-host style={{ position: "fixed", bottom: 0, left: 440, width: 520, height: 170, zIndex: 30000 }}>
+        <HandZone player={state.players[0]} selectedObjectId={null} onInspect={() => {}} isExpanded layout="fan" />
+      </div>
       <div data-decision-host style={{ position: "fixed", bottom: 0, left: 0, width: 420, zIndex: 40000, background: "#0b1118" }}>
         <SelectOptionsDecision decision={decision} canAct />
       </div>
@@ -135,6 +156,7 @@ createRoot(document.getElementById("root")).render(
           const all = [
             ...state.players[0].battlefield,
             ...state.players[0].graveyard_cards,
+            ...state.players[0].exile_cards,
           ];
           return all.find((c) => String(c.id) === String(id)) || null;
         },

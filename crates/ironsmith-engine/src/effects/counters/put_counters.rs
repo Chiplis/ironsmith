@@ -1170,7 +1170,7 @@ mod tests {
     fn permanent_counter_application_commits_redirected_recipient() {
         let (mut game, source, original, redirected, alice) =
             permanent_counter_replacement_case(crate::replacement::ReplacementAction::Prevent);
-        game.effect_store.replacement_effects = crate::replacement::ReplacementEffectManager::new();
+        *game.effect_store.replacement_effects = crate::replacement::ReplacementEffectManager::new();
         let mut replacement = crate::static_abilities::StaticAbility::double_counters_replacement(
             crate::target::ObjectFilter::creature(),
             Some(CounterType::PlusOnePlusOne),
@@ -1352,7 +1352,7 @@ mod tests {
                     permanent_counter_replacement_case(
                         crate::replacement::ReplacementAction::Prevent,
                     );
-                game.effect_store.replacement_effects =
+                *game.effect_store.replacement_effects =
                     crate::replacement::ReplacementEffectManager::new();
                 game.object_mut(source)
                     .unwrap()

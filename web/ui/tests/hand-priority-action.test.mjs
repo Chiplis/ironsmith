@@ -28,3 +28,13 @@ test('the hand action requires local priority and a selected card actually in ha
   const pregame = { ...state, decision: { ...state.decision, actions: [{ kind: 'pass_priority', label: 'Keep hand' }] } };
   assert.equal(handPriorityAction(pregame, true, 7).active, false);
 });
+test('a pseudo-hand card playable from another zone is selectable like a hand card', () => {
+  const next = structuredClone(state);
+  next.players.push({ id: 1, hand_cards: [], exile_cards: [{ id: 12, name: 'Stolen spell' }] });
+  next.players[0].graveyard_cards = [{ id: 13, name: 'Dead spell' }];
+  next.decision.actions.push({ kind: 'cast_spell', object_id: 12, payment_proven: true });
+  const result = handPriorityAction(next, true, 12);
+  assert.equal(result.card.name, 'Stolen spell');
+  assert.equal(result.label, 'Play');
+  assert.equal(handPriorityAction(next, true, 13).label, 'Select a hand card');
+});

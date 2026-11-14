@@ -11,12 +11,28 @@ export function handCardPriorityActions(decision, objectId) {
     && (decision.analysis_complete !== true || action.payment_proven !== false));
 }
 
+const pseudoHandZones = ['library_cards', 'graveyard_cards', 'exile_cards', 'command_cards', 'ante_cards'];
+
+// The hand also shows cards that can be played from another zone, from any
+// player's zone; one of those is selectable exactly like a hand card.
+function pseudoHandCard(state, selectedId) {
+  if (selectedId == null || !handCardPriorityActions(state?.decision, selectedId).length) return null;
+  for (const player of state?.players || []) {
+    for (const zone of pseudoHandZones) {
+      const card = (player?.[zone] || []).find(card => String(card.id) === String(selectedId));
+      if (card) return card;
+    }
+  }
+  return null;
+}
+
 export function handPriorityAction(state, open, selectedId) {
   const decision = state?.decision;
   const active = open && decision?.kind === 'priority' && !isPregameDecision(decision)
     && Number(decision.player) === Number(state.perspective);
   const player = state?.players?.find(player => Number(player.id) === Number(state.perspective));
-  const card = player?.hand_cards?.find(card => String(card.id) === String(selectedId));
+  const card = player?.hand_cards?.find(card => String(card.id) === String(selectedId))
+    || (active ? pseudoHandCard(state, selectedId) : null);
   const actions = active && card ? handCardPriorityActions(decision, card.id) : [];
   const play = actions.some(action => playKinds.has(action.kind));
   const activate = actions.some(action => activateKinds.has(action.kind));
