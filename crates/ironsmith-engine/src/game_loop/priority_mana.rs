@@ -6162,11 +6162,14 @@ pub(super) fn apply_priority_action_with_dm(
                     result
                 }
                 PriorityResult::StackResolves => {
-                    let resolved_signature = game.stack.last().and_then(|entry| {
+                    // The loop proof reads these observations only while no
+                    // player has had a real choice; resolution cannot change that.
+                    let observes = state.mandatory_loop.observes_resolutions();
+                    let resolved_signature = observes.then(|| game.stack.last().and_then(|entry| {
                         super::mandatory_loop::MandatoryProcedureObservation::from_stack_entry(
                             game, entry,
                         )
-                    });
+                    })).flatten();
                     let queued_before_resolution = trigger_queue.entries.len();
                     // Resolve top of stack, passing decision maker for ETB replacements, choices, etc.
                     let resolve_started_at = PerfTimer::start();
@@ -6185,7 +6188,7 @@ pub(super) fn apply_priority_action_with_dm(
                     let queued_signatures = trigger_queue
                         .entries
                         .iter()
-                        .skip(queued_before_resolution)
+                        .skip(if observes { queued_before_resolution } else { usize::MAX })
                         .map(|entry| {
                             super::mandatory_loop::MandatoryProcedureObservation::from_trigger_entry(
                                 game, entry,

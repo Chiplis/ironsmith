@@ -95,6 +95,9 @@ fn check_and_apply_sbas_with_inner(
         trigger_queue.add(trigger);
     }
     let mut seen_mandatory_states = std::collections::HashSet::new();
+    // A repeated state can only be detected from the second round on; the
+    // first round's fingerprint is taken only then, from a copy of its state.
+    let mut first_round: Option<(GameState, String)> = None;
 
     loop {
         if restore_unattached_bestow_creatures(game) {
@@ -132,6 +135,7 @@ fn check_and_apply_sbas_with_inner(
         });
         if let Some((source, creatures)) = sector_action {
             seen_mandatory_states.clear();
+            first_round = None;
             let mut pending = match game.take_pending_sector_designations() {
                 Some(pending) if pending.source == source && pending.creatures == creatures => {
                     pending
@@ -194,7 +198,13 @@ fn check_and_apply_sbas_with_inner(
             // A player choice participates in this procedure, so it cannot prove
             // a mandatory-action draw. Start a fresh candidate after the choice.
             seen_mandatory_states.clear();
+            first_round = None;
+        } else if seen_mandatory_states.is_empty() && first_round.is_none() {
+            first_round = Some((game.clone(), format!("{actions:?}")));
         } else {
+            if let Some((first_game, first_actions)) = first_round.take() {
+                seen_mandatory_states.insert(sba_control_fingerprint_with(&first_game, &first_actions));
+            }
             let fingerprint = sba_control_fingerprint(game, &actions);
             if !seen_mandatory_states.insert(fingerprint) {
                 return Err(GameLoopError::MandatoryLoopDraw);
@@ -251,8 +261,12 @@ fn sba_control_fingerprint(
     game: &GameState,
     actions: &[crate::rules::state_based::StateBasedAction],
 ) -> u64 {
+    sba_control_fingerprint_with(game, &format!("{actions:?}"))
+}
+
+fn sba_control_fingerprint_with(game: &GameState, actions_debug: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
-    format!("{actions:?}").hash(&mut hasher);
+    actions_debug.to_string().hash(&mut hasher);
     format!("{:?}", game.players).hash(&mut hasher);
     format!("{:?}", game.turn).hash(&mut hasher);
     for object_id in game.object_ids_in_deterministic_order() {

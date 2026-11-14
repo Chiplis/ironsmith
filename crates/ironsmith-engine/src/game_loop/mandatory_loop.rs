@@ -348,6 +348,12 @@ impl MandatoryLoopTracker {
         self.optional_action_seen = false;
     }
 
+    /// False once a player has had a real choice: `observe_resolution` then
+    /// resets without reading what it is given.
+    pub(super) fn observes_resolutions(&self) -> bool {
+        !self.optional_action_seen
+    }
+
     pub(super) fn observe_priority_snapshot(&mut self, game: &GameState) {
         // Empty-stack passes cannot participate in a mandatory resolution loop.
         if !game.stack.is_empty() && !self.optional_action_seen {
