@@ -12,8 +12,10 @@ use crate::filter::ObjectFilterExt as _;
 pub fn permission(game:&GameState,source:ObjectId,index:usize)->Option<(Zone,Zone)> {
     let object=game.object(source)?;
     let actor=game.turn.priority_player.unwrap_or_else(||game.controller_of(object));
-    let occurrence=game.current_ability(source,index)?;
-    if !matches!(&occurrence.kind,AbilityKind::Activated(_)){return None;}
+    // Nearly every board has no such permission; the occurrence is read only
+    // once a granting static ability is found. No permission is the answer
+    // either way when the occurrence is missing or is not activated.
+    let mut occurrence=None;
     let view=crate::derived_view::DerivedGameView::new(game);
     for grant_source in game.battlefield.iter().copied().filter(|id|!game.is_phased_out(*id)) {
         let Some(granter)=game.object(grant_source) else{continue};
@@ -28,7 +30,16 @@ pub fn permission(game:&GameState,source:ObjectId,index:usize)->Option<(Zone,Zon
                 payload=>payload,
             };
             let ironsmith_core::StaticAbilityPayload::ActivateAbilitiesAsThoughZone{filter,designation,from,as_though,..}=payload else{continue};
-            if from==as_though || object.zone!=*from || !occurrence.functions_in(as_though) || !occurrence.has_designation(designation){continue;}
+            if from==as_though || object.zone!=*from {continue;}
+            let occurrence=match &mut occurrence {
+                Some(occurrence)=>&*occurrence,
+                slot=>{
+                    let current=game.current_ability(source,index)?;
+                    if !matches!(&current.kind,AbilityKind::Activated(_)){return None;}
+                    &*slot.insert(current)
+                }
+            };
+            if !occurrence.functions_in(as_though) || !occurrence.has_designation(designation){continue;}
             let context=game.filter_context_for(controller,Some(grant_source));
             if filter.matches(object,&context,game){return Some((*from,*as_though));}
         }
