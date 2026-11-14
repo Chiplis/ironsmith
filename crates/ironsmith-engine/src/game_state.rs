@@ -1202,7 +1202,7 @@ pub struct DepartedPlayerHistory {
 pub struct TurnStore {
     /// Names of spells each player has resolved during this game, including
     /// spells without paradigm. Not cleared between turns.
-    pub resolved_spell_names: HashSet<(PlayerId, String)>,
+    pub resolved_spell_names: im::HashSet<(PlayerId, String)>,
     pub turn_order: Vec<PlayerId>,
     /// Whether the active turn was created as an extra turn.
     ///
@@ -1261,14 +1261,14 @@ pub struct TurnStore {
     pub end_steps_started_this_turn: u32,
     /// Battlefield permanents that were untapped as the current turn began
     /// ("if this creature started the turn untapped").
-    pub untapped_at_turn_start: HashSet<ObjectId>,
+    pub untapped_at_turn_start: im::HashSet<ObjectId>,
     /// Normal phase to resume after inserted additional phases finish.
     pub additional_phase_continuation: Option<Phase>,
     /// Players who will skip their next turn.
     /// Checked and cleared when a player would start their turn.
     pub skip_next_turn: PendingTurnSkips,
     /// Consumable one-shot step skips, preserving independently created effects.
-    pub skipped_steps: HashMap<(PlayerId, Step), u32>,
+    pub skipped_steps: im::HashMap<(PlayerId, Step), u32>,
     /// Extra steps waiting at a named step/phase boundary in this turn.
     pub added_steps: Vec<AddedStep>,
     /// Additional steps already selected for execution at the current boundary.
@@ -1279,7 +1279,7 @@ pub struct TurnStore {
     pub added_step_continuation: Option<TurnScheduleDestination>,
     /// Actual draws by each active player in this draw step. Shared turns must
     /// not reset one player's ordinal when another active player draws.
-    pub cards_drawn_this_draw_step: HashMap<PlayerId, u32>,
+    pub cards_drawn_this_draw_step: im::HashMap<PlayerId, u32>,
     /// Native receipt for the focused lane's actual untap occurrence.
     /// Later registrations wait for another step, including one in this turn.
     /// The untap transaction restores this receipt when a choice or error pauses.
@@ -1294,7 +1294,7 @@ pub struct TurnStore {
     pub attackers_existed_in_combat: Option<(u32, u32)>,
     /// Players who will skip their next combat phase this turn.
     /// Checked and cleared when entering combat phase.
-    pub skip_next_combat_phases: HashSet<PlayerId>,
+    pub skip_next_combat_phases: im::HashSet<PlayerId>,
     /// Independently consumable next-combat skips without current-turn expiry.
     pub pending_combat_phase_skips: PendingTurnSkips,
     /// Actual turn boundary already used for continuous-control eligibility.
@@ -1302,13 +1302,13 @@ pub struct TurnStore {
     /// Players who will skip all combat phases of their next turn. Moved into
     /// `skip_current_turn_combat_phases` when that player's next turn begins,
     /// so additional combat phases of that turn are skipped too (CR 500.11).
-    pub skip_all_combat_phases_next_turn: HashSet<PlayerId>,
+    pub skip_all_combat_phases_next_turn: im::HashSet<PlayerId>,
     /// Players who will skip each remaining combat phase this turn.
     /// Cleared when the turn advances.
-    pub skip_current_turn_combat_phases: HashSet<PlayerId>,
+    pub skip_current_turn_combat_phases: im::HashSet<PlayerId>,
     /// Players who will skip each remaining main phase this turn.
     /// Cleared when the turn advances.
-    pub skip_current_turn_main_phases: HashSet<PlayerId>,
+    pub skip_current_turn_main_phases: im::HashSet<PlayerId>,
     /// Unified owner for per-turn event and action history.
     pub turn_history: TurnHistory,
     /// Immutable event and action history for the immediately previous turn.
@@ -1317,29 +1317,29 @@ pub struct TurnStore {
     pub previous_turn_history: TurnHistory,
     /// Most recently completed turn for each player rather than merely the
     /// immediately previous table turn.
-    last_turn_history_by_player: HashMap<PlayerId, TurnHistory>,
+    last_turn_history_by_player: im::HashMap<PlayerId, TurnHistory>,
     /// One chronological full-game log, including observations without player
     /// attribution. Player queries derive membership from its frozen receipts.
     /// Persistent sequences share immutable history across simulation branches.
     action_history: TurnEventRecords,
     /// Persistent combat-history timestamps used by "since your last upkeep"
     /// predicates. Stable identity survives ordinary zone/object-id churn.
-    creature_last_attacked_turn: HashMap<StableId, u32>,
-    creature_last_blocked_turn: HashMap<StableId, u32>,
-    creature_last_became_blocked_turn: HashMap<StableId, u32>,
-    current_upkeep_turn_by_player: HashMap<PlayerId, u32>,
-    previous_upkeep_turn_by_player: HashMap<PlayerId, u32>,
+    creature_last_attacked_turn: im::HashMap<StableId, u32>,
+    creature_last_blocked_turn: im::HashMap<StableId, u32>,
+    creature_last_became_blocked_turn: im::HashMap<StableId, u32>,
+    current_upkeep_turn_by_player: im::HashMap<PlayerId, u32>,
+    previous_upkeep_turn_by_player: im::HashMap<PlayerId, u32>,
     /// Turn number of each player's most recently completed turn, and of the
     /// latest turn in which each player was dealt combat damage. Together
     /// they answer "dealt combat damage since your last turn".
-    last_completed_turn_by_player: HashMap<PlayerId, u32>,
-    player_last_dealt_combat_damage_turn: HashMap<PlayerId, u32>,
+    last_completed_turn_by_player: im::HashMap<PlayerId, u32>,
+    player_last_dealt_combat_damage_turn: im::HashMap<PlayerId, u32>,
     /// Frozen LKI and bounded "last turn" windows for departed players.
-    departed_player_history: HashMap<PlayerId, DepartedPlayerHistory>,
+    departed_player_history: im::HashMap<PlayerId, DepartedPlayerHistory>,
     /// True while `leave_game` is running (CR 800.4c exile is deferred to it).
     pub(crate) leave_game_in_progress: bool,
     /// Hand sizes captured as the current turn began, before the untap step.
-    pub hand_sizes_at_turn_start: HashMap<PlayerId, usize>,
+    pub hand_sizes_at_turn_start: im::HashMap<PlayerId, usize>,
     /// Total number of spells cast during the immediately previous turn.
     /// Updated when turn advances.
     pub spells_cast_last_turn_total: u32,
@@ -1348,45 +1348,45 @@ pub struct TurnStore {
     pub entered_battlefield_last_turn: Vec<ObjectSnapshot>,
     /// Exact permission instances whose once-per-turn casting use was consumed.
     pub grant_cast_uses_this_turn:
-        HashSet<(PlayerId, crate::grant_registry::GrantPermissionIdentity)>,
+        im::HashSet<(PlayerId, crate::grant_registry::GrantPermissionIdentity)>,
     /// Last known information of each spell cast this turn, as it was put on
     /// the stack: its object and stack entry. Self-copy cast triggers (storm,
     /// casualty, replicate, conspire, demonstrate) still copy a spell that
     /// left the stack before they resolved, using this information.
-    pub cast_spell_lki: HashMap<ObjectId, Arc<(Object, StackEntry)>>,
+    pub cast_spell_lki: im::HashMap<ObjectId, Arc<(Object, StackEntry)>>,
     /// Exhaust activated abilities that have been activated by this object instance.
-    pub exhaust_abilities_activated: HashSet<(ObjectId, usize)>,
+    pub exhaust_abilities_activated: im::HashSet<(ObjectId, usize)>,
     /// Exhaust proposals counted at their beginning; finalization must not count twice.
-    pub exhaust_activations_in_progress: HashSet<(ObjectId, usize)>,
+    pub exhaust_activations_in_progress: im::HashSet<(ObjectId, usize)>,
     /// Activation totals that survive turns and control changes, but not object identity changes.
-    pub ability_activations_per_object: HashMap<(ObjectId, crate::continuous::AbilityOrigin), u32>,
+    pub ability_activations_per_object: im::HashMap<(ObjectId, crate::continuous::AbilityOrigin), u32>,
     /// Actual physical colors spent across turns, keyed by exact incarnation,
     /// acquisition and retained ability definition. None denotes missing proof.
-    pub activation_mana_colors: HashMap<(ObjectId, crate::continuous::AbilityOrigin, Option<ironsmith_core::LinkedExileDefinition>), Option<crate::color::ColorSet>>,
+    pub activation_mana_colors: im::HashMap<(ObjectId, crate::continuous::AbilityOrigin, Option<ironsmith_core::LinkedExileDefinition>), Option<crate::color::ColorSet>>,
     /// Committed activation evidence, retained across turns and scoped to the
     /// actual activator and exact incarnation/acquisition/definition.
-    pub ability_activations_by_actor: HashMap<(ObjectId, crate::continuous::AbilityOrigin, ironsmith_core::LinkedExileDefinition, PlayerId), u32>,
-    pub activation_group_receipts: HashSet<ActivationGroupReceipt>,
+    pub ability_activations_by_actor: im::HashMap<(ObjectId, crate::continuous::AbilityOrigin, ironsmith_core::LinkedExileDefinition, PlayerId), u32>,
+    pub activation_group_receipts: im::HashSet<ActivationGroupReceipt>,
     /// Trigger totals that survive turns and control changes, scoped to incarnation/acquisition.
-    pub triggers_fired_per_object: HashMap<(ObjectId, crate::triggers::TriggerIdentity), u32>,
+    pub triggers_fired_per_object: im::HashMap<(ObjectId, crate::triggers::TriggerIdentity), u32>,
     /// Explicit combat damage assignments keyed by attacker then damage recipient.
     pub combat_damage_assignments: HashMap<ObjectId, HashMap<ObjectId, u32>>,
     /// Objects that assign no combat damage for the rest of the current turn.
-    pub no_combat_damage_this_turn: HashSet<ObjectId>,
+    pub no_combat_damage_this_turn: im::HashSet<ObjectId>,
     /// Objects that assign no combat damage for the rest of the current combat.
-    pub no_combat_damage_this_combat: HashSet<ObjectId>,
+    pub no_combat_damage_this_combat: im::HashSet<ObjectId>,
     /// Hand cards revealed by Forecast through the end of the current upkeep.
     /// A zone change removes the old object ID immediately.
-    pub forecast_revealed_hand_cards: HashSet<ObjectId>,
+    pub forecast_revealed_hand_cards: im::HashSet<ObjectId>,
     /// Hand cards revealed until their owner's next turn begins (Firestorm
     /// Phoenix), with whether that owner can't play them meanwhile. Keyed by
     /// the hand object, so leaving the hand ends both.
-    pub hand_cards_revealed_until_owners_next_turn: HashMap<ObjectId, (PlayerId, bool)>,
+    pub hand_cards_revealed_until_owners_next_turn: im::HashMap<ObjectId, (PlayerId, bool)>,
     /// Control acquisitions since each controller's latest upkeep began.
-    pub came_under_control_since_last_upkeep: HashSet<ObjectId>,
+    pub came_under_control_since_last_upkeep: im::HashSet<ObjectId>,
     /// Acquisitions in the interval preceding the currently begun upkeep,
     /// retained while its echo triggers await their intervening-if recheck.
-    pub echo_eligible_this_upkeep: HashSet<ObjectId>,
+    pub echo_eligible_this_upkeep: im::HashSet<ObjectId>,
     /// Permanents transformed by a day/night change whose "As this
     /// transforms" programs (CR 712.20) still need a decision maker.
     pub pending_day_night_as_transforms: Vec<ObjectId>,
@@ -2234,7 +2234,7 @@ pub enum TurnCounterKey {
 /// Generic per-turn counter tracker.
 #[derive(Debug, Clone, Default)]
 pub struct TurnCounterTracker {
-    counters: HashMap<TurnCounterKey, u32>,
+    counters: im::HashMap<TurnCounterKey, u32>,
 }
 
 fn activated_ability_turn_counter_name(source: ObjectId, ability_index: usize) -> String {
@@ -6007,7 +6007,7 @@ impl GameState {
                 turn_order,
                 turn_history: {
                     let mut history = TurnHistory::default();
-                    history.ability_activation_counts = Some(HashMap::new());
+                    history.ability_activation_counts = Some(Default::default());
                     history.draw_occurrences = Some(Default::default());
                     history
                 },

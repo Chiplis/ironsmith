@@ -320,19 +320,19 @@ pub type PileOrGuessInstructionKey =
 #[derive(Debug, Clone, Default)]
 pub struct TurnHistory {
     /// Completed operations by player; copied with the ordinary last-own-turn ledger.
-    pub player_named_actions: HashMap<(PlayerId, String), u32>,
-    pub player_named_actions_by_combat: HashMap<(u32, PlayerId, String), u32>,
+    pub player_named_actions: im::HashMap<(PlayerId, String), u32>,
+    pub player_named_actions_by_combat: im::HashMap<(u32, PlayerId, String), u32>,
     /// Exact public holder when this turn began. Fresh games have no monarch;
     /// authoritative restore requires a presence-bearing carrier for this fact.
     pub monarch_at_turn_start: Option<PlayerId>,
     /// Per-player snapshot taken before the untap step begins.
-    pub untapped_lands_at_turn_start: HashMap<PlayerId, u32>,
-    pub activated_abilities_this_turn: HashSet<(ObjectId, usize)>,
+    pub untapped_lands_at_turn_start: im::HashMap<PlayerId, u32>,
+    pub activated_abilities_this_turn: im::HashSet<(ObjectId, usize)>,
     /// Actual activations, keyed by acquisition instead of a mutable display slot.
     /// None is unretained history, never a completed zero. Fresh games and
     /// new turns explicitly establish a complete empty ledger.
     pub ability_activation_counts: Option<
-        HashMap<
+        im::HashMap<
             (
                 ObjectId,
                 crate::continuous::AbilityOrigin,
@@ -341,73 +341,73 @@ pub struct TurnHistory {
             u32,
         >,
     >,
-    pub loyalty_abilities_activated_this_turn: HashSet<ObjectId>,
-    pub activated_abilities_resolved_this_turn: HashMap<(ObjectId, usize), u32>,
+    pub loyalty_abilities_activated_this_turn: im::HashSet<ObjectId>,
+    pub activated_abilities_resolved_this_turn: im::HashMap<(ObjectId, usize), u32>,
     pub chosen_modes_by_ability_this_turn: HashMap<(ObjectId, usize), HashSet<usize>>,
-    pub triggers_fired_this_turn: HashMap<(ObjectId, TriggerIdentity), u32>,
-    pub triggered_abilities_resolved_this_turn: HashMap<(ObjectId, TriggerIdentity), u32>,
+    pub triggers_fired_this_turn: im::HashMap<(ObjectId, TriggerIdentity), u32>,
+    pub triggered_abilities_resolved_this_turn: im::HashMap<(ObjectId, TriggerIdentity), u32>,
     /// Times each triggered ability's "Do this only once each turn" optional
     /// instruction was actually performed this turn.
-    pub do_this_actions_this_turn: HashMap<(ObjectId, TriggerIdentity), u32>,
+    pub do_this_actions_this_turn: im::HashMap<(ObjectId, TriggerIdentity), u32>,
     pub turn_counters: TurnCounterTracker,
-    pub foretell_actions_this_turn: HashSet<PlayerId>,
-    pub mana_spent_to_cast_spells_this_turn: HashMap<PlayerId, u32>,
-    pub players_attacked_this_turn: HashSet<PlayerId>,
-    pub players_tapped_land_for_mana_this_turn: HashSet<PlayerId>,
+    pub foretell_actions_this_turn: im::HashSet<PlayerId>,
+    pub mana_spent_to_cast_spells_this_turn: im::HashMap<PlayerId, u32>,
+    pub players_attacked_this_turn: im::HashSet<PlayerId>,
+    pub players_tapped_land_for_mana_this_turn: im::HashSet<PlayerId>,
     /// Player/counter pairs locked by a replacement effect for the rest of
     /// this turn (for example, "you can't get additional poison counters this
     /// turn"). The lock is established when that replacement applies, rather
     /// than retroactively counting counters received earlier in the turn.
-    pub player_counter_locks_this_turn: HashSet<(PlayerId, crate::object::CounterType)>,
-    pub die_rolls_this_turn: HashMap<PlayerId, Vec<u32>>,
+    pub player_counter_locks_this_turn: im::HashSet<(PlayerId, crate::object::CounterType)>,
+    pub die_rolls_this_turn: im::HashMap<PlayerId, Vec<u32>>,
     /// Completed physical rolls, including nonnumeric planar rolls. Ignored
     /// and superseded rerolls never enter this ordinal history.
-    pub completed_die_rolls_this_turn: HashMap<PlayerId, u32>,
+    pub completed_die_rolls_this_turn: im::HashMap<PlayerId, u32>,
     /// Retained coin flips only; ignored replacement coins never count.
-    pub completed_coin_flips_this_turn: HashMap<PlayerId, u32>,
-    pub die_roll_result_adjustments_this_turn: HashSet<(ObjectId, StaticAbilityInstanceId)>,
+    pub completed_coin_flips_this_turn: im::HashMap<PlayerId, u32>,
+    pub die_roll_result_adjustments_this_turn: im::HashSet<(ObjectId, StaticAbilityInstanceId)>,
     /// Source/player pairs for attached-object rule restrictions that player
     /// has paid to ignore until the turn ends.
-    pub players_ignoring_attached_static_restrictions_this_turn: HashSet<(ObjectId, PlayerId)>,
+    pub players_ignoring_attached_static_restrictions_this_turn: im::HashSet<(ObjectId, PlayerId)>,
     /// Source/player pairs for source-wide rule restrictions that the player
     /// has paid to ignore until the turn ends.
-    pub players_ignoring_source_static_effects_this_turn: HashSet<(ObjectId, PlayerId)>,
-    pub creatures_attacked_this_turn: HashSet<ObjectId>,
+    pub players_ignoring_source_static_effects_this_turn: im::HashSet<(ObjectId, PlayerId)>,
+    pub creatures_attacked_this_turn: im::HashSet<ObjectId>,
     /// Creatures each player declared as attackers this turn, keyed by the
     /// attacking player at declaration. "Attacked with" is a turn-history fact
     /// that survives the creature leaving the battlefield or changing control.
-    pub creatures_attacked_by_player_this_turn: HashMap<PlayerId, HashSet<ObjectId>>,
+    pub creatures_attacked_by_player_this_turn: im::HashMap<PlayerId, im::HashSet<ObjectId>>,
     /// Players each player attacked with a declared attacker, keyed by
     /// (combat phase number this turn, attacking player). Creatures put onto
     /// the battlefield attacking never "attacked" (CR 508.4), and removal from
     /// combat doesn't undo the attack (CR 702.121a melee counts these).
-    pub players_attacked_in_combat: HashMap<(u32, PlayerId), HashSet<PlayerId>>,
+    pub players_attacked_in_combat: im::HashMap<(u32, PlayerId), im::HashSet<PlayerId>>,
     /// The players each creature attacked during each active player's most
     /// recent combat, keyed by that active player and stamped with the
     /// (turn number, combat phase) the declaration belongs to. Survives turn
     /// changes: "an opponent ... that this creature didn't attack during your
     /// last combat" (Territorial Hellkite) reads an earlier turn's combat.
     pub last_combat_attacked_players:
-        HashMap<PlayerId, ((u32, u32), HashMap<ObjectId, Vec<PlayerId>>)>,
-    pub creatures_attacked_battles_this_turn: HashSet<ObjectId>,
-    pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
-    pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
+        im::HashMap<PlayerId, ((u32, u32), HashMap<ObjectId, Vec<PlayerId>>)>,
+    pub creatures_attacked_battles_this_turn: im::HashSet<ObjectId>,
+    pub creature_attack_counts_this_turn: im::HashMap<ObjectId, u32>,
+    pub crewed_this_turn: im::HashMap<ObjectId, Vec<ObjectId>>,
     /// Vehicles a crew ability of which resolved this turn (CR 702.122d:
     /// that is what "becomes crewed" means, so "for the first time each
     /// turn" is decided here, not when a crew cost is paid).
-    pub crew_abilities_resolved_this_turn: HashSet<ObjectId>,
-    pub saddled_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
+    pub crew_abilities_resolved_this_turn: im::HashSet<ObjectId>,
+    pub saddled_this_turn: im::HashMap<ObjectId, Vec<ObjectId>>,
     /// Spells and abilities that made one or more players guess or group
     /// cards or permanents into piles this turn (CR 700.3), one entry per
     /// resolution: (source, first object id allocated after the resolution
     /// began, triggered-ability identity, activated-ability index).
-    pub pile_or_guess_instructions_this_turn: HashSet<PileOrGuessInstructionKey>,
+    pub pile_or_guess_instructions_this_turn: im::HashSet<PileOrGuessInstructionKey>,
     pub spell_warped_this_turn: bool,
     /// Spells each player has cast this game (never cleared between turns).
-    pub spells_cast_this_game: HashMap<PlayerId, u32>,
+    pub spells_cast_this_game: im::HashMap<PlayerId, u32>,
     /// Completed unqualified target history restored without fabricating old
     /// event records. Exact incarnations remain distinct after a zone change.
-    checkpoint_targeted_objects: HashSet<ObjectId>,
+    checkpoint_targeted_objects: im::HashSet<ObjectId>,
     pub event_records: TurnEventRecords,
     pub staged_event_records: TurnEventRecords,
     /// Native first-observation order for physical draws. Publication can
@@ -432,7 +432,7 @@ impl TurnHistory {
         self.player_named_actions_by_combat.clear();
         self.monarch_at_turn_start = None;
         self.activated_abilities_this_turn.clear();
-        self.ability_activation_counts = Some(HashMap::new());
+        self.ability_activation_counts = Some(Default::default());
         self.loyalty_abilities_activated_this_turn.clear();
         self.activated_abilities_resolved_this_turn.clear();
         self.chosen_modes_by_ability_this_turn.clear();
@@ -500,7 +500,7 @@ impl TurnHistory {
     }
 
     pub fn restore_targeted_object_history(&mut self, ids: Vec<ObjectId>) -> Result<(), String> {
-        let unique: HashSet<_> = ids.iter().copied().collect();
+        let unique: im::HashSet<_> = ids.iter().copied().collect();
         if unique.len() != ids.len() {
             return Err("duplicate exact object in completed target history".into());
         }

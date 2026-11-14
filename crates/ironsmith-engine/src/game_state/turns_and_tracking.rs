@@ -16,6 +16,7 @@ impl GameState {
                 .turn_store
                 .came_under_control_since_last_upkeep
                 .remove(&id)
+                .is_some()
             {
                 self.turn_store.echo_eligible_this_upkeep.insert(id);
             }
@@ -146,7 +147,8 @@ impl GameState {
             .turn_store
             .turn_history
             .players_ignoring_source_static_effects_this_turn
-            .insert((source, player));
+            .insert((source, player))
+            .is_none();
         if inserted {
             self.mark_continuous_state_dirty();
             self.bump_mutation_revision();
@@ -191,7 +193,8 @@ impl GameState {
             .turn_store
             .turn_history
             .players_ignoring_attached_static_restrictions_this_turn
-            .insert((source, player));
+            .insert((source, player))
+            .is_none();
         if inserted {
             self.mark_continuous_state_dirty();
             self.bump_mutation_revision();
@@ -1539,6 +1542,7 @@ impl GameState {
         self.turn_store
             .forecast_revealed_hand_cards
             .insert(object_id)
+            .is_none()
     }
 
     pub fn is_hand_card_revealed_until_upkeep_ends(&self, object_id: ObjectId) -> bool {
@@ -1917,6 +1921,7 @@ impl GameState {
             .turn_store
             .skip_all_combat_phases_next_turn
             .remove(&next_player)
+            .is_some()
         {
             self.turn_store
                 .skip_current_turn_combat_phases
@@ -1937,7 +1942,7 @@ impl GameState {
         self.set_planar_controller(next_player);
         self.reset_planar_rolls_for_turn();
 
-        for history in self.turn_store.departed_player_history.values_mut() {
+        for (_, history) in self.turn_store.departed_player_history.iter_mut() {
             if self.turn.turn_number >= history.last_turn_expires_before_turn {
                 history.last_turn_history = None;
             }
@@ -1956,7 +1961,7 @@ impl GameState {
         self.turn_store.spells_cast_last_turn_total =
             self.turn_store.turn_history.total_spells_cast_this_turn();
         let completed_turn_history = std::mem::take(&mut self.turn_store.turn_history);
-        self.turn_store.turn_history.ability_activation_counts = Some(HashMap::new());
+        self.turn_store.turn_history.ability_activation_counts = Some(Default::default());
         self.turn_store.turn_history.draw_occurrences = Some(Default::default());
         let completed_turn_number = self.turn.turn_number.saturating_sub(1);
         for player in completed_turn_players {
@@ -2089,7 +2094,7 @@ impl GameState {
                 (object.card_types.contains(&CardType::Land) && !self.is_tapped(object_id))
                     .then(|| self.controller_of(object))
             })
-            .fold(HashMap::new(), |mut counts, controller| {
+            .fold(im::HashMap::new(), |mut counts, controller| {
                 *counts.entry(controller).or_insert(0) += 1;
                 counts
             });
@@ -3622,6 +3627,7 @@ impl GameState {
             .turn_store
             .exhaust_activations_in_progress
             .remove(&(source, ability_index))
+            .is_some()
         {
             return;
         }

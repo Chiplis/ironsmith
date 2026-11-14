@@ -1377,6 +1377,7 @@ impl TurnRunner {
                         .turn_store
                         .skip_next_combat_phases
                         .remove(&game.turn.active_player)
+                        .is_some()
                     || game
                         .turn_store
                         .pending_combat_phase_skips

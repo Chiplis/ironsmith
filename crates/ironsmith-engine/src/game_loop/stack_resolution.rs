@@ -1974,7 +1974,8 @@ fn resolve_stack_entry_full_inner(
         let first_with_name = game
             .turn_store
             .resolved_spell_names
-            .insert((entry.controller, obj.name.to_string()));
+            .insert((entry.controller, obj.name.to_string()))
+            .is_none();
         if spell_has_keyword_marker(obj, ironsmith_core::KeywordMarkerMechanic::Paradigm)
             || spell_has_keyword_marker(obj, ironsmith_core::KeywordMarkerMechanic::RecurringCopyOnFirstNameResolution) {
             if first_with_name {

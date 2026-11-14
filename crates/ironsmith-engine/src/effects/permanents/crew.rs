@@ -225,7 +225,8 @@ fn build_crew_ability_resolved_event(
         .turn_store
         .turn_history
         .crew_abilities_resolved_this_turn
-        .insert(vehicle);
+        .insert(vehicle)
+        .is_none();
     let mut object_tags = HashMap::new();
     object_tags.insert(
         TagKey::from(CREWED_VEHICLE_TAG),

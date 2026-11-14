@@ -303,7 +303,7 @@ fn legacy_enter_phase(game: &mut GameState, phase: Phase) -> Result<(), TurnErro
             .turn_store
             .skip_current_turn_combat_phases
             .contains(&active)
-            || game.turn_store.skip_next_combat_phases.remove(&active)
+            || game.turn_store.skip_next_combat_phases.remove(&active).is_some()
             || game.turn_store.pending_combat_phase_skips.remove(&active));
     game.clear_forecast_revealed_hand_cards();
     game.turn.phase = phase;
