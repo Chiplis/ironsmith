@@ -102,6 +102,10 @@ fn vote_child_effect_groups(vote: &VoteEffect) -> Vec<&[Effect]> {
 }
 
 impl EffectExecutor for VoteEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Chosen
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }

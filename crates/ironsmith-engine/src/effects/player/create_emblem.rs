@@ -28,6 +28,10 @@ pub type CreateEmblemEffect = ironsmith_core::CreateEmblemEffect<EmblemDescripti
 /// let effect = CreateEmblemEffect::new(emblem);
 /// ```
 impl EffectExecutor for CreateEmblemEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Deferred
+    }
+
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         for ability in &self.emblem.abilities {
             crate::ability::visit_owned_effects(ability, visitor);

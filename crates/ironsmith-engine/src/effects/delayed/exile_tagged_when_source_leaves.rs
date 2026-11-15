@@ -35,6 +35,10 @@ fn exile_body(subject: ChooseSpec) -> Effect {
 }
 
 impl EffectExecutor for ExileTaggedWhenSourceLeavesEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Deferred
+    }
+
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         visitor(&exile_body(ChooseSpec::Tagged(self.tag.clone())));
     }

@@ -15,7 +15,7 @@ use crate::tag::TagKey;
 use crate::target::{ChooseSpec, TaggedOpbjectRelation};
 pub type ForEachObject = ironsmith_core::ForEachObject<Effect>;
 
-fn matching_objects(
+pub(crate) fn matching_objects(
     effect: &ForEachObject,
     game: &GameState,
     ctx: &ExecutionContext,

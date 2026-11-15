@@ -239,7 +239,8 @@ fn a_negated_program_filter_cannot_turn_missing_copy_evidence_into_success() {
             use crate::filter::ObjectFilterExt as _;
             let mut filter = ObjectFilter::default();
             filter.zone = Some(Zone::Stack);
-            filter.would_destroy_object = Some(Box::new(ObjectFilter::creature()));
+            filter.would_act_on = Some(ironsmith_core::filter_model::WouldActOn::new(
+                crate::effect::PriorEffectAction::Destroyed, ObjectFilter::creature()));
             let matched = filter.matches(game.object(self.spell).unwrap(), &ctx.filter_context(game), game);
             if matched != self.negate { game.player_mut(A).unwrap().life += 5; }
             Ok(crate::effect::EffectOutcome::resolved())

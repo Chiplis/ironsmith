@@ -115,7 +115,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         target_controller_fixed_on_announcement,
         target_set_shared_creature_type, target_set_equal_metric, target_set_aggregate_constraint,
         targets_only_player, targets_only_object, targets_only_any_of, could_be_targeted_by,
-        not_targeted_by_ability_from, would_destroy_object,
+        not_targeted_by_ability_from, would_act_on,
         card_types, all_card_types, card_type_count, creature_type_count, excluded_card_types,
         subtypes, all_subtypes, type_or_subtype_union, union_surface, excluded_subtypes,
         supertypes, excluded_supertypes, colors, required_colors, chosen_color,
@@ -214,12 +214,15 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
     for nested in [
         &mut rewritten.mana_from_source_spent_to_cast, &mut rewritten.targets_object,
         &mut rewritten.targets_only_object, &mut rewritten.not_targeted_by_ability_from,
-        &mut rewritten.would_destroy_object, &mut rewritten.attached_to_object,
+        &mut rewritten.attached_to_object,
         &mut rewritten.with_attached_object, &mut rewritten.without_attached_object,
         &mut rewritten.could_enchant_object, &mut rewritten.controller_controls,
         &mut rewritten.blocked_or_was_blocked_by_this_turn,
     ].into_iter().flatten() {
         **nested = rewrite_filter_words(nested, change)?;
+    }
+    if let Some(would) = rewritten.would_act_on.as_mut() {
+        *would.object = rewrite_filter_words(&would.object, change)?;
     }
     for comparison in [
         &mut rewritten.card_type_count, &mut rewritten.creature_type_count, &mut rewritten.color_count, &mut rewritten.power,

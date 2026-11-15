@@ -79,6 +79,10 @@ impl CasterControlWhileResolving for CastTaggedEffect {
 
 /// Effect that casts a tagged card immediately.
 impl EffectExecutor for CastTaggedEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Deferred
+    }
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Cast)
     }

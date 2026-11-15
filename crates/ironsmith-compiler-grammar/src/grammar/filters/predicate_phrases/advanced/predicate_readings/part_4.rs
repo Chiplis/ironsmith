@@ -1115,7 +1115,7 @@ pub(super) const READINGS: &[Reading] = &[
                 // recipient and performer; a loose demonstrative cannot rebind it.
                 && !input.read_by("named-action-recipient-this-turn")
                 && !input.read_by("triggering-object-keyword-predicate")
-                && !input.read_by("stack-object-would-destroy-predicate")
+                && !input.read_by("stack-object-would-act-predicate")
                 && !input.read_by("triggering-object-source-stat-predicate")
                 && !input.read_by("value-reference-comparison-predicate")
                 // Readings ranked above this one that read the input read it.

@@ -1317,7 +1317,7 @@ pub fn resolve_stack_entry_with(
 /// One retained StackEntry binding view for ordinary and immediate resolution.
 /// The caller owns target legality, intervening-if timing, lifecycle mutations
 /// and publication. Binding discovery reads the original resolution world.
-pub(super) fn stack_entry_execution_context<'a>(
+pub(crate) fn stack_entry_execution_context<'a>(
     game: &GameState,
     entry: &StackEntry,
     decision_maker: &'a mut dyn DecisionMaker,

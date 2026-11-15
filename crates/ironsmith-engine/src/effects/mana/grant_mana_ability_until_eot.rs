@@ -22,6 +22,10 @@ impl GrantManaAbilityUntilEotEffect {
 }
 
 impl EffectExecutor for GrantManaAbilityUntilEotEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Deferred
+    }
+
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         crate::ability::visit_activated_owned_effects(&self.ability, visitor);
     }

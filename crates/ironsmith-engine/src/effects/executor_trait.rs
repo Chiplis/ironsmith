@@ -118,6 +118,35 @@ pub enum EffectExecutionCategory {
     ReplacementRegistration,
 }
 
+/// Permanents a player chooses among as an instruction resolves ("sacrifice
+/// a land", "each player sacrifices two creatures"): the candidates are the
+/// battlefield permanents a chooser controls that match `filter`.
+#[derive(Debug, Clone, Copy)]
+pub struct ChosenPermanents<'a> {
+    /// The choosing player, or with `each` every player it matches.
+    pub chooser: &'a crate::target::PlayerFilter,
+    pub each: bool,
+    pub filter: &'a crate::target::ObjectFilter,
+    pub count: &'a Value,
+}
+
+/// How a resolution forecast (what a stack object would do if it resolved
+/// right now, without executing it) treats an instruction's child effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForecastChildren {
+    /// The children run as part of this instruction.
+    Immediate,
+    /// The children run only if a player makes a choice ("you may", "unless
+    /// ... does", a vote) or depending on how an earlier instruction turned
+    /// out ("if you do"). Equinox rulings: an action that happens only if a
+    /// choice is made doesn't count.
+    Chosen,
+    /// The children don't run during this resolution: granted abilities,
+    /// delayed triggers, emblems, registered replacements, separately cast
+    /// spells.
+    Deferred,
+}
+
 /// A selected input/output slot that a prepared program must retain even when
 /// its value equals the enclosing participant's current binding. A value diff
 /// alone cannot distinguish "written again" from "never produced".
@@ -1137,6 +1166,35 @@ pub trait EffectExecutor:
     /// Composition executors preserve their children's independently recorded actions.
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         None
+    }
+
+    /// The objects this instruction performs its [`Self::result_action`] on,
+    /// when it names them with a spec ("destroy target land", "exile all
+    /// creatures"). Resolution forecasts read it to tell which objects a
+    /// stack object would act on.
+    fn result_action_object_spec(&self) -> Option<&ChooseSpec> {
+        None
+    }
+
+    /// The permanents a player chooses to perform this instruction's
+    /// [`Self::result_action`] on, when the instruction names a choice rather
+    /// than a spec.
+    fn result_action_chosen_permanents(&self) -> Option<ChosenPermanents<'_>> {
+        None
+    }
+
+    /// How a resolution forecast treats this instruction's children.
+    /// Registrations of delayed triggers and replacement effects are
+    /// deferred; instructions that run their children only on a choice, or
+    /// that grant or schedule them for later, override this.
+    fn forecast_children(&self) -> ForecastChildren {
+        match self.primary_execution_category() {
+            EffectExecutionCategory::DelayedTriggerRegistration
+            | EffectExecutionCategory::ReplacementRegistration => ForecastChildren::Deferred,
+            EffectExecutionCategory::Standard | EffectExecutionCategory::CostExecutable => {
+                ForecastChildren::Immediate
+            }
+        }
     }
 
     /// Distinguish event-local instruction alternatives supplied by one source.

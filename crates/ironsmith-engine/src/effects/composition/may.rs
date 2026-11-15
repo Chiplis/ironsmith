@@ -414,6 +414,10 @@ impl MayEffect {
 }
 
 impl EffectExecutor for MayEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Chosen
+    }
+
     fn directly_mentions_player_filter(&self, needle: &PlayerFilter) -> bool {
         self.decider.as_ref().is_some_and(|decider| decider.mentions_player_filter(needle))
     }

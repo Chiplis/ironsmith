@@ -4,8 +4,11 @@ use crate::word_primitives::WordWindows as _;
 use super::super::*;
 use super::{Predicate, Reading};
 use crate::cards::builders::SourcePredicateAst;
+use crate::host::SubjectAst;
 use crate::recognition::RuleId;
 use crate::registry::HeadDiscriminator;
+use ironsmith_core::PriorEffectAction;
+use ironsmith_core::filter_model::WouldActOn;
 
 fn read_exact_revealed_color_count(input: &Predicate<'_>) -> Result<Option<PredicateAst>, CardTextError> {
     let words = crate::lexer::token_word_refs(input.predicate_tokens);
@@ -445,39 +448,113 @@ pub(super) fn read_source_zone_predicate(
 }
 
 /// This shard's readings, in rank order.
-/// "it would destroy a land you control": the referenced stack object's
-/// resolution would destroy a matching object (Equinox). The relation is
-/// carried on the stack object's filter so the runtime can inspect its
-/// destroy instructions and chosen targets.
-pub(super) fn read_stack_object_would_destroy_predicate(
+/// Actions an object predicate can ask a stack object's resolution about
+/// ("it would destroy a land you control", "that spell would return a
+/// creature you control to its owner's hand"): a verb followed by its
+/// objects and, for a move, the destination.
+const STACK_OBJECT_WOULD_ACTIONS: [PriorEffectAction; 5] = [
+    PriorEffectAction::Destroyed,
+    PriorEffectAction::Exiled,
+    PriorEffectAction::Tapped,
+    PriorEffectAction::Returned,
+    PriorEffectAction::Sacrificed,
+];
+
+/// The objects of a would-act predicate, without the destination its action
+/// requires: "return <objects> to its owner's hand" (CR 400.3: a card always
+/// goes to its owner's hand). Actions without a destination take every token.
+fn stack_object_would_act_objects(
+    action: PriorEffectAction,
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    if action != PriorEffectAction::Returned {
+        return Some(tokens);
+    }
+    let to = tokens.iter().rposition(|token| token.is_word("to"))?;
+    let [owner @ .., hand] = &tokens[to + 1..] else {
+        return None;
+    };
+    let owner_hand = (hand.is_word("hand") || hand.is_word("hands"))
+        && !owner.is_empty()
+        && owner.iter().all(|token| {
+            ["its", "their", "owner's", "owners", "owners'"]
+                .iter()
+                .any(|word| token.is_word(word))
+        });
+    owner_hand.then_some(&tokens[..to])
+}
+
+/// "cause you to <action>": the player a would-act predicate requires to
+/// perform the action, and the tokens after "to".
+fn stack_object_would_cause_actor(
+    tokens: &[OwnedLexToken],
+) -> Option<(PlayerFilter, &[OwnedLexToken])> {
+    let [cause, rest @ ..] = tokens else {
+        return None;
+    };
+    if !cause.is_word("cause") {
+        return None;
+    }
+    let to = rest.iter().position(|token| token.is_word("to"))?;
+    let player = match crate::util::parse_subject(&rest[..to]) {
+        SubjectAst::Player(player) => player,
+        _ => return None,
+    };
+    let actor = match player {
+        PlayerAst::You => PlayerFilter::You,
+        PlayerAst::Opponent => PlayerFilter::Opponent,
+        PlayerAst::Any => PlayerFilter::Any,
+        _ => return None,
+    };
+    Some((actor, &rest[to + 1..]))
+}
+
+/// "it would destroy a land you control", "it would cause you to sacrifice a
+/// land": the referenced stack object's
+/// resolution would perform an action on a matching object (Equinox). The
+/// relation is carried on the stack object's filter so the runtime can
+/// forecast its resolution.
+pub(super) fn read_stack_object_would_act_predicate(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let tokens = input.predicate_tokens;
     let subject_len = match tokens {
-        [it, would, destroy, ..]
-            if it.is_word("it") && would.is_word("would") && destroy.is_word("destroy") =>
-        {
-            1
-        }
-        [that, spell, would, destroy, ..]
-            if that.is_word("that")
-                && spell.is_word("spell")
-                && would.is_word("would")
-                && destroy.is_word("destroy") =>
+        [it, would, ..] if it.is_word("it") && would.is_word("would") => 1,
+        [that, spell, would, ..]
+            if that.is_word("that") && spell.is_word("spell") && would.is_word("would") =>
         {
             2
         }
         _ => return Ok(None),
     };
-    let destroyed_tokens = &tokens[subject_len + 2..];
-    if destroyed_tokens.is_empty() {
+    let rest = &tokens[subject_len + 1..];
+    let (actor, rest) = match stack_object_would_cause_actor(rest) {
+        Some((actor, rest)) => (Some(actor), rest),
+        None if rest.first().is_some_and(|token| token.is_word("cause")) => return Ok(None),
+        None => (None, rest),
+    };
+    let Some((verb, rest)) = rest.split_first() else {
+        return Ok(None);
+    };
+    let Some(action) = STACK_OBJECT_WOULD_ACTIONS
+        .into_iter()
+        .find(|action| verb.is_word(action.base_verb()))
+    else {
+        return Ok(None);
+    };
+    let Some(object_tokens) = stack_object_would_act_objects(action, rest) else {
+        return Ok(None);
+    };
+    if object_tokens.is_empty() {
         return Ok(None);
     }
-    let Ok(destroyed) = parse_object_filter_lexed(destroyed_tokens, false) else {
+    let Ok(object) = parse_object_filter_lexed(object_tokens, false) else {
         return Ok(None);
     };
     let mut filter = ObjectFilter::default();
-    filter.would_destroy_object = Some(Box::new(destroyed));
+    let mut would = WouldActOn::new(action, object);
+    would.actor = actor;
+    filter.would_act_on = Some(would);
     Ok(Some(PredicateAst::ItMatches(filter)))
 }
 
@@ -489,10 +566,10 @@ pub(super) const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_exact_revealed_color_count(input)),
     },
     Reading {
-        id: RuleId::new("stack-object-would-destroy-predicate"),
+        id: RuleId::new("stack-object-would-act-predicate"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
-        read: |input| input.outcome(read_stack_object_would_destroy_predicate(input)),
+        read: |input| input.outcome(read_stack_object_would_act_predicate(input)),
     },
     Reading {
         id: RuleId::new(crate::keyword_forms::SADDLED),

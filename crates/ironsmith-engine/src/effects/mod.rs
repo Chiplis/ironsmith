@@ -103,7 +103,7 @@ pub use context::{
 pub(crate) use executor_trait::canonical_cost_children;
 pub use executor_trait::{
     CompletedEffectOutputs, CostChoiceBindings, CostExecutableEffect, CostValidationError,
-    DamageActionBinding, DeferredPlayerActionProposal, EffectExecutionCategory, EffectExecutor,
+    DamageActionBinding, DeferredPlayerActionProposal, ChosenPermanents, EffectExecutionCategory, EffectExecutor, ForecastChildren,
     EffectOutcomeContribution, EffectOutcomeScope, ModalEffectSpec, ModalSpec,
     OriginalEffectOutput, OriginalPhaseStatus, PreparedSelectionBinding, PublishedEffectOutputs,
     ResolutionPreludeBinding, ScopedEffectOutcome, SharedEffectOutcome, SharedEffectOutputView,

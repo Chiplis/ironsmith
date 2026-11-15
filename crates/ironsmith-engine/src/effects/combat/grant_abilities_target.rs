@@ -14,6 +14,10 @@ use crate::target::ChooseSpec;
 pub type GrantAbilitiesTargetEffect = ironsmith_core::GrantAbilitiesTargetEffect<StaticAbility>;
 
 impl EffectExecutor for GrantAbilitiesTargetEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Deferred
+    }
+
     fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.target==*spec}
 
     fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {

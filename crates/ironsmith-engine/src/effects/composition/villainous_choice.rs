@@ -8,6 +8,10 @@ use crate::game_state::GameState;
 pub type VillainousChoiceEffect = ironsmith_core::VillainousChoiceEffect<crate::effect::Effect>;
 
 impl EffectExecutor for VillainousChoiceEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Chosen
+    }
+
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         for mode in &self.modes {
             for effect in &mode.effects {

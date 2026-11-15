@@ -42,6 +42,10 @@ pub type GrantEffect = ironsmith_core::GrantEffect<Grantable, GrantDuration>;
 ///
 /// The grant lasts for the specified duration (typically until end of turn).
 impl EffectExecutor for GrantEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Deferred
+    }
+
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         crate::grant::visit_grantable_owned_effects(&self.grantable, visitor);
     }

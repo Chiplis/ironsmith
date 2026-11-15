@@ -7985,41 +7985,7 @@ pub(crate) fn describe_colors_among(filter: &ObjectFilter) -> String {
 }
 
 fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction) -> &'static str {
-    match action {
-        crate::effect::PriorEffectAction::Cast => "cast",
-        crate::effect::PriorEffectAction::Chosen => "choose",
-        crate::effect::PriorEffectAction::ChosenNumber => "choose",
-        crate::effect::PriorEffectAction::Flipped => "flipped",
-        crate::effect::PriorEffectAction::Rolled => "roll",
-        crate::effect::PriorEffectAction::Connived => "connive",
-        crate::effect::PriorEffectAction::Countered => "counter",
-        crate::effect::PriorEffectAction::CountersPut => "put counters on",
-        crate::effect::PriorEffectAction::CountersMoved(_) => "move counters",
-        crate::effect::PriorEffectAction::DealtDamage => "deal damage to",
-        crate::effect::PriorEffectAction::Died => "die",
-        crate::effect::PriorEffectAction::Destroyed => "destroy",
-        crate::effect::PriorEffectAction::Discarded => "discard",
-        crate::effect::PriorEffectAction::Copied => "copy",
-        crate::effect::PriorEffectAction::Investigated => "investigate",
-        crate::effect::PriorEffectAction::Drawn => "draw",
-        crate::effect::PriorEffectAction::Exiled => "exile",
-        crate::effect::PriorEffectAction::Goaded => "goad",
-        crate::effect::PriorEffectAction::Milled => "mill",
-        crate::effect::PriorEffectAction::PhasedOut => "phase out",
-        crate::effect::PriorEffectAction::Prevented => "prevent",
-        crate::effect::PriorEffectAction::PutOntoBattlefield => "put onto the battlefield",
-        crate::effect::PriorEffectAction::PutIntoGraveyard => "put into a graveyard",
-        crate::effect::PriorEffectAction::PutIntoHand => "put into a hand",
-        crate::effect::PriorEffectAction::Removed => "remove",
-        crate::effect::PriorEffectAction::Returned => "return",
-        crate::effect::PriorEffectAction::Revealed => "reveal",
-        crate::effect::PriorEffectAction::Sacrificed => "sacrifice",
-        crate::effect::PriorEffectAction::Searched => "search for",
-        crate::effect::PriorEffectAction::Shuffled => "shuffle",
-        crate::effect::PriorEffectAction::Tapped => "tap",
-        crate::effect::PriorEffectAction::ManaLost => "lose",
-        crate::effect::PriorEffectAction::Affected => "affect",
-    }
+    action.base_verb()
 }
 
 fn describe_prior_effect_result_surface(

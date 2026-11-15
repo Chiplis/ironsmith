@@ -348,6 +348,10 @@ impl UnlessActionProposal {
 }
 
 impl EffectExecutor for UnlessActionEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Chosen
+    }
+
     fn supports_prepared_action_program(&self) -> bool {
         self.player != PlayerFilter::Any
             && self

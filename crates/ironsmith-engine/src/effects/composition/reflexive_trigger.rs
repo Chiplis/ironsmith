@@ -221,6 +221,10 @@ fn reflexive_it_snapshots(game: &GameState, outcome: &EffectOutcome) -> Vec<Obje
 }
 
 impl EffectExecutor for ReflexiveTriggerEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Chosen
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }

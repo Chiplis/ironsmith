@@ -2723,6 +2723,52 @@ impl<'de> serde::Deserialize<'de> for ObjectFilter {
     }
 }
 
+/// "it would destroy a land you control": an action a stack object's
+/// resolution would perform, and the objects it would perform it on.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct WouldActOn {
+    pub action: PriorEffectAction,
+    pub object: Box<ObjectFilter>,
+    /// The player who must perform the action ("cause you to sacrifice a
+    /// land"); `None` when any performer counts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub actor: Option<PlayerFilter>,
+}
+
+impl WouldActOn {
+    pub fn new(action: PriorEffectAction, object: ObjectFilter) -> Self {
+        Self { action, object: Box::new(object), actor: None }
+    }
+
+    pub fn with_actor(mut self, actor: PlayerFilter) -> Self {
+        self.actor = Some(actor);
+        self
+    }
+
+    /// "destroy a land you control", "return a creature you control to its
+    /// owner's hand", "cause you to sacrifice a land"
+    pub fn description(&self) -> String {
+        let destination = match self.action {
+            PriorEffectAction::Returned => " to its owner's hand",
+            _ => "",
+        };
+        let action = format!(
+            "{} {}{destination}",
+            self.action.base_verb(),
+            ensure_indefinite_article(self.object.description())
+        );
+        match &self.actor {
+            None => action,
+            Some(PlayerFilter::You) => format!("cause you to {action}"),
+            Some(actor) => format!(
+                "cause {} to {action}",
+                ensure_indefinite_article(describe_player_filter(actor))
+            ),
+        }
+    }
+}
+
 /// The fields of an [`ObjectFilter`].
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, PartialEq, Default, TagKeyWalk)]
@@ -2822,12 +2868,11 @@ pub struct ObjectFilterFields {
     /// another creature named Goblin Artisans").
     #[cfg_attr(feature = "serde", serde(default))]
     pub not_targeted_by_ability_from: Option<Box<ObjectFilter>>,
-    /// Requires a spell or ability on the stack whose resolution would
-    /// destroy an object matching the inner filter ("counter target spell if
-    /// it would destroy a land you control"). The runtime statically inspects
-    /// the stack object's destroy instructions and their chosen targets.
-    #[cfg_attr(feature = "serde", serde(default))]
-    pub would_destroy_object: Option<Box<ObjectFilter>>,
+    /// Requires a spell or ability on the stack whose resolution, judged as
+    /// if it resolved right now, would perform an action on a matching object
+    /// ("counter target spell if it would destroy a land you control").
+    #[cfg_attr(feature = "serde", serde(default, alias = "would_destroy_object"))]
+    pub would_act_on: Option<WouldActOn>,
     pub card_types: Vec<CardType>,
     pub all_card_types: Vec<CardType>,
     /// Number of distinct card types on the candidate, independent of its
@@ -3415,7 +3460,7 @@ impl std::fmt::Debug for ObjectFilter {
             targets_only_any_of,
             could_be_targeted_by,
             not_targeted_by_ability_from,
-            would_destroy_object,
+            would_act_on,
             card_types,
             all_card_types,
             card_type_count,
@@ -3655,7 +3700,7 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("targets_only_any_of", targets_only_any_of);
         out.field("could_be_targeted_by", could_be_targeted_by);
         out.field("not_targeted_by_ability_from", not_targeted_by_ability_from);
-        out.field("would_destroy_object", would_destroy_object);
+        out.field("would_act_on", would_act_on);
         out.field("card_types", card_types);
         out.field("all_card_types", all_card_types);
         out.field("card_type_count", card_type_count);
@@ -8738,11 +8783,8 @@ impl ObjectFilter {
                 source_filter.description()
             ));
         }
-        if let Some(destroyed) = &self.would_destroy_object {
-            parts.push(format!(
-                "that would destroy {}",
-                ensure_indefinite_article(destroyed.description())
-            ));
+        if let Some(would) = &self.would_act_on {
+            parts.push(format!("that would {}", would.description()));
         }
 
         correct_leading_indefinite_article(parts.join(" "))

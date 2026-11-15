@@ -323,6 +323,14 @@ impl EffectExecutor for SacrificePlayerEffect {
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Sacrificed)
     }
+    fn result_action_chosen_permanents(&self) -> Option<crate::effects::ChosenPermanents<'_>> {
+        Some(crate::effects::ChosenPermanents {
+            chooser: &self.player,
+            each: false,
+            filter: &self.filter,
+            count: &self.count,
+        })
+    }
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }
@@ -443,6 +451,14 @@ impl EffectExecutor for SacrificeEffect {
 
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Sacrificed)
+    }
+    fn result_action_chosen_permanents(&self) -> Option<crate::effects::ChosenPermanents<'_>> {
+        Some(crate::effects::ChosenPermanents {
+            chooser: &self.player,
+            each: false,
+            filter: &self.filter,
+            count: &self.count,
+        })
     }
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -1278,6 +1294,14 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Sacrificed)
     }
+    fn result_action_chosen_permanents(&self) -> Option<crate::effects::ChosenPermanents<'_>> {
+        Some(crate::effects::ChosenPermanents {
+            chooser: &self.player_filter,
+            each: true,
+            filter: &self.filter,
+            count: &self.count,
+        })
+    }
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -1388,6 +1412,9 @@ impl EffectExecutor for SacrificeTargetEffect {
 
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Sacrificed)
+    }
+    fn result_action_object_spec(&self) -> Option<&ChooseSpec> {
+        Some(&self.target)
     }
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)

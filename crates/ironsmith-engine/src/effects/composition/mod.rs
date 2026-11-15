@@ -146,6 +146,7 @@ pub(crate) use emit_keyword_action::{
 pub use execute_with_source::ExecuteWithSourceEffect;
 pub use for_each_correlated_result::ForEachObjectCorrelatedResultEffect;
 pub use for_each_object::ForEachObject;
+pub(crate) use for_each_object::matching_objects as for_each_object_matching_objects;
 pub use for_each_tagged::{
     ForEachControllerOfTaggedEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
 };

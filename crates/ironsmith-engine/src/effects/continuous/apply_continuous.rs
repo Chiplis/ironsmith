@@ -1934,6 +1934,10 @@ impl crate::effects::SimultaneousEffectProposal for ContinuousActionProposal {
 }
 
 impl EffectExecutor for ApplyContinuousEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Deferred
+    }
+
     fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool {
         self.target_spec.as_ref().is_some_and(|role| role == spec)
     }

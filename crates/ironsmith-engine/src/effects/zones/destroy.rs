@@ -494,6 +494,9 @@ impl EffectExecutor for DestroyEffect {
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Destroyed)
     }
+    fn result_action_object_spec(&self) -> Option<&ChooseSpec> {
+        Some(&self.spec)
+    }
     fn execute(
         &self,
         game: &mut GameState,

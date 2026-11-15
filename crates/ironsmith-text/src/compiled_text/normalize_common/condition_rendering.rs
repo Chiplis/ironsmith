@@ -4851,13 +4851,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 return condition;
             }
             // "Counter target spell if it would destroy a land you control":
-            // the stack object's prospective destruction, not a
-            // characteristic of the stack object itself.
-            if let Some(destroyed) = filter.would_destroy_object.as_deref() {
-                return format!(
-                    "it would destroy {}",
-                    ensure_indefinite_article(&destroyed.description())
-                );
+            // the stack object's prospective action, not a characteristic of
+            // the stack object itself.
+            if let Some(would) = filter.would_act_on.as_ref() {
+                return format!("it would {}", would.description());
             }
             if tag.as_str().starts_with("countered_")
                 && strip_leading_article(&desc)

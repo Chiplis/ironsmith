@@ -321,6 +321,9 @@ impl EffectExecutor for TapEffect {
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Tapped)
     }
+    fn result_action_object_spec(&self) -> Option<&ChooseSpec> {
+        Some(&self.target)
+    }
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

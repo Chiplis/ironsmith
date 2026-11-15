@@ -21,6 +21,10 @@ pub type ScheduleEffectsWhenTaggedLeavesEffect =
     ironsmith_core::ScheduleEffectsWhenTaggedLeavesEffect<Effect>;
 
 impl EffectExecutor for ScheduleEffectsWhenTaggedLeavesEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Deferred
+    }
+
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         for effect in &self.effects {
             visitor(effect);

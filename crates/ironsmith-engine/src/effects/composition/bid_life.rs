@@ -24,6 +24,10 @@ fn active_players_in_turn_order(game: &GameState, start: PlayerId) -> Vec<Player
 }
 
 impl crate::effects::EffectExecutor for BidLifeEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Chosen
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

@@ -53,6 +53,10 @@ impl GrantAbilitiesAllEffect {
 }
 
 impl EffectExecutor for GrantAbilitiesAllEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Deferred
+    }
+
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         for ability in &self.abilities {
             crate::ability::visit_static_owned_effects(ability, visitor);

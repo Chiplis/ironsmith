@@ -71,6 +71,7 @@ pub mod effect_model_interpreter;
 pub mod effects;
 pub mod events;
 pub mod filter;
+pub(crate) mod resolution_forecast;
 pub mod game_loop;
 pub mod game_state;
 pub mod grant;

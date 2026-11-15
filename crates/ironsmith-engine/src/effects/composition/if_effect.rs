@@ -702,6 +702,10 @@ fn correlated_branch(effect: &IfEffect, branches: &[PreparedIfBranch])
 }
 
 impl EffectExecutor for IfEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Chosen
+    }
+
     fn supports_replacement_draw_continuation(&self) -> bool {
         self.then.iter().chain(&self.else_).all(crate::effects::replacement::replacement_effect_supported)
     }

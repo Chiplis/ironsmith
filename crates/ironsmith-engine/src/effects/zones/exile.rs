@@ -130,6 +130,9 @@ impl EffectExecutor for ExileEffect {
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Exiled)
     }
+    fn result_action_object_spec(&self) -> Option<&ChooseSpec> {
+        Some(&self.spec)
+    }
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }

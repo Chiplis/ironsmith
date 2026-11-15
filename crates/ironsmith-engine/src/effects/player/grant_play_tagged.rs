@@ -339,6 +339,10 @@ impl GrantPlayTaggedEffect {
 }
 
 impl EffectExecutor for GrantPlayTaggedEffect {
+    fn forecast_children(&self) -> crate::effects::ForecastChildren {
+        crate::effects::ForecastChildren::Deferred
+    }
+
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         if let Some(cost) = &self.alternative_cost {
             crate::ability::visit_total_cost_owned_effects(cost, visitor);

@@ -3579,7 +3579,7 @@ fn creature_blocked_or_was_blocked_by_matching_this_turn(
 /// Legacy boolean filter adapters cannot return an execution error. Preserve
 /// it on the shared checked-action latch before returning any provisional
 /// boolean, so neither negation nor a zero match count can complete the action.
-fn checked_spell_program_for_filter(
+pub(crate) fn checked_spell_program_for_filter(
     game: &GameState,
     object: ObjectId,
 ) -> Result<
@@ -7674,18 +7674,8 @@ impl ObjectFilterExt for ObjectFilter {
                 source_filter.description()
             ));
         }
-        if let Some(destroyed) = &self.would_destroy_object {
-            let destroyed = destroyed.description();
-            let article = if destroyed
-                .chars()
-                .next()
-                .is_some_and(|ch| matches!(ch, 'a' | 'e' | 'i' | 'o' | 'u'))
-            {
-                "an"
-            } else {
-                "a"
-            };
-            parts.push(format!("that would destroy {article} {destroyed}"));
+        if let Some(would) = &self.would_act_on {
+            parts.push(format!("that would {}", would.description()));
         }
 
         correct_filter_leading_indefinite_article(parts.join(" "))

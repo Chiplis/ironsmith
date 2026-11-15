@@ -1328,11 +1328,14 @@ fn expand_scoped_subtype_filter_atoms(mut filter: ObjectFilter) -> ObjectFilter 
     filter.any_of = filter.any_of.clone().into_iter().map(expand_scoped_subtype_filter_atoms).collect();
     for field in { let fields__ = &mut *filter; [&mut fields__.mana_from_source_spent_to_cast, &mut fields__.targets_object,
         &mut fields__.targets_only_object, &mut fields__.not_targeted_by_ability_from,
-        &mut fields__.would_destroy_object, &mut fields__.attached_to_object,
+        &mut fields__.attached_to_object,
         &mut fields__.with_attached_object, &mut fields__.without_attached_object,
         &mut fields__.could_enchant_object, &mut fields__.controller_controls,
         &mut fields__.blocked_or_was_blocked_by_this_turn] } {
         if let Some(inner) = field.take() { *field = Some(Box::new(expand_scoped_subtype_filter_atoms(*inner))); }
+    }
+    if let Some(would) = filter.would_act_on.as_mut() {
+        *would.object = expand_scoped_subtype_filter_atoms(std::mem::take(&mut *would.object));
     }
     // Positive disjunction and negative exclusion are both idempotent: a
     // repeated finalization only encounters members already in the vector.

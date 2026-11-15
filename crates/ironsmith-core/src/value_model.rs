@@ -224,6 +224,48 @@ pub enum PriorEffectAction {
     Affected,
 }
 
+impl PriorEffectAction {
+    /// The bare verb an instruction performing this action is authored with
+    /// ("destroy", "exile", "put counters on").
+    pub fn base_verb(self) -> &'static str {
+        match self {
+            Self::Cast => "cast",
+            Self::Chosen => "choose",
+            Self::ChosenNumber => "choose",
+            Self::Flipped => "flipped",
+            Self::Rolled => "roll",
+            Self::Connived => "connive",
+            Self::Countered => "counter",
+            Self::CountersPut => "put counters on",
+            Self::CountersMoved(_) => "move counters",
+            Self::DealtDamage => "deal damage to",
+            Self::Died => "die",
+            Self::Destroyed => "destroy",
+            Self::Discarded => "discard",
+            Self::Copied => "copy",
+            Self::Investigated => "investigate",
+            Self::Drawn => "draw",
+            Self::Exiled => "exile",
+            Self::Goaded => "goad",
+            Self::Milled => "mill",
+            Self::PhasedOut => "phase out",
+            Self::Prevented => "prevent",
+            Self::PutOntoBattlefield => "put onto the battlefield",
+            Self::PutIntoGraveyard => "put into a graveyard",
+            Self::PutIntoHand => "put into a hand",
+            Self::Removed => "remove",
+            Self::Returned => "return",
+            Self::Revealed => "reveal",
+            Self::Sacrificed => "sacrifice",
+            Self::Searched => "search for",
+            Self::Shuffled => "shuffle",
+            Self::Tapped => "tap",
+            Self::ManaLost => "lose",
+            Self::Affected => "affect",
+        }
+    }
+}
+
 /// A metric over the last-known-information memory emitted by one exact
 /// producer effect.
 ///
