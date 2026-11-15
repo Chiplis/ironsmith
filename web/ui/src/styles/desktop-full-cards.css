@@ -1143,3 +1143,44 @@
     transition: none !important;
   }
 }
+
+/* Resolve and Resolve all sit side by side, sharing the dock's width, rather
+   than Resolve all wrapping under Resolve at the dock's fixed button width.
+   This layer's important rules outrank decision-stability's, and these
+   selectors out-specify the paired-actions wrap rules above. */
+@layer fc-dock-sizing {
+  @media (min-width:1024px), (min-width:721px) and (min-height:541px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock.battlefield-human-action-dock .priority-inline-panel .action-strip-layout.action-strip-layout:has(.action-strip-resolve-all-button) {
+      flex-wrap:nowrap !important;
+      /* The whole panel row, with the quick controls on the row below. */
+      grid-column:1 / -1 !important;
+      width:auto !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock.battlefield-human-action-dock .priority-inline-panel .action-strip-layout:has(.action-strip-resolve-all-button) > .action-strip-command-region.action-strip-command-region {
+      width:auto !important;
+      min-width:0 !important;
+      max-width:none !important;
+      flex:1 1 0 !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock.battlefield-human-action-dock .priority-inline-panel .action-strip-layout:has(.action-strip-resolve-all-button) .action-strip-main-region.action-strip-main-region.action-strip-main-region {
+      width:100% !important;
+      min-width:0 !important;
+      max-width:none !important;
+      flex:1 1 auto !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock.battlefield-human-action-dock .priority-inline-panel .action-strip-layout:has(.action-strip-resolve-all-button) .action-strip-main-region .decision-main-button.decision-main-button.decision-main-button {
+      width:100% !important;
+      min-width:0 !important;
+      max-width:none !important;
+      flex:1 1 auto !important;
+    }
+    /* Half the dock is too narrow for a hint beside the label, so it tucks
+       into the button's top-left corner and the label centres alone. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock.battlefield-human-action-dock .priority-inline-panel .action-strip-layout:has(.action-strip-resolve-all-button) .action-strip-main-region .action-strip-main-title-row .priority-shortcut-hint {
+      position:absolute !important;
+      top:3px !important;
+      left:3px !important;
+      margin:2px !important;
+    }
+  }
+}
