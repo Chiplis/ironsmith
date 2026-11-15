@@ -38,15 +38,19 @@ test('one phase track with a stop dot per player, from either seat', { timeout: 
         assert.equal(await dot(1 - seat).getAttribute('data-stop'), 'off');
       }
       assert.notEqual(await dot(1 - seat).evaluate(node => getComputedStyle(node, '::before').borderTopColor), accent, 'each player has their own color');
-      assert.equal(await page.locator('[data-combat-skip]').count(), 2);
-      const attackSkip = page.locator('[data-combat-skip="attackers"]');
+      const combat = mainTrack.locator('[data-phase-name="Combat"] .phase-track-stop-button');
+      await combat.hover();
+      assert.equal(await combat.getAttribute('aria-expanded'), 'true');
+      // The Attackers/Blockers step icons are the legal-participation toggles.
+      assert.equal(await page.locator('.phase-track--combat [data-combat-skip]').count(), 2);
+      assert.equal(await mainTrack.locator('[data-combat-skip]').count(), 0);
+      const attackSkip = page.locator('.phase-track--combat [data-phase-name="DeclareAttackers"] [data-combat-skip="attackers"]');
+      await attackSkip.waitFor({ state: 'visible' });
       assert.equal(await attackSkip.getAttribute('aria-pressed'), 'true');
       await attackSkip.click();
       assert.equal(await attackSkip.getAttribute('aria-pressed'), 'false');
       await attackSkip.click();
-      const combat = mainTrack.locator('[data-phase-name="Combat"] .phase-track-stop-button');
-      await combat.hover();
-      assert.equal(await combat.getAttribute('aria-expanded'), 'true');
+      assert.equal(await attackSkip.getAttribute('aria-pressed'), 'true');
       const damage = page.locator(`.phase-track--combat [data-stop-phase="CombatDamage"][data-stop-player="${seat}"]`);
       await damage.waitFor({ state: 'visible' });
       const before = await damage.getAttribute('data-stop');

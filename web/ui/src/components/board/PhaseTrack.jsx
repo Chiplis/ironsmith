@@ -18,6 +18,8 @@ const combatIcons = {
   FirstStrikeDamage: Zap, CombatDamage: Sword, EndCombat: CircleCheck,
 };
 
+const COMBAT_PARTICIPATION = { DeclareAttackers: 'attackers', DeclareBlockers: 'blockers' };
+
 // Each turn phase has its own icon; MTG has no official set.
 const phaseIcons = {
   Untap: RotateCcwSquare, Upkeep: Sunrise, Draw: Layers, Main: Sparkles,
@@ -138,10 +140,22 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
     const unstoppable = kind === 'phase' && UNSTOPPABLE_PHASES.includes(entry);
     const disabled = !state || unstoppable;
     const label = phaseLabel(entry, kind);
+    // Attackers and blockers icons double as the "stop when I have legal
+    // attackers/blockers" toggle: glowing white while on (the default).
+    const combatKind = kind === 'step' ? COMBAT_PARTICIPATION[entry] : null;
+    const combatStopEnabled = combatKind
+      && (combatKind === 'attackers' ? priorityStatus.stopWithAttackers : priorityStatus.stopWithBlockers) !== false;
     return <div className="phase-track-stop-button" data-stop-phase={entry} data-disabled={disabled ? 'true' : undefined}
       aria-expanded={entry === 'Combat' && kind === 'phase' ? active === 'Combat' || previewCombat : undefined}
       onContextMenu={disabled ? undefined : event => openPriorityMenu(event, key, self)}>
-      <Icon className="phase-track-stop-icon" size={14} aria-hidden="true" />
+      {combatKind
+        ? <button type="button" className="phase-track-combat-toggle" data-combat-skip={combatKind}
+          aria-label={`Stop with legal ${combatKind}`} aria-pressed={combatStopEnabled} disabled={!state}
+          title={`${label}: ${combatStopEnabled ? 'On' : 'Off'}. When on, stop to declare ${combatKind} whenever you have legal ${combatKind}, even with no combat stops set. When off, normal phase stop settings apply.${combatKind === 'attackers' ? ' With no combat stops set, declare no attackers automatically (required attacks still stop).' : ''}`}
+          onClick={() => priorityPolicy?.setCombatParticipationStop(combatKind, !combatStopEnabled, state)}>
+          <Icon className="phase-track-stop-icon" size={14} aria-hidden="true" />
+        </button>
+        : <Icon className="phase-track-stop-icon" size={14} aria-hidden="true" />}
       {unstoppable
         ? <span className="phase-track-player-stops" aria-hidden="true" />
         : <span className="phase-track-player-stops" role="group" aria-label={`${label} stops`}>
@@ -168,20 +182,6 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
             data-phase-complete={entries.indexOf(current) > index ? 'true' : 'false'}
             aria-current={currentEntry ? 'step' : undefined}>
             {renderStop(entry, kind)}
-            {entry === 'Combat' && kind === 'phase' && <span className="phase-track-empty-combat">
-              {['attackers', 'blockers'].map(combatKind => {
-                const attacking = combatKind === 'attackers';
-                const enabled = (attacking ? priorityStatus.stopWithAttackers : priorityStatus.stopWithBlockers) !== false;
-                const Icon = attacking ? Swords : Shield;
-                const description = `When on, stop to declare ${combatKind} whenever you have legal ${combatKind}, even with no combat stops set. When off, normal phase stop settings apply.${attacking ? ' With no combat stops set, declare no attackers automatically (required attacks still stop).' : ''}`;
-                return <button key={combatKind} type="button" className="phase-track-empty-combat-toggle"
-                  data-combat-skip={combatKind} aria-label={`Stop with legal ${combatKind}`}
-                  aria-pressed={enabled} disabled={!state} title={`${attacking ? 'Attackers' : 'Blockers'}: ${enabled ? 'On' : 'Off'}. ${description}`}
-                  onClick={() => priorityPolicy?.setCombatParticipationStop(combatKind, !enabled, state)}>
-                  <Icon size={12} aria-hidden="true" />
-                </button>;
-              })}
-            </span>}
           </li>;
         })}
       </ol>
