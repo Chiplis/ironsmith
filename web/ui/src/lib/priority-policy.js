@@ -257,6 +257,9 @@ export function createPriorityPolicy({ stops, storage = playPreferenceStorage() 
       publish();
     },
     holdNextAction(enabled, state) { seat(state?.perspective).holdNextAction = enabled; publish(); },
+    // Keeps the next priority window this seat gets, e.g. after paying for a
+    // spell with "Pay & hold", so it is not passed over automatically.
+    holdNextPriority(state) { seat(state?.perspective).maintain = true; publish(); },
     setStackMode(mode, state) {
       if (!STACK_PRIORITY_MODES.includes(mode)) return;
       const current = seat(state?.perspective);

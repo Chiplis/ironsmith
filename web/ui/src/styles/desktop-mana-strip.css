@@ -12,14 +12,65 @@
     margin-left:calc(var(--phase-track-start) - var(--phase-track-span) / 16);
     margin-right:0;
   }
+  /* The middle strip is a solid band across the whole divider at the phase
+     track's height (measured into --phase-strip-*). Payment rolls down onto
+     the same band, pinned to its right end, in its own purple; the combat
+     steps roll out of its bottom edge in the band's colour. */
+  .table-shell[data-focused-hud="true"] {
+    --phase-strip-surface:rgb(14 16 19 / 65%);
+    --phase-strip-pad:6px;
+    --payment-strip-surface:#2a1d47;
+    --payment-strip-edge:#4d3a7d;
+  }
+  .table-shell[data-focused-hud="true"] > .table-phase-divider[data-phase-strip="true"]::before {
+    content:"";
+    position:absolute;
+    left:0;
+    right:0;
+    top:calc(var(--phase-strip-top) - var(--phase-strip-pad));
+    height:calc(var(--phase-strip-height) + 2 * var(--phase-strip-pad));
+    background:var(--phase-strip-surface);
+    pointer-events:none;
+  }
   .desktop-mana-payment {
     position:absolute;
-    inset:0 8px -5px;
+    left:0;
+    right:0;
+    top:calc(var(--phase-strip-top, 0px) - var(--phase-strip-pad, 6px));
+    height:calc(max(var(--phase-strip-height, 57px), 50px) + 2 * var(--phase-strip-pad, 6px));
     z-index:240;
     display:flex;
-    align-items:flex-end;
+    align-items:stretch;
     justify-content:flex-end;
     pointer-events:none;
+  }
+  .table-phase-divider:not([data-phase-strip="true"]) > .desktop-mana-payment { visibility:hidden; }
+  .desktop-mana-payment-panel {
+    position:relative;
+    display:flex;
+    width:max-content;
+    max-width:100%;
+    min-width:0;
+    height:100%;
+    background:var(--payment-strip-surface, #2a1d47);
+    box-shadow:inset 0 1px 0 var(--payment-strip-edge, #4d3a7d), inset 0 -1px 0 var(--payment-strip-edge, #4d3a7d), inset 1px 0 0 var(--payment-strip-edge, #4d3a7d);
+    pointer-events:auto;
+    animation:desktop-mana-strip-roll 320ms cubic-bezier(.22,.8,.24,1) both;
+  }
+  /* Reaches back over a phase the panel would otherwise cut in half (see
+     DesktopManaPaymentStrip); the edge line moves out to its left side. */
+  .desktop-mana-payment-panel[data-phase-cover="true"] {
+    box-shadow:inset 0 1px 0 var(--payment-strip-edge, #4d3a7d), inset 0 -1px 0 var(--payment-strip-edge, #4d3a7d);
+  }
+  .desktop-mana-payment-panel[data-phase-cover="true"]::before {
+    content:"";
+    position:absolute;
+    top:0;
+    bottom:0;
+    right:100%;
+    width:var(--phase-cover);
+    background:var(--payment-strip-surface, #2a1d47);
+    box-shadow:inset 0 1px 0 var(--payment-strip-edge, #4d3a7d), inset 0 -1px 0 var(--payment-strip-edge, #4d3a7d), inset 1px 0 0 var(--payment-strip-edge, #4d3a7d);
   }
   .desktop-mana-payment .mana-payment-editor {
     pointer-events:auto;
@@ -27,40 +78,90 @@
     align-items:center;
     width:max-content;
     max-width:100%;
-    height:min(100%, 94px);
+    height:100%;
     max-height:none;
+    min-width:0;
     gap:12px;
-    padding:8px 12px;
-    border:1px solid #2c2e33;
+    padding:0 12px;
+    border:0;
     border-radius:0;
-    background:#0e1013;
+    background:transparent;
     box-shadow:none;
   }
-  .desktop-mana-payment .mana-payment-editor-header { width:190px; padding:0 12px 0 0; border-right:1px solid #292c31; }
-  .desktop-mana-payment .mana-payment-editor-heading { min-height:22px; }
+  /* Three short lines fit the track's height: eyebrow, name with its cost, context. */
+  .desktop-mana-payment .mana-payment-editor-header { flex:0 0 auto; width:230px; align-self:stretch; display:grid; grid-template-columns:minmax(0,1fr) auto; align-content:center; column-gap:8px; row-gap:1px; padding:0 12px 0 0; border:0; border-right:1px solid #292c31; }
+  .desktop-mana-payment .mana-payment-editor-header > * { grid-column:1 / -1; min-width:0; }
+  .desktop-mana-payment .mana-payment-editor-header > .mana-payment-editor-title { grid-column:1; }
+  .desktop-mana-payment .mana-payment-editor-header > .mana-payment-editor-cost { grid-column:2; align-self:center; }
+  .desktop-mana-payment .mana-payment-editor-heading { min-height:16px; }
+  .desktop-mana-payment .mana-payment-editor-heading .mana-payment-source-picker { min-height:16px; height:16px; }
   .desktop-mana-payment .mana-plan-eyebrow { font-size:9px; letter-spacing:.12em; color:#94979e; }
-  .desktop-mana-payment .mana-payment-editor-title { margin:2px 0; font-size:16px; color:#e1e2e5; }
+  .desktop-mana-payment .mana-payment-editor-title { margin:0; font-size:15px; line-height:1.2; color:#e1e2e5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .desktop-mana-payment .mana-payment-editor-cost { border:0; padding:0; gap:3px; }
   .desktop-mana-payment .mana-payment-editor-cost > span:first-child { display:none; }
   .desktop-mana-payment .mana-payment-editor-cost > span { gap:1px; }
   .desktop-mana-payment .mana-payment-editor-cost img { width:15px !important; height:15px !important; }
-  .desktop-mana-payment .mana-payment-editor-scroll { display:flex; align-items:center; gap:8px; flex:0 1 auto; padding:0; overflow:auto; max-height:100%; }
-  .desktop-mana-payment .mana-payment-pip-list { flex-direction:row; gap:0; }
-  .desktop-mana-payment .mana-payment-pip-row { position:relative; flex:0 0 108px; width:108px; min-height:64px; padding:6px 10px; border:0; border-right:1px solid #292c31; border-radius:0; display:grid; grid-template-columns:1fr 24px; gap:3px; background:transparent; }
+  .desktop-mana-payment .mana-payment-editor-scroll { display:flex; align-items:stretch; gap:8px; flex:0 1 auto; min-width:0; align-self:stretch; padding:0; overflow:auto hidden; max-height:100%; scrollbar-width:thin; }
+  .desktop-mana-payment .mana-payment-pip-list { flex-direction:row; gap:0; align-items:stretch; }
+  .desktop-mana-payment .mana-payment-pip-row { position:relative; flex:0 1 140px; width:140px; min-width:96px; min-height:0; padding:4px 10px; align-content:center; border:0; border-right:1px solid #292c31; border-radius:0; display:grid; grid-template-columns:1fr 24px; gap:3px; background:transparent; }
   .desktop-mana-payment .mana-payment-pip-row > div { grid-row:2; grid-column:1 / -1; }
   .desktop-mana-payment .mana-payment-source-name { font-size:12px; line-height:1.2; color:#c2c5cc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .desktop-mana-payment .mana-payment-pip-row .mana-payment-source-picker { grid-column:2; grid-row:1; min-height:26px; }
+  .desktop-mana-payment .mana-payment-pip-row .mana-payment-source-picker { grid-column:2; grid-row:1; min-height:24px; }
   .desktop-mana-payment .mana-payment-pip-row:last-child { border-right:0; }
   .desktop-mana-payment .decision-card-name-trigger { text-decoration:none; }
   .desktop-mana-payment .decision-card-name-trigger:hover { color:#fff; text-decoration:underline; }
-  .desktop-mana-payment .mana-plan-cost-context { font-size:11px; color:#94979e; }
+  .desktop-mana-payment .mana-plan-cost-context { font-size:10px; line-height:1.2; color:#94979e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .desktop-mana-payment .mana-payment-source-picker { color:#9fa4af; border-radius:0; }
   .desktop-mana-payment .mana-payment-source-picker:hover:not(:disabled),
-  .desktop-mana-payment .mana-payment-source-picker[aria-expanded="true"] { background:#24272e; color:#f0f1f3; }
+  .desktop-mana-payment .mana-payment-source-picker[aria-expanded="true"] { background:#3b2a63; color:#f0f1f3; }
   .desktop-mana-payment :is(button, [role="button"]):focus-visible { outline:2px solid #b6a0d8; outline-offset:2px; }
   .desktop-mana-payment .mana-payment-editor-busy { font-size:10px; }
-  .desktop-mana-payment .mana-plan-pool { margin:0; flex:0 0 90px; }
+  .desktop-mana-payment .mana-plan-pool { margin:0; flex:0 0 90px; align-self:center; }
+  .table-shell[data-focused-hud="true"] > .table-phase-divider .topbar-phase-shell .phase-track--combat {
+    /* The focused HUD clears every phase track's background with !important.
+       Its top tucks under the band's bottom padding (less the 3px gap between
+       tracks); leaving that strip clear keeps the translucent surfaces from
+       doubling into a darker seam. The steps sit in the middle six of the
+       phase grid's eight columns (2px gaps), so the surface spans just those:
+       six columns and five gaps, centred. */
+    background:linear-gradient(transparent calc(var(--phase-strip-pad) - 3px), var(--phase-strip-surface) 0)
+      center top / calc((100% - 14px) * 6 / 8 + 10px) 100% no-repeat !important;
+    box-shadow:none !important;
+  }
+  .table-shell[data-focused-hud="true"] > .table-phase-divider .topbar-phase-shell .phase-track--combat:not([aria-hidden="true"]) {
+    animation:phase-combat-roll 240ms cubic-bezier(.22,.8,.24,1) both;
+  }
+  /* Hovering out rolls it back up into the strip. A keyframe set of its own
+     (not the roll reversed) so it starts as a new animation; it keeps the
+     concealed track visible until it is back inside the strip. */
+  .table-shell[data-focused-hud="true"] > .table-phase-divider .topbar-phase-shell .phase-track--combat[aria-hidden="true"][data-rolling-out="true"] {
+    animation:phase-combat-unroll 200ms cubic-bezier(.6,0,.8,.4);
+  }
 
+}
+
+/* Revealed top-down: the panel slides from its own top edge while a clip
+   keeps every frame inside the final box, so nothing paints above it. */
+@keyframes desktop-mana-strip-roll {
+  /* The left side stays open for the phase cover beside the panel. */
+  from { translate:0 -100%; clip-path:inset(100% 0 0 -100vw); }
+  to { translate:0 0; clip-path:inset(0 0 0 -100vw); }
+}
+/* The combat steps unroll out of the strip's bottom edge the same way. Phase
+   tracks carry clip-path:none !important, so a bottom-anchored mask growing
+   with the slide does the clip's job. Rolling back up, visibility rides along
+   to keep it on screen over the hidden track's inline visibility. */
+@keyframes phase-combat-roll {
+  from { translate:0 -100%; mask:linear-gradient(#000, #000) bottom / 100% 0% no-repeat; }
+  to { translate:0 0; mask:linear-gradient(#000, #000) bottom / 100% 100% no-repeat; }
+}
+@keyframes phase-combat-unroll {
+  from { visibility:visible; translate:0 0; mask:linear-gradient(#000, #000) bottom / 100% 100% no-repeat; }
+  to { visibility:visible; translate:0 -100%; mask:linear-gradient(#000, #000) bottom / 100% 0% no-repeat; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-mana-payment-panel,
+  .table-shell .topbar-phase-shell .phase-track--combat { animation:none !important; }
 }
 
 @layer fc-dock-sizing {

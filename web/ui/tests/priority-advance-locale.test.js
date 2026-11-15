@@ -71,18 +71,20 @@ test('conditional stops do not promise an uninterrupted advance at any phase or 
     ['Combat', 'CombatDamage', 'Combat Damage'],
     ['Combat', 'EndCombat', 'End Combat'],
     ['NextMain', null, 'Main II'],
-    ['Ending', 'End', 'End'],
   ];
-  // End is conditional and Cleanup is guaranteed; every earlier step has a
-  // possible interruption, even with both default main-phase stops disabled.
+  // End is guaranteed; every earlier step has a possible interruption, even
+  // with both default main-phase stops disabled.
   const stops = { ...Object.fromEntries(PRIORITY_STOP_KEYS.map(key => [key, 'can_act'])),
-    'phase:Main': 'off', 'phase:Main2': 'off', 'phase:Cleanup': 'always' };
+    'phase:Main': 'off', 'phase:Main2': 'off', 'phase:End': 'always' };
   for (const [phase, step, label] of cases) {
     const state = { phase, step };
-    const expected = step === 'End' ? 'Go to Cleanup' : `Continue from ${label}`;
+    // Main II is off, so nothing conditional sits between End Combat and End.
+    const expected = phase === 'NextMain' || step === 'EndCombat' ? 'Go to End' : `Continue from ${label}`;
     assert.equal(selectedPriorityAdvanceLabel(state, stops, false, translator('en')), expected);
     assert.equal(selectedPriorityAdvanceLabel(state, allOff, false, translator('en')), 'Go to Next Turn');
   }
+  // Cleanup takes no stop (CR 514.3), so even a saved one is never a destination.
+  assert.equal(selectedPriorityAdvanceLabel({ phase: 'Ending', step: 'End' }, { ...stops, 'phase:Cleanup': 'always' }, false, translator('en')), 'Go to Next Turn');
   assert.equal(selectedPriorityAdvanceLabel({ phase: 'Ending', step: 'Cleanup' }, stops, false, translator('en')), 'Go to Next Turn');
   assert.equal(selectedPriorityAdvanceLabel({ phase: 'Combat', step: 'CombatDamage', combat_damage_step: 'first_strike' }, stops, false, translator('en')), 'Continue from First Strike Damage');
 });

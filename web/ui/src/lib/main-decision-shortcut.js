@@ -16,7 +16,7 @@ export function installMainDecisionShortcut(document) {
     if (!cancel && target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"]')) return;
     if (event.key === 'Enter' && target?.closest?.('button, a')) return;
     if ([...document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')].some(visible)) return;
-    // Payment can expose both Pay and Pay & Pass. An explicit Space action
+    // Payment can expose both Pay and Pay & hold. An explicit Space action
     // takes precedence and consumes the key even while payment is unavailable.
     const spaceActions = [...document.querySelectorAll('button[data-space-primary-action]')]
       .filter(button => !button.closest('[inert], [aria-hidden="true"]') && visible(button));
@@ -37,8 +37,10 @@ export function installMainDecisionShortcut(document) {
     // Use the same cancellation path as the visible control, including payment
     // cleanup. Escape also works while a casting choice or its input has focus.
     const selector = cancel ? 'button.decision-cancel-button' : 'button.decision-main-button';
+    // A secondary action may share the main look (Pay & hold beside Pay)
+    // without competing for the key.
     const buttons = [...document.querySelectorAll(selector)].filter(button =>
-      !button.disabled && button.getAttribute('aria-disabled') !== 'true'
+      !button.hasAttribute('data-shortcut-secondary') && !button.disabled && button.getAttribute('aria-disabled') !== 'true'
       && !button.closest('[inert], [aria-hidden="true"]') && visible(button));
     // Do not guess if a transition briefly exposes more than one primary action.
     if (buttons.length !== 1) return;

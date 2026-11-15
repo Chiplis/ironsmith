@@ -27,7 +27,7 @@ test('desktop payment covers the middle strip, keeps controls visible and opens 
       assert.ok(cleanup.x > untap.x);
       const wordmark = page.locator('.topbar-brand-menu-trigger');
       assert.equal((await wordmark.textContent()).trim(), 'IronSmith');
-      assert.ok(await wordmark.evaluate(el => getComputedStyle(el).fontFamily.includes('Matrix')));
+      assert.ok(await wordmark.evaluate(el => getComputedStyle(el).fontFamily.startsWith('Rajdhani')));
     }
     for (const scenario of ['progenitus','long-payment','short-payment','kozilek-command']) {
       await page.goto(`${base}?kind=mana_payment&scenario=${scenario}`);
@@ -41,16 +41,29 @@ test('desktop payment covers the middle strip, keeps controls visible and opens 
       for (const width of [1600,1100,800]) {
         await page.setViewportSize({width,height:1000});
         await page.waitForTimeout(250);
-        const bounds = await editor.boundingBox();
+        const lane = await page.locator('.desktop-mana-payment').boundingBox();
+        const bounds = await page.locator('.desktop-mana-payment-panel').boundingBox();
         const strip = await page.locator('.table-phase-divider').boundingBox();
+        const track = await page.locator('.table-phase-divider .phase-track:not(.phase-track--combat)').first().boundingBox();
         const pay = await page.locator('.desktop-mana-payment-actions .mana-payment-pay-button').boundingBox();
         const brand = await page.locator('.navigation-utility-controls').boundingBox();
         const cancel = await page.locator('.desktop-mana-payment-actions .decision-cancel-button').boundingBox();
         assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width);
-        assert.ok(Math.abs(bounds.y - strip.y) < 1);
-        assert.ok(bounds.height <= strip.height + 6);
-        assert.ok(Math.abs(bounds.x + bounds.width - (width - 8)) < 1);
-        assert.ok(bounds.x <= brand.x && bounds.y <= brand.y && bounds.y + bounds.height >= brand.y + brand.height);
+        // The middle strip is a full-width solid band at the phase track's
+        // height; payment lies on it, pinned to its right end.
+        for (const edge of ['x','width']) assert.ok(Math.abs(lane[edge] - strip[edge]) < 1, JSON.stringify({scenario,width,edge,lane,strip}));
+        // The band pads the track by 6px above and below.
+        const padded = {y: track.y - 6, height: track.height + 12};
+        for (const edge of ['y','height']) assert.ok(Math.abs(lane[edge] - padded[edge]) < 1, JSON.stringify({scenario,width,edge,lane,padded}));
+        assert.ok(Math.abs(bounds.x + bounds.width - (strip.x + strip.width)) < 1, JSON.stringify({scenario,width,bounds,strip}));
+        assert.ok(Math.abs(bounds.y - padded.y) < 1 && Math.abs(bounds.height - padded.height) < 1);
+        assert.ok(bounds.x >= strip.x - 1);
+        const surface = await page.locator('.desktop-mana-payment-panel').evaluate(el => getComputedStyle(el).backgroundColor);
+        // Payment wears its own purple over the band's solid surface.
+        assert.equal(surface, 'rgb(42, 29, 71)');
+        const band = await page.locator('.table-phase-divider').evaluate(el => { const cs = getComputedStyle(el, '::before'); return { bg: cs.backgroundColor, width: parseFloat(cs.width), height: parseFloat(cs.height) }; });
+        assert.equal(band.bg, 'rgba(14, 16, 19, 0.65)');
+        assert.ok(Math.abs(band.width - strip.width) < 1 && Math.abs(band.height - padded.height) < 1, JSON.stringify(band));
         assert.ok(pay.y > strip.y + strip.height && pay.y > 900);
         assert.ok(pay.x >= 0 && cancel.x + cancel.width <= width);
         assert.ok(Math.abs(pay.y + pay.height / 2 - cancel.y - cancel.height / 2) < 1, JSON.stringify({scenario,width,pay,cancel}));

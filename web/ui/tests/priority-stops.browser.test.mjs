@@ -66,7 +66,7 @@ const priority = (snapshot_id, overrides = {}) => ({
   // Default "I can act" stops stay quiet unless a scenario says the seat can act.
   decision: { kind: 'priority', player: 0, analysis_complete: true, can_act: false, actions }, ...overrides,
 });
-const ALL_STOPS = ['phase:Upkeep', 'phase:Draw', 'phase:Main', 'phase:Combat', 'phase:Main2', 'phase:End', 'phase:Cleanup',
+const ALL_STOPS = ['phase:Upkeep', 'phase:Draw', 'phase:Main', 'phase:Combat', 'phase:Main2', 'phase:End',
   'step:BeginCombat', 'step:DeclareAttackers', 'step:DeclareBlockers', 'step:FirstStrikeDamage', 'step:CombatDamage', 'step:EndCombat'];
 
 test('real provider uses persistent stops and Ctrl hold without countdowns', { timeout: 90000 }, async () => {

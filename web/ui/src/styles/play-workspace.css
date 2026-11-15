@@ -451,7 +451,8 @@
   gap: 4px;
 }
 .navigation-utility-controls .topbar-brand-menu-trigger {
-  font-family: "Matrix", serif !important;
+  /* The wordmark speaks in the same face as the rest of the interface. */
+  font-family: var(--ironsmith-ui-font, "Rajdhani", system-ui, sans-serif) !important;
   font-weight: 700;
   font-variant: normal;
   text-transform: none;
@@ -516,3 +517,21 @@
 .build-card-fidelity-help { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--muted-foreground); cursor: pointer; }
 .build-card-fidelity-help:hover, .build-card-fidelity-help:focus-visible { color: var(--foreground); }
 .build-card-fidelity-help-content { max-width: 300px; }
+
+/* The focused HUD dock pins its submit row to one 40px line with important
+   rules in this layer; the two-row layout has to out-rank them here. */
+@layer decision-stability {
+  @media (min-width:1024px), (min-width:721px) and (min-height:541px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-submit-row.mana-payment-submit-row[data-pay-hold="true"] {
+      grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+      grid-template-rows:40px 40px !important;
+      height:auto !important;
+      min-height:86px !important;
+      flex:0 0 auto !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-submit-row[data-pay-hold="true"] > .mana-payment-pay-region.mana-payment-pay-region { grid-column:1 !important; grid-row:1 !important; }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-submit-row[data-pay-hold="true"] > .mana-payment-hold-region { grid-column:2 !important; grid-row:1 !important; }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-submit-row[data-pay-hold="true"] > .mana-payment-secondary-controls.mana-payment-secondary-controls { grid-column:1 / -1 !important; grid-row:2 !important; }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-submit-row[data-pay-hold="true"] > .mana-payment-secondary-controls > .decision-cancel-button.decision-cancel-button { height:40px !important; min-height:40px !important; }
+  }
+}

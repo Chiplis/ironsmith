@@ -13,10 +13,15 @@ const stackKey = state => (state?.stack_objects || []).map(entry => String(entry
 const priorityKey = state => [state?.turn_number, state?.active_player, state?.phase, state?.step, state?.combat_damage_step,
   state?.decision?.player, stackKey(state)].join('|');
 
+// No one gets priority in the untap step, nor in cleanup unless state-based
+// actions or triggers happen there (CR 502.4, 514.3). That one window has
+// something on the stack or just resolved, which the stack settings already
+// govern, so neither step takes a stop.
+export const UNSTOPPABLE_PHASES = Object.freeze(['Untap', 'Cleanup']);
 const TURN_STOPS = [
   ['Upkeep'], ['Draw'], ['Main'],
   ...COMBAT_STEPS.map(step => ['Combat', step]),
-  ['Main2'], ['End'], ['Cleanup'],
+  ['Main2'], ['End'],
 ];
 
 // Only the two main phases stop by default. Other phases and combat steps
@@ -26,7 +31,7 @@ const DEFAULT_STOP_MODES = Object.freeze({ 'phase:Main': 'always', 'phase:Main2'
 const defaultStopMode = key => DEFAULT_STOP_MODES[key.replace(/^player:\d+:/, '')] ?? 'off';
 export const PRIORITY_STOP_MODES = Object.freeze([CAN_ACT_STOP, 'always', 'off']);
 export const PRIORITY_STOP_KEYS = Object.freeze([
-  ...PHASE_TRACK.filter(phase => phase !== 'Untap').map(phase => `phase:${phase}`),
+  ...PHASE_TRACK.filter(phase => !UNSTOPPABLE_PHASES.includes(phase)).map(phase => `phase:${phase}`),
   ...COMBAT_STEPS.map(step => `step:${step}`),
 ]);
 export const CHECKING_PLAYABLE_ACTIONS = 'checking playable actions';
@@ -58,6 +63,8 @@ export function hasPotentialAttackers(state) {
 function remainingPriorityStops(state) {
   const phase = normalizePhaseStep(state?.phase, state?.step);
   const step = priorityStepKey(state);
+  // Untap comes before every stop and cleanup after them all.
+  if (phase === 'Cleanup') return [];
   const current = TURN_STOPS.findIndex(([candidatePhase, candidateStep]) =>
     candidatePhase === phase && (!candidateStep || candidateStep === step));
   return TURN_STOPS.slice(current + 1);
@@ -115,7 +122,9 @@ export function readStoredPriorityStops(storage = globalThis.localStorage) {
     const raw = storage?.getItem(PRIORITY_STOPS_STORAGE_KEY);
     if (raw == null) return { ...DEFAULT_PRIORITY_STOPS };
     const saved = JSON.parse(raw);
-    const validKey = key => /^(player:\d+:)?(phase|step):\w+$/.test(key);
+    // Drops stops saved for steps that no longer take one (Cleanup).
+    const validKey = key => /^(player:\d+:)?(phase|step):\w+$/.test(key)
+      && PRIORITY_STOP_KEYS.includes(key.replace(/^player:\d+:/, ''));
     if (saved?.version === 3 && saved.stops && typeof saved.stops === 'object') {
       return Object.fromEntries(Object.entries(saved.stops).filter(([key, mode]) =>
         validKey(key) && PRIORITY_STOP_MODES.includes(mode)));
@@ -219,7 +228,8 @@ export function createPriorityStops({
   ];
   const stopKey = (key, state) => Object.hasOwn(stops, playerPriorityStopKey(key, state?.active_player))
     ? playerPriorityStopKey(key, state.active_player) : key;
-  const modeOf = key => stops[key] ?? defaultStopMode(key);
+  const modeOf = key => (PRIORITY_STOP_KEYS.includes(key.replace(/^player:\d+:/, ''))
+    ? stops[key] ?? defaultStopMode(key) : 'off');
   // canAct: true/false once known, null while the payment analysis is running.
   // An unknown answer holds rather than risk skipping a response window. Other
   // decisions (attackers, blockers) are required anyway, so only "always" holds them.

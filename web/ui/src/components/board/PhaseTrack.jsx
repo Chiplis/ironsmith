@@ -5,7 +5,7 @@ import { useGame } from '@/context/GameContext';
 import { useI18n } from '@/i18n/I18nContext';
 import useUiText from '@/i18n/useUiText';
 import { normalizePhaseStep, PHASE_TRACK } from '@/lib/constants';
-import { COMBAT_STEPS, priorityStepKey, priorityStopMode, DEFAULT_PRIORITY_STOPS } from '@/lib/priority-stops';
+import { COMBAT_STEPS, priorityStepKey, priorityStopMode, DEFAULT_PRIORITY_STOPS, UNSTOPPABLE_PHASES } from '@/lib/priority-stops';
 import { playerDisplayName } from '@/lib/player-display';
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from '@/lib/player-colors';
 
@@ -134,15 +134,19 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
   const renderStop = (entry, kind) => {
     const key = `${kind}:${entry}`;
     const Icon = (kind === 'step' ? combatIcons : phaseIcons)[entry] || Sparkles;
-    const disabled = !state || entry === 'Untap';
+    // Untap and cleanup take no stop, so they show no stop dots either.
+    const unstoppable = kind === 'phase' && UNSTOPPABLE_PHASES.includes(entry);
+    const disabled = !state || unstoppable;
     const label = phaseLabel(entry, kind);
     return <div className="phase-track-stop-button" data-stop-phase={entry} data-disabled={disabled ? 'true' : undefined}
       aria-expanded={entry === 'Combat' && kind === 'phase' ? active === 'Combat' || previewCombat : undefined}
       onContextMenu={disabled ? undefined : event => openPriorityMenu(event, key, self)}>
       <Icon className="phase-track-stop-icon" size={14} aria-hidden="true" />
-      <span className="phase-track-player-stops" role="group" aria-label={`${label} stops`}>
-        {turnPlayers.map(player => renderDot(entry, kind, player, disabled))}
-      </span>
+      {unstoppable
+        ? <span className="phase-track-player-stops" aria-hidden="true" />
+        : <span className="phase-track-player-stops" role="group" aria-label={`${label} stops`}>
+          {turnPlayers.map(player => renderDot(entry, kind, player, disabled))}
+        </span>}
       <span className="phase-track-step-label">{label}</span>
     </div>;
   };
@@ -152,6 +156,7 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
       className={`phase-track phase-track--sequence${kind === 'step' ? ' phase-track--combat' : ''}`}
       style={concealed ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
       aria-hidden={concealed || undefined} inert={concealed || undefined}
+      data-rolling-out={kind === 'step' && concealed && rollingOut ? 'true' : undefined}
       data-compact={compact ? 'true' : 'false'} aria-label={kind === 'step' ? ui('Combat steps') : t('game.phaseTrack', null, 'Turn phases')}>
       <ol className="phase-track-steps">
         {entries.map((entry, index) => {
@@ -184,6 +189,14 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
   );
 
   const showCombat = active === 'Combat' || previewCombat;
+  // Remember a hide that follows a showing, so the concealed track can roll
+  // back up into the strip instead of vanishing (never on first render).
+  const [shownBefore, setShownBefore] = useState(showCombat);
+  const [rollingOut, setRollingOut] = useState(false);
+  if (shownBefore !== showCombat) {
+    setShownBefore(showCombat);
+    setRollingOut(!showCombat);
+  }
   return <div onMouseLeave={() => setPreviewCombat(false)}
     onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPreviewCombat(false); }}
     onFocus={event => { if (event.target.closest?.('[data-phase-name="Combat"], .phase-track--combat')) setPreviewCombat(true); }}

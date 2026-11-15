@@ -17,6 +17,8 @@ import OpenDecklistModal from "./OpenDecklistModal";
 import PuzzleSetupView from "./PuzzleSetupView";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
 import ManaPaymentDecision from "@/components/decisions/ManaPaymentDecision";
+import DesktopManaPaymentStrip from "@/components/board/DesktopManaPaymentStrip";
+import usePhaseStripBand from "@/hooks/usePhaseStripBand";
 import MobileBattleScene from "./MobileBattleScene";
 import PlanarZone from "./PlanarZone";
 import ManaPool from "@/components/left-rail/ManaPool";
@@ -130,6 +132,7 @@ export default function TableCore({
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const tableRef = useRef(null);
   const humanActionDockRef = useRef(null);
+  const phaseDividerRef = useRef(null);
   const decisionRolloutRef = useDecisionRollout([
     state?.decision?.kind, state?.decision?.player, state?.decision?.source_id,
     state?.decision?.reason, state?.decision?.description, state?.decision?.context_text,
@@ -244,6 +247,7 @@ export default function TableCore({
   // the last opponent header pads itself by their measured width.
   const utilityControlsRef = useRef(null);
   const phaseBrandRef = useRef(null);
+  usePhaseStripBand(phaseDividerRef, focusedHudDesktop);
   useLayoutEffect(() => {
     const brand = phaseBrandRef.current;
     const table = tableRef.current;
@@ -728,7 +732,7 @@ export default function TableCore({
         setActiveOpponentIndex={setMobileOpponentIndex}
       />
       {focusedHudDesktop && (
-        <div className="table-phase-divider">
+        <div ref={phaseDividerRef} className="table-phase-divider">
           {/* Reserve both tracker rows so combat never resizes either field. */}
           <div className="topbar-phase-shell" inert={decision?.kind === "mana_payment" && !surrenderRequested}><PhaseTrack compact reserveCombatSpace /></div>
           {/* Brand (the menu), then the site links, at the row's right end. */}
@@ -736,14 +740,14 @@ export default function TableCore({
             {cloneElement(middleUtilityControls, { brandMenu: true, showLearn: true })}
           </div>}
           {decision?.kind === 'mana_payment' && !surrenderRequested && (
-            <div className="desktop-mana-payment" data-mana-payment="true">
+            <DesktopManaPaymentStrip>
               <ManaPaymentDecision
                 decision={decision}
                 footerHost={paymentFooterHost}
                 quickControls={humanQuickControlsElement}
                 canAct={samePlayerId(decision.player, perspective) && !multiplayer?.submittingAction && !multiplayer?.peerWait}
               />
-            </div>
+            </DesktopManaPaymentStrip>
           )}
         </div>
       )}

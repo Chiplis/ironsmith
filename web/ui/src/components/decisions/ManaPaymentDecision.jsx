@@ -103,7 +103,7 @@ function outputText(source) {
 
 export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = true, onSubmitActionChange = null, quickControls = null, footerHost = undefined }) {
   const ui = useUiText();
-  const { state, dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, requestResolveAfterPayment } = useGame();
+  const { state, dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, requestResolveAfterPayment, priorityPolicy } = useGame();
   const { setPreviewLinkedObjects, clearPreviewLinkedObjects, showAnchoredCardPreview } = useHover();
   const payment = state?.mana_payment || null;
   const rolloutRef = useDecisionRollout(`${decision?.source_id ?? ''}|${Boolean(payment)}`, true);
@@ -130,25 +130,17 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
   }, [editor.edited, confirming, canAct, dispatchInBackground, payment]);
   // Confirmation always waits for the authoritative acknowledgement of edits.
   const payDisabled = !canAct || !payment || payment.can_confirm !== true || dirty || confirming;
-  // A second press on Pay (it disables while confirming, so watch the pointer)
-  // also resolves the spell or ability once it is on the stack.
+  // Pay passes priority through the stack once the paid spell or ability is
+  // on it; Pay & hold keeps priority there instead.
   const sourceId = decision?.source_id;
-  const pay = useCallback(event => {
-    const button = event?.currentTarget;
-    if (event?.detail >= 2) requestResolveAfterPayment?.(sourceId);
-    else if (button && typeof window !== 'undefined') {
-      const rect = button.getBoundingClientRect();
-      const onPointerDown = press => {
-        if (press.clientX >= rect.left && press.clientX <= rect.right && press.clientY >= rect.top && press.clientY <= rect.bottom) {
-          requestResolveAfterPayment?.(sourceId);
-          window.removeEventListener('pointerdown', onPointerDown, true);
-        }
-      };
-      window.addEventListener('pointerdown', onPointerDown, true);
-      setTimeout(() => window.removeEventListener('pointerdown', onPointerDown, true), 450);
-    }
-    if (!(event?.detail >= 2)) editor.confirm();
+  const pay = useCallback(() => {
+    requestResolveAfterPayment?.(sourceId);
+    editor.confirm();
   }, [editor, requestResolveAfterPayment, sourceId]);
+  const payAndHold = useCallback(() => {
+    priorityPolicy?.holdNextPriority(state);
+    editor.confirm();
+  }, [editor, priorityPolicy, state]);
   const submitAction = useMemo(() => ({ label: 'Pay', disabled: payDisabled, onSubmit: () => pay(), onSubmitEvent: pay }), [payDisabled, pay]);
   useEffect(() => { onSubmitActionChange?.(submitAction); return () => onSubmitActionChange?.(null); }, [onSubmitActionChange, submitAction]);
   const cancel = () => { closeMenu(); cancelBackgroundDispatch?.(); cancelDecision({ waitForPaymentReady: true }); };
@@ -204,20 +196,23 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
   const busyLabel = dirty ? ui('Updating payment…') : null;
   const costPips = payment.pips || payment.payment_pips || [];
   const canConfigureSources = sources.length > 0 || paymentSourceOptions(payment).length > 0;
+  // Styled exactly like Pay, but never the button Space or Enter presses.
+  const payAndHoldButton = <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button mana-payment-pay-hold decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" data-shortcut-secondary disabled={payDisabled} title={ui('Pay and keep priority with it on the stack')} onClick={payAndHold}>{ui('Pay & hold')}</Button>;
   const footer = (
     <div className="mana-plan-actions mana-payment-editor-footer">
       {busyLabel && <span className="mana-payment-editor-busy" role="status"><LoaderCircle size={14} className="animate-spin" />{busyLabel}</span>}
       {hasChoices && <Button type="button" variant="ghost" size="sm" className="mana-payment-reset-button" disabled={!canAct || confirming} onClick={editor.reset}><RotateCcw size={13} />{ui('Reset')}</Button>}
-      <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-pass decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" data-space-primary-action aria-keyshortcuts="Space" disabled={payDisabled} title={ui('Pay and pass priority through this stack (Space)')} onClick={() => { requestResolveAfterPayment?.(sourceId); editor.confirm(); }}>{ui('Pay & pass')}<kbd className="priority-shortcut-hint" aria-hidden="true">{ui('Space')}</kbd></Button>
-      <div className="mana-payment-submit-row">
+      {!inlineSubmit && payAndHoldButton}
+      <div className="mana-payment-submit-row" data-pay-hold={inlineSubmit ? 'true' : undefined}>
       <div className="mana-payment-secondary-controls">
         <Button type="button" variant="ghost" size="sm" className="decision-neon-button decision-neon-button--danger decision-cancel-button font-bold uppercase" title={`${ui('Cancel')} (ESC)`} disabled={!canAct || confirming} onClick={cancel}>{ui('Cancel')}</Button>
         {inlineSubmit ? quickControls : null}
       </div>
       {inlineSubmit && <div className="mana-payment-pay-region">
-        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" title={ui('Pay. Double-click to pay and pass through this stack.')} disabled={payDisabled} onClick={pay}>{ui('Pay')}<PriorityShortcutHint number="1" /></Button>
+        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" data-space-primary-action aria-keyshortcuts="Space" title={ui('Pay and pass priority through this stack (Space)')} disabled={payDisabled} onClick={pay}>{ui('Pay')}<PriorityShortcutHint number="1" /></Button>
         {warnings.length > 0 && <Popover><PopoverTrigger asChild><button type="button" className="mana-payment-warning-trigger" aria-label={ui('Payment warnings')}><AlertTriangle size={17} /></button></PopoverTrigger><PopoverContent side="top" aria-label={ui('Payment warnings')} className="mana-payment-warning-details"><ul>{warnings.map((warning, index) => <li key={index}>{ui(warning)}</li>)}</ul></PopoverContent></Popover>}
       </div>}
+      {inlineSubmit && <div className="mana-payment-hold-region">{payAndHoldButton}</div>}
       </div>
     </div>
   );

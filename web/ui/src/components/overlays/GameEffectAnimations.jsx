@@ -36,6 +36,11 @@ const CLEANUP_TAIL_MS = 200;
 
 const FLIGHT_CARD_WIDTH = 68;
 const FLIGHT_CARD_HEIGHT = 95;
+// A battlefield landing fades the flight off the revealed card.
+const LANDING_FADE_MS = 140;
+// How long a battlefield flight waits for its card to mount before it gives
+// up on landing in the card's slot.
+const LANDING_WAIT_MS = 600;
 
 const MANA_MOTE_COLORS = {
   W: "#f6efce",
@@ -120,6 +125,7 @@ function CardFlight({ effect, onDone }) {
   const flipMotionRef = useRef(null);
   const onDoneRef = useStableCallbackRef(onDone);
   const startedAtRef = useRef(null);
+  const [startedAt, setStartedAt] = useState(null);
   const artUrl = useScryfallImageUrl(effect.cardName || "", "normal");
   const showsFace = Boolean(effect.cardName) && Boolean(artUrl);
   const startsFaceDown = effect.revealsFace || !showsFace;
@@ -128,36 +134,93 @@ function CardFlight({ effect, onDone }) {
     const node = shellRef.current;
     if (!node) return undefined;
 
-    startedAtRef.current = performance.now();
-    const fromCenter = rectCenter(effect.fromRect);
-    const toCenter = rectCenter(effect.toRect);
-    const arc = flightArcOffset(fromCenter, toCenter);
-    const { dx, dy } = arc;
-    const px = arc.px * (effect.arcScale ?? 1);
-    const py = arc.py * (effect.arcScale ?? 1);
-    const duration = effect.durationMs;
-    const spin = effect.spin ?? (effect.tumble ? (effect.seed % 2 === 0 ? 200 : -160) : (effect.seed % 2 === 0 ? 10 : -10));
-
     const revealHandCard = () => {
       if (effect.handObjectId != null) window.dispatchEvent(new CustomEvent(
         "ironsmith:hand-flight-landed", { detail: { objectId: effect.handObjectId } }
       ));
     };
-    motionRef.current = animateCompositor(node, [
-      { transform: "translate(0px, 0px) scale(0.5) rotate(0deg)", opacity: 0, offset: 0, easing: powerEase("out", 2) },
-      { transform: "translate(0px, 0px) scale(0.96) rotate(0deg)", opacity: 1, offset: 0.18, easing: powerEase("inOut", 1.4) },
-      { transform: `translate(${dx * 0.55 + px}px, ${dy * 0.55 + py}px) scale(1.04) rotate(${spin * 0.55}deg)`, opacity: 1, offset: 0.6, easing: powerEase("in", 1.7) },
-      { transform: `translate(${dx}px, ${dy}px) scale(0.5) rotate(${spin}deg)`, opacity: 0, offset: 1 },
-    ], { duration, delay: effect.delayMs, onComplete: revealHandCard });
+    // A flight onto a battlefield card stands in for that card, which is held
+    // hidden until the flight arrives: it settles into the card's slot at the
+    // card's size, the card is revealed beneath it, and the flight fades off.
+    let landing = effect.landingObjectId != null;
+    let landed = false;
+    const land = () => {
+      if (landed) return;
+      landed = true;
+      revealHandCard();
+      if (effect.landingObjectId != null) releaseLandingCard(effect.landingObjectId);
+    };
+    let fadeMotion = null;
+    let timer = null;
+    let frame = null;
 
-    const timer = window.setTimeout(
-      () => onDoneRef.current(),
-      effect.delayMs + duration + CLEANUP_TAIL_MS
-    );
+    const begin = (toRect) => {
+      startedAtRef.current = performance.now();
+      setStartedAt(startedAtRef.current);
+      const fromCenter = rectCenter(effect.fromRect);
+      const toCenter = rectCenter(toRect);
+      const arc = flightArcOffset(fromCenter, toCenter);
+      const { dx, dy } = arc;
+      const px = arc.px * (effect.arcScale ?? 1);
+      const py = arc.py * (effect.arcScale ?? 1);
+      const duration = effect.durationMs;
+      const spin = effect.spin ?? (effect.tumble ? (effect.seed % 2 === 0 ? 200 : -160) : (effect.seed % 2 === 0 ? 10 : -10));
+      const finish = () => {
+        land();
+        if (landing && node.isConnected) {
+          fadeMotion = animateCompositor(node, [{ opacity: 1 }, { opacity: 0 }], {
+            duration: LANDING_FADE_MS,
+            easing: powerEase("out", 1.6),
+          });
+        }
+      };
+      const landingScale = landing
+        ? Math.min(toRect.width / FLIGHT_CARD_WIDTH, toRect.height / FLIGHT_CARD_HEIGHT)
+        : 0.5;
+      motionRef.current = animateCompositor(node, [
+        { transform: "translate(0px, 0px) scale(0.5) rotate(0deg)", opacity: 0, offset: 0, easing: powerEase("out", 2) },
+        { transform: "translate(0px, 0px) scale(0.96) rotate(0deg)", opacity: 1, offset: 0.18, easing: powerEase("inOut", 1.4) },
+        { transform: `translate(${dx * 0.55 + px}px, ${dy * 0.55 + py}px) scale(1.04) rotate(${spin * 0.55}deg)`, opacity: 1, offset: 0.6, easing: landing ? powerEase("out", 2.2) : powerEase("in", 1.7) },
+        landing
+          ? { transform: `translate(${dx}px, ${dy}px) scale(${landingScale}) rotate(0deg)`, opacity: 1, offset: 1 }
+          : { transform: `translate(${dx}px, ${dy}px) scale(0.5) rotate(${spin}deg)`, opacity: 0, offset: 1 },
+      ], { duration, delay: effect.delayMs, onComplete: finish });
+
+      timer = window.setTimeout(
+        () => onDoneRef.current(),
+        effect.delayMs + duration + (landing ? LANDING_FADE_MS : 0) + CLEANUP_TAIL_MS
+      );
+    };
+
+    if (!landing) {
+      begin(effect.toRect);
+    } else {
+      // The arriving card can mount a frame or two after this snapshot's
+      // effects spawn; wait for it so the flight aims at its real slot. If it
+      // never shows on its own (it joined a pile), fly to the zone instead.
+      const waitStarted = performance.now();
+      const aim = () => {
+        frame = null;
+        const card = battlefieldLandingCard(effect.landingObjectId);
+        if (card) {
+          begin(card.getBoundingClientRect());
+        } else if (performance.now() - waitStarted >= LANDING_WAIT_MS) {
+          landing = false;
+          land();
+          begin(effect.toRect);
+        } else {
+          frame = requestAnimationFrame(aim);
+        }
+      };
+      aim();
+    }
+
     return () => {
+      if (frame != null) cancelAnimationFrame(frame);
       window.clearTimeout(timer);
       cancelMotion(motionRef.current);
-      revealHandCard();
+      cancelMotion(fadeMotion);
+      land();
     };
   }, [effect, onDoneRef]);
 
@@ -166,9 +229,9 @@ function CardFlight({ effect, onDone }) {
   // flight.
   useLayoutEffect(() => {
     const flipNode = flipRef.current;
-    if (!flipNode || !effect.revealsFace || !showsFace) return undefined;
+    if (!flipNode || startedAt == null || !effect.revealsFace || !showsFace) return undefined;
 
-    const elapsed = startedAtRef.current == null ? 0 : performance.now() - startedAtRef.current;
+    const elapsed = performance.now() - startedAt;
     const flipAt = Math.max(0, effect.delayMs + effect.durationMs * 0.3 - elapsed);
     flipMotionRef.current = animateCompositor(flipNode, [
       { transform: "rotateY(0deg)" },
@@ -181,7 +244,7 @@ function CardFlight({ effect, onDone }) {
     return () => {
       cancelMotion(flipMotionRef.current);
     };
-  }, [effect, showsFace]);
+  }, [effect, showsFace, startedAt]);
 
   return (
     <div
@@ -981,6 +1044,55 @@ function playDamageLunge(event) {
   });
 }
 
+function battlefieldLandingCard(objectId) {
+  if (typeof document === "undefined") return null;
+  const card = document.querySelector(`.game-card[data-battlefield-layout][data-object-id="${CSS.escape(String(objectId))}"]`);
+  if (!card || card.closest(".game-fx-layer")) return null;
+  const rect = card.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0 ? card : null;
+}
+
+// Cards waiting for their flight stay hidden, with their scene chrome (glow,
+// badges), until the flight lands. A stylesheet rule rather than inline styles
+// survives board re-renders and remounts during the flight, and it is updated
+// synchronously so the reveal shares a frame with the flight's own fade.
+const landingHolds = new Map();
+let landingHoldStyle = null;
+
+function writeLandingHolds() {
+  if (typeof document === "undefined") return;
+  if (!landingHoldStyle) {
+    landingHoldStyle = document.createElement("style");
+    landingHoldStyle.dataset.flightLandingHolds = "";
+    document.head.appendChild(landingHoldStyle);
+  }
+  landingHoldStyle.textContent = [...landingHolds.keys()].map((id) => {
+    const card = `.game-card[data-battlefield-layout][data-object-id="${CSS.escape(id)}"]`;
+    return `.battlefield-scene-object:has(> ${card}), ${card} { visibility: hidden !important; }`;
+  }).join("\n");
+}
+
+function holdLandingCard(objectId) {
+  const id = String(objectId);
+  landingHolds.set(id, (landingHolds.get(id) || 0) + 1);
+  writeLandingHolds();
+}
+
+function releaseLandingCard(objectId) {
+  const id = String(objectId);
+  const count = landingHolds.get(id) || 0;
+  if (count <= 0) return;
+  if (count === 1) landingHolds.delete(id);
+  else landingHolds.set(id, count - 1);
+  writeLandingHolds();
+}
+
+function releaseAllLandingCards() {
+  if (landingHolds.size === 0) return;
+  landingHolds.clear();
+  writeLandingHolds();
+}
+
 function flightSpawn(event, spawned, { perspective, previousRectsByStableId }) {
   const sourcePlayer = ["battlefield", "stack"].includes(event.fromZone)
     ? (event.sourcePlayerKey ?? event.playerKey) : event.playerKey;
@@ -988,6 +1100,12 @@ function flightSpawn(event, spawned, { perspective, previousRectsByStableId }) {
   const fromRect = previousRectsByStableId.get(event.stableId)
     || getZoneAnchorRect(sourcePlayer, event.fromZone, { isPerspective: String(perspective) === sourcePlayer });
   let toRect = null;
+  // A flight onto the battlefield holds the arriving card hidden and lands in
+  // its slot. The card may mount a frame after this spawn, so the flight looks
+  // it up when it starts; a card that joins a pile (another member leads it)
+  // never matches the hold, so the pile stays visible and the flight falls back
+  // to this zone rect.
+  const landingObjectId = event.toZone === "battlefield" && event.objectId != null ? String(event.objectId) : null;
   if (["battlefield", "stack", "hand"].includes(event.toZone) && event.objectId != null) {
     toRect = getCardRect(event.objectId);
   }
@@ -1002,6 +1120,7 @@ function flightSpawn(event, spawned, { perspective, previousRectsByStableId }) {
   }
   spawned.push({
     handObjectId: event.toZone === "hand" ? event.objectId : null,
+    landingObjectId,
     component: "flight",
     id: `${event.id}:${nextEffectInstanceId += 1}`,
     fromRect,
@@ -1301,6 +1420,15 @@ function GameEffectAnimationsContent({ suspended = false }) {
   const removeEffect = useCallback((effectId) => {
     setEffects((current) => current.filter((effect) => effect.id !== effectId));
   }, []);
+  // Spawning happens in a layout effect, so the hold is in place before the
+  // arriving card is first painted. Each flight releases its own hold.
+  const addSpawnedEffects = useCallback((spawnedEffects) => {
+    if (spawnedEffects.length === 0) return;
+    for (const effect of spawnedEffects) {
+      if (effect.landingObjectId != null) holdLandingCard(effect.landingObjectId);
+    }
+    setEffects((current) => [...current, ...spawnedEffects]);
+  }, []);
 
   useLayoutEffect(() => {
     if (!state) return;
@@ -1340,15 +1468,12 @@ function GameEffectAnimationsContent({ suspended = false }) {
       return () => cancelAnimationFrame(rectFrame);
     }
 
-    const spawnedEffects = buildSpawnedEffects(events, {
+    addSpawnedEffects(buildSpawnedEffects(events, {
       perspective: state.perspective,
       previousRectsByStableId,
-    });
-    if (spawnedEffects.length > 0) {
-      setEffects((current) => [...current, ...spawnedEffects]);
-    }
+    }));
     return () => cancelAnimationFrame(rectFrame);
-  }, [reducedMotion, state, suspended]);
+  }, [addSpawnedEffects, reducedMotion, state, suspended]);
 
   // Debug/E2E hook: inject raw events through the same spawn path, e.g.
   // window.dispatchEvent(new CustomEvent("ironsmith:game-effect-animations-debug",
@@ -1363,17 +1488,20 @@ function GameEffectAnimationsContent({ suspended = false }) {
           previousRectsByStableId: previousRectsByStableIdRef.current,
         }
       );
-      if (spawnedEffects.length === 0) return;
-      setEffects((current) => [...current, ...spawnedEffects]);
+      addSpawnedEffects(spawnedEffects);
     };
     window.addEventListener("ironsmith:game-effect-animations-debug", onDebugEvents);
     return () => {
       window.removeEventListener("ironsmith:game-effect-animations-debug", onDebugEvents);
     };
-  }, [perspectiveRef]);
+  }, [addSpawnedEffects, perspectiveRef]);
 
-  // When the workspace unmounts mid-flight, drop everything.
-  useEffect(() => () => setEffects([]), []);
+  // When the workspace unmounts mid-flight, drop everything, including any
+  // card still waiting for its flight.
+  useEffect(() => () => {
+    setEffects([]);
+    releaseAllLandingCards();
+  }, []);
 
   if (effects.length === 0) return null;
 

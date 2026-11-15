@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import GameCard from "@/components/cards/GameCard";
 import useBattlefieldAppearance from "@/hooks/useBattlefieldAppearance";
 import { useDragState } from "@/context/DragContext";
@@ -72,6 +73,62 @@ function placementTargetAtPoint(x, y) {
   };
 }
 
+// The hand card's face is a frame it laid out and painted itself, so the ghost
+// copies that painted face rather than fetching a print of its own: it shows
+// on the first frame and looks like the card that was picked up. Canvases
+// clone blank, so their pixels are copied across.
+function cloneHandCardFace(objectId) {
+  const id = CSS.escape(String(objectId));
+  const frame = document.querySelector(
+    `.game-card.hand-card[data-object-id="${id}"] .game-card-surface > .battlefield-prepared-frame`
+  );
+  if (!frame) return null;
+  const clone = frame.cloneNode(true);
+  const sources = frame.querySelectorAll("canvas");
+  clone.querySelectorAll("canvas").forEach((canvas, index) => {
+    const source = sources[index];
+    if (!source?.width || !source?.height) return;
+    canvas.width = source.width;
+    canvas.height = source.height;
+    try {
+      canvas.getContext("2d")?.drawImage(source, 0, 0);
+    } catch {
+      // A tainted canvas stays blank rather than breaking the drag.
+    }
+  });
+  clone.removeAttribute("inert");
+  return clone;
+}
+
+function HandCardFaceGhost({ objectId, width, height, fallback }) {
+  const host = useRef(null);
+  const fallbackHost = useRef(null);
+  useLayoutEffect(() => {
+    const element = host.current;
+    const fallbackElement = fallbackHost.current;
+    const clone = element ? cloneHandCardFace(objectId) : null;
+    if (!clone) return undefined;
+    element.replaceChildren(clone);
+    const composition = clone.querySelector(".battlefield-prepared-frame__composition");
+    if (composition) {
+      const scale = Math.min(width / composition.offsetWidth, height / composition.offsetHeight);
+      composition.style.transform = `translate(-50%, -50%) scale(${scale})`;
+      composition.style.visibility = "visible";
+    }
+    if (fallbackElement) fallbackElement.hidden = true;
+    return () => {
+      element.replaceChildren();
+      if (fallbackElement) fallbackElement.hidden = false;
+    };
+  }, [objectId, width, height]);
+  return (
+    <>
+      <div ref={host} className="absolute inset-0" />
+      <div ref={fallbackHost} className="h-full w-full">{fallback}</div>
+    </>
+  );
+}
+
 function placementArrowPath(source, target) {
   const startX = source.x;
   const startY = source.y;
@@ -113,13 +170,16 @@ export default function DragOverlay() {
     currentY,
   );
   // A pointer drag carries the card under the cursor until it reaches the
-  // battlefield. A key press has no cursor to carry it, so the arrow stands in
-  // from the moment the card is held, aimed at dead space until the mouse
-  // moves and at the slot it would take once it is over the grid.
+  // battlefield, where it turns translucent over the highlighted slot that
+  // shows where it will land. A key press has no cursor to carry it, so the arrow stands in from
+  // the moment the card is held, aimed at dead space until the mouse moves and
+  // at the slot it would take once it is over the grid.
+  const placingPermanent = !isBattlefieldMove && Boolean(placement);
+  const overPlacementGrid = placingPermanent && !keyboard && Boolean(placementTarget?.inside);
   const arrowTarget = castIntent
     ? { x: currentX, y: currentY }
-    : (!isBattlefieldMove && placement
-      ? (placementTarget?.inside ? placementTarget : (keyboard ? { x: currentX, y: currentY } : null))
+    : (placingPermanent && keyboard
+      ? (placementTarget?.inside ? placementTarget : { x: currentX, y: currentY })
       : null);
 
   if (arrowTarget) {
@@ -193,17 +253,24 @@ export default function DragOverlay() {
           transform: `translate(-50%, -58%) rotate(${rotation}deg)`,
           border: `2px solid ${color}`,
           boxShadow: `0 0 24px ${color}88, 0 18px 36px rgba(0,0,0,0.62)`,
-          opacity: isBattlefieldMove ? 0.66 : 1,
+          opacity: isBattlefieldMove || overPlacementGrid ? 0.66 : 1,
         }}
       >
         {compactMove ? (
           <GameCard card={dragState.card} suppressTooltip style={{width: "100%", height: "100%", "--bf-card-width": `${width}px`, "--bf-card-height": `${height}px`}} />
-        ) : imageUrl ? (
-          <img className="h-full w-full object-cover" src={imageUrl} alt={cardName} draggable="false" />
         ) : (
-          <div className="flex h-full w-full items-start bg-[#0b1119] p-2 text-[12px] font-bold text-[#d8e8ff]">
-            {cardName}
-          </div>
+          <HandCardFaceGhost
+            objectId={dragState.objectId}
+            width={width}
+            height={height}
+            fallback={imageUrl ? (
+              <img className="h-full w-full object-cover" src={imageUrl} alt={cardName} draggable="false" />
+            ) : (
+              <div className="flex h-full w-full items-start bg-[#0b1119] p-2 text-[12px] font-bold text-[#d8e8ff]">
+                {cardName}
+              </div>
+            )}
+          />
         )}
       </div>
     </div>

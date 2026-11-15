@@ -214,16 +214,30 @@ test("mana source options enlarge their battlefield or hand card and clear on di
 });
 
 
-test('Pay and pass exposes cast-and-resolve without requiring a double click', async()=>{
+test('Pay passes through the stack and Pay & hold keeps priority', async()=>{
  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();const browser=await chromium.launch();
  try {
-  const page=await browser.newPage({viewport:{width:1100,height:850}});
-  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/payment-editor.html`);
-  await page.getByRole('button',{name:'Cancel',exact:true}).click({trial:true});
-  await page.getByRole('button',{name:'Pay',exact:true}).click({trial:true});
-  await page.getByRole('button',{name:'Pay & pass',exact:true}).click();
-  assert.equal(await page.evaluate(()=>window.resolvePaymentSource),99);
-  await page.waitForFunction(()=>JSON.parse(document.querySelector('[data-commands]').textContent).some(command=>command.response?.action==='confirm'));
-  assert.equal(JSON.parse(await page.locator('[data-commands]').textContent()).filter(command=>command.response?.action==='confirm').length,1);
+  const confirms=async page=>JSON.parse(await page.locator('[data-commands]').textContent()).filter(command=>command.response?.action==='confirm').length;
+  const open=async()=>{
+   const page=await browser.newPage({viewport:{width:1100,height:850}});
+   await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/payment-editor.html`);
+   await page.getByRole('button',{name:'Cancel',exact:true}).click({trial:true});
+   return page;
+  };
+  const passing=await open();
+  // Space and a single click on Pay both pay and then pass through the stack.
+  assert.notEqual(await passing.getByRole('button',{name:'Pay',exact:true}).getAttribute('data-space-primary-action'),null);
+  assert.equal(await passing.getByRole('button',{name:'Pay & hold',exact:true}).getAttribute('data-space-primary-action'),null);
+  await passing.getByRole('button',{name:'Pay',exact:true}).click();
+  assert.equal(await passing.evaluate(()=>window.resolvePaymentSource),99);
+  assert.equal(await passing.evaluate(()=>window.heldNextPriority),undefined);
+  await passing.waitForFunction(()=>JSON.parse(document.querySelector('[data-commands]').textContent).some(command=>command.response?.action==='confirm'));
+  assert.equal(await confirms(passing),1);
+  const holding=await open();
+  await holding.getByRole('button',{name:'Pay & hold',exact:true}).click();
+  assert.equal(await holding.evaluate(()=>window.heldNextPriority),1);
+  assert.equal(await holding.evaluate(()=>window.resolvePaymentSource),undefined);
+  await holding.waitForFunction(()=>JSON.parse(document.querySelector('[data-commands]').textContent).some(command=>command.response?.action==='confirm'));
+  assert.equal(await confirms(holding),1);
  }finally{await browser.close();await vite.close();}
 });

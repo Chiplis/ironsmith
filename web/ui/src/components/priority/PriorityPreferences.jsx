@@ -82,7 +82,7 @@ export default function PriorityPreferences() {
         onCheckedChange={checked => priorityPolicy.setGroupTriggers(Boolean(checked), state)} />{ui('Automatically order identical target-free triggers')} <PriorityShortcutHint number="7" /></label>
       <details open={!!menu.phase || undefined}><summary>{ui('Phase stops and future yields')}</summary><p className="priority-help">{ui('Each row applies on that player’s turn. Stops wait for you; they never count down.')}</p>
         {(state.players || []).map(player => <div key={player.id} className="priority-stop-list"><strong>{ui('{0}’s turn', { 0: player.name })}</strong>
-          {PRIORITY_STOP_KEYS.filter(key => !key.endsWith('Untap')).map(key => <div key={key}>
+          {PRIORITY_STOP_KEYS.map(key => <div key={key}>
             <span>{ui(stopLabel(key))}</span>
             <Button variant="ghost" onClick={() => cyclePriorityStop?.(key, player.id)}>{ui({always:'Always',can_act:'If I can act'}[priorityStopMode(priorityStops, key, player.id)] || 'Off')}</Button>
             <Button variant="ghost" onClick={() => execute(() => startPriorityYield('until', { key, player: player.id }))}>{ui('Yield until here')}</Button>

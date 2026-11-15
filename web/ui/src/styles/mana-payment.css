@@ -45,10 +45,21 @@
 }
 .mana-payment-secondary-controls { display:flex; align-items:center; gap:6px; min-width:0; }
 .mana-plan-actions.mana-payment-editor-footer { background: transparent; }
-.mana-payment-editor-footer .mana-payment-pay-pass {
+/* Without an inline Pay (Pay lives in the action strip), Pay & hold has the
+   footer to itself above Cancel. */
+.mana-payment-editor-footer > .mana-payment-pay-hold {
   align-self: flex-end;
   min-height: 36px;
   border-radius: 7px;
   padding: 0 12px;
   flex: none;
 }
+
+/* With Pay inline, Pay & hold sits beside it and Cancel spans the row below. */
+.mana-payment-submit-row[data-pay-hold="true"] { grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:auto auto; }
+.mana-payment-submit-row[data-pay-hold="true"] > .mana-payment-pay-region { grid-column:1; grid-row:1; }
+.mana-payment-submit-row[data-pay-hold="true"] > .mana-payment-hold-region { grid-column:2; grid-row:1; min-width:0; }
+.mana-payment-submit-row[data-pay-hold="true"] > .mana-payment-hold-region > .mana-payment-pay-button { width:100%; min-height:36px; }
+.mana-payment-submit-row[data-pay-hold="true"] > .mana-payment-secondary-controls { grid-column:1 / -1; grid-row:2; }
+.mana-payment-submit-row[data-pay-hold="true"] > .mana-payment-secondary-controls > .decision-cancel-button { flex:1 1 0; }
+.mana-payment-submit-row[data-pay-hold="true"] > .mana-payment-secondary-controls > .decision-quick-controls:empty { display:none; }
