@@ -4681,6 +4681,13 @@ html[data-hand-pointer-suspended="true"] * {
     grid-row: 3;
     /* The local graveyard/exile column rises above this panel's top edge. */
     overflow: visible;
+    /* Tuck the local field up under the phase strip's bottom padding: the
+       scene keeps its own top inset for tap/aura room, so cancelling the row
+       gap plus that inset's worth halves the visible strip-to-card gap.
+       The panel grows by the same amount so its bottom edge stays put. */
+    --my-zone-tuck: calc(clamp(12px, 1.5vh, 18px) + 16px);
+    margin-top: calc(-1 * var(--my-zone-tuck));
+    height: calc(100% + var(--my-zone-tuck)) !important;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-zone-entry[data-zone-id="battlefield"] .battlefield-row {
