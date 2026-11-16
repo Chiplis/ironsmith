@@ -117,6 +117,41 @@ function faceBox(entry) {
   return { x: 0, y: 0, width: card.offsetWidth, height: card.offsetHeight };
 }
 
+// One computed border-radius corner ("48%", "4px", "48% 30%") as [x, y] css px.
+function cornerRadii(value, width, height) {
+  const parts = String(value || "0").trim().split(/\s+/);
+  const length = (part, side) => {
+    const n = parseFloat(part);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return part.endsWith("%") ? side * n / 100 : n;
+  };
+  return [length(parts[0], width), length(parts[1] ?? parts[0], height)];
+}
+
+// The face's real silhouette (border radii), clamped the way CSS clamps
+// overlapping radii. Fallback: the old gently rounded rectangle.
+function faceRadii(entry, face, width, height) {
+  const node = entry.face;
+  const key = node ? `${width}:${height}:${node.className}:${node.dataset.token ?? ""}:${node.dataset.kind ?? ""}` : null;
+  if (entry.radiiKey === key && entry.radii) return entry.radii;
+  entry.radiiKey = key;
+  let corners;
+  if (node && face.width === node.offsetWidth) {
+    const style = getComputedStyle(node);
+    corners = [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius]
+      .map(value => cornerRadii(value, width, height));
+  } else {
+    const r = Math.min(width, height) * 0.045;
+    corners = [[r, r], [r, r], [r, r], [r, r]];
+  }
+  const [tl, tr, br, bl] = corners;
+  const fit = Math.min(1,
+    width / Math.max(1e-6, tl[0] + tr[0]), width / Math.max(1e-6, bl[0] + br[0]),
+    height / Math.max(1e-6, tl[1] + bl[1]), height / Math.max(1e-6, tr[1] + br[1]));
+  entry.radii = [corners.map(c => c[0] * fit), corners.map(c => c[1] * fit)];
+  return entry.radii;
+}
+
 function tick(now) {
   frame = null;
   if (!entries.size || !renderer) return;
@@ -158,10 +193,11 @@ function tick(now) {
     const motion = entry.spec.flags & FX.flying ? flyingMotion(entry, time, still) : { x: 0, y: 0 };
     const lift = motion.y, drift = motion.x;
     job.margin = margin; job.size = size; job.lift = lift; job.drift = drift;
+    job.radii = faceRadii(entry, job.face, width, height);
     for (const [layer, target] of [[0, entry.back], [1, entry.front]]) {
       if (!target) continue;
       if (x + w > ATLAS_WIDTH) { x = 0; y += row; row = 0; }
-      tiles.push({ x, y, w, h, size, card: [width, height], flags: entry.spec.flags, layer, seed: entry.spec.seed,
+      tiles.push({ x, y, w, h, size, card: [width, height], radii: job.radii, flags: entry.spec.flags, layer, seed: entry.spec.seed,
         lift, drift, protection: entry.spec.protection, target, job });
       x += w; row = Math.max(row, h);
     }

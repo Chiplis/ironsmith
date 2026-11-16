@@ -2376,7 +2376,12 @@ pub(super) fn normalize_granted_triggered_ability_surface(surface: String) -> St
     // Oracle keeps the explicit subject in optional instructions ("When this
     // creature dies, you may return it ..."); only a mandatory "You <verb>"
     // drops to the bare imperative.
-    let keeps_you_subject = tail.to_ascii_lowercase().starts_with("you may ");
+    // Life changes keep it too: Oracle prints "you lose 2 life" and "you
+    // gain 3 life", never the bare imperative.
+    let lower_tail = tail.to_ascii_lowercase();
+    let keeps_you_subject = lower_tail.starts_with("you may ")
+        || lower_tail.starts_with("you lose ")
+        || lower_tail.starts_with("you gain ");
     let tail = if keeps_you_subject {
         tail
     } else {

@@ -105,7 +105,7 @@ pub use keyword_activated_lines::{
 };
 use trigger_clause_core::*;
 pub use trigger_clause_core::{
-    parse_leading_exactly_quantifier, parse_leading_or_more_quantifier, parse_trigger_clause_lexed,
+    damage_recipient_exact_amount_qualification, parse_leading_exactly_quantifier, parse_leading_or_more_quantifier, parse_trigger_clause_lexed,
     parse_trigger_clause_lexed_with_context,
 };
 use trigger_subject_filters::*;

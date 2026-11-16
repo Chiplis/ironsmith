@@ -1634,6 +1634,11 @@ fn parse_counters_put_on_this_turn_words(
         descriptor_start += 3;
         minimum
     } else {
+        // "that you've put a counter on this turn" (La Forge, Thoughtful as
+        // Ever): the singular article is the one-or-more threshold.
+        if matches!(words.get(descriptor_start).copied(), Some("a" | "an")) {
+            descriptor_start += 1;
+        }
         1
     };
 
@@ -1657,6 +1662,31 @@ fn parse_counters_put_on_this_turn_words(
         CountersPutOnThisTurnConstraint::new(counter_type, PlayerFilter::You, minimum),
         counter_noun + 4,
     ))
+}
+
+/// "<object> that you've put a counter on this turn" as a trailing relative
+/// clause of a quantified subject (La Forge, Thoughtful as Ever): the head
+/// tokens before "that" and the counter-placement history the clause names.
+pub(crate) fn split_trailing_counters_put_on_this_turn_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], CountersPutOnThisTurnConstraint)> {
+    let mut end = tokens.len();
+    while end > 0 && tokens[end - 1].kind == crate::lexer::TokenKind::Period {
+        end -= 1;
+    }
+    let tokens = &tokens[..end];
+    let that = tokens.iter().rposition(|token| token.is_word("that"))?;
+    if that == 0 {
+        return None;
+    }
+    let clause = &tokens[that..];
+    let words = crate::lexer::parser_token_word_refs(clause);
+    let (constraint, consumed) = parse_counters_put_on_this_turn_words(&words)?;
+    if consumed != words.len() {
+        return None;
+    }
+    crate::word_claims::claim_tokens(clause);
+    Some((&tokens[..that], constraint))
 }
 
 pub(super) fn try_apply_counters_put_on_this_turn_clause(

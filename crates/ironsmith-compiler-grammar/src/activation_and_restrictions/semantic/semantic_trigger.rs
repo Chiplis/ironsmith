@@ -171,6 +171,50 @@ fn parse_combat_damage_trigger_lexed(
     }
     let target_word_view = ActivationRestrictionCompatWords::new(&target_tokens);
     let target_words = target_word_view.to_word_refs();
+    // "deals combat damage to a player who doesn't have a contract counter"
+    // (Miss Highwater): the damaged player's own counters (CR 122.1) qualify
+    // the damage event as it is dealt.
+    if let Some((noun, has, counter_words)) = match target_words.as_slice() {
+        ["a" | "an", noun @ ("player" | "opponent"), "who", "doesn't" | "doesnt", "have", "a" | "an" | "any", rest @ ..]
+        | ["a" | "an", noun @ ("player" | "opponent"), "who", "does", "not", "have", "a" | "an" | "any", rest @ ..]
+        | ["a" | "an", noun @ ("player" | "opponent"), "who", "has", "no", rest @ ..] => {
+            Some((*noun, false, rest))
+        }
+        ["a" | "an", noun @ ("player" | "opponent"), "who", "has", "a" | "an" | "one" | "any", rest @ ..] => {
+            Some((*noun, true, rest))
+        }
+        _ => None,
+    } && matches!(counter_words.last(), Some(&("counter" | "counters")))
+        && counter_words.len() >= 2
+        && let Some(counter_type) = crate::grammar::filters::parse_counter_type_words(counter_words)
+    {
+        let mut base_tokens = tokens[..=to_idx].to_vec();
+        let article = if noun == "opponent" { "an" } else { "a" };
+        base_tokens.extend(crate::lexer::synthetic_word_tokens([article, noun]));
+        let base_words = crate::lexer::token_word_refs(&base_tokens);
+        let base = parse_combat_damage_trigger_lexed(&base_tokens, &base_words)?;
+        crate::word_claims::claim_tokens(&target_tokens);
+        let counters = crate::effect::Value::PlayerCounters(PlayerFilter::IteratedPlayer, counter_type);
+        let counter_phrase = counter_words.join(" ");
+        let surface = if has {
+            format!("who has a {counter_phrase}")
+        } else {
+            format!("who doesn't have a {counter_phrase}")
+        };
+        return Ok(TriggerSpec::ConditionQualified {
+            trigger: Box::new(base),
+            condition: crate::cards::builders::PredicateAst::ValueComparison {
+                left: counters,
+                operator: if has {
+                    crate::effect::ValueComparisonOperator::GreaterThan
+                } else {
+                    crate::effect::ValueComparisonOperator::Equal
+                },
+                right: crate::effect::Value::Fixed(0),
+            },
+            surface,
+        });
+    }
     // "... to a player" triggers once for each damaged player; "... to one
     // or more players / of your opponents" once for the whole event.
     let each_damaged_player = !has_leading_one_or_more(&target_tokens);
@@ -595,6 +639,27 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         } else { filter.custom_statuses.push(name); }
         crate::word_claims::claim_tokens(&base[base.len()-1..]);
         return Ok(TriggerSpec::Attacks(filter));
+    }
+    // "Whenever a saddled creature you control attacks" (Jandor, Fortuned
+    // Traveler): the same event as "attacks while saddled" (CR 702.171b).
+    {
+        let words = crate::lexer::token_word_refs(tokens);
+        if words.len() >= 4
+            && words.last() == Some(&"attacks")
+            && matches!(words[0], "a" | "an" | "each" | "another")
+            && words[1] == "saddled"
+            && let Some(saddled) = tokens.iter().position(|token| token.is_word("saddled"))
+            && let Some(attacks) = trigger_word_token_start(tokens, words.len() - 1)
+            && saddled < attacks
+        {
+            let mut subject = tokens[..saddled].to_vec();
+            subject.extend_from_slice(&tokens[saddled + 1..attacks]);
+            if let Some(filter) = parse_attack_trigger_subject_filter_lexed(&subject)? {
+                crate::word_claims::claim_tokens(&tokens[saddled..=saddled]);
+                crate::word_claims::claim_tokens(&tokens[attacks..]);
+                return Ok(TriggerSpec::AttacksWhileSaddled(filter));
+            }
+        }
     }
     if let Some(trigger) = combat_declaration_shapes::parse(tokens)? { return Ok(trigger); }
     {
@@ -1607,6 +1672,34 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // "you discard one or more cards at random, select one or more targets
+    // at random, ..., or roll one or more dice" (Chira, All In): each
+    // randomized action is its own event, all sharing the player subject.
+    if let Some((subject, arms)) =
+        crate::grammar::trigger_clauses::parse_shared_random_action_list(tokens)
+        && let Some(player) =
+            parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[subject.clone()]))
+    {
+        crate::word_claims::claim_tokens(&tokens[subject.end..]);
+        let mut triggers = arms.into_iter().map(|arm| match arm {
+            crate::grammar::trigger_clauses::RandomActionTriggerArm::Action(action) => {
+                TriggerSpec::KeywordAction {
+                    action,
+                    player: player.clone(),
+                    source_filter: None,
+                    during_your_turn: false,
+                }
+            }
+            crate::grammar::trigger_clauses::RandomActionTriggerArm::RollDice => {
+                TriggerSpec::PlayerRollsDie { player: player.clone(), one_or_more: true }
+            }
+        });
+        if let Some(first) = triggers.next() {
+            return Ok(triggers.fold(first, |left, right| {
+                TriggerSpec::Either(Box::new(left), Box::new(right))
+            }));
+        }
+    }
     // A complete keyword-action verb list inherits one player subject. Keep
     // this typed union ahead of the general OR splitter, which otherwise
     // sees a subjectless right arm ("surveil"). Explicit right-hand subjects
@@ -3282,6 +3375,46 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     .with_controller(crate::events::cause::ControllerFilter::ContextController),
             ),
         });
+    }
+
+    // "Whenever a spell or ability you control causes one or more cards to be
+    // exiled from an opponent's library" (The Madcap Jester): a zone change
+    // from a library into exile whose cause is a spell or ability (an
+    // effect-like cause) controlled by this ability's controller. The cards
+    // are owned by the opponent whose library they left.
+    if let Some(rest) = zone_change_words.strip_prefix(&[
+        "a", "spell", "or", "ability", "you", "control", "causes",
+    ]) {
+        let (one_or_more, rest) = match rest {
+            ["one", "or", "more", "cards", rest @ ..] => (true, rest),
+            ["a", "card", rest @ ..] => (false, rest),
+            _ => (false, &[][..]),
+        };
+        let owner = match rest {
+            ["to", "be", "exiled", "from", "an", "opponent's" | "opponents", "library"] => {
+                Some(PlayerFilter::Opponent)
+            }
+            ["to", "be", "exiled", "from", "your", "library"] => Some(PlayerFilter::You),
+            ["to", "be", "exiled", "from", "a", "player's" | "players", "library"] => {
+                Some(PlayerFilter::Any)
+            }
+            _ => None,
+        };
+        if let Some(owner) = owner {
+            crate::word_claims::claim_words(zone_change_words);
+            let mut filter = ObjectFilter::default();
+            filter.owner = Some(owner);
+            return Ok(TriggerSpec::PutIntoExileFromZones {
+                filter,
+                from: vec![Zone::Library],
+                one_or_more,
+                during_turn,
+                cause_filter: Some(
+                    crate::events::cause::CauseFilter::effect_like()
+                        .with_controller(crate::events::cause::ControllerFilter::ContextController),
+                ),
+            });
+        }
     }
 
     for tail in [

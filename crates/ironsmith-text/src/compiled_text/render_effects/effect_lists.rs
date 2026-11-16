@@ -2285,6 +2285,9 @@ pub(super) fn describe_temporary_tagged_permission_surface(
                 ("cards exiled this way".to_string(), true)
             }
         }
+        ironsmith_core::GrantPlayTaggedObjectSurface::TheChosenCards => {
+            ("the chosen cards".to_string(), true)
+        }
         ironsmith_core::GrantPlayTaggedObjectSurface::LandsAndSpellsFromAmongTheExiledCards => {
             if permission.allow_land {
                 (
@@ -20112,7 +20115,44 @@ fn describe_coordinated_restriction_list(effects: &[Effect]) -> Option<String> {
     Some(format!("{}, and {last}", parts.join(", ")))
 }
 
+/// "you and that player each draw a card" where "that player" is the
+/// assisting player carried by a cast event (Yume, Chronicler of Valor).
+pub(crate) fn describe_you_and_assisting_player_each_draw(effects: &[Effect]) -> Option<String> {
+    let [yours, theirs] = effects else {
+        return None;
+    };
+    let yours = yours.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if yours.player != PlayerFilter::You {
+        return None;
+    }
+    let each = theirs.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if each.filter
+        != PlayerFilter::TaggedPlayer(ironsmith_core::tag::ASSISTING_PLAYERS_TAG.into())
+    {
+        return None;
+    }
+    let [theirs] = each.effects.as_slice() else {
+        return None;
+    };
+    let theirs = theirs.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if theirs.player != PlayerFilter::IteratedPlayer || theirs.count != yours.count {
+        return None;
+    }
+    let cards = match yours.count.unhinted() {
+        Value::Fixed(1) => "a card".to_string(),
+        Value::Fixed(n) if *n > 1 => format!(
+            "{} cards",
+            small_number_word(*n as u32).unwrap_or_else(|| n.to_string())
+        ),
+        _ => return None,
+    };
+    Some(format!("you and that player each draw {cards}"))
+}
+
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(text) = describe_you_and_assisting_player_each_draw(effects) {
+        return capitalize_first(&text);
+    }
     // Declarations announce their objects before any combined rendering of
     // the list refers back to them.
     for effect in effects {
@@ -20386,6 +20426,11 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
         return text;
     }
     if let Some(text) = super::ast_render::describe_secret_number_extremes_effects(effects) {
+        return text;
+    }
+    if let Some(text) =
+        super::ast_render::describe_secret_number_chosen_player_cast_effects(effects, None)
+    {
         return text;
     }
     if let Some(text) = describe_target_player_reveals_library(effects) {
@@ -21951,6 +21996,65 @@ pub(crate) fn describe_plural_return_reexile_delayed_return(effects: &[Effect]) 
     ))
 }
 
+/// "Kang and that creature are goaded for as long as you control Kang."
+/// (Kang, Suspicious Captain): consecutive goads of the source and of
+/// referenced creatures sharing one duration read as one compound-subject
+/// sentence, after an optional leading target declaration.
+pub(crate) fn describe_compound_subject_goad_sentence(effects: &[Effect]) -> Option<String> {
+    let goad_start = effects
+        .iter()
+        .position(|effect| unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::GoadEffect>().is_some())?;
+    if goad_start > 1 || effects.len() - goad_start < 2 {
+        return None;
+    }
+    let goads = effects[goad_start..]
+        .iter()
+        .map(|effect| unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::GoadEffect>())
+        .collect::<Option<Vec<_>>>()?;
+    let duration = &goads[0].duration;
+    if goads.iter().any(|goad| &goad.duration != duration || goad.spelled_out_requirement) {
+        return None;
+    }
+    let includes_source = goads.iter().any(|goad| matches!(goad.target.unhinted(), ChooseSpec::Source));
+    let duration_text = match duration {
+        crate::effect::Until::YouStopControllingThis => {
+            if includes_source {
+                " for as long as you control this creature"
+            } else {
+                " for as long as you control this permanent"
+            }
+        }
+        crate::effect::Until::Forever => " for the rest of the game",
+        crate::effect::Until::YourNextTurn => "",
+        _ => return None,
+    };
+    // The source reads first, as authored ("Kang and that creature").
+    let mut subjects = goads
+        .iter()
+        .map(|goad| match goad.target.unhinted() {
+            ChooseSpec::Source => Some((0, "this creature".to_string())),
+            ChooseSpec::Tagged(_) => Some((1, crate::compiled_text::normalize_common::describe_goad_target(&goad.target))),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    subjects.sort_by_key(|(order, _)| *order);
+    let subjects = subjects.into_iter().map(|(_, subject)| subject).collect::<Vec<_>>();
+    let sentence = if duration_text.is_empty() {
+        format!("Goad {}", crate::compiled_text::normalize_common::join_with_and(&subjects))
+    } else {
+        format!("{} are goaded{duration_text}", capitalize_first(&crate::compiled_text::normalize_common::join_with_and(&subjects)))
+    };
+    if goad_start == 0 {
+        return Some(sentence);
+    }
+    let lead = describe_effect(&effects[0]);
+    let lead = lead.trim().trim_end_matches('.');
+    if lead.is_empty() || lead.contains(". ") {
+        return None;
+    }
+    Some(format!("{}. {sentence}", capitalize_first(lead)))
+}
+
 /// Strict structural list shapes that must win before the program-level
 /// clause compactors split or rejoin their authored sentences.
 pub(crate) fn describe_claimed_structural_effect_list(effects: &[Effect]) -> Option<String> {
@@ -21959,6 +22063,7 @@ pub(crate) fn describe_claimed_structural_effect_list(effects: &[Effect]) -> Opt
         .or_else(|| describe_moved_creature_two_characteristic_settings(effects))
         .or_else(|| describe_declared_comma_then_series_via_effect(effects))
         .or_else(|| describe_per_opponent_tap_goad_watch_sentences(effects))
+        .or_else(|| describe_compound_subject_goad_sentence(effects))
         .or_else(|| describe_exile_power_draw_then_delayed_sentences(effects))
         .or_else(|| describe_plural_return_reexile_delayed_return(effects))
         .or_else(|| describe_damaged_died_card_reanimation_until_control_loss(effects))
@@ -22939,12 +23044,21 @@ pub(in crate::compiled_text) fn refer_back_to_declared_chosen_object(
     let (ChooseSpec::Object(filter) | ChooseSpec::All(filter)) = declared.target.base() else {
         return text;
     };
-    let [card_type] = filter.card_types.as_slice() else {
-        return text;
-    };
+    // "Choose target creature, planeswalker, or Vehicle. ... destroy the
+    // chosen permanent" (Quag Feast): a declared battlefield union across
+    // several types is referred back to as a permanent.
+    let battlefield_union = filter.card_types.is_empty()
+        && !filter.any_of.is_empty()
+        && filter.zone == Some(Zone::Battlefield);
     if !declared.explicit_declaration || !single {
         return text;
     }
+    if battlefield_union {
+        return text.replace("the chosen cards", "the chosen permanent");
+    }
+    let [card_type] = filter.card_types.as_slice() else {
+        return text;
+    };
     // "Choose target creature card in your graveyard. ... Return the chosen
     // card to the battlefield" (Too Evil to Stay Dead): a declared card
     // outside the battlefield is referred back to as a card.

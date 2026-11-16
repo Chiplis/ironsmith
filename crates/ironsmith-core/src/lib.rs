@@ -169,7 +169,7 @@ pub use effect::{
     NinjutsuCostEffect, NinjutsuEffect, CastFaceDownUsingActivationManaEffect, RegisterExtraDieReplacementEffect, NoteActivationManaTypeEffect, NoteActivationManaPaymentEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, CoinFlipLifeStakesEffect, RedirectEnteringSourceEffect,
     OpenAttractionEffect, PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect,
     PayManaEffect, PhaseInEffect, PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect,
-    PlayerControlDuration, PlayerControlStart, PoisonCountersEffect, PopulateEffect, PrepareEffect,
+    PlayerControlDuration, PlayerControlStart, PoisonCountersEffect, PopulateEffect, PrepareEffect, TriggerAdditionalTimeEffect,
     PreventAllCombatDamageEffect, PreventAllDamageEffect, PreventAllDamageToTargetEffect,
     PreventDamageEffect, PreventNextTimeDamageEffect, PreventNextTimeDamageSource,
     PreventNextTimeDamageTarget, NextTimeDamagePreventionPortion, PreventionTarget,
@@ -261,6 +261,7 @@ pub use static_ability_id::StaticAbilityId;
 pub use static_ability_model::{
     TokenCreationTemplateMode,
     DraftRule, KeywordMarkerMechanic, deck_construction_color_choice_count, draft_rule,
+    CommanderDeckAllowance, DeckCardClass, ExtraIdentityColors,
     keyword_marker_mechanic,
     AbilityLossMode, ActivatedAbilityCostCondition, AdditionalTokenKind, Anthem,
     AnthemReplacementSurface, AttachedAbilityGrant, AttachedChosenLandwalkGrant,
@@ -287,7 +288,7 @@ pub use tag::{
     CHOSEN_OBJECTS_TAG, COMBAT_DAMAGE_GROUP_TAG, EXPLOITED_TAG, EXPLOITER_TAG,
     INITIATIVE_HOLDER_TAG, LINKED_TRIGGER_PLAYER_TAG, TRIGGERING_EVENT_CONTROLLER_TAG, TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG, MANA_PAID_OBJECT_TAG, MANA_SOURCES_SPENT_TO_CAST_TAG, TAXED_ATTACKER_TAG, BLOCK_PAIR_SUBJECT_TAG,
     MANIFEST_DREAD_GRAVEYARD_TAG, PREVIOUS_ITERATED_OBJECTS_TAG, PRIOR_EXILED_CARD_TAG,
-    REVEALED_THIS_WAY_TAG, SOURCE_EXILED_TAG, SOURCE_EXILED_THIS_RESOLUTION_TAG, SOURCE_OBJECT_TAG, GRANTING_SOURCE_TAG, SPELLS_CAST_THIS_TURN_TAG, TagKey, ZONE_CHANGE_GROUP_TAG, TAP_STATE_GROUP_TAG,
+    REVEALED_THIS_WAY_TAG, FOUGHT_THIS_WAY_TAG, SOURCE_EXILED_TAG, SOURCE_EXILED_THIS_RESOLUTION_TAG, SOURCE_OBJECT_TAG, GRANTING_SOURCE_TAG, SPELLS_CAST_THIS_TURN_TAG, TagKey, ZONE_CHANGE_GROUP_TAG, TAP_STATE_GROUP_TAG,
 };
 pub use target_model::{
     ChooseSpec, ChooseSpecSurfaceHint, SacrificedObjectKind, SourceReferenceSurface,

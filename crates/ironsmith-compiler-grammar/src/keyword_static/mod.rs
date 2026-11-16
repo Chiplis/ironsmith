@@ -93,6 +93,8 @@ pub use granted_spell_keywords::{
 };
 mod leading_condition_wrapper;
 pub use leading_condition_wrapper::parse_leading_condition_wrapped_static_line;
+mod linked_cast_trigger_grant;
+pub use linked_cast_trigger_grant::parse_first_spell_grant_with_linked_cast_trigger_line;
 mod compound_self_predicates;
 pub use compound_self_predicates::parse_compound_self_predicate_line;
 mod filtered_lure;
@@ -620,6 +622,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         // subtypes such as "Forests". The complete copular animation grammar
         // supplies the discriminator; no finite lexical head list is complete.
         "parse_lands_are_pt_creatures_still_lands_line" => Vec::new(),
+        "parse_subject_is_pt_creature_with_keywords_still_land_line" => Vec::new(),
         "parse_soulbond_shared_line" => vec![
             StaticAbilityLineHeadHint::Single("as"),
             StaticAbilityLineHeadHint::Pair("as", "long"),
@@ -1871,6 +1874,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_double_conditional_this_spell_cost_reduction_line),
         single_static_ability_ast_rule!(parse_spells_cost_modifier_line),
         single_static_ability_ast_passthrough_rule!(parse_trigger_duplication_line_ast),
+        single_static_ability_ast_passthrough_rule!(parse_if_would_enter_instead_tapped_and_attacking_line),
         single_static_ability_ast_rule!(
             parse_double_damage_from_sources_you_control_of_chosen_type_line
         ),
@@ -1920,6 +1924,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_protection_from_colored_spells_line),
         single_static_ability_ast_rule!(parse_nonbasic_lands_are_basic_land_type_line),
         single_static_ability_ast_rule!(parse_land_type_addition_line),
+        multi_static_ability_ast_passthrough_rule!(parse_subject_is_pt_creature_with_keywords_still_land_line),
         multi_static_ability_ast_rule!(parse_lands_are_pt_creatures_still_lands_line),
         single_static_ability_ast_rule!(parse_remove_snow_line),
         single_static_ability_ast_rule!(parse_supertype_assertion_line),
@@ -7710,6 +7715,101 @@ fn parse_trigger_duplication_core(
         ),
         condition,
     )))
+}
+
+/// "if a triggered ability of that creature triggers, that ability triggers
+/// an additional time" (Lwaxana Troi, Charming Guest): whether the tokens are
+/// a trigger-duplication rule over one referenced object, as read inside a
+/// resolving effect.
+pub(crate) fn parse_referenced_object_trigger_duplication(tokens: &[OwnedLexToken]) -> bool {
+    let tokens = trim_edge_punctuation(tokens);
+    let Some(early_static_facts::TriggerDuplicationCoreShape::AbilityTriggers {
+        source_tokens,
+        condition_tokens: None,
+    }) = early_static_facts::parse_trigger_duplication_core_shape_tokens(&tokens)
+    else {
+        return false;
+    };
+    let words = crate::lexer::token_word_refs(source_tokens);
+    if !matches!(
+        words.as_slice(),
+        ["it"] | ["that", "creature" | "permanent" | "artifact" | "enchantment" | "land"]
+    ) {
+        return false;
+    }
+    crate::word_claims::claim_tokens(&tokens);
+    true
+}
+
+/// "If a creature you control would enter while you control an attacking
+/// creature, instead it enters tapped and attacking." (Kira Nerys,
+/// Firebrand): an entry replacement over a filter, optionally gated by a
+/// condition checked as the replacement applies. Also reads the trailing
+/// "it enters tapped and attacking instead" order.
+pub fn parse_if_would_enter_instead_tapped_and_attacking_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    if !tokens.first().is_some_and(|token| token.is_word("if")) {
+        return Ok(None);
+    }
+    let Some(comma) = tokens
+        .iter()
+        .position(|token| token.kind == crate::lexer::TokenKind::Comma)
+    else {
+        return Ok(None);
+    };
+    let tail_words = crate::lexer::token_word_refs(&tokens[comma + 1..]);
+    if !matches!(
+        tail_words.as_slice(),
+        ["instead", "it", "enters", "tapped", "and", "attacking"]
+            | ["it", "enters", "tapped", "and", "attacking", "instead"]
+    ) {
+        return Ok(None);
+    }
+    let head = &tokens[1..comma];
+    let Some(would) = head.iter().position(|token| token.is_word("would")) else {
+        return Ok(None);
+    };
+    if would == 0 || !head.get(would + 1).is_some_and(|token| token.is_word("enter")) {
+        return Ok(None);
+    }
+    let mut after_enter = would + 2;
+    if head.get(after_enter).is_some_and(|token| token.is_word("the"))
+        && head.get(after_enter + 1).is_some_and(|token| token.is_word("battlefield"))
+    {
+        after_enter += 2;
+    }
+    let condition_tokens = match head.get(after_enter) {
+        None => None,
+        Some(token) if token.is_word("while") && after_enter + 1 < head.len() => {
+            Some(&head[after_enter + 1..])
+        }
+        Some(_) => return Ok(None),
+    };
+    let filter_tokens = &head[..would];
+    // A bare pronoun names the source's own entry, which other readers own.
+    if matches!(crate::lexer::token_word_refs(filter_tokens).as_slice(), ["it"] | ["they"] | ["this"]) {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(filter_tokens, false)?;
+    let condition = condition_tokens
+        .map(parse_static_condition_clause)
+        .transpose()?;
+    crate::word_claims::claim_tokens(&tokens[..1]);
+    crate::word_claims::claim_tokens(&head[would..after_enter]);
+    if condition_tokens.is_some() {
+        crate::word_claims::claim_tokens(&head[after_enter..after_enter + 1]);
+    }
+    crate::word_claims::claim_tokens(&tokens[comma..]);
+    let ast = StaticAbilityAst::Static(StaticAbility::enters_tapped_and_attacking_for_filter(filter));
+    Ok(Some(match condition {
+        Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(ast),
+            condition,
+        },
+        None => ast,
+    }))
 }
 
 pub fn parse_trigger_duplication_line_ast(

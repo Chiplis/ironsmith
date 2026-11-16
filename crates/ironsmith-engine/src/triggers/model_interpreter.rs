@@ -1282,6 +1282,9 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::DealsDamageToPlayer { source, player } => {
                 Self::deals_damage_to_player(source, player)
             }
+            ironsmith_core::DelayedTriggerSpec::PlayerLosesGame(player) => {
+                Self::player_loses_game(player)
+            }
             ironsmith_core::DelayedTriggerSpec::AttacksAlone(filter) => Self::attacks_alone(filter),
             ironsmith_core::DelayedTriggerSpec::SpellCastThroughPreviousPermission => {
                 Self::new(crate::triggers::SpellCastThroughPermissionTrigger {

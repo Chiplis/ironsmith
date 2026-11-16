@@ -82,6 +82,18 @@ pub(super) fn parse_other_than_split<'a>(words: &'a [&'a str]) -> Option<OtherTh
 pub(super) fn parse_location_suffix(
     input: &mut WordInput<'_>,
 ) -> WResult<SimpleObjectFilterSuffix> {
+    alt((parse_stack_location_suffix, parse_zone_location_suffix)).parse_next(input)
+}
+
+/// "spells (currently) on the stack": the stack as the counted objects' zone.
+fn parse_stack_location_suffix(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterSuffix> {
+    let _ = winnow::combinator::opt(primitives::word_slice_exact("currently")).parse_next(input)?;
+    alt((word_phrase(&["on", "the", "stack"]), word_phrase(&["on", "stack"])))
+        .parse_next(input)?;
+    Ok(SimpleObjectFilterSuffix::Zone(Zone::Stack))
+}
+
+fn parse_zone_location_suffix(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterSuffix> {
     alt((
         primitives::word_slice_exact("in"),
         primitives::word_slice_exact("from"),

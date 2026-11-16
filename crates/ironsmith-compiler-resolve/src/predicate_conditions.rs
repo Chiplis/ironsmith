@@ -32,6 +32,7 @@ pub fn resolve_condition_from_predicate(
     Ok(match predicate {
         PredicateAst::ItIsNight => Condition::ItIsNight,
         PredicateAst::InEndingPhase => Condition::InEndingPhase,
+        PredicateAst::InCombatPhase => Condition::InCombatPhase,
         PredicateAst::FirstCombatPhaseOfTurn => Condition::FirstCombatPhaseOfTurn,
         PredicateAst::FirstEndStepOfTurn => Condition::FirstEndStepOfTurn,
         PredicateAst::FirstUpkeepStepOfTurn => Condition::FirstUpkeepStepOfTurn,

@@ -70,6 +70,9 @@ pub enum DirectClauseShape {
     ChaosEnsues,
     AbandonScheme,
     DoubleX,
+    /// "[you may] have the value of X become N" (Glava, Five-Advents Mage):
+    /// the triggering spell's or ability's X becomes N.
+    SetX(u32),
     OnlyChosenCanAttack,
     OnlyChosenCanBlock,
     CastNonlandTaggedThisWay,
@@ -256,9 +259,25 @@ fn damaged_players_cant_gain_life(tokens: &[OwnedLexToken]) -> bool {
     has_condition && has_tail
 }
 
+fn set_x_value(tokens: &[OwnedLexToken]) -> Option<u32> {
+    crate::grammar::primitives::probe_all(
+        tokens,
+        (
+            opt(primitives::kw("have")),
+            primitives::phrase(&["the", "value", "of", "x", "become"]),
+            crate::grammar::leaf::parse_leaf_number_token_lexed,
+            primitives::sentence_end(),
+        )
+            .map(|(_, _, value, _)| value),
+        "set X value",
+    )
+}
+
 pub fn parse_direct_clause_shape(tokens: &[OwnedLexToken]) -> Option<DirectClauseShape> {
     if damaged_players_cant_gain_life(tokens) {
         Some(DirectClauseShape::DamagedPlayersCantGainLife)
+    } else if let Some(value) = set_x_value(tokens) {
+        Some(DirectClauseShape::SetX(value))
     } else {
         exact_shape(tokens)
     }

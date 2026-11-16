@@ -10431,6 +10431,21 @@ pub(crate) fn describe_inline_ability_with_self_subject(
                     describe_mana_activation_condition(&condition),
                 );
             }
+            // "{0}: Untap this creature. Activate only once." (Touch of
+            // Vitae): a granted ability's lifetime limit is a typed condition
+            // with no authored restriction string (CR 602.5b).
+            if let Some(condition @ crate::ConditionExpr::MaxActivationsPerObject(_)) =
+                activation_condition_without_presentation_label(activated)
+                && !restriction_clauses.iter().any(|clause| {
+                    let lower = clause.to_ascii_lowercase();
+                    lower.contains("only once") || lower.contains("no more than")
+                })
+            {
+                push_activation_restriction_clause(
+                    &mut restriction_clauses,
+                    describe_mana_activation_condition(&condition),
+                );
+            }
             if !restriction_clauses.is_empty() {
                 append_activation_clause(
                     &mut line,
@@ -11290,6 +11305,15 @@ pub(crate) fn describe_static_ability_with_subject(
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => {
                 let inner = crate::static_abilities::StaticAbility::from_model((**ability).clone());
+                // "During your main phase, each card in your graveyard has
+                // beam me up. ..." (Scotty, Miracle Worker): the main-phase
+                // gate leads the rule it scopes.
+                if matches!(condition, Condition::SourceControllersMainPhase) {
+                    return format!(
+                        "During your main phase, {}",
+                        lowercase_first(&describe_static_ability_with_subject(&inner, subject))
+                    );
+                }
                 // "As long as this Equipment is attached to a creature, the
                 // first time you would create one or more tokens each turn,
                 // ..." (Mirrormind Crown): the first-time gate is the inner
@@ -13679,7 +13703,28 @@ pub(super) fn describe_this_enters_and_your_upkeep_trigger(
         .or_else(|| second.downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>())?;
     let upkeep = first
         .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
-        .or_else(|| second.downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>())?;
+        .or_else(|| second.downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>());
+    // "When Võx enters and at the beginning of your first main phase":
+    // the same self-entry pairing with a main-phase step trigger.
+    let main_phase = first
+        .downcast_ref::<crate::triggers::BeginningOfMainPhaseTrigger>()
+        .map(|_| first)
+        .or_else(|| {
+            second
+                .downcast_ref::<crate::triggers::BeginningOfMainPhaseTrigger>()
+                .map(|_| second)
+        });
+    let step_surface = match (upkeep, main_phase) {
+        (Some(upkeep), _) if upkeep.player == PlayerFilter::You => {
+            "at the beginning of your upkeep".to_string()
+        }
+        (None, Some(main_phase)) => {
+            let display = main_phase.display();
+            let rest = display.strip_prefix("At the beginning of ")?;
+            format!("at the beginning of {rest}")
+        }
+        _ => return None,
+    };
     if enters.from != crate::triggers::zone_changes::ZonePattern::Any
         || enters.to != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
         || !enters.this_object
@@ -13687,14 +13732,11 @@ pub(super) fn describe_this_enters_and_your_upkeep_trigger(
         || enters.count_mode != crate::triggers::zone_changes::CountMode::Each
         || enters.cause_filter.is_some()
         || enters.during_turn.is_some()
-        || upkeep.player != PlayerFilter::You
     {
         return None;
     }
 
-    Some(format!(
-        "When {self_subject} enters and at the beginning of your upkeep"
-    ))
+    Some(format!("When {self_subject} enters and {step_surface}"))
 }
 
 fn describe_upkeep_and_attached_land_becomes_tapped_trigger(
@@ -15909,6 +15951,27 @@ fn describe_triggered_resolution_text_inner(
             super::effect_lists::describe_named_player_option_actions(&segment.default_effects)
     {
         return Some(text);
+    }
+    // "you and that player each draw a card" (Yume, Chronicler of Valor).
+    if let [segment] = triggered.effects.segments.as_slice()
+        && segment.self_replacements.is_empty()
+        && let Some(text) =
+            super::effect_lists::describe_you_and_assisting_player_each_draw(&segment.default_effects)
+    {
+        return Some(text);
+    }
+    // "exile the top three cards of your library. Each opponent secretly
+    // chooses a number 0 or greater. ... You put a card from among them that
+    // wasn't cast this way into your hand." (Itazura, Lingering Wick)
+    if let [segment] = triggered.effects.segments.as_slice()
+        && segment.self_replacements.is_empty()
+        && let Some(text) =
+            crate::compiled_text::ast_render::describe_secret_number_chosen_player_cast_effects(
+                &segment.default_effects,
+                Some(subject),
+            )
+    {
+        return Some(lowercase_first(&text));
     }
     if let [segment] = triggered.effects.segments.as_slice()
         && segment.self_replacements.is_empty()

@@ -418,7 +418,7 @@ fn loyalty_prohibition_does_not_become_all_activated_abilities() {
 #[test]
 fn ability_only_source_restriction_retains_its_distinct_envelope() {
     let tokens = lex_line("be the target of abilities from artifact sources", 0).unwrap();
-    let TargetRestrictionEnvelope::AbilitiesFrom { source_descriptor_tokens } =
+    let TargetRestrictionEnvelope::AbilitiesFrom { source_descriptor_tokens, .. } =
         parse_target_restriction_envelope_tokens(&tokens).unwrap() else { panic!() };
     assert_eq!(crate::lexer::token_word_refs(&tokens[source_descriptor_tokens]), vec!["artifact"]);
     for text in [

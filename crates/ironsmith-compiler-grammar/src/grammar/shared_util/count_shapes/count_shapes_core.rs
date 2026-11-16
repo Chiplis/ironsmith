@@ -204,6 +204,13 @@ fn parse_for_each_count_value_words_inner(words: &[&str]) -> Option<(Value, usiz
             ironsmith_core::TurnHistoryCount::PlayersAttackedThisCombat(PlayerFilter::You),
         ).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach), words.len()));
     }
+    // "for each opponent you attacked this turn" (Rite of Ascension, Fast
+    // Forward): distinct opponents attacked this turn.
+    if matches!(words, ["for", "each", "opponent" | "player", "you", "attacked", "this", "turn"]) {
+        return Some((Value::TurnHistoryCount(
+            ironsmith_core::TurnHistoryCount::OpponentsAttacked(PlayerFilter::You),
+        ).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach), words.len()));
+    }
     // "Whenever one or more Pirates you control deal damage to your
     // opponents, you create a Treasure token for each opponent dealt damage"
     // (Malcolm, Keen-Eyed Navigator): with no "this turn", the players the

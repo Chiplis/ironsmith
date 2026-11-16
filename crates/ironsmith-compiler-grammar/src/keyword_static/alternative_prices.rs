@@ -74,8 +74,18 @@ pub fn parse_independent_alternative_price_line(
         spec.filtered_zone_surface = Some("Rather than pay the mana cost for a spell, its controller may discard a card that shares a color with that spell".into());
         return Ok(Some(StaticAbility::grants(spec)));
     }
-    let once = words.starts_with(&["once", "each", "turn"]);
-    let head = if once { 3 } else { 0 };
+    // "Once each turn" / "Once during each of your turns" (Dragon's Smile):
+    // the price is usable once per turn, or once during each of the
+    // controller's own turns (CR 118.9 alternative cost with a usage budget).
+    let (once, head) = if words.starts_with(&["once", "each", "turn"]) {
+        (Some(crate::grant::GrantUsageLimit::OnceEachTurn), 3)
+    } else if words.starts_with(&["once", "during", "each", "of", "your", "turns"]) {
+        (Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns), 6)
+    } else {
+        (None, 0)
+    };
+    let once_limit = once;
+    let once = once_limit.is_some();
     if words.get(head..head + 2) != Some(&["you", "may"][..]) {
         return Ok(None);
     }
@@ -236,7 +246,7 @@ pub fn parse_independent_alternative_price_line(
         filter,
         Zone::Hand,
     );
-    spec.usage_limit = once.then_some(crate::grant::GrantUsageLimit::OnceEachTurn);
+    spec.usage_limit = once_limit;
     spec.instant_timing = instant_timing;
     // Presentation only. Every cost/filter/origin/timing word has been consumed
     // above; execution never reads this complete, strictly recognized surface.

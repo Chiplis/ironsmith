@@ -149,7 +149,18 @@ pub fn parse_for_each_object_filter(
             words.join(" ")
         )));
     }
-    let mut filter = parse_object_filter(filter_tokens, false)?;
+    // "permanent you control that you've put a counter on this turn" (La
+    // Forge, Thoughtful as Ever): the counter-placement history relative
+    // clause the family-level filter parser has no reader for.
+    let mut filter = if let Some((head, constraint)) =
+        crate::grammar::filters::split_trailing_counters_put_on_this_turn_clause(filter_tokens)
+    {
+        let mut filter = parse_object_filter(head, false)?;
+        filter.counters_put_on_this_turn = Some(constraint);
+        filter
+    } else {
+        parse_object_filter(filter_tokens, false)?
+    };
     if crate::word_primitives::sequence_occurs(&words, &["chosen", "this", "way"]) {
         filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Chosen));
         filter = filter.match_tagged(

@@ -902,6 +902,11 @@ impl GrantObjectAbilityForFilter {
                 describe_static_condition(condition)
             };
             if static_condition_is_during_your_turn(condition) {
+                if self.filter.first_spell_cast_each_turn
+                    && let Some((head, tail)) = text.split_once(" each turn ")
+                {
+                    return format!("{head} during each of your turns {tail}");
+                }
                 return format!("During your turn, {text}");
             }
             if let Some(rest) = condition_text.strip_prefix("as long as ") {
@@ -1314,6 +1319,14 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             }
             let condition_text = describe_static_condition(condition);
             if static_condition_is_during_your_turn(condition) {
+                // "The first spell you cast during each of your turns has
+                // assist" (Yume): a first-spell-each-turn subject gated to
+                // your turn names its turns directly.
+                if self.filter.first_spell_cast_each_turn
+                    && let Some((head, tail)) = text.split_once(" each turn ")
+                {
+                    return format!("{head} during each of your turns {tail}");
+                }
                 return format!("During your turn, {text}");
             }
             if let Some(rest) = condition_text.strip_prefix("as long as ") {

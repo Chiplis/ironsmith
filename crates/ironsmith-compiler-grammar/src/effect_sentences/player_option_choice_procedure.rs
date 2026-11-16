@@ -962,6 +962,18 @@ fn reads_choice(sentence: &SentenceInput, choice: &ChoosePlayerOptionEffect) -> 
     })
 }
 
+/// The secret per-player number choice an opening statement makes ("Each
+/// opponent secretly chooses a number 0 or greater"), for programs that read
+/// the choice through statements this procedure doesn't own.
+pub(super) fn secret_number_opening(sentence: &SentenceInput) -> Option<ChoosePlayerOptionEffect> {
+    opening(sentence).filter(|choice| choice.secret && choice.number.is_some() && !choice.guess)
+}
+
+/// "Then those numbers are revealed."
+pub(super) fn is_choice_reveal_sentence(sentence: &SentenceInput) -> bool {
+    is_reveal_statement(trim(sentence.lowered()))
+}
+
 pub(super) fn open(
     sentences: &[SentenceInput],
     sentence_idx: usize,

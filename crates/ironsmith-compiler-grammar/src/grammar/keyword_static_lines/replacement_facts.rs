@@ -756,20 +756,44 @@ fn parse_counter_adjustment_lexed<'a>(
     let filter_tokens = take_until_replacement_phrase(input, &["that", "many"])?;
     opt(primitives::comma()).parse_next(input)?;
     primitives::phrase(&["that", "many"]).parse_next(input)?;
-    let repeated = take_until_replacement_phrase(input, &["counters"])?;
-    if filters::parse_counter_type_from_tokens(repeated) != Some(counter_type) {
-        return Err(primitives::backtrack_err(
-            "counter adjustment",
-            "matching counter kind",
-        ));
+    fn adjustment_sign<'a>(input: &mut LexStream<'a>) -> WResult<i64> {
+        alt((
+            primitives::kw("minus").value(-1i64),
+            primitives::kw("plus").value(1i64),
+        ))
+        .parse_next(input)
     }
-    primitives::kw("counters").parse_next(input)?;
-    let sign = alt((
-        primitives::kw("minus").value(-1i64),
-        primitives::kw("plus").value(1i64),
+    fn repeated_counter_kind<'a>(
+        input: &mut LexStream<'a>,
+        counter_type: ironsmith_core::CounterType,
+    ) -> WResult<()> {
+        let repeated = take_until_replacement_phrase(input, &["counters"])?;
+        if filters::parse_counter_type_from_tokens(repeated) != Some(counter_type) {
+            return Err(primitives::backtrack_err(
+                "counter adjustment",
+                "matching counter kind",
+            ));
+        }
+        primitives::kw("counters").parse_next(input)?;
+        Ok(())
+    }
+    // "that many <kind> counters plus one" (kind first) or "that many plus
+    // one <kind> counters" (Optimization Annex).
+    let (sign, count) = alt((
+        |input: &mut LexStream<'a>| {
+            repeated_counter_kind(input, counter_type)?;
+            let sign = adjustment_sign(input)?;
+            let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+            Ok((sign, count))
+        },
+        |input: &mut LexStream<'a>| {
+            let sign = adjustment_sign(input)?;
+            let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+            repeated_counter_kind(input, counter_type)?;
+            Ok((sign, count))
+        },
     ))
     .parse_next(input)?;
-    let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
     primitives::phrase(&["are", "put", "on"]).parse_next(input)?;
     alt((
         primitives::kw("it").void(),

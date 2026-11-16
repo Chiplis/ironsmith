@@ -70,6 +70,7 @@ pub(super) use meld_and_special_subjects::*;
 use naming_and_reference::*;
 pub(crate) use naming_and_reference::parse_source_number_spell_axes;
 use player_relations::*;
+pub(crate) use player_relations::split_trailing_counters_put_on_this_turn_clause;
 pub(super) use predicate_phrases::*;
 pub use predicate_phrases::{
     WinnowAtom as PermissionAtom, WinnowCaptureKind as PermissionCaptureKind,

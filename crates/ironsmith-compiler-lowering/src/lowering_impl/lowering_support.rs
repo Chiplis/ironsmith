@@ -6550,6 +6550,13 @@ pub(crate) fn lower_compiler_static_ability_core(
                     | ironsmith_core::ReplacedEventSpec::Untap { .. }
             ) {
                 ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+                // That binding is concrete: a demonstrative after a source
+                // subject ("sacrifice this Aura and that land gains
+                // indestructible") still names the affected object.
+                ctx.snapshot_tag_aliases.push((
+                    ironsmith_compiler_resolve::reference_helpers::runtime_bound_it_alias(),
+                    crate::tag::CompilerReferenceTag::It.key(),
+                ));
             }
             let (replacement_effects, choices) =
                 crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;

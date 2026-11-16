@@ -296,6 +296,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         Value::TaggedSnapshotCount { filter, .. } | Value::Count(filter) | Value::CountScaled(filter, _) | Value::GreatestCount(filter)
         | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter) | Value::GreatestSharedNameCount(filter)
+        | Value::CardTypesSharedByAll(filter)
         | Value::TotalPower(filter) | Value::TotalToughness(filter)
         | Value::StickerCharacteristicTotal { filter, .. } | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter) | Value::GreatestToughness(filter) | Value::GreatestManaValue(filter)
@@ -318,7 +319,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player) | Value::LifeTotal(player) | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player) | Value::UnspentMana(player) | Value::Speed(player)
-        | Value::StartingLifeTotal(player) | Value::HalfLifeTotalRoundedUp(player)
+        | Value::StartingLifeTotal(player) | Value::StartingDeckSize(player) | Value::HalfLifeTotalRoundedUp(player)
         | Value::HalfLifeTotalRoundedDown(player) | Value::HalfStartingLifeTotalRoundedUp(player)
         | Value::HalfStartingLifeTotalRoundedDown(player) | Value::CardsInHand(player)
         | Value::CardsInLibrary(player) | Value::DevotionToChosenColor(player)
@@ -691,7 +692,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::ColoredManaSpentToCastThisSpellAtLeast(_) | Condition::TriggeringSpellColoredManaSpentToCastAtLeast(_)
         | Condition::TriggeringSpellWasKicked | Condition::YouControlMoreCreaturesThanTargetSpellController
         | Condition::TargetHasGreatestPowerAmongCreatures | Condition::TargetManaValueLteColorsSpentToCastThisSpell
-        | Condition::InEndingPhase | Condition::ItIsNight | Condition::FirstCombatPhaseOfTurn | Condition::FirstEndStepOfTurn | Condition::FirstUpkeepStepOfTurn | Condition::SecondMainPhaseOfTurn | Condition::FirstMainPhaseOfTurn | Condition::SourceControllersMainPhase
+        | Condition::InEndingPhase | Condition::InCombatPhase | Condition::ItIsNight | Condition::FirstCombatPhaseOfTurn | Condition::FirstEndStepOfTurn | Condition::FirstUpkeepStepOfTurn | Condition::SecondMainPhaseOfTurn | Condition::FirstMainPhaseOfTurn | Condition::SourceControllersMainPhase
         | Condition::SourceControllersCombatPhase | Condition::SourceControllersEndStep | Condition::SourceControllersUntapStep | Condition::SourceStartedTurnUntapped | Condition::OpponentsEndStep | Condition::SourceIsTapped
         | Condition::SourceIsSaddled | Condition::SourceDevouredCreaturesOrMore(_) | Condition::SourceIsMonstrous
         | Condition::SourceHasDealtDamageSinceEntered

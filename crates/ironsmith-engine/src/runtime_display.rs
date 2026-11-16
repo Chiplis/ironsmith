@@ -632,6 +632,9 @@ pub fn describe_value(value: &Value) -> String {
         Value::StartingLifeTotal(player) => {
             format!("{} starting life total", possessive_player(player))
         }
+        Value::StartingDeckSize(player) => {
+            format!("the number of cards in {} starting deck", possessive_player(player))
+        }
         Value::CardsInHand(player) => {
             format!("the number of cards in {} hand", possessive_player(player))
         }

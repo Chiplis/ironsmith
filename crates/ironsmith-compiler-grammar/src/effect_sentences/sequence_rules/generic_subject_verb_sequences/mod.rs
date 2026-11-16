@@ -389,6 +389,7 @@ pub(crate) fn rat_token_definition() -> crate::model::token_definition::TokenDef
         use_source_chosen_creature_type: false,
         keywords: Vec::new(),
         rules: CreatureTokenRulesShape::default(),
+        mana_cost: None,
     })
 }
 

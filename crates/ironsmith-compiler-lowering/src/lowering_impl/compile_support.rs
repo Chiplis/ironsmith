@@ -1141,6 +1141,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::GreatestSharedNameCount(filter)
+        | Value::CardTypesSharedByAll(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
@@ -1273,6 +1274,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::UnspentMana(player)
         | Value::Speed(player)
         | Value::StartingLifeTotal(player)
+        | Value::StartingDeckSize(player)
         | Value::CardsInHand(player)
         | Value::CardsInLibrary(player)
         | Value::DevotionToChosenColor(player)
@@ -3425,6 +3427,10 @@ fn build_artifact_token_definition(
     let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)
         .token()
         .card_types(vec![CardType::Artifact]);
+    // CR 202.2: an authored mana cost gives the token its colors and mana value.
+    if let Some(cost) = shape.mana_cost.clone() {
+        builder = builder.mana_cost(cost);
+    }
     let mut supertypes = Vec::new();
     if shape.legendary {
         supertypes.push(crate::types::Supertype::Legendary);
@@ -3502,6 +3508,10 @@ fn build_creature_token_definition(
         .token()
         .card_types(shape.card_types)
         .power_toughness(PowerToughness::fixed(power, toughness));
+    // CR 202.2: an authored mana cost gives the token its colors and mana value.
+    if let Some(cost) = shape.mana_cost.clone() {
+        builder = builder.mana_cost(cost);
+    }
     let mut supertypes = Vec::new();
     if shape.legendary {
         supertypes.push(crate::types::Supertype::Legendary);

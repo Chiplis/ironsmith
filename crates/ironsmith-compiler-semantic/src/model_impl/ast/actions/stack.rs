@@ -55,6 +55,9 @@ pub enum StackActionAst {
     ScaleXValue {
         target: TargetAst,
         multiplier: u32,
+        /// "have the value of X become 5" (Glava, Five-Advents Mage): the X
+        /// value is replaced by this number instead of being multiplied.
+        set_to: Option<u32>,
     },
     CastTagged {
         tag: TagRef,

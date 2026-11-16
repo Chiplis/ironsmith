@@ -3020,7 +3020,8 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "attachment_target")?;
                 }
                 SubjectVerbActionAst::Control(ControlActionAst::Unattach { object })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target: object, .. }) => {
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target: object, .. })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime { target: object, .. }) => {
                     track_target_player(object, frame);
                 }
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves { target })
@@ -8756,6 +8757,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves {
                 ..
             })
@@ -10425,7 +10427,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::Control(ControlActionAst::Unattach { object })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target: object, .. }) => {
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target: object, .. })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime { target: object, .. }) => {
                 bind_unresolved_it_in_target(object, seed_tag)
             }
             SubjectVerbActionAst::Control(ControlActionAst::Enchant {
@@ -11344,6 +11347,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::GreatestSharedNameCount(filter)
+        | Value::CardTypesSharedByAll(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::StickerCharacteristicTotal { filter, .. }

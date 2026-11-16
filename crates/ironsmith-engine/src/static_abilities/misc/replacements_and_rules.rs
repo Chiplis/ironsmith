@@ -4791,6 +4791,33 @@ impl StaticAbilityKind for DeckConstructionRuleText {
     }
 }
 
+/// A commander's deck-construction allowance ("Rulebreaker — A deck with
+/// this commander can have Aura cards of any color identity and any basic
+/// land cards."). No in-game effect; deck validation reads the typed
+/// allowance from the deck's commander(s).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommanderDeckAllowanceRule {
+    pub text: String,
+    pub allowance: ironsmith_core::CommanderDeckAllowance,
+}
+
+impl StaticAbilityKind for CommanderDeckAllowanceRule {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DeckConstructionRuleText
+    }
+
+    fn commander_deck_allowance(&self) -> Option<ironsmith_core::CommanderDeckAllowance> {
+        Some(self.allowance.clone())
+    }
+
+    fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return self.allowance.describe();
+        }
+        self.text.clone()
+    }
+}
+
 /// A dungeon's entry restriction: "You can't enter this dungeon unless you
 /// 'venture into [quality].'" (CR 701.49d). It functions outside the game:
 /// the venture action reads it when choosing a dungeon to bring in.

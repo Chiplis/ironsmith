@@ -3440,13 +3440,25 @@ fn is_cast_spell_exile_rider(replacement_effect: &Effect, cast_spell_tag: &TagKe
             tag: cast_spell_tag.clone(),
             relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
         });
-    (replacement.filter == linked_stack_object || replacement.filter == linked_spell)
+    let replacement_filter = rider_filter_without_your_graveyard_owner(&replacement.filter);
+    (replacement_filter == linked_stack_object || replacement_filter == linked_spell)
         && replacement.from_zone == Some(Zone::Stack)
         && replacement.to_zone == Some(Zone::Graveyard)
         && replacement.replacement_zone == Zone::Exile
         && replacement.mode == crate::effects::ReplacementApplyMode::OneShot
         && replacement.cause_filter.is_none()
         && !replacement.require_cause_source_match
+}
+
+/// A cast-spell exile rider filter with an owner-You restriction removed:
+/// "if a spell cast this way would be put into your graveyard" restricts the
+/// rider to spells you own, which a spell cast from your graveyard is.
+fn rider_filter_without_your_graveyard_owner(filter: &ObjectFilter) -> ObjectFilter {
+    let mut filter = filter.clone();
+    if filter.owner == Some(PlayerFilter::You) {
+        filter.owner = None;
+    }
+    filter
 }
 
 /// The one-shot graveyard exile rider in its authored wording.
@@ -3771,7 +3783,10 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
             tag: cast_spell_tag.clone(),
             relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
         });
-    if (replacement.filter != linked_stack_object && replacement.filter != linked_spell)
+    // "would be put into your graveyard": the rider may also name the
+    // owner's graveyard the spell would reach (an owner-You spell filter).
+    let replacement_filter = rider_filter_without_your_graveyard_owner(&replacement.filter);
+    if (replacement_filter != linked_stack_object && replacement_filter != linked_spell)
         || replacement.from_zone != Some(Zone::Stack)
         || replacement.to_zone != Some(Zone::Graveyard)
         || replacement.replacement_zone != Zone::Exile
@@ -6175,10 +6190,21 @@ pub(super) fn describe_for_players_simple_iterated_action(
                 small_number_word(count as u32).unwrap_or_else(|| count.to_string())
             ),
             Value::Fixed(count) => format!("the top {count} cards"),
+            _ if describe_value(&exile_top.count) != "X" => "the top X cards".to_string(),
             _ => format!("the top {} cards", describe_value(&exile_top.count)),
         };
+        // "each opponent exiles the top X cards of their library, where X is
+        // the number of differently named lands you control" (Ensign Pavel
+        // Chekov): a dynamic count reads as a bound X.
+        let where_x = match exile_top.count {
+            Value::Fixed(_) => String::new(),
+            _ if describe_value(&exile_top.count) != "X" => {
+                format!(", where X is {}", describe_value(exile_top.count.unhinted()))
+            }
+            _ => String::new(),
+        };
         return Some(format!(
-            "{subject} {} {count_text} of {possessive} library{face_down}",
+            "{subject} {} {count_text} of {possessive} library{face_down}{where_x}",
             verb("exile", "exiles"),
         ));
     }

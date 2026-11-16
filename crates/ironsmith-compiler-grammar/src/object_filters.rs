@@ -2260,6 +2260,93 @@ fn parse_shared_card_type_selection_filter(tokens:&[OwnedLexToken],other:bool)->
     }))
 }
 
+/// "artifact creature or Equipment spell" (The Everforger): when one arm of
+/// an "or" type list is a compound card type ("artifact creature"), each arm
+/// is a complete alternative with all of its own types. Read as one flat
+/// list, the compound arm's types would each be enough alone. Only plain
+/// type-word arms sharing one trailing noun take this reading.
+fn compound_type_arm_union(
+    tokens: &[OwnedLexToken],
+    other: bool,
+    parse_arm: fn(&[OwnedLexToken], bool) -> Result<ObjectFilter, CardTextError>,
+) -> Option<Result<ObjectFilter, CardTextError>> {
+    use crate::grammar::primitives::probe_shape;
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.len() != tokens.len() {
+        return None;
+    }
+    let (noun, heads) = words.split_last()?;
+    if !matches!(*noun, "spell" | "spells" | "card" | "cards" | "permanent" | "permanents") {
+        return None;
+    }
+    let noun_index = tokens.len() - 1;
+    let is_card_type =
+        |word: &str| probe_shape(crate::grammar::leaf::parse_leaf_card_type_complete(word)).is_some();
+    let is_type_word = |word: &str| {
+        is_card_type(word)
+            || probe_shape(crate::grammar::leaf::parse_leaf_supertype_complete(word)).is_some()
+            || probe_shape(crate::grammar::leaf::parse_leaf_subtype_complete(word)).is_some()
+    };
+    let mut arms: Vec<(usize, usize)> = Vec::new();
+    let mut start = 0usize;
+    for (index, word) in heads.iter().enumerate() {
+        if *word == "or" {
+            arms.push((start, index));
+            start = index + 1;
+        }
+    }
+    arms.push((start, heads.len()));
+    if arms.len() < 2 {
+        return None;
+    }
+    let arm_words = |(from, to): (usize, usize)| {
+        let arm = &heads[from..to];
+        match arm.first() {
+            Some(&("a" | "an")) => &arm[1..],
+            _ => arm,
+        }
+    };
+    if arms.iter().any(|arm| {
+        let words = arm_words(*arm);
+        words.is_empty() || !words.iter().all(|word| is_type_word(word))
+    }) || !arms
+        .iter()
+        .any(|arm| arm_words(*arm).iter().filter(|word| is_card_type(word)).count() >= 2)
+    {
+        return None;
+    }
+    let mut branches = Vec::with_capacity(arms.len());
+    for (from, to) in arms.iter().copied() {
+        let mut arm_tokens = tokens[from..to].to_vec();
+        arm_tokens.push(tokens[noun_index].clone());
+        match parse_arm(&arm_tokens, other) {
+            Ok(branch) => branches.push(branch),
+            Err(error) => return Some(Err(error)),
+        }
+    }
+    for (_, to) in arms.iter().take(arms.len() - 1) {
+        crate::word_claims::claim_tokens(&tokens[*to..*to + 1]);
+    }
+    crate::word_claims::claim_tokens(&tokens[noun_index..]);
+    // The shared noun's zone and stack kind belong to the union, so each
+    // branch stays a plain characteristic alternative.
+    let mut union = ObjectFilter::default();
+    if let Some(first) = branches.first()
+        && branches
+            .iter()
+            .all(|branch| branch.zone == first.zone && branch.stack_kind == first.stack_kind)
+    {
+        union.zone = first.zone;
+        union.stack_kind = first.stack_kind;
+        for branch in &mut branches {
+            branch.zone = None;
+            branch.stack_kind = None;
+        }
+    }
+    union.any_of = branches;
+    Some(Ok(union))
+}
+
 fn parse_object_filter_unaudited(
     tokens: &[OwnedLexToken],
     other: bool,
@@ -2309,6 +2396,7 @@ fn parse_object_filter_unaudited(
         if same { filter.same_group_as = Some(Box::new(reference)) } else { filter.group_member_of = Some(Box::new(reference)) }
         return Ok(filter);
     }
+    if let Some(result) = compound_type_arm_union(tokens, other, parse_object_filter) { return result; }
     if let Some(filter)=related_exile::read(tokens,other)? {return Ok(filter);}
     if let Some(result)=parse_custom_identity_filter(tokens,other){return result;}
     if let Some(result) = parse_entry_reference_filter(tokens, other) { return result; }
@@ -3023,6 +3111,7 @@ fn parse_object_filter_lexed_unaudited(
     }
     if let Some(result)=parse_unquoted_custom_keyword_filter(tokens,other){return result;}
     if let Some(filter)=parse_named_action_role_filter(tokens){return Ok(filter);}
+    if let Some(result) = compound_type_arm_union(tokens, other, parse_object_filter_lexed) { return result; }
     if let Some(filter)=related_exile::read(tokens,other)? {return Ok(filter);}
     if let Some(result)=parse_custom_identity_filter(tokens,other){return result;}
     if let Some(result) = parse_entry_reference_filter(tokens, other) { return result; }

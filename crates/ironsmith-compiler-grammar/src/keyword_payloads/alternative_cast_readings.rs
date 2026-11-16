@@ -410,7 +410,7 @@ fn read_freerunning(
             else {
                 return Ok(None);
             };
-            let method = crate::model::CompilerAlternativeCastingMethod::Composed {
+            let method: crate::model::CompilerAlternativeCastingMethod = crate::model::CompilerAlternativeCastingMethod::Composed {
                 name: "Freerunning".into(),
                 total_cost,
                 condition: None,

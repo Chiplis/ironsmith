@@ -1617,6 +1617,12 @@ impl<'a> ExecutionContext<'a> {
                 vec![attack.defender],
             );
         }
+        if let Some(loss) = event.downcast::<crate::events::PlayerLosesGameEvent>() {
+            self.set_tagged_objects(
+                ironsmith_core::tag::LOST_PLAYER_CONTROLLED_PERMANENTS_TAG,
+                loss.controlled_permanents.clone(),
+            );
+        }
         if let Some(snapshot) = event.snapshot() {
             let snapshots = vec![snapshot.clone()];
             self.set_tagged_objects("triggering", snapshots.clone());

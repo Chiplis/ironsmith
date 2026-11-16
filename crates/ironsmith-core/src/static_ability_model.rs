@@ -13,8 +13,10 @@ use crate::{
     TriggeredAbility, Until, Value, ValueSurfaceHint, Zone,
 };
 
+mod commander_deck;
 mod grants;
 
+pub use commander_deck::*;
 pub use grants::*;
 
 type AbilityModel<T, E, C, Cond, ICond = Condition> =
@@ -841,6 +843,19 @@ pub enum KeywordMarkerMechanic {
     /// "This creature crews vehicles as though its power were N greater";
     /// with `saddles`, it also saddles mounts that way.
     ContributesExtraPower { saddles: bool, amount: u32 },
+    /// "Sulu stations Spacecraft and crews Vehicles as though his power were
+    /// tripled": while this creature is tapped to pay a crew or saddle cost,
+    /// or to station a permanent (CR 702.184a), it contributes its power
+    /// multiplied by `multiplier`. `stations_spacecraft_only` limits the
+    /// station rule to Spacecraft ("stations Spacecraft" rather than
+    /// "stations permanents").
+    ContributesMultipliedPower {
+        stations: bool,
+        stations_spacecraft_only: bool,
+        crews: bool,
+        saddles: bool,
+        multiplier: u32,
+    },
     /// "You may remove a loyalty counter from a planeswalker you control
     /// rather than pay this Vehicle's crew cost."
     LoyaltyCounterPaysCrewCost,
@@ -1031,6 +1046,9 @@ pub fn keyword_marker_mechanic(text: &str) -> Option<KeywordMarkerMechanic> {
     {
         return Some(M::LoyaltyCounterPaysCrewCost);
     }
+    if let Some(mechanic) = multiplied_power_contribution_marker(&normalized) {
+        return Some(mechanic);
+    }
     [
         ("this creature crews vehicles as though its power were ", false),
         ("this creature saddles mounts and crews vehicles as though its power were ", true),
@@ -1040,6 +1058,51 @@ pub fn keyword_marker_mechanic(text: &str) -> Option<KeywordMarkerMechanic> {
     .find_map(|(prefix, saddles)| {
         let amount = normalized.strip_prefix(prefix)?.strip_suffix(" greater")?.parse().ok()?;
         Some(M::ContributesExtraPower { saddles, amount })
+    })
+}
+
+/// "this creature stations spacecraft and crews vehicles as though his power
+/// were tripled": a self subject, one or more contribution actions joined by
+/// "and"/commas, and a power multiplier word.
+fn multiplied_power_contribution_marker(normalized: &str) -> Option<KeywordMarkerMechanic> {
+    let rest = ["this creature ", "this permanent ", "this token "]
+        .into_iter()
+        .find_map(|subject| normalized.strip_prefix(subject))?;
+    let (actions, multiplier) = rest.split_once(" as though ")?;
+    let multiplier = ["its ", "his ", "her ", "their "]
+        .into_iter()
+        .find_map(|pronoun| multiplier.strip_prefix(pronoun))?
+        .strip_prefix("power were ")?;
+    let multiplier = match multiplier {
+        "doubled" => 2,
+        "tripled" => 3,
+        "quadrupled" => 4,
+        _ => return None,
+    };
+    let (mut stations, mut stations_spacecraft_only, mut crews, mut saddles) =
+        (false, false, false, false);
+    for action in actions
+        .replace(", and ", ", ")
+        .replace(" and ", ", ")
+        .split(", ")
+    {
+        match action.trim() {
+            "stations spacecraft" if !stations => {
+                stations = true;
+                stations_spacecraft_only = true;
+            }
+            "stations permanents" if !stations => stations = true,
+            "crews vehicles" if !crews => crews = true,
+            "saddles mounts" if !saddles => saddles = true,
+            _ => return None,
+        }
+    }
+    Some(KeywordMarkerMechanic::ContributesMultipliedPower {
+        stations,
+        stations_spacecraft_only,
+        crews,
+        saddles,
+        multiplier,
     })
 }
 
@@ -2423,6 +2486,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     DeckConstructionCopyLimit { maximum: Option<u32> },
     /// "As you create your deck, circle N of the colors below." Appended.
     DeckConstructionColorChoice { count: u32 },
+    /// A commander's deck-construction allowance ("Rulebreaker — A deck
+    /// with this commander can have Angel cards of any color identity ...").
+    /// Read only by deck validation; `display` is the printed rule. Appended.
+    CommanderDeckAllowance { allowance: CommanderDeckAllowance, display: String },
     /// A keyword-marker line with an implemented mechanic. Appended.
     KeywordMarkerMechanic { mechanic: KeywordMarkerMechanic },
     /// Toxic N (CR 702.164). Appended.
@@ -2562,6 +2629,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// ("You may cast this spell from the battlefield for {1}{U} rather than
     /// pay its mana cost."). Losing it removes the permission (CR 613.1f).
     BattlefieldCastPermission { method: String },
+    /// Append-only. Matching permanents enter tapped and attacking (Kira
+    /// Nerys, Firebrand); the entry only marks them, and the controller
+    /// chooses what each attacks once it has entered (CR 508.4).
+    EntersTappedAndAttackingForFilter(ObjectFilter),
 }
 
 /// The printed ticket cost of a sticker-sheet row: one {TK} per ticket
@@ -2819,6 +2890,19 @@ where
                     DerivedAlternativeCast::ZoneCastFromCardManaCost {
                         zone,
                         additional_costs: mapped,
+                    }
+                }
+                DerivedAlternativeCast::BeamMeUpFromCardManaCost {
+                    additional_costs,
+                    excludes_grant_source,
+                } => {
+                    let mut mapped = Vec::with_capacity(additional_costs.len());
+                    for cost in additional_costs {
+                        mapped.push(map_cost(cost)?);
+                    }
+                    DerivedAlternativeCast::BeamMeUpFromCardManaCost {
+                        additional_costs: mapped,
+                        excludes_grant_source,
                     }
                 }
                 DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
@@ -3329,6 +3413,9 @@ where
             }
             StaticAbilityPayload::DeckConstructionColorChoice { count } => {
                 StaticAbilityPayload::DeckConstructionColorChoice { count }
+            }
+            StaticAbilityPayload::CommanderDeckAllowance { allowance, display } => {
+                StaticAbilityPayload::CommanderDeckAllowance { allowance, display }
             }
             StaticAbilityPayload::KeywordMarkerMechanic { mechanic } => {
                 StaticAbilityPayload::KeywordMarkerMechanic { mechanic }
@@ -4742,6 +4829,9 @@ where
             StaticAbilityPayload::EntersTappedForFilter(filter) => {
                 StaticAbilityPayload::EntersTappedForFilter(filter)
             }
+            StaticAbilityPayload::EntersTappedAndAttackingForFilter(filter) => {
+                StaticAbilityPayload::EntersTappedAndAttackingForFilter(filter)
+            }
             StaticAbilityPayload::EntersUntappedForFilter(filter) => {
                 StaticAbilityPayload::EntersUntappedForFilter(filter)
             }
@@ -5522,6 +5612,20 @@ impl<
             id: Some(StaticAbilityId::DeckConstructionRuleText),
             label: text,
             payload: StaticAbilityPayload::DeckConstructionCopyLimit { maximum },
+        }
+    }
+
+    /// A commander's typed deck-construction allowance; the label keeps the
+    /// printed rule.
+    pub fn commander_deck_allowance(
+        allowance: CommanderDeckAllowance,
+        text: impl Into<String>,
+    ) -> Self {
+        let text = text.into();
+        Self {
+            id: Some(StaticAbilityId::DeckConstructionRuleText),
+            label: text.clone(),
+            payload: StaticAbilityPayload::CommanderDeckAllowance { allowance, display: text },
         }
     }
 
@@ -10581,6 +10685,13 @@ impl<
             id: Some(StaticAbilityId::EnterTappedForFilter),
             label: "enters tapped for filter".to_string(),
             payload: StaticAbilityPayload::EntersTappedForFilter(filter),
+        }
+    }
+    pub fn enters_tapped_and_attacking_for_filter(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::EnterTappedAndAttackingForFilter),
+            label: "enters tapped and attacking for filter".to_string(),
+            payload: StaticAbilityPayload::EntersTappedAndAttackingForFilter(filter),
         }
     }
     pub fn enters_untapped_for_filter(filter: ObjectFilter) -> Self {

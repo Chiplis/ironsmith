@@ -585,6 +585,7 @@ mod tests {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            assisting_player: None,
             mana_spent_on_x: None,
             snow_mana_spent_to_cast: crate::player::ManaPool::default(),
             temporary_static_ability_grants: crate::object::TemporaryStaticAbilityGrants::new(id),

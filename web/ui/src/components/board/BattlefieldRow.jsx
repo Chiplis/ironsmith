@@ -10,6 +10,7 @@ import useUiText from "@/i18n/useUiText";
 import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from "react";
 import ManaAbilityPopover from "@/components/overlays/ManaAbilityPopover";
 import { manaPaymentActionMap, manaActivationCommand } from "@/lib/mana-payment-actions";
+import { manaActionSourceId } from "@/lib/mana-color-choice";
 import { Undo2 } from "lucide-react";
 import { useHover } from "@/context/HoverContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
@@ -2361,7 +2362,7 @@ export default function BattlefieldRow({
     updateDrag,
   ]);
 
-  const activatePaymentMana = useCallback(async (action) => {
+  const activatePaymentMana = useCallback(async (action, manaColor = null) => {
     if (paymentEditor?.confirming) return;
     if (action.kind === "plan_payment_source" && paymentEditor) {
       closeManaPopover();
@@ -2373,7 +2374,7 @@ export default function BattlefieldRow({
     if (paymentEditor) {
       if (paymentEditor.dirty || paymentEditor.confirming) return;
       closeManaPopover();
-      await paymentEditor.activate(action);
+      await paymentEditor.activate(action, { manaColor });
       return;
     }
     if (loading || manaSubmittingRef.current) return;
@@ -2383,7 +2384,7 @@ export default function BattlefieldRow({
     clearHover();
     clearAnchoredCardPreview();
     try {
-      await dispatch(manaActivationCommand(action), `Activated ${action.source_name}'s mana ability`);
+      await dispatch(manaActivationCommand(action), `Activated ${action.source_name}'s mana ability`, { manaColor });
     } finally {
       manaSubmittingRef.current = false;
       setManaSubmitting(false);
@@ -2399,16 +2400,18 @@ export default function BattlefieldRow({
       : state?.decision?.kind === "priority" ? collectActivatableActionsForCard(card, activatableMap) : [];
     return landManaChoices(actions);
   }, [state?.decision?.kind, paymentActionMap, activatableMap]);
-  const chooseLandMana = useCallback((action) => {
+  const chooseLandMana = useCallback((action, color) => {
     setOpenManaLandId(null);
+    // The clicked pip answers an "any color" ability's color prompt.
+    const manaColor = color ? { color, sourceId: manaActionSourceId(action) } : null;
     if (state?.decision?.kind === "mana_payment") {
-      void activatePaymentMana(action);
+      void activatePaymentMana(action, manaColor);
       return;
     }
     if (state?.decision?.kind !== "priority" || loading) return;
     clearHover();
     clearAnchoredCardPreview();
-    void dispatch({ type: "priority_action", action_index: action.index, action_ref: action.action_ref }, action.label);
+    void dispatch({ type: "priority_action", action_index: action.index, action_ref: action.action_ref }, action.label, { manaColor });
   }, [state?.decision?.kind, activatePaymentMana, loading, clearHover, clearAnchoredCardPreview, dispatch]);
   useEffect(() => {
     if (openManaLandId == null) return undefined;

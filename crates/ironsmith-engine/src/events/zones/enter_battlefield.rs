@@ -29,6 +29,9 @@ pub struct EnterBattlefieldEvent {
     pub creation: Option<crate::events::CreateCardsEvent>,
     /// Whether it enters tapped (may be modified by replacement effects)
     pub enters_tapped: bool,
+    /// Whether it enters attacking (Kira Nerys, Firebrand): set by a
+    /// replacement; the attack target is chosen after it enters (CR 508.4).
+    pub enters_attacking: bool,
     /// Entry characteristic, set before replacement re-evaluation and ETB observation.
     pub enters_face_down: bool,
     /// Counters it enters with (may be modified by replacement effects)
@@ -150,6 +153,7 @@ impl EnterBattlefieldEvent {
             from: Some(from),
             creation: None,
             enters_tapped: false,
+            enters_attacking: false,
             enters_face_down: false,
 
             enters_with_counters: Vec::new(),
@@ -183,6 +187,7 @@ impl EnterBattlefieldEvent {
             from: Some(from),
             creation: None,
             enters_tapped: true,
+            enters_attacking: false,
             enters_face_down: false,
 
             enters_with_counters: Vec::new(),

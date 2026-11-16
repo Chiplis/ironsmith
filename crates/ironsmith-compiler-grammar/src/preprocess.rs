@@ -156,7 +156,148 @@ fn station_reminder_threshold(raw: &str, line_index: usize) -> Option<i32> {
     crate::grammar::line_families::parse_station_keyword_line(&tokens, &tokens)?.creature_threshold
 }
 
+/// "Create a Black Lotus token. (It's a {0} artifact with "...")": a named
+/// token whose only definition is the reminder that follows its creation.
+/// The reminder states the token's characteristics (CR 111.4: name, mana
+/// cost, color, types, P/T and abilities), so it is functional rules text
+/// rather than an explanation of a predefined token. It is read as the
+/// ordinary named-token description "a {0} artifact token named Black Lotus
+/// with ...". A name the token grammar already defines (Food, Treasure, ...)
+/// keeps its reminder as reminder text.
+fn rewrite_named_token_definition_reminder(line: &str) -> Option<String> {
+    let mut in_quotes = false;
+    let mut open = None;
+    for (byte, ch) in line.char_indices() {
+        match ch {
+            '"' | '“' | '”' => in_quotes = !in_quotes,
+            '(' if !in_quotes => {
+                open = Some(byte);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let open = open?;
+    let mut depth = 0usize;
+    let mut close = None;
+    for (offset, ch) in line[open..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(open + offset);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let close = close?;
+    let before = line[..open].trim_end();
+    let before = before.strip_suffix('.')?;
+    let lower = before.to_ascii_lowercase();
+    let create_at = lower.rfind("create ")?;
+    if create_at > 0 && lower.as_bytes()[create_at - 1].is_ascii_alphanumeric() {
+        return None;
+    }
+    let head = &before[create_at + "create ".len()..];
+    if head.contains(['.', ':', '"', '“', '”', ',']) {
+        return None;
+    }
+    let head_words: Vec<&str> = head.split_whitespace().collect();
+    let [count, name @ .., token_word] = head_words.as_slice() else {
+        return None;
+    };
+    let plural = match token_word.to_ascii_lowercase().as_str() {
+        "token" => false,
+        "tokens" => true,
+        _ => return None,
+    };
+    // The token's name is a proper name: capitalized words joined by
+    // lowercase connectors ("Lord of the Pit").
+    if name.is_empty()
+        || !name[0].chars().next().is_some_and(char::is_uppercase)
+        || !name.iter().all(|word| {
+            word.chars().next().is_some_and(char::is_uppercase)
+                || matches!(*word, "of" | "the" | "and" | "a" | "an" | "in" | "on" | "to" | "from")
+        })
+    {
+        return None;
+    }
+    let name = name.join(" ");
+    let body = line[open + 1..close].trim();
+    let normalized_body = body.replace('’', "'");
+    let lower_body = normalized_body.to_ascii_lowercase();
+    let prefix_len = if plural {
+        ["they're "].iter().find(|prefix| lower_body.starts_with(**prefix))?.len()
+    } else {
+        ["it's a ", "it's an "].iter().find(|prefix| lower_body.starts_with(**prefix))?.len()
+    };
+    let description = normalized_body[prefix_len..].trim();
+    let description = description.strip_suffix('.').unwrap_or(description).trim_end();
+    if description.is_empty() {
+        return None;
+    }
+    // A name the token grammar already defines keeps its reminder.
+    let known = crate::util::lex_fragment(&format!("{name} {token_word}"), 0).is_none_or(|tokens| {
+        crate::grammar::token_definitions::parse_token_definition_shape_tokens(&tokens).is_some()
+    });
+    if known {
+        return None;
+    }
+    // The characteristics end at the first unquoted `with`.
+    let mut in_quotes = false;
+    let mut with_at = None;
+    for (byte, ch) in description.char_indices() {
+        match ch {
+            '"' | '“' | '”' => in_quotes = !in_quotes,
+            ' ' if !in_quotes && description[byte..].to_ascii_lowercase().starts_with(" with ") => {
+                with_at = Some(byte);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let (characteristics, abilities) = match with_at {
+        Some(at) => (&description[..at], &description[at..]),
+        None => (description, ""),
+    };
+    let mut characteristic_words: Vec<String> =
+        characteristics.split_whitespace().map(str::to_string).collect();
+    if plural && let Some(last) = characteristic_words.last_mut() {
+        // "They're {G} 1/1 Faerie creatures": each token is one creature.
+        let singular = match last.to_ascii_lowercase().as_str() {
+            "creatures" => Some("creature"),
+            "artifacts" => Some("artifact"),
+            "enchantments" => Some("enchantment"),
+            "lands" => Some("land"),
+            _ => None,
+        };
+        if let Some(singular) = singular {
+            *last = singular.to_string();
+        }
+    }
+    let mut rewritten = format!(
+        "{}{count} {} {token_word} named {name}{abilities}",
+        &before[..create_at + "create ".len()],
+        characteristic_words.join(" "),
+    );
+    if !rewritten.ends_with(['"', '”']) {
+        rewritten.push('.');
+    }
+    let after = line[close + 1..].trim();
+    if !after.is_empty() {
+        rewritten.push(' ');
+        rewritten.push_str(after);
+    }
+    Some(rewritten)
+}
+
 pub(super) fn strip_parenthetical_segments(line: &str) -> String {
+    if let Some(rewritten) = rewrite_named_token_definition_reminder(line) {
+        return strip_parenthetical_segments(&rewritten);
+    }
     let surface = stage_tokens(line)
         .and_then(|tokens| preprocess_grammar::parse_parenthetical_line_surface_tokens(&tokens));
     match surface {
@@ -1170,6 +1311,13 @@ fn replace_names_with_map(
             && bytes
                 .get(idx + len + 1)
                 .is_some_and(|byte| matches!(*byte, b's' | b'S'));
+        // "Kang and that creature are goaded ..." (Kang, Suspicious
+        // Captain): a sentence-initial short name joined to another subject.
+        let at_sentence_start = bytes[..idx]
+            .iter()
+            .rev()
+            .find(|byte| !byte.is_ascii_whitespace())
+            .is_none_or(|byte| matches!(*byte, b'.' | b'\n'));
 
         prev.is_some_and(|word| {
             matches!(
@@ -1198,8 +1346,12 @@ fn replace_names_with_map(
                     // "You can't cast Rakdos unless ..." (Rakdos, Lord of
                     // Riots): the spell being cast is this card.
                     | b"cast"
+                    // "for as long as you control Kang" (Kang, Suspicious
+                    // Captain): the controlled object is this permanent.
+                    | b"control"
             )
-        }) || next.is_some_and(|word| {
+        }) || (at_sentence_start && next == Some(b"and".as_slice()))
+            || next.is_some_and(|word| {
             matches!(
                 word,
                 b"enter"

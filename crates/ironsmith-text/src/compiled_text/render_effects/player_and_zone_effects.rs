@@ -2588,6 +2588,7 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     let explicit_owner_needed = !choose.additional_zones.is_empty()
         && choose.filter.owner == Some(PlayerFilter::You)
         && card_desc.starts_with("your ");
+    let mut stripped_owner_prefix = None;
     for owner_prefix in [
         "target player's ",
         "that player's ",
@@ -2597,11 +2598,27 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     ] {
         if let Some(rest) = card_desc.strip_prefix(owner_prefix) {
             card_desc = rest.to_string();
+            stripped_owner_prefix = Some(owner_prefix);
             break;
         }
     }
     if explicit_owner_needed {
         card_desc.push_str(" you own");
+    }
+    // Exile is a shared zone, so an owner possessive there is ownership, not
+    // a location: "a land card that player owns exiled this way" (Ensign
+    // Pavel Chekov) keeps the iterated owner as a relative clause.
+    if matches!(stripped_owner_prefix, None | Some("that player's "))
+        && described_filter.zone.or(choose.zone) == Some(Zone::Exile)
+        && choose.filter.owner == Some(PlayerFilter::IteratedPlayer)
+        && !card_desc.contains("that player")
+        && !card_desc.contains(" they own")
+    {
+        if let Some(head) = card_desc.strip_suffix(" exiled this way") {
+            card_desc = format!("{head} that player owns exiled this way");
+        } else {
+            card_desc.push_str(" that player owns");
+        }
     }
     if let Some(rest) = card_desc.strip_suffix(" hands") {
         card_desc = format!("{rest} hand");

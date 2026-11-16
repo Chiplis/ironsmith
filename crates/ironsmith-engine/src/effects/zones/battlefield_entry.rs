@@ -507,13 +507,20 @@ pub(crate) fn move_to_battlefield_batch_with_companions<'a, T>(
         ctx,
         || None,
         |game, ctx| {
-            move_to_battlefield_batch_with_options_inner(
+            let completed = move_to_battlefield_batch_with_options_inner(
                 game,
                 ctx,
                 requests,
                 zone_proposals,
                 companions,
-            )
+            )?;
+            // "instead it enters tapped and attacking" (Kira Nerys): choose
+            // each marked entrant's attack target once the batch is on the
+            // battlefield, with this owner's decision context (CR 508.4).
+            if completed.is_some() && !ctx.decision_maker.awaiting_choice() {
+                crate::effects::combat::drain_pending_entering_attackers(game, ctx);
+            }
+            Ok(completed)
         },
     )
 }

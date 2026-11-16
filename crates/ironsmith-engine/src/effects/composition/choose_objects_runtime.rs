@@ -194,6 +194,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::LifeTotalDifference(player)
         | crate::effect::Value::Speed(player)
         | crate::effect::Value::StartingLifeTotal(player)
+        | crate::effect::Value::StartingDeckSize(player)
         | crate::effect::Value::HalfLifeTotalRoundedUp(player)
         | crate::effect::Value::HalfLifeTotalRoundedDown(player)
         | crate::effect::Value::HalfStartingLifeTotalRoundedUp(player)

@@ -221,7 +221,7 @@ pub use permanents::{
     ConspireCostEffect, ConvertEffect, CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect,
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MergePermanentsEffect, MonstrosityEffect,
     NextAdaptIgnoresCountersEffect, NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect,
-    PhaseOutDuration, PhaseOutEffect, PrepareEffect, PutStickerEffect, ReconfigureEffect,
+    PhaseOutDuration, PhaseOutEffect, PrepareEffect, TriggerAdditionalTimeEffect, PutStickerEffect, ReconfigureEffect,
     RegenerateEffect, RenownEffect, SaddleCostEffect, SetClassLevelEffect, SetDayNightEffect,
     DayNightDesignation, SneakCostEffect,
     SolveCaseEffect, LinkPermanentsEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect,

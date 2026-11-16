@@ -286,6 +286,14 @@ pub fn parse_participant_clause_shape(
     if let Some((_, rest)) = primitives::parse_prefix(tokens, opponent_prefix) {
         let mut scope = ForEachParticipantScope::Opponent;
         let mut inner_tokens = trim(rest);
+        // "For each opponent you attacked this turn, create ..." (Rite of
+        // Ascension): a count of attacked opponents, not a participant loop.
+        if !participant_is_actor
+            && primitives::parse_prefix(inner_tokens, primitives::phrase(&["you", "attacked"]))
+                .is_some()
+        {
+            return None;
+        }
         if let Some((_, rest)) = primitives::parse_prefix(
             inner_tokens,
             primitives::phrase(&["other", "than", "defending", "player"]),

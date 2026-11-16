@@ -12,6 +12,10 @@ pub enum TaggedPermissionShape {
     PlayExiledForAsLongAsExiled,
     ManaAnyTypeCastsTaggedThisWay,
     CastSingleFromAmongHandCards,
+    /// "[you may] cast a spell from their hand without paying its mana
+    /// cost" (Kuroki, Thief of Talents): one spell from the hand of the
+    /// player the preceding instruction named.
+    CastSingleFromReferencedPlayersHand,
 }
 
 pub fn parse_tagged_permission_shape(tokens: &[OwnedLexToken]) -> Option<TaggedPermissionShape> {
@@ -57,6 +61,32 @@ pub fn parse_tagged_permission_shape(tokens: &[OwnedLexToken]) -> Option<TaggedP
         parse_cast_single_hand_shape(tokens)
             .then_some(TaggedPermissionShape::CastSingleFromAmongHandCards)
     })
+    .or_else(|| {
+        parse_cast_single_referenced_hand_shape(tokens)
+            .then_some(TaggedPermissionShape::CastSingleFromReferencedPlayersHand)
+    })
+}
+
+fn parse_cast_single_referenced_hand_shape(tokens: &[OwnedLexToken]) -> bool {
+    let tokens = primitives::parse_prefix(tokens, primitives::phrase(&["you", "may"]))
+        .map(|(_, rest)| rest)
+        .unwrap_or(tokens);
+    primitives::parse_all(
+        trim_lexed_commas(tokens),
+        (
+            primitives::phrase(&["cast", "a", "spell", "from"]),
+            primitives::any_phrase(&[
+                &["their"],
+                &["that", "player's"],
+                &["that", "players"],
+            ]),
+            primitives::phrase(&["hand", "without", "paying", "its", "mana", "cost"]),
+            primitives::sentence_end(),
+        )
+            .void(),
+        "single cast from referenced player's hand",
+    )
+    .is_ok()
 }
 
 fn parse_cast_single_hand_shape(tokens: &[OwnedLexToken]) -> bool {

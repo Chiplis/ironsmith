@@ -245,6 +245,7 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && !filter.has_tap_activated_ability
         && !filter.has_non_mana_activated_ability
         && !filter.has_activated_ability
+        && filter.min_activated_abilities.is_none()
         && !filter.shares_card_type
         && !filter.no_abilities
         && filter.ability_markers.is_empty()
@@ -1851,6 +1852,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::LeastCount(_)
         | Value::GreatestSharedCreatureTypeCount(_)
         | Value::GreatestSharedNameCount(_)
+        | Value::CardTypesSharedByAll(_)
         | Value::TotalManaValue(_)
         | Value::GreatestManaValue(_)
         | Value::LeastManaValue(_)
@@ -1925,6 +1927,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::IteratedPlayerChosenNumber
         | Value::Speed(_)
         | Value::StartingLifeTotal(_)
+        | Value::StartingDeckSize(_)
         | Value::HalfLifeTotalRoundedUp(_)
         | Value::HalfLifeTotalRoundedDown(_)
         | Value::HalfStartingLifeTotalRoundedUp(_)
@@ -2470,6 +2473,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TriggeringSpellWasKicked
         | C::ItIsNight
         | C::InEndingPhase
+        | C::InCombatPhase
         | C::FirstCombatPhaseOfTurn
         | C::FirstEndStepOfTurn
         | C::FirstUpkeepStepOfTurn
@@ -2634,6 +2638,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::IteratedPlayerChosenNumber
         | Value::Speed(_)
         | Value::StartingLifeTotal(_)
+        | Value::StartingDeckSize(_)
         | Value::HalfLifeTotalRoundedUp(_)
         | Value::HalfLifeTotalRoundedDown(_)
         | Value::HalfStartingLifeTotalRoundedUp(_)
@@ -2757,6 +2762,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::PlaneswalkerTypesAmong(filter)
         | Value::SubtypesAmong { filter, .. }
         | Value::PermanentTypesAmong(filter)
+        | Value::CardTypesSharedByAll(filter)
         | Value::CardTypesAmong(filter) => {
             modification_can_change_type_characteristics(modification)
                 || modification_can_affect_filter(modification, filter)
@@ -3151,6 +3157,7 @@ fn filter_uses_ability_characteristics(filter: &ObjectFilter) -> bool {
     filter.has_tap_activated_ability
         || filter.has_non_mana_activated_ability
         || filter.has_activated_ability
+        || filter.min_activated_abilities.is_some()
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()

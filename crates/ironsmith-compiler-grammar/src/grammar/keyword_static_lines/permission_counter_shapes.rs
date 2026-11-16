@@ -293,13 +293,29 @@ fn parse_cast_this_way_enters_with_intro(input: &mut LexStream<'_>) -> WResult<O
     .parse_next(input)?;
     primitives::phrase(&["spell", "this", "way"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
+    /// "that creature", "that artifact", "that artifact creature": the cast
+    /// permanent named again by its permanent type words.
+    fn that_permanent_type_words(input: &mut LexStream<'_>) -> WResult<()> {
+        primitives::kw("that").parse_next(input)?;
+        winnow::combinator::repeat::<_, _, (), _, _>(
+            1..=3,
+            alt((
+                primitives::kw("creature"),
+                primitives::kw("permanent"),
+                // "If you cast a spell this way, that artifact enters with a
+                // finality counter on it." (Noctis, Prince of Lucis)
+                primitives::kw("artifact"),
+                primitives::kw("enchantment"),
+                primitives::kw("land"),
+                primitives::kw("planeswalker"),
+                primitives::kw("battle"),
+            ))
+            .void(),
+        )
+        .parse_next(input)
+    }
     alt((
-        primitives::phrase(&["that", "creature", "enters", "with"]),
-        primitives::phrase(&["that", "permanent", "enters", "with"]),
-        // "If you cast a spell this way, that artifact enters with a
-        // finality counter on it." (Noctis, Prince of Lucis)
-        primitives::phrase(&["that", "artifact", "enters", "with"]),
-        primitives::phrase(&["that", "enchantment", "enters", "with"]),
+        (that_permanent_type_words, primitives::phrase(&["enters", "with"])).void(),
         primitives::phrase(&["it", "enters", "with"]),
     ))
     .void()

@@ -31,6 +31,8 @@ uniform float u_drift;    // current flying sideways drift, css px
 uniform int u_flags;
 uniform int u_layer;      // 0 = behind the card, 1 = over it
 uniform vec3 u_protection;
+uniform vec4 u_radius_x;  // face border radii, css px: top-left, top-right, bottom-right, bottom-left
+uniform vec4 u_radius_y;
 
 const float TAU = 6.2831853;
 
@@ -46,9 +48,25 @@ float fbm(vec2 p) {
   for (int i = 0; i < 5; i++) { v += a * noise(p); p = r * p * 2.03 + 11.7; a *= 0.5; }
   return v;
 }
-float roundRect(vec2 q, vec2 halfSize, float radius) {
-  vec2 d = abs(q) - halfSize + radius;
-  return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - radius;
+// The face's own border radius for the quadrant q is in (y grows downward),
+// so arched token crowns and planeswalker tops keep their silhouette.
+vec2 cornerRadius(vec2 q) {
+  vec2 top = q.x < 0.0 ? vec2(u_radius_x.x, u_radius_y.x) : vec2(u_radius_x.y, u_radius_y.y);
+  vec2 bottom = q.x < 0.0 ? vec2(u_radius_x.w, u_radius_y.w) : vec2(u_radius_x.z, u_radius_y.z);
+  return q.y < 0.0 ? top : bottom;
+}
+// Signed distance to a box with elliptical corners of radii r (<0 inside).
+float faceShape(vec2 q, vec2 halfSize, vec2 r) {
+  vec2 a = abs(q);
+  vec2 c = halfSize - r;
+  if (a.x > c.x && a.y > c.y && min(r.x, r.y) > 0.01) {
+    vec2 p = a - c;
+    float k0 = length(p / r);
+    float k1 = length(p / (r * r));
+    return k0 * (k0 - 1.0) / max(k1, 1e-4);
+  }
+  vec2 d = a - halfSize;
+  return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
 }
 // Distance from a hex cell's edge (0 on the edge, 0.5 at the centre); id is per cell.
 vec3 hexCell(vec2 p) {
@@ -77,8 +95,8 @@ void main() {
   vec2 q = px - u_size * 0.5;                 // css px from the card centre
   vec2 halfSize = u_card * 0.5;
   float unit = min(halfSize.x, halfSize.y);
-  float radius = unit * 0.09;
-  float d = roundRect(q, halfSize, radius);       // <0 inside the card
+  vec2 radius = cornerRadius(q);
+  float d = faceShape(q, halfSize, radius);       // <0 inside the card
   float angle = atan(q.y, q.x);
   float t = u_time + u_seed * 37.0;
   // A position that runs once around the silhouette, in css px.
@@ -91,7 +109,8 @@ void main() {
       // slides against the card's drift.
       float drop = u_lift + 5.0;
       float blur = 7.0 + u_lift * 0.9;
-      float s = roundRect(q - vec2(u_lift * 0.35 - u_drift, drop), halfSize * 0.97, radius);
+      vec2 qs = q - vec2(u_lift * 0.35 - u_drift, drop);
+      float s = faceShape(qs, halfSize * 0.97, cornerRadius(qs) * 0.97);
       float shadow = 1.0 - smoothstep(-blur, blur, s);
       over(acc, vec3(0.0), shadow * (0.62 - u_lift * 0.022));
     }
@@ -176,7 +195,7 @@ void main() {
 
   if ((u_flags & ${FX.protection}) != 0) {
     // An iridescent bubble enclosing the whole card.
-    float shell = roundRect(q, halfSize + vec2(8.0), radius + unit * 0.45);
+    float shell = faceShape(q, halfSize + vec2(8.0), min(radius + vec2(8.0 + unit * 0.45), halfSize + vec2(8.0)));
     float surface = exp(-pow(shell / 2.2, 2.0));
     float body = smoothstep(-unit * 0.55, 0.0, shell) * step(shell, 0.0);
     float shimmer = 0.6 + 0.4 * sin(angle * 3.0 + t * 1.2);
@@ -212,7 +231,7 @@ export class KeywordFxRenderer {
     this.program = this.job.program;
     this.ready = this.job.ready.then(ok => {
       if (!ok || this.disposed) return false;
-      const names = ["u_size", "u_card", "u_time", "u_seed", "u_lift", "u_drift", "u_flags", "u_layer", "u_protection"];
+      const names = ["u_size", "u_card", "u_time", "u_seed", "u_lift", "u_drift", "u_flags", "u_layer", "u_protection", "u_radius_x", "u_radius_y"];
       this.uniforms = Object.fromEntries(names.map(name => [name, gl.getUniformLocation(this.program, name)]));
       this.initialized = true;
       return true;
@@ -236,7 +255,7 @@ export class KeywordFxRenderer {
     }
   }
 
-  // tiles: [{x, y, w, h (device px, top-left origin), size, card, flags, layer, seed, lift, drift, protection}]
+  // tiles: [{x, y, w, h (device px, top-left origin), size, card, radii: [[x TL,TR,BR,BL], [y ...]], flags, layer, seed, lift, drift, protection}]
   render(tiles, time) {
     if (!this.initialized || this.disposed) return false;
     const { gl, uniforms: u } = this;
@@ -256,6 +275,8 @@ export class KeywordFxRenderer {
       gl.uniform1i(u.u_flags, tile.flags);
       gl.uniform1i(u.u_layer, tile.layer);
       gl.uniform3fv(u.u_protection, tile.protection);
+      gl.uniform4fv(u.u_radius_x, tile.radii[0]);
+      gl.uniform4fv(u.u_radius_y, tile.radii[1]);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
     return true;

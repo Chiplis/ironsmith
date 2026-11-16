@@ -4099,6 +4099,28 @@ impl GameState {
             .insert(entry.object_id, std::sync::Arc::new((object, entry)));
     }
 
+    /// Keeps a resolving spell's entry readable after it was popped for
+    /// resolution: the spell is still on the stack until the final step of
+    /// its resolution (CR 608.2n), and stack-zone reads (its targets, "spells
+    /// on the stack") find its entry here. Cast spells recorded one when
+    /// cast; a copy or a spell put onto the stack without being cast gets
+    /// one now.
+    pub fn record_resolving_spell_lki(&mut self, entry: &StackEntry) {
+        if entry.is_ability || self.turn_store.cast_spell_lki.contains_key(&entry.object_id) {
+            return;
+        }
+        let Some(object) = self.object(entry.object_id) else {
+            return;
+        };
+        if object.zone != Zone::Stack {
+            return;
+        }
+        let object = object.clone();
+        self.turn_store
+            .cast_spell_lki
+            .insert(entry.object_id, std::sync::Arc::new((object, entry.clone())));
+    }
+
     /// Pops and returns the top item from the stack.
     pub fn pop_from_stack(&mut self) -> Option<StackEntry> {
         let entry = self.stack.pop();
@@ -4640,6 +4662,9 @@ impl GameState {
             !(effect.source == id && effect.duration == crate::effect::Until::SourceUntaps)
         });
         let removed_goad = self.effect_store.goad_effects.len() != goad_count;
+        self.effect_store.trigger_multiplier_effects.retain(|effect| {
+            !(effect.source == id && effect.duration == crate::effect::Until::SourceUntaps)
+        });
         // "For as long as this creature remains tapped" delayed registrations
         // (Giant Oyster) end as their source untaps (CR 611.2b).
         self.effect_store

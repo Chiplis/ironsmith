@@ -122,6 +122,18 @@ pub enum KeywordActionKind {
     CustomStatusGained,
     /// A completed source-owned number choice, including reselection of the same number.
     ChoosePermanentNumber,
+    /// One instruction made a player discard one or more cards at random.
+    /// "Whenever you discard one or more cards at random" (Chira, All In).
+    DiscardAtRandom,
+    /// The game selected one or more of a spell's or ability's targets at
+    /// random as it was put on the stack (CR 601.2c, 602.2b, 603.3d); the
+    /// player is the spell's or ability's controller.
+    SelectTargetsAtRandom,
+    /// The modes of a modal spell or ability were chosen at random
+    /// (CR 700.2); the player is the one the modes were chosen for.
+    ChooseModesAtRandom,
+    /// One instruction made a player flip one or more coins (CR 705).
+    FlipCoins,
 }
 
 impl KeywordActionKind {
@@ -293,6 +305,10 @@ impl KeywordActionKind {
             Self::SolveCase => "solve a Case",
             Self::Foretell => "foretell a card",
             Self::FaceDilemma => "face a dilemma",
+            Self::DiscardAtRandom => "discard one or more cards at random",
+            Self::SelectTargetsAtRandom => "select one or more targets at random",
+            Self::ChooseModesAtRandom => "choose one or more modes at random",
+            Self::FlipCoins => "flip one or more coins",
         }
     }
 
@@ -381,6 +397,10 @@ impl KeywordActionKind {
             Self::SolveCase => "solves a Case",
             Self::Foretell => "foretells a card",
             Self::FaceDilemma => "faces a dilemma",
+            Self::DiscardAtRandom => "discards one or more cards at random",
+            Self::SelectTargetsAtRandom => "selects one or more targets at random",
+            Self::ChooseModesAtRandom => "chooses one or more modes at random",
+            Self::FlipCoins => "flips one or more coins",
         }
     }
 }

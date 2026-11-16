@@ -83,6 +83,10 @@ mod moved_entry;
 mod viewer_face_down_play;
 #[path = "pair_procedure/each_opponent_consult_cast.rs"]
 mod each_opponent_consult_cast;
+#[path = "pair_procedure/secret_number_chosen_player_cast.rs"]
+mod secret_number_chosen_player_cast;
+#[path = "pair_procedure/lose_game_controlled_copies.rs"]
+pub(crate) mod lose_game_controlled_copies;
 #[path = "pair_procedure/controlled_player_plays_chosen.rs"]
 mod controlled_player_plays_chosen;
 #[path = "pair_procedure/each_player_named_top_guess.rs"]
@@ -105,6 +109,8 @@ mod mutual_turn_control;
 mod copy_exiled_pile_cast;
 #[path = "pair_procedure/two_slot_graveyard_free_cast.rs"]
 mod two_slot_graveyard_free_cast;
+#[path = "pair_procedure/offered_cast_copy.rs"]
+mod offered_cast_copy;
 
 pub(super) fn recognizes_scalar_self_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
     life_gain::recognizes_replacement_sentence(tokens)
@@ -334,6 +340,34 @@ const PAIR_SHAPES: &[Shape] = &[
                 sentences,
                 index,
                 each_opponent_consult_cast::read_each_player_opponent_excludes(sentences, index),
+            )
+        },
+    },
+    Shape {
+        id: RuleId::new("offered-cast-copy-or-fallback"),
+        head: HeadDiscriminator::words(&["target", "each", "that", "an", "you"]),
+        consumed: 4,
+        read: |sentences, index| {
+            statements(sentences, index, offered_cast_copy::read(sentences, index, true))
+        },
+    },
+    Shape {
+        id: RuleId::new("offered-cast-copy"),
+        head: HeadDiscriminator::words(&["target", "each", "that", "an", "you"]),
+        consumed: 3,
+        read: |sentences, index| {
+            statements(sentences, index, offered_cast_copy::read(sentences, index, false))
+        },
+    },
+    Shape {
+        id: RuleId::new("exiled-secret-number-chosen-player-cast-rest-hand"),
+        head: HeadDiscriminator::words(&["exile"]),
+        consumed: 6,
+        read: |sentences, index| {
+            statements(
+                sentences,
+                index,
+                secret_number_chosen_player_cast::read(sentences, index),
             )
         },
     },

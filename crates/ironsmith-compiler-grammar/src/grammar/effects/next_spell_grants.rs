@@ -325,7 +325,12 @@ fn parse_paired_next_spell_grant<'a>(input: &mut LexStream<'a>) -> WResult<RawNe
         .take()
         .parse_next(input)?;
     let caster = caster_suffix.parse_next(input)?;
-    primitives::phrase(&["this", "turn", "each", "have"]).parse_next(input)?;
+    // "... this turn each have <ability>" and "... this turn have
+    // <ability>" (Võx, Child of the Collective) both distribute the grant
+    // over each named next spell.
+    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    opt(primitives::kw("each")).parse_next(input)?;
+    primitives::kw("have").parse_next(input)?;
     let ability = ability_tail.parse_next(input)?;
     Ok(RawNextSpellGrant {
         player: caster.player,

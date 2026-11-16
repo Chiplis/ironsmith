@@ -318,10 +318,13 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             )));
         }
         if let Some(payload) = effect.downcast_ref::<compiler::effects::ScaleXValueEffect>() {
-            return Ok(Some(ironsmith::effect::Effect::scale_x_value(
-                payload.target.clone(),
-                payload.multiplier,
-            )));
+            return Ok(Some(match payload.set_to {
+                Some(value) => ironsmith::effect::Effect::set_x_value(payload.target.clone(), value),
+                None => ironsmith::effect::Effect::scale_x_value(
+                    payload.target.clone(),
+                    payload.multiplier,
+                ),
+            }));
         }
         Ok(None)
     }
@@ -479,6 +482,18 @@ fn convert_derived_alternative_cast(
             condition,
             exiles_after_resolution,
         },
+        compiler::grant::DerivedAlternativeCast::BeamMeUpFromCardManaCost {
+            additional_costs,
+            excludes_grant_source,
+        } => {
+            ironsmith::grant::DerivedAlternativeCast::BeamMeUpFromCardManaCost {
+                additional_costs: additional_costs
+                    .into_iter()
+                    .map(runtime_cost_from_core_model)
+                    .collect::<Result<Vec<_>, _>>()?,
+                excludes_grant_source,
+            }
+        }
     })
 }
 

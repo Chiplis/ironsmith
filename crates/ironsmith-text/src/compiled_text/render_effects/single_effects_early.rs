@@ -1164,6 +1164,19 @@ fn describe_linked_action_result_condition(
             _ => None,
         };
     }
+    // "<player> may cast a spell from their hand without paying its mana
+    // cost. If they do, ... If they don't, ..." (Cmdr. Troi): the offered
+    // cast reports whether its player cast a spell.
+    if let Some(offer) =
+        effect.downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
+    {
+        let who = linked_result_player_pronoun(&offer.player);
+        return match predicate {
+            EffectPredicate::Happened => Some(format!("If {who} do")),
+            EffectPredicate::DidNotHappen => Some(format!("If {who} don't")),
+            _ => None,
+        };
+    }
     let actor = linked_result_actor(effect)?;
     let who = linked_result_player_pronoun(&actor);
     if effect
@@ -1278,6 +1291,16 @@ pub(crate) fn describe_explicit_alternative_result_condition(
                 Some("If they don't".to_string())
             }
             EffectPredicate::DidNotHappen => Some("If the player does".to_string()),
+            _ => None,
+        };
+    }
+    if let Some(offer) = linked_result_setup_effect(effect)
+        .downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
+    {
+        let who = linked_result_player_pronoun(&offer.player);
+        return match predicate {
+            EffectPredicate::Happened => Some(format!("If {who} don't")),
+            EffectPredicate::DidNotHappen => Some(format!("If {who} do")),
             _ => None,
         };
     }
@@ -6901,7 +6924,67 @@ pub(super) fn describe_correlated_created_token_fight(
     ))
 }
 
+/// "For as long as they have a contract counter, when they lose the game,
+/// for each artifact and creature they controlled, create a token that's a
+/// copy of it." (Miss Highwater)
+fn describe_lost_player_controlled_permanents_program(effect: &Effect) -> Option<String> {
+    let gate = effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let [scheduled] = gate.if_true.as_slice() else {
+        return None;
+    };
+    if !gate.if_false.is_empty() {
+        return None;
+    }
+    let scheduled = scheduled.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+    let (inner, surface) = match scheduled
+        .trigger
+        .downcast_ref::<crate::triggers::ConditionQualifiedTrigger>()
+    {
+        Some(qualified) => (&qualified.trigger, Some(qualified.surface.as_str())),
+        None => (&scheduled.trigger, None),
+    };
+    inner.downcast_ref::<crate::triggers::PlayerLosesGameTrigger>()?;
+    let [each] = scheduled.effects.flattened_default_effects() else {
+        return None;
+    };
+    let each = each.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if each.tag.as_str() != ironsmith_core::tag::LOST_PLAYER_CONTROLLED_PERMANENTS_TAG {
+        return None;
+    }
+    let [matching] = each.effects.as_slice() else {
+        return None;
+    };
+    let matching = matching.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::TaggedObjectMatchedLastKnown(_, filter) = &matching.condition
+    else {
+        return None;
+    };
+    if filter.card_types.is_empty() || !matching.if_false.is_empty() {
+        return None;
+    }
+    let types = filter
+        .card_types
+        .iter()
+        .map(|card_type| card_type.to_string().to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join(" and ");
+    let body = super::effect_lists::describe_effect_list(
+        &matching.if_true,
+    );
+    let body = lowercase_first(body.trim().trim_end_matches('.'));
+    let lead = surface
+        .map(|surface| format!("{}, ", capitalize_first(surface)))
+        .unwrap_or_default();
+    let when = if lead.is_empty() { "When" } else { "when" };
+    Some(format!(
+        "{lead}{when} they lose the game, for each {types} they controlled, {body}"
+    ))
+}
+
 pub(crate) fn describe_effect(effect: &Effect) -> String {
+    if let Some(text) = describe_lost_player_controlled_permanents_program(effect) {
+        return text;
+    }
     if let Some(note)=effect.downcast_ref::<ironsmith_core::NoteObjectNamesEffect>(){
         let subject=match note.object.base(){crate::target::ChooseSpec::Tagged(tag) if tag.as_str()=="triggering"=>"the triggering card's name",crate::target::ChooseSpec::Source=>"this permanent's name",_=>"the referenced object's name"};
         let owner=match note.for_object.base(){crate::target::ChooseSpec::Source=>"this permanent",_=>"the referenced permanent"};

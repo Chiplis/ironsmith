@@ -247,6 +247,27 @@ impl ScheduleDelayedTriggerEffect {
     }
 }
 
+/// "When they lose the game" (Miss Highwater): the player the resolving
+/// ability names ("they") is fixed when the registration is created, so the
+/// delayed ability watches that exact player rather than whoever the loop
+/// variable names later.
+fn bind_lose_game_player(trigger: &Trigger, ctx: &ExecutionContext) -> Option<Trigger> {
+    let player = ctx.iteration.iterated_player?;
+    if let Some(loss) = trigger.downcast_ref::<crate::triggers::PlayerLosesGameTrigger>()
+        && loss.player == crate::target::PlayerFilter::IteratedPlayer
+    {
+        return Some(Trigger::player_loses_game(crate::target::PlayerFilter::Specific(player)));
+    }
+    let qualified = trigger.downcast_ref::<crate::triggers::ConditionQualifiedTrigger>()?;
+    let inner = bind_lose_game_player(&qualified.trigger, ctx)?;
+    Some(Trigger::condition_qualified(
+        inner,
+        qualified.condition.clone(),
+        qualified.surface.clone(),
+        qualified.stun_counter_reminder_surface,
+    ))
+}
+
 impl EffectExecutor for ScheduleDelayedTriggerEffect {
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         for effect in self.effects.all_effects() {
@@ -280,6 +301,8 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 permissions: ctx.last_play_permissions.clone(),
                 include_land_plays: watcher.include_land_plays,
             })
+        } else if let Some(bound) = bind_lose_game_player(&self.trigger, ctx) {
+            bound
         } else { self.trigger.clone() };
         let new_combat_observation = self.trigger.subscribed_kinds().is_some_and(|kinds|
             kinds.iter().any(|kind| matches!(kind, crate::events::EventKind::CreatureAttacked

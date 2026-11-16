@@ -1404,6 +1404,14 @@ fn read_cant_effect(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, Car
     {
         return Ok(Some(effects));
     }
+    if let Some(effects) = super::chain_carry::parse_compound_subject_goaded_sentence(sentence)? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) =
+        super::chain_carry::parse_duration_scoped_trigger_duplication_sentence(sentence)?
+    {
+        return Ok(Some(effects));
+    }
     if is_document
         && !sentence
             .first()

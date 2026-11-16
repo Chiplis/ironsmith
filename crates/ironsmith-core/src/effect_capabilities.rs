@@ -333,6 +333,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "PoisonCountersEffect"
         | "PopulateEffect"
         | "PrepareEffect"
+        | "TriggerAdditionalTimeEffect"
         | "PreventAllCombatDamageEffect"
         | "PreventAllCombatDamageFromEffect"
         | "PreventNextTimeDamageEffect"

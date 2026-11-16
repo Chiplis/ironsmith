@@ -98,6 +98,21 @@ pub enum DerivedAlternativeCast<C> {
         #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
         label: Option<String>,
     },
+    /// Beam me up whose cost is the card's mana cost ("Each card in your
+    /// graveyard has beam me up. The beam me up cost is equal to that
+    /// spell's mana cost.", Scotty, Miracle Worker). `additional_costs` are
+    /// the keyword's own non-mana components (returning another creature you
+    /// control to its owner's hand), not authored extras. Only instant and
+    /// sorcery cards can be cast this way. Appended for wire compatibility.
+    BeamMeUpFromCardManaCost {
+        additional_costs: Vec<C>,
+        /// "<This> can't be beamed up to cast a spell this way": the
+        /// returned creature can't be the permanent granting this cast. The
+        /// grant binds its own source when it materializes; printed beam me
+        /// up and other grants are unaffected.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+        excludes_grant_source: bool,
+    },
 }
 
 impl<C> DerivedAlternativeCast<C> {
@@ -118,6 +133,7 @@ impl<C> DerivedAlternativeCast<C> {
             Self::PlotFromCardManaCost => "Plot",
             Self::ExilePreparationFromCardManaCost { .. } => "Delayed casting preparation",
             Self::ZoneCastFromCardManaCost { .. } => "Cast with additional cost",
+            Self::BeamMeUpFromCardManaCost { .. } => "Beam me up",
         }
     }
 
@@ -190,6 +206,15 @@ impl<C> DerivedAlternativeCast<C> {
                     .map(&mut map_cost)
                     .collect::<Result<Vec<_>, _>>()?,
             },
+            Self::BeamMeUpFromCardManaCost { additional_costs, excludes_grant_source } => {
+                DerivedAlternativeCast::BeamMeUpFromCardManaCost {
+                    additional_costs: additional_costs
+                        .into_iter()
+                        .map(&mut map_cost)
+                        .collect::<Result<Vec<_>, _>>()?,
+                    excludes_grant_source,
+                }
+            }
         })
     }
 }
@@ -2485,6 +2510,23 @@ where
             };
             return format!(
                 "Each {filter_desc} has flashback. Its flashback cost is equal to {cost_text}"
+            );
+        }
+        // "Each card in your graveyard has beam me up. The beam me up cost is
+        // equal to its mana cost." The returned creature is the keyword's own
+        // cost component, so it is not restated.
+        if let Grantable::DerivedAlternativeCast(
+            DerivedAlternativeCast::BeamMeUpFromCardManaCost { excludes_grant_source, .. },
+        ) = &self.grantable
+        {
+            let filter_desc = flashback_filter_description(&filter);
+            let exclusion = if *excludes_grant_source {
+                ". This permanent can't be beamed up to cast a spell this way"
+            } else {
+                ""
+            };
+            return format!(
+                "Each {filter_desc} has beam me up. The beam me up cost is equal to its mana cost{exclusion}"
             );
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::RetraceFromCardManaCost) =

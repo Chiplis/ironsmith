@@ -2386,7 +2386,127 @@ fn source_zone_trigger_suffix(tokens: &[OwnedLexToken]) -> Option<(usize, Zone)>
     Some((token_at, zone))
 }
 
+/// The word count of an event-time damage-recipient qualification that
+/// follows a damage trigger: "if at least one permanent or player was dealt
+/// exactly N of that damage" (Matoc, Lavamancer). Returns the amount.
+pub fn damage_recipient_exact_amount_qualification(words: &[&str]) -> Option<u32> {
+    let [
+        "if", "at", "least", "one", rest @ ..
+    ] = words
+    else {
+        return None;
+    };
+    let rest = rest
+        .strip_prefix(&["permanent", "or", "player"])
+        .or_else(|| rest.strip_prefix(&["player", "or", "permanent"]))?;
+    let ["was", "dealt", "exactly", amount, "of", "that", "damage"] = rest else {
+        return None;
+    };
+    amount.parse::<u32>().ok().or_else(|| crate::util::parse_number_word_u32(amount))
+}
+
+/// "<damage trigger>, if at least one permanent or player was dealt exactly
+/// N of that damage": each damage receipt is checked as it is dealt, and the
+/// damage trigger's own grouping (one occurrence per source for "a source
+/// deals damage", CR 603.2c) then queues the ability once.
+fn parse_damage_recipient_exact_amount_trigger_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let Some(comma) = tokens.iter().position(|token| token.is_comma()) else {
+        return Ok(None);
+    };
+    let tail_words = crate::lexer::parser_token_word_refs(&tokens[comma + 1..]);
+    let Some(amount) = damage_recipient_exact_amount_qualification(&tail_words) else {
+        return Ok(None);
+    };
+    let trigger = parse_trigger_clause_lexed(&tokens[..comma])?;
+    fn is_damage_trigger(trigger: &TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => is_damage_trigger(trigger),
+            TriggerSpec::DealsDamage { .. } | TriggerSpec::ThisDealsDamage => true,
+            _ => false,
+        }
+    }
+    if !is_damage_trigger(&trigger) {
+        return Ok(None);
+    }
+    crate::word_claims::claim_tokens(&tokens[comma..]);
+    Ok(Some(TriggerSpec::ConditionQualified {
+        trigger: Box::new(trigger),
+        condition: crate::cards::builders::PredicateAst::ValueComparison {
+            left: crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::Fixed(amount as i32),
+        },
+        surface: crate::lexer::render_token_slice(&tokens[comma + 1..]).trim().to_owned(),
+    }))
+}
+
+/// "you cast <spells> or activate an ability [with {X} in its activation
+/// cost] [that isn't a mana ability]" (Glava, Five-Advents Mage): a spell-cast
+/// event or an ability-activation event by the same player. The activation
+/// arm keeps its own X-cost and non-mana qualifiers.
+fn parse_cast_or_activate_ability_trigger_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if !words.starts_with(&["you", "cast"]) {
+        return Ok(None);
+    }
+    let Some(or_word) = words
+        .windows(4)
+        .position(|window| window == ["or", "activate", "an", "ability"])
+    else {
+        return Ok(None);
+    };
+    let mut rest = &words[or_word + 4..];
+    let mut has_x_in_cost = false;
+    if let Some(after) = rest.strip_prefix(&["with", "x", "in", "its", "activation", "cost"]) {
+        has_x_in_cost = true;
+        rest = after;
+    }
+    // Plain "or activate an ability" unions keep their established owners
+    // (Unbound Flourishing's combined X-cost reading); this reading claims the
+    // arm only when it carries its own X-cost qualifier.
+    if !has_x_in_cost {
+        return Ok(None);
+    }
+    let non_mana_only = match rest {
+        [] => false,
+        ["that", "isnt" | "isn't" | "is'nt", "a", "mana", "ability"]
+        | ["that", "is", "not", "a", "mana", "ability"] => true,
+        _ => return Ok(None),
+    };
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let Some(&or_token) = view.token_start_indices().get(or_word) else {
+        return Ok(None);
+    };
+    let spell = match crate::word_claims::probe_only(|| parse_trigger_clause_lexed(&tokens[..or_token])) {
+        Ok(TriggerSpec::SpellCast { .. }) => parse_trigger_clause_lexed(&tokens[..or_token])?,
+        _ => return Ok(None),
+    };
+    crate::word_claims::claim_tokens(&tokens[or_token..]);
+    let mut ability_filter = ObjectFilter::default();
+    ability_filter.has_x_in_cost = has_x_in_cost;
+    Ok(Some(TriggerSpec::Either(
+        Box::new(spell),
+        Box::new(TriggerSpec::AbilityActivated {
+            activator: PlayerFilter::You,
+            filter: ability_filter,
+            non_mana_only,
+            loyalty_only: false,
+            activation_cost_has_tap: None,
+        }),
+    )))
+}
+
 pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpec, CardTextError> {
+    if let Some(trigger) = parse_damage_recipient_exact_amount_trigger_lexed(tokens)? {
+        return Ok(trigger);
+    }
+    if let Some(trigger) = parse_cast_or_activate_ability_trigger_lexed(tokens)? {
+        return Ok(trigger);
+    }
     // "Whenever you cycle this creature or it attacks" (Seraph of the Stage):
     // two events of the same source; "it" is this source.
     {

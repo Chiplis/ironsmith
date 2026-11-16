@@ -305,7 +305,7 @@ pub(crate) fn resolve_announcement_with_effect_authority(
                 if priced_face.mana_cost.is_none() {
                     priced_face.mana_cost = Some(crate::mana::ManaCost::new().into());
                 }
-                spec.materialize_for(&priced_face)
+                spec.materialize_for_grant(&priced_face, grant.source.source_id())
             }
             Grantable::AlternativeCast(method) => Some(method.clone()),
             _ => None,

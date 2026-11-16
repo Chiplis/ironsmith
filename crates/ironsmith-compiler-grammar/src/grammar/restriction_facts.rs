@@ -44,6 +44,28 @@ pub fn parse_activation_restriction_tokens(
             mana_usage_restriction: None, once_per_turn_after_other_restrictions: false,
         });
     }
+    // "Activate only if this creature has another activated ability."
+    // (Tazri, Stalwart Survivor's granted mana ability): the source has an
+    // activated ability besides this one, so at least two (CR 602.1).
+    if let ["activate", "only", "if", "this", noun, "has", "another", "activated", "ability"] =
+        words.as_slice()
+        && matches!(*noun, "creature" | "permanent" | "artifact" | "land")
+    {
+        let mut filter = match *noun {
+            "creature" => crate::target::ObjectFilter::creature(),
+            "artifact" => crate::target::ObjectFilter::artifact(),
+            "land" => crate::target::ObjectFilter::land(),
+            _ => crate::target::ObjectFilter::default(),
+        };
+        filter.min_activated_abilities = Some(2);
+        crate::word_claims::claim_tokens(tokens);
+        return Some(ParsedActivationRestriction {
+            presentation_text: normalized_surface(tokens), timing: None,
+            condition: Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))),
+            text_only_condition: None, normalization: ActivationRestrictionNormalizationFact::Preserve,
+            mana_usage_restriction: None, once_per_turn_after_other_restrictions: false,
+        });
+    }
     if let Some(parsed) = parse_cant_activate_this_ability_window_restriction(tokens) {
         return Some(parsed);
     }

@@ -858,6 +858,10 @@ pub enum Value {
     /// Size of the largest group of matching objects that share a name
     /// ("eight or more artifacts with the same name as one another").
     GreatestSharedNameCount(ObjectFilter),
+    /// The number of card types every matching object has ("if all cards
+    /// exiled with this Saga share a card type", All Good Things...). With no
+    /// matching objects there is no shared card type, so the value is 0.
+    CardTypesSharedByAll(ObjectFilter),
     TotalPower(ObjectFilter),
     TotalToughness(ObjectFilter),
     TotalManaValue(ObjectFilter),
@@ -1293,6 +1297,10 @@ pub enum Value {
     /// How many times matching players completed the named action in the
     /// window ("for each time you catalyzed this turn"). Appended.
     PlayerNamedActionCount { player: PlayerFilter, label: String, window: PlayerActionWindow },
+    /// How many cards were in the player's starting deck (CR 103.2;
+    /// commanders included, CR 903.5a): "if you had 200 or more cards in
+    /// your starting deck" (Whtz, the Bibliophile). Appended.
+    StartingDeckSize(PlayerFilter),
 }
 
 impl Value {
@@ -3545,6 +3553,9 @@ pub enum Condition {
     /// zone, including while it is phased out (unlike "is on the battlefield",
     /// CR 702.26b). A new incarnation is a different object (CR 400.7).
     SourceIsInExactZone(Zone),
+    /// "if it's a combat phase" (Merciful Mandate): any player's combat
+    /// phase is in progress (CR 506). Appended.
+    InCombatPhase,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -1885,13 +1885,40 @@ fn source_characteristic_lki_for_execution<'a>(
     game.source_characteristic_lki_snapshot(ctx.source, ctx.source_snapshot.as_ref())
 }
 
+/// CR 608.2n: an instant or sorcery is put into its owner's graveyard only as
+/// the final step of its resolution, so while its effects run it is still a
+/// spell on the stack ("the number of spells on the stack" counts it). The
+/// engine has already taken its entry off the stack list by then; the object
+/// itself is still in the stack zone.
+fn resolving_spell_still_on_stack(
+    game: &GameState,
+    filter: &crate::filter::ObjectFilter,
+    ctx: &ExecutionContext,
+) -> Option<ObjectId> {
+    let counts_stack = filter.zone == Some(Zone::Stack)
+        || filter.stack_kind == Some(crate::filter::StackObjectKind::Spell);
+    if !counts_stack || !filter.any_of.is_empty() {
+        return None;
+    }
+    let source = game.object(ctx.source)?;
+    let resolving = source.zone == Zone::Stack
+        && !game.stack.iter().any(|entry| entry.object_id == ctx.source);
+    resolving.then_some(ctx.source)
+}
+
 fn value_candidate_ids_for_filter(
     game: &GameState,
     filter: &crate::filter::ObjectFilter,
     ctx: &ExecutionContext,
 ) -> Vec<ObjectId> {
     if value_tagged_snapshots_for_filter(game, filter, ctx).is_none() {
-        return candidate_ids_for_filter(game, filter);
+        let mut ids = candidate_ids_for_filter(game, filter);
+        if let Some(resolving) = resolving_spell_still_on_stack(game, filter, ctx)
+            && !ids.contains(&resolving)
+        {
+            ids.push(resolving);
+        }
+        return ids;
     }
 
     let mut seen = HashSet::new();

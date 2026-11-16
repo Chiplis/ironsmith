@@ -251,6 +251,8 @@ pub enum WireRuntimeModification {
 pub struct WireScaleXValueEffect {
     pub target: ironsmith_core::ChooseSpec,
     pub multiplier: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_to: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

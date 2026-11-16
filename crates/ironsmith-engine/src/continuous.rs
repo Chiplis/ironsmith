@@ -6176,6 +6176,7 @@ fn filter_reads_ability_characteristics(filter: &ObjectFilter) -> bool {
     filter.has_tap_activated_ability
         || filter.has_non_mana_activated_ability
         || filter.has_activated_ability
+        || filter.min_activated_abilities.is_some()
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
@@ -6627,6 +6628,9 @@ fn filter_matches_layered_fast(
     if let Some(id) = filter.specific
         && object.id != id
     {
+        return Some(false);
+    }
+    if filter.excluded_specific == Some(object.id) {
         return Some(false);
     }
     if filter.source

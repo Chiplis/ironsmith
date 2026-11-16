@@ -2010,6 +2010,10 @@ impl Effect {
         Self::new(crate::effects::PrepareEffect::new(target))
     }
 
+    pub fn trigger_additional_time(target: crate::target::ChooseSpec, duration: Until) -> Self {
+        Self::new(crate::effects::TriggerAdditionalTimeEffect::new(target, duration))
+    }
+
     pub fn suspect(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::SuspectEffect::new(target))
     }
@@ -2164,6 +2168,10 @@ impl Effect {
 
     pub fn scale_x_value(target: crate::target::ChooseSpec, multiplier: u32) -> Self {
         Self::new(crate::effects::ScaleXValueEffect::new(target, multiplier))
+    }
+
+    pub fn set_x_value(target: crate::target::ChooseSpec, value: u32) -> Self {
+        Self::new(crate::effects::ScaleXValueEffect::set_to(target, value))
     }
 
     pub fn conditional_only(condition: Condition, if_true: Vec<Effect>) -> Self {

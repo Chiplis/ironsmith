@@ -2369,6 +2369,15 @@ impl GameState {
         creature: ObjectId,
         target: crate::combat_state::AttackTarget,
     ) {
+        // A creature is attacking at most once (CR 506.4): an entry already
+        // made attacking by one instruction isn't added again by another.
+        if self
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.attackers.iter().any(|info| info.creature == creature))
+        {
+            return;
+        }
         let attacked_permanent = target.attacked_permanent();
         let as_battle = matches!(target, crate::combat_state::AttackTarget::Battle(_));
         self.retain_attacking_role(creature, &target);

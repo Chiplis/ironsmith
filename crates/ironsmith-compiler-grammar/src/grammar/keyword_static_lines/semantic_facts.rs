@@ -379,6 +379,12 @@ fn parse_vehicle_prefix_suffix_marker(tokens: &[OwnedLexToken]) -> bool {
     {
         return true;
     }
+    if matches!(
+        crate::grammar::static_keyword_facts::early::parse_early_keyword_marker_tokens(tokens),
+        Some(crate::grammar::static_keyword_facts::early::EarlyKeywordMarkerKind::MultipliedPowerContributes)
+    ) {
+        return true;
+    }
     primitives::parse_all(
         tokens,
         (

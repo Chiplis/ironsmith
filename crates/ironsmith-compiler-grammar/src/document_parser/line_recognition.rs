@@ -283,6 +283,32 @@ fn recognize_triggered_line_inner(
         }
     }
 
+    // "Whenever a source you control deals damage, if at least one permanent
+    // or player was dealt exactly 2 of that damage, ..." (Matoc, Lavamancer):
+    // the `if` clause qualifies each damage receipt of the triggering event,
+    // so it belongs to the trigger header (an event-time qualification), not
+    // to a resolution-time intervening-if over a single representative event.
+    if let Some((header, after_trigger)) = grammar::split_lexed_once_on_comma(tokens_without_cap)
+        && header.len() > 1
+        && let Some((qualification, effect_tokens)) =
+            grammar::split_lexed_once_on_comma(after_trigger)
+        && crate::activation_and_restrictions::damage_recipient_exact_amount_qualification(
+            &crate::lexer::parser_token_word_refs(qualification),
+        )
+        .is_some()
+    {
+        let trigger_len = header.len() + 1 + qualification.len();
+        let trigger_tokens = &tokens_without_cap[1..trigger_len];
+        let probe = probe_triggered_split(trigger_tokens, effect_tokens, None, trailing_cap);
+        if let Some(parsed) = probe.supported_recognized(line, tokens_without_cap) {
+            parse_trace::event("trigger split: damage recipient exact-amount qualification");
+            return Ok(parsed);
+        }
+        if best_probe_error.is_none() {
+            best_probe_error = probe.preferred_error();
+        }
+    }
+
     // Once a triggered ability explicitly starts its post-trigger clause with
     // `if`, that condition is semantic: it is an intervening-if check, not
     // expendable punctuation. Keep track of the surface shape independently
@@ -778,6 +804,8 @@ pub(super) fn recognize_static_line(
                 semantic_lowering::StaticSpecialLineShape::HiddenAgenda
                     | semantic_lowering::StaticSpecialLineShape::DoubleAgenda
                     | semantic_lowering::StaticSpecialLineShape::StartingPlayer
+                    // Rulebreaker deck-construction allowances.
+                    | semantic_lowering::StaticSpecialLineShape::CommanderDeckAllowance
                     // Oath of Teferi: the typed reading lives in
                     // parse_static_line_impl; the document boundary must
                     // admit the line as static first.

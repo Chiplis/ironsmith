@@ -956,6 +956,17 @@ fn additional_trigger_copies_for_entry(
         }
     }
 
+    // Resolved rules keyed to the triggering object itself (Lwaxana Troi,
+    // Charming Guest): they apply whatever abilities that object has.
+    if entry.source_kind == TriggeredAbilitySourceKind::Object {
+        let current_turn = game.turn.turn_number;
+        for effect in &game.effect_store.trigger_multiplier_effects {
+            if effect.object == entry.source && effect.is_active(game, current_turn) {
+                copies += effect.copies;
+            }
+        }
+    }
+
     // CR 603.10a: a leaves-the-battlefield ability looks back in time, using
     // the abilities that existed immediately before the event. A duplicator
     // that left in the same event (Teysa Karlov dying alongside the other

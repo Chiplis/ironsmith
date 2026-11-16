@@ -49,6 +49,47 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
             effect_like_only: true, one_or_more,
         }));
     }
+    // "causes you to lose [exactly N] life" (Sahir, Visitor in Darkness): a
+    // life-loss event caused by a spell or ability, optionally of exactly N
+    // life. Damage-caused life loss is the damage event's consequence, not
+    // the spell's or ability's own life-loss instruction (CR 120.3a); the
+    // caused-by qualification reads only non-damage loss.
+    if suffix.starts_with(&["causes", "you", "to", "lose"]) && suffix.last() == Some(&"life") {
+        let amount_words = &suffix[4..suffix.len() - 1];
+        let exact = match amount_words {
+            [] => None,
+            ["exactly", amount] => match crate::util::parse_number_word_u32(amount) {
+                Some(amount) => Some(amount),
+                None => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        crate::word_claims::claim_words(&words);
+        let caused = crate::cards::builders::PredicateAst::Triggering(
+            crate::cards::builders::TriggeringPredicateAst::TriggeringEventCausedBy {
+                controller: controller.clone(),
+                effect_like_only: true,
+            },
+        );
+        let condition = match exact {
+            Some(amount) => crate::cards::builders::PredicateAst::And(
+                Box::new(caused),
+                Box::new(crate::cards::builders::PredicateAst::ValueComparison {
+                    left: crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
+                    operator: crate::effect::ValueComparisonOperator::Equal,
+                    right: crate::effect::Value::Fixed(amount as i32),
+                }),
+            ),
+            None => caused,
+        };
+        let actor = match controller { PlayerFilter::You => "you control", PlayerFilter::Opponent => "an opponent controls", _ => "a player controls" };
+        let amount_surface = exact.map(|amount| format!("exactly {amount} ")).unwrap_or_default();
+        return Ok(Some(TriggerSpec::ConditionQualified {
+            trigger: Box::new(TriggerSpec::PlayerLosesLife(PlayerFilter::You)),
+            condition,
+            surface: format!("a spell or ability {actor} causes you to lose {amount_surface}life"),
+        }));
+    }
     let trigger = if suffix.first() == Some(&"counters") {
         if suffix[1..] != ["a", "spell"] { return Ok(None); }
         TriggerSpec::SpellCountered { filter: None, controller: PlayerFilter::Any }

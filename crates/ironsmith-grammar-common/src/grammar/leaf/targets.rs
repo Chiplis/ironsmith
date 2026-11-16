@@ -551,7 +551,12 @@ fn normalize_random_target_marker(tokens: &[OwnedLexToken]) -> NormalizedTargetT
             }),
         };
     }
-    if let Some(word_range) = parse_at_random_word_range(&words)
+    // "a random opponent" (Alexander, Ship's Fool): the adjective names the
+    // same random choice as "an opponent chosen at random" (CR 115.7 style
+    // game-made selection).
+    let at_random_range = parse_random_adjective_word_range(&words)
+        .or_else(|| parse_at_random_word_range(&words));
+    if let Some(word_range) = at_random_range
         && let Some(token_start) = view.token_start_indices().get(word_range.start).copied()
     {
         let token_end = view
@@ -589,6 +594,16 @@ fn random_suffix_start(words: &[&str], kind: LeafRandomTargetKind) -> Option<usi
         return None;
     }
     input.is_empty().then_some(start)
+}
+
+/// "a random <noun>" / "an random <noun>": the word range of "random" after
+/// a leading singular article, so the remaining "a <noun>" parses as the
+/// selected object or player.
+fn parse_random_adjective_word_range(words: &[&str]) -> Option<Range<usize>> {
+    match words {
+        ["a" | "an", "random", _, ..] => Some(1..2),
+        _ => None,
+    }
 }
 
 fn parse_at_random_word_range(words: &[&str]) -> Option<Range<usize>> {

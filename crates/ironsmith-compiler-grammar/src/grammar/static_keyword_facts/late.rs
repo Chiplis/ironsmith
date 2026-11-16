@@ -266,6 +266,9 @@ pub enum LifeChangePlayerFact {
     You,
     Opponent,
     Any,
+    /// "If enchanted player would lose life" (Selenia's Curse): the player
+    /// the source Aura is attached to.
+    EnchantedPlayer,
 }
 
 /// "If you would gain life, you gain twice that much life instead." /
@@ -805,6 +808,7 @@ fn parse_double_life_change_lexed(input: &mut LexStream<'_>) -> WResult<DoubleLi
         semantic_kw("you").value(LifeChangePlayerFact::You),
         semantic_phrase(&["an", "opponent"]).value(LifeChangePlayerFact::Opponent),
         semantic_phrase(&["a", "player"]).value(LifeChangePlayerFact::Any),
+        semantic_phrase(&["enchanted", "player"]).value(LifeChangePlayerFact::EnchantedPlayer),
     ))
     .parse_next(input)?;
     semantic_kw("would").parse_next(input)?;

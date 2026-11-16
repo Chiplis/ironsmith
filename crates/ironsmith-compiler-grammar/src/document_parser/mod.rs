@@ -5435,6 +5435,9 @@ fn try_merge_collection_cast_count_instead_of_one(
         return false;
     };
     let restated_words = crate::lexer::parser_token_word_refs(&body[comma + 1..]);
+    if matches!(restated_words.as_slice(), ["you", "may", "put", ..] | ["put", ..]) {
+        return try_merge_collection_put_count_instead_of_one(lines, line, body, comma);
+    }
     let ["you", "may", "cast", "up", "to", count, ..] = restated_words.as_slice() else {
         return false;
     };
@@ -5529,6 +5532,143 @@ fn try_merge_collection_cast_count_instead_of_one(
     if found != 1 {
         return false;
     }
+    previous.parsed_effects = Some(effects);
+    previous.text = format!("{} {}", previous.text.trim(), line.info.raw_line.trim());
+    previous.info.raw_line = format!("{}\n{}", previous.info.raw_line.trim(), line.info.raw_line.trim());
+    previous.info.source_tokens.extend(line.info.source_tokens.iter().cloned());
+    true
+}
+
+/// "Ferocious — If <condition>, you may put two creature cards onto the
+/// battlefield instead of one." (See the Unwritten): the labeled line restates
+/// the preceding statement's single choice from a looked-at collection with a
+/// larger count. Under the condition that choice picks up to that many (same
+/// filter, same collection, same destination); otherwise the original count
+/// applies. "Put up to two creature cards from among the revealed cards into
+/// your hand instead of one" (Gather the Pack) restates it the same way.
+fn try_merge_collection_put_count_instead_of_one(
+    lines: &mut [RecognizedLine],
+    line: &PreprocessedLine,
+    body: &[crate::lexer::OwnedLexToken],
+    comma: usize,
+) -> bool {
+    use crate::cards::builders::{EffectAst, ObjectChoiceEffectAst};
+    let restated = &body[comma + 1..];
+    let restated_words = crate::lexer::parser_token_word_refs(restated);
+    let mut index = match restated_words.as_slice() {
+        ["you", "may", "put", ..] => 3,
+        _ => 1,
+    };
+    let up_to = restated_words.get(index..index + 2) == Some(&["up", "to"][..]);
+    if up_to {
+        index += 2;
+    }
+    let Some(count) = restated_words
+        .get(index)
+        .and_then(|word| crate::util::parse_number_word_u32(word))
+        .filter(|count| *count > 1)
+    else {
+        return false;
+    };
+    let tail = &restated_words[index + 1..];
+    let Some(tail) = tail.strip_suffix(&["instead", "of", "one"][..]) else {
+        return false;
+    };
+    let (noun_words, zone) = if let Some(noun) = tail.strip_suffix(&["onto", "the", "battlefield"][..]) {
+        (noun, crate::zone::Zone::Battlefield)
+    } else if let Some(noun) = tail.strip_suffix(&["into", "your", "hand"][..]) {
+        (noun, crate::zone::Zone::Hand)
+    } else {
+        return false;
+    };
+    // The restated noun names the same collection: either bare ("two
+    // creature cards") or explicitly from the looked-at cards.
+    let noun_words = noun_words
+        .strip_suffix(&["from", "among", "the", "revealed", "cards"][..])
+        .or_else(|| noun_words.strip_suffix(&["from", "among", "them"][..]))
+        .unwrap_or(noun_words);
+    if noun_words.is_empty() {
+        return false;
+    }
+    let noun_tokens = crate::lexer::synthetic_word_tokens(noun_words.iter().copied());
+    let Some(restated_filter) = crate::effect_sentences::parse_looked_card_choice_filter_entry(&noun_tokens) else {
+        return false;
+    };
+    let Ok(predicate) = crate::grammar::filters::parse_condition_predicate_lexed(&body[1..comma]) else {
+        return false;
+    };
+    let Some(RecognizedLine::Statement(previous)) = lines.last_mut() else {
+        return false;
+    };
+    let Ok(mut effects) = parse_effect_sentences_lexed(&previous.parse_tokens) else {
+        return false;
+    };
+    // The single looked-card choice whose chosen group moves to the restated
+    // destination.
+    fn restate(
+        effects: &mut [EffectAst],
+        found: &mut usize,
+        zone: crate::zone::Zone,
+        restated_filter: &crate::target::ObjectFilter,
+        count: u32,
+    ) {
+        let mut index = 0;
+        while index < effects.len() {
+            // The chosen group's move: a group move, or a per-card move of
+            // each chosen card (optionally after revealing them).
+            let moves_chosen_to_zone = |tag: &crate::tag::TagRef, effect: Option<&EffectAst>| match effect {
+                Some(EffectAst::MoveTaggedGroupToZone { tag: moved, zone: moved_zone }) => {
+                    moved == tag && *moved_zone == zone
+                }
+                Some(EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTagged { tag: moved, effects: moves })) => {
+                    moved == tag
+                        && matches!(moves.as_slice(), [single] if format!("{single:?}").contains(&format!("zone: {zone:?}")))
+                }
+                _ => false,
+            };
+            let matches = match &effects[index] {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, count: choice, tag, .. }) => {
+                    (*choice == crate::effect::ChoiceCount::up_to(1)
+                        || *choice == crate::effect::ChoiceCount::exactly(1))
+                        && (moves_chosen_to_zone(tag, effects.get(index + 1))
+                            || moves_chosen_to_zone(tag, effects.get(index + 2)))
+                        && filter.card_types == restated_filter.card_types
+                        && filter.subtypes == restated_filter.subtypes
+                }
+                _ => false,
+            };
+            if matches {
+                *found += 1;
+                if *found == 1
+                    && let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count: choice, .. }) = &mut effects[index]
+                {
+                    *choice = crate::effect::ChoiceCount::up_to(count as usize);
+                }
+            } else if let EffectAst::Sequence { effects: nested } = &mut effects[index] {
+                restate(nested, found, zone, restated_filter, count);
+            } else {
+                crate::model::visit::for_each_nested_effects_mut(&mut effects[index], false, |nested| {
+                    restate(nested, found, zone, restated_filter, count)
+                });
+            }
+            index += 1;
+        }
+    }
+    // The restatement replaces the whole procedure under its condition (a
+    // self-replacement, CR 614.1a): the same collection, a larger choice.
+    let original = effects.clone();
+    let mut found = 0usize;
+    restate(&mut effects, &mut found, zone, &restated_filter, count);
+    if found != 1 {
+        return false;
+    }
+    let effects = vec![EffectAst::SelfReplacement {
+        predicate,
+        if_true: effects,
+        if_false: original,
+        attach_to_previous_ability: false,
+    }];
+    crate::word_claims::claim_tokens(&line.info.source_tokens);
     previous.parsed_effects = Some(effects);
     previous.text = format!("{} {}", previous.text.trim(), line.info.raw_line.trim());
     previous.info.raw_line = format!("{}\n{}", previous.info.raw_line.trim(), line.info.raw_line.trim());

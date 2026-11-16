@@ -26,6 +26,9 @@ pub enum StaticSpecialLineShape {
     DoubleAgenda,
     StartingPlayer,
     AnyNumberNamedDeckConstruction,
+    /// "A deck with this commander can have ..." / "If ~ is your commander,
+    /// ..." (Rulebreaker): see [`parse_commander_deck_allowance_words`].
+    CommanderDeckAllowance,
     FirstEquipCostAlternative,
 }
 
@@ -184,6 +187,125 @@ pub fn is_named_deck_construction(words: &[&str]) -> bool {
         && words.len() > tail_start + 2
 }
 
+/// One class head: card-type, supertype, and subtype words ("basic land",
+/// "artifact creature", "equipment", "phyrexian").
+fn deck_card_class_head(words: &[&str]) -> Option<ironsmith_core::DeckCardClass> {
+    use crate::grammar::primitives::probe_shape;
+    if words.is_empty() {
+        return None;
+    }
+    let mut class = ironsmith_core::DeckCardClass::default();
+    for word in words {
+        if let Some(card_type) = probe_shape(leaf::parse_leaf_card_type_complete(word)) {
+            class.card_types.push(card_type);
+        } else if let Some(supertype) = probe_shape(leaf::parse_leaf_supertype_complete(word)) {
+            class.supertypes.push(supertype);
+        } else if let Some(subtype) = probe_shape(leaf::parse_leaf_subtype_complete(word)) {
+            class.subtypes.push(subtype);
+        } else {
+            return None;
+        }
+    }
+    Some(class)
+}
+
+/// "<head> (and <head>)* cards [with mana value N or greater]" at the start
+/// of `words`: the classes and the words read.
+fn deck_card_class_list(words: &[&str]) -> Option<(Vec<ironsmith_core::DeckCardClass>, usize)> {
+    let cards_at = words.iter().position(|word| matches!(*word, "cards" | "card"))?;
+    let mut classes = Vec::new();
+    for head in words[..cards_at].split(|word| *word == "and") {
+        classes.push(deck_card_class_head(head)?);
+    }
+    let mut used = cards_at + 1;
+    let rest = &words[used..];
+    if phrase_is_prefix(rest, &["with", "mana", "value"]) {
+        let (minimum, consumed) =
+            leaf::parse_leaf_number_prefix_words(&rest[3..]).and_then(|number| number.into_fixed())?;
+        if !phrase_is_prefix(&rest[3 + consumed..], &["or", "greater"]) {
+            return None;
+        }
+        for class in &mut classes {
+            class.min_mana_value = Some(minimum);
+        }
+        used += 3 + consumed + 2;
+    }
+    Some((classes, used))
+}
+
+/// "can have" objects: "any <classes>" and "<classes> of any color identity",
+/// joined by "and". Every named class ignores the commander's color identity
+/// (CR 903.5c).
+fn deck_allowance_haves(mut words: &[&str], into: &mut Vec<ironsmith_core::DeckCardClass>) -> Option<()> {
+    loop {
+        if let Some(rest) = words.strip_prefix(&["any"]) {
+            let (classes, used) = deck_card_class_list(rest)?;
+            into.extend(classes);
+            words = &rest[used..];
+        } else {
+            let (classes, used) = deck_card_class_list(words)?;
+            words = words[used..].strip_prefix(&["of", "any", "color", "identity"])?;
+            into.extend(classes);
+        }
+        match words {
+            [] => return Some(()),
+            ["and", rest @ ..] => words = rest,
+            _ => return None,
+        }
+    }
+}
+
+/// Rulebreaker commander deck-construction allowances:
+/// "A deck with this commander can have <classes> of any color identity and
+/// any basic land cards." / "... has no maximum deck size." / "If ~ is your
+/// commander, the color identity of <classes> in your deck can include N
+/// color(s) of your choice not in your commander's color identity, and your
+/// deck can have any basic land cards."
+pub fn parse_commander_deck_allowance_words(
+    words: &[&str],
+) -> Option<ironsmith_core::CommanderDeckAllowance> {
+    let mut allowance = ironsmith_core::CommanderDeckAllowance::default();
+    if let Some(rest) = words.strip_prefix(&["a", "deck", "with", "this", "commander"]) {
+        if let Some(haves) = rest.strip_prefix(&["can", "have"]) {
+            deck_allowance_haves(haves, &mut allowance.any_color_identity)?;
+        } else if rest == ["has", "no", "maximum", "deck", "size"] {
+            allowance.no_maximum_deck_size = true;
+        } else {
+            return None;
+        }
+        return Some(allowance);
+    }
+    let rest = words.strip_prefix(&["if"])?;
+    let is_at = rest.windows(3).position(|window| window == ["is", "your", "commander"])?;
+    if is_at == 0 || !(is_source_reference_words(&rest[..is_at]) || rest[..is_at] == ["~"]) {
+        return None;
+    }
+    let rest = rest[is_at + 3..].strip_prefix(&["the", "color", "identity", "of"])?;
+    let (classes, used) = deck_card_class_list(rest)?;
+    let rest = rest[used..].strip_prefix(&["in", "your", "deck", "can", "include"])?;
+    let (count, consumed) =
+        leaf::parse_leaf_number_prefix_words(rest).and_then(|number| number.into_fixed())?;
+    let rest = &rest[consumed..];
+    let rest = rest
+        .strip_prefix(&["color"])
+        .or_else(|| rest.strip_prefix(&["colors"]))?;
+    let rest = rest.strip_prefix(&[
+        "of", "your", "choice", "not", "in", "your", "commanders", "color", "identity",
+    ])?;
+    if count == 0 {
+        return None;
+    }
+    allowance.extra_identity_colors = Some(ironsmith_core::ExtraIdentityColors { classes, count });
+    match rest {
+        [] => {}
+        ["and", "your", "deck", "can", "have", haves @ ..] => {
+            deck_allowance_haves(haves, &mut allowance.any_color_identity)?;
+        }
+        _ => return None,
+    }
+    Some(allowance)
+}
+
 pub fn parse_static_special_line_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticSpecialLineShape> {
@@ -222,6 +344,8 @@ pub fn parse_static_special_line_tokens(
         Some(StaticSpecialLineShape::StartingPlayer)
     } else if is_draft_rule(&words) {
         Some(StaticSpecialLineShape::DraftRule)
+    } else if parse_commander_deck_allowance_words(&words).is_some() {
+        Some(StaticSpecialLineShape::CommanderDeckAllowance)
     } else if is_named_deck_construction(&words) || is_deck_construction_instruction(&words) {
         Some(StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
     } else if super::parse_first_keyword_cost_alternative_tokens(tokens).is_some() {

@@ -198,9 +198,18 @@ pub(crate) fn capture_completed_spell_cast_with_outputs(
                     "completed cast publication requires its chosen target receipt".into(),
                 ));
             }
-            let mut event = game.ensure_trigger_event_provenance(
-                TriggerEvent::new_with_provenance(cast, provenance),
-            );
+            let mut cast_event = TriggerEvent::new_with_provenance(cast, provenance);
+            // The assisting player (CR 702.132a) travels with the cast event
+            // so the spell's cast triggers can name them as "that player".
+            if let Some(assistant) = game.object(spell).and_then(|object| object.assisting_player) {
+                let mut tags = cast_event.player_tags().clone();
+                tags.insert(
+                    crate::tag::TagKey::from(ironsmith_core::tag::ASSISTING_PLAYERS_TAG),
+                    vec![assistant],
+                );
+                cast_event = cast_event.with_player_tags(tags);
+            }
+            let mut event = game.ensure_trigger_event_provenance(cast_event);
             let mut captured = TriggerQueue::new();
             let capture =
                 queue_triggers_from_event_with_outputs(game, &mut captured, event.clone(), true);
@@ -813,6 +822,40 @@ pub(super) fn queue_targeting_crime(
     }
 }
 
+/// "Whenever you ... select one or more targets at random" (Chira, All In):
+/// a spell or ability some of whose announced targets the game picked at
+/// random (CR 601.2c, 602.2b, 603.3d) is one random selection by its
+/// controller, however many target slots were random.
+pub(super) fn queue_random_target_selection_event(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    entry: &StackEntry,
+) {
+    let random = entry.target_assignments.iter().any(|assignment| {
+        !assignment.range.is_empty()
+            && crate::targeting::spec_selects_targets_at_random(&assignment.spec)
+    });
+    if !random {
+        return;
+    }
+    let provenance =
+        game.alloc_child_event_provenance(entry.provenance, crate::events::EventKind::KeywordAction);
+    queue_triggers_from_event(
+        game,
+        trigger_queue,
+        TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(
+                KeywordActionKind::SelectTargetsAtRandom,
+                entry.controller,
+                entry.object_id,
+                1,
+            ),
+            provenance,
+        ),
+        true,
+    );
+}
+
 pub(super) fn queue_becomes_targeted_events(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -872,6 +915,7 @@ pub(super) fn capture_announced_targeting(
         entry.is_ability,
         entry.provenance,
     );
+    queue_random_target_selection_event(game, &mut captured, &entry);
     let removed = game.stack.remove(slot);
     debug_assert_eq!(removed.target_id(), entry.target_id());
     game.bump_mutation_revision();

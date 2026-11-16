@@ -1101,6 +1101,9 @@ fn describe_turn_history_value_comparison_prose(
                 .map(|action| match action {
                     ironsmith_core::KeywordActionKind::Scry => "scried".to_string(),
                     ironsmith_core::KeywordActionKind::Surveil => "surveilled".to_string(),
+                    ironsmith_core::KeywordActionKind::FaceDilemma => {
+                        "faced a dilemma".to_string()
+                    }
                     other => format!("performed {}", other.infinitive()),
                 })
                 .collect::<Vec<_>>()
@@ -3644,6 +3647,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::NoSpellsWereCastLastTurn => "no spells were cast last turn".to_string(),
         Condition::ItIsNight => "it's night".to_string(),
         Condition::InEndingPhase => "it's an ending phase".to_string(),
+        Condition::InCombatPhase => "it's a combat phase".to_string(),
         Condition::FirstCombatPhaseOfTurn => "it's the first combat phase of the turn".to_string(),
         Condition::FirstEndStepOfTurn => "it's the first end step of the turn".to_string(),
         Condition::FirstUpkeepStepOfTurn => "it's the first upkeep of the turn".to_string(),
@@ -3839,6 +3843,28 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SourceIsFaceDown => "this source is transformed".to_string(),
         Condition::SourceMatches(filter) => {
+            // "this creature has another activated ability" (Tazri's granted
+            // mana ability): the source has one more activated ability than
+            // the one being activated.
+            if filter.min_activated_abilities == Some(2) {
+                let mut rest = filter.clone();
+                rest.min_activated_abilities = None;
+                if rest.zone == Some(Zone::Battlefield) {
+                    rest.zone = None;
+                }
+                let noun = match rest.card_types.as_slice() {
+                    [card_type] => {
+                        let mut only_type = ObjectFilter::default();
+                        only_type.card_types = vec![*card_type];
+                        (rest == only_type).then(|| describe_card_type_word_local(*card_type).to_string())
+                    }
+                    [] if rest == ObjectFilter::default() => Some("permanent".to_string()),
+                    _ => None,
+                };
+                if let Some(noun) = noun {
+                    return format!("this {noun} has another activated ability");
+                }
+            }
             if filter.modified {
                 let mut state = filter.clone();
                 state.modified = false;
@@ -4740,8 +4766,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             // "If it's a creature, it gets +1/+1" (Griffin Canyon, Teyo): a
             // bare type check on a permanent reference matches tokens too, so
             // it never reads with the card noun unless Oracle wrote one.
+            // "Put two +1/+1 counters on target artifact ... If it isn't a
+            // creature" (Tawnos's Tinkering): the counter recipient is that
+            // same permanent reference, not a "this way" result set.
             if !tagged_condition_is_known_card_reference(tag)
-                && this_way_action_from_tag(tag).is_none()
+                && (this_way_action_from_tag(tag).is_none()
+                    || tag.as_str().split('_').next() == Some("counters"))
                 && filter.zone.is_none()
                 && !filter.has_explicit_card_noun()
                 && !filter.nontoken
@@ -6405,6 +6435,19 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 return format!(
                     "an opponent has at least {margin_text} more cards in hand than you"
                 );
+            }
+            // "all cards exiled with this Saga share a card type" (All Good
+            // Things...): at least one card type common to every object.
+            if let (
+                Value::CardTypesSharedByAll(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(1),
+            ) = (left.unhinted(), operator, right.unhinted())
+            {
+                let objects = pluralize_relative_object_phrase(strip_indefinite_article(
+                    &filter.description(),
+                ));
+                return format!("all {objects} share a card type");
             }
             // "you control eight or more artifacts with the same name as one
             // another" (Mechanized Production).

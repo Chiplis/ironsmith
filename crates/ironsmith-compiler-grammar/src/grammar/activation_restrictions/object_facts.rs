@@ -51,7 +51,9 @@ pub enum TargetRestrictionEnvelope {
     ControlledSpellsOrAbilities { opponents: bool, descriptors: Option<Range<usize>> },
     SpellsOrAbilities,
     SourceAbility { full_source_tokens: Range<usize> },
-    AbilitiesFrom { source_descriptor_tokens: Range<usize> },
+    /// "abilities from <descriptor> sources [your opponents control | you
+    /// control]"; `source_controller` is `Some(true)` for opponents.
+    AbilitiesFrom { source_descriptor_tokens: Range<usize>, source_controller: Option<bool> },
     /// Complete noun phrases on both sides, including their own controller tails.
     PairedControlledSources {
         spell_tokens: Range<usize>, spell_noun: usize,
@@ -259,13 +261,25 @@ pub fn parse_target_restriction_envelope_tokens(
 
     // Only the ability is prohibited, while the descriptor belongs to its
     // source. Keep this distinct from spells-or-abilities from that source.
+    // "abilities from artifact sources your opponents control" keeps the
+    // source's controller tail (Species 8472).
     if words.get(4..6) == Some(&["abilities", "from"][..])
-        && matches!(words.last().copied(), Some("source" | "sources"))
-        && words.len() > 7
+        && let Some(noun) = words
+            .iter()
+            .rposition(|word| matches!(*word, "source" | "sources"))
+        && noun > 6
+        && (noun + 1 == words.len()
+            || exact_any(&words[noun + 1..], &[&["your", "opponents", "control"], &["you", "control"]]))
     {
-        crate::word_claims::claim_words(&words[words.len() - 1..]);
+        crate::word_claims::claim_words(&words[noun..noun + 1]);
+        let source_controller = match words.len() - noun - 1 {
+            0 => None,
+            3 => Some(true),
+            _ => Some(false),
+        };
         return Some(TargetRestrictionEnvelope::AbilitiesFrom {
-            source_descriptor_tokens: token_range_for_words(tokens, &view, 6..words.len() - 1)?,
+            source_descriptor_tokens: token_range_for_words(tokens, &view, 6..noun)?,
+            source_controller,
         });
     }
 

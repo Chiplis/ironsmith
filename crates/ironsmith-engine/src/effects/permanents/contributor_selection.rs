@@ -163,6 +163,42 @@ pub(crate) fn stations_using_toughness(game: &GameState, object_id: ObjectId) ->
         .contains(&KeywordMarkerMechanic::StationsUsingToughness)
 }
 
+/// The factor a contributor's power is multiplied by when it is tapped to
+/// station a permanent (CR 702.184a): "Sulu stations Spacecraft ... as
+/// though his power were tripled". `stationed_is_spacecraft` is whether the
+/// permanent being stationed is a Spacecraft.
+pub(crate) fn station_power_multiplier<'a>(
+    mechanics: impl IntoIterator<Item = &'a KeywordMarkerMechanic>,
+    stationed_is_spacecraft: bool,
+) -> i64 {
+    mechanics
+        .into_iter()
+        .filter_map(|mechanic| match mechanic {
+            KeywordMarkerMechanic::ContributesMultipliedPower {
+                stations: true,
+                stations_spacecraft_only,
+                multiplier,
+                ..
+            } if !*stations_spacecraft_only || stationed_is_spacecraft => {
+                Some(i64::from(*multiplier))
+            }
+            _ => None,
+        })
+        .fold(1i64, i64::saturating_mul)
+}
+
+/// The station multiplier of a contributor on the battlefield.
+pub(crate) fn station_power_multiplier_on_battlefield(
+    game: &GameState,
+    object_id: ObjectId,
+    stationed_is_spacecraft: bool,
+) -> i64 {
+    station_power_multiplier(
+        keyword_marker_mechanics(game, object_id).iter(),
+        stationed_is_spacecraft,
+    )
+}
+
 pub(super) fn contribution_value(game: &GameState, object_id: ObjectId, crew: bool) -> i32 {
     let mechanics = keyword_marker_mechanics(game, object_id);
     // A crew-only marker never changes how a creature saddles.
@@ -173,7 +209,24 @@ pub(super) fn contribution_value(game: &GameState, object_id: ObjectId, crew: bo
     let base = if use_toughness {
         object_toughness(game, object_id)
     } else {
-        object_power(game, object_id)
+        // "crews Vehicles as though his power were tripled" (Sulu): the
+        // multiplied power is what the creature contributes.
+        object_power(game, object_id).saturating_mul(
+            mechanics
+                .iter()
+                .filter_map(|mechanic| match mechanic {
+                    KeywordMarkerMechanic::ContributesMultipliedPower {
+                        crews,
+                        saddles,
+                        multiplier,
+                        ..
+                    } if (crew && *crews) || (!crew && *saddles) => {
+                        i32::try_from(*multiplier).ok()
+                    }
+                    _ => None,
+                })
+                .fold(1i32, i32::saturating_mul),
+        )
     };
     base + mechanics
         .iter()

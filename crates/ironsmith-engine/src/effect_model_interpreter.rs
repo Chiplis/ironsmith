@@ -1759,6 +1759,7 @@ where
         grant.while_player_controls = payload.while_player_controls.clone();
         grant.control_duration = payload.control_duration.clone();
         grant.permanents_enter_tapped = payload.permanents_enter_tapped;
+        grant.beneficiary_is_each_exiler = payload.beneficiary_is_each_exiler;
         grant = grant.with_lands_enter_tapped(payload.lands_enter_tapped);
         return Ok(Effect::new(grant));
     }
@@ -2197,6 +2198,9 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PrepareEffect>(&effect) {
+        return Ok(Effect::new(payload.clone()));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::TriggerAdditionalTimeEffect>(&effect) {
         return Ok(Effect::new(payload.clone()));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SuspectEffect>(&effect) {

@@ -3070,6 +3070,10 @@
                 "{} is goaded for as long as that player controls it",
                 capitalize_first(&target)
             ),
+            crate::effect::Until::YouStopControllingThis => format!(
+                "{} is goaded for as long as you control this permanent",
+                capitalize_first(&target)
+            ),
             _ => format!("Goad {target}"),
         };
         return format!("{rendered}{}", choose_spec_dynamic_count_value_where_clause(&goad.target).unwrap_or_default());
@@ -3225,6 +3229,22 @@
             return "it becomes plotted".to_string();
         }
         return format!("{} becomes plotted", describe_choose_spec(&plotted.target));
+    }
+    // "For as long as this creature remains tapped, if a triggered ability of
+    // that creature triggers, that ability triggers an additional time"
+    // (Lwaxana Troi, Charming Guest).
+    if let Some(multiplier) = effect.downcast_ref::<crate::effects::TriggerAdditionalTimeEffect>() {
+        let subject = describe_goad_target(&multiplier.target);
+        let times = match multiplier.copies {
+            1 => "an additional time".to_string(),
+            2 => "two additional times".to_string(),
+            copies => format!("{copies} additional times"),
+        };
+        let rule = format!("if a triggered ability of {subject} triggers, that ability triggers {times}");
+        return match &multiplier.duration {
+            crate::effect::Until::Forever => capitalize_first(&rule),
+            duration => format!("{}, {rule}", capitalize_first(describe_until(duration).trim())),
+        };
     }
     if let Some(prepare) = effect.downcast_ref::<crate::effects::PrepareEffect>() {
         let state = if prepare.unprepare { "unprepared" } else { "prepared" };
@@ -3712,6 +3732,9 @@
         );
     }
     if let Some(scale_x) = effect.downcast_ref::<crate::effects::ScaleXValueEffect>() {
+        if let Some(value) = scale_x.set_to {
+            return format!("have the value of X become {value}");
+        }
         if scale_x.multiplier == 2 {
             return "Double the value of X".to_string();
         }
@@ -6403,6 +6426,23 @@
                 };
                 return format!("When {subject} {event} this turn, {delayed_text}");
             }
+            if let Some(filter) = &schedule.target_filter
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == ironsmith_core::FOUGHT_THIS_WAY_TAG
+                })
+            {
+                // "Whenever a creature that fought this way dies this turn"
+                // (T'Pring, Never Parted).
+                let mut base = filter.clone();
+                base.zone = None;
+                base.tagged_constraints.retain(|constraint| {
+                    constraint.tag.as_str() != ironsmith_core::FOUGHT_THIS_WAY_TAG
+                });
+                let subject = with_indefinite_article(&describe_for_each_filter(&base));
+                return format!(
+                    "Whenever {subject} that fought this way dies this turn, {delayed_text}"
+                );
+            }
             if let Some(filter) = &schedule.target_filter {
                 let subject = with_indefinite_article(&describe_for_each_filter(filter));
                 return format!(
@@ -8407,6 +8447,30 @@
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
+        // "For each card exiled this way, the player who exiled it may play
+        // it for as long as it remains exiled." (Vulcan Mind-Meld)
+        if grant_play_tagged.beneficiary_is_each_exiler {
+            let verb = if grant_play_tagged.allow_land { "play" } else { "cast" };
+            let duration = match grant_play_tagged.duration {
+                crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => " this turn",
+                _ => " for as long as it remains exiled",
+            };
+            let mana = match grant_play_tagged.mana_spend_mode {
+                ironsmith_core::value_model::ManaSpendMode::Normal => String::new(),
+                ironsmith_core::value_model::ManaSpendMode::AnyType => {
+                    ". Mana of any type can be spent to cast spells this way".to_string()
+                }
+                ironsmith_core::value_model::ManaSpendMode::AnyColor => {
+                    ". Mana can be spent as though it were mana of any color to cast spells this way".to_string()
+                }
+                ironsmith_core::value_model::ManaSpendMode::ColorlessAsAnyColor => {
+                    ". Colorless mana can be spent as though it were mana of any color to cast spells this way".to_string()
+                }
+            };
+            return format!(
+                "For each card exiled this way, the player who exiled it may {verb} it{duration}{mana}"
+            );
+        }
         // "You may play target snow permanent card from your graveyard this
         // turn. If you do, it enters tapped." (Kaldring, the Rimestaff)
         if grant_play_tagged.permanents_enter_tapped {
@@ -8744,7 +8808,12 @@
                 | ironsmith_core::GrantPlayTaggedObjectSurface::ThatSpell
             ));
         let helper_tag = helper_tag || helper_consult_match || authored_card_reference;
-        let object_text = if grant_play_tagged.cast_pool_is_plural && helper_tag {
+        let authored_chosen_cards = grant_play_tagged.surface.as_ref().is_some_and(|surface| {
+            surface.object == Some(ironsmith_core::GrantPlayTaggedObjectSurface::TheChosenCards)
+        });
+        let object_text = if authored_chosen_cards {
+            "the chosen cards".to_string()
+        } else if grant_play_tagged.cast_pool_is_plural && helper_tag {
             if grant_play_tagged.allow_land {
                 // "You may play lands and cast spells from among the exiled
                 // cards" (Elder Brain): the authored definite description.
@@ -8840,6 +8909,18 @@
             || authored_card_reference
         {
             "that card".to_string()
+        } else if grant_play_tagged.tag.as_str() == "triggering" {
+            // "you may play those cards" over the cards a "one or more cards"
+            // zone-change trigger moved (The Madcap Jester).
+            if grant_play_tagged.cast_pool_is_plural
+                || grant_play_tagged.surface.as_ref().is_some_and(|surface| {
+                    surface.object == Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThoseCards)
+                })
+            {
+                "those cards".to_string()
+            } else {
+                "that card".to_string()
+            }
         } else {
             format!("tagged '{}' cards", grant_play_tagged.tag.as_str())
         };
@@ -10197,6 +10278,36 @@
         {
             return format!("For each {basis}, {repeated}");
         }
+        // "Copy that card three times. You may cast the copies without
+        // paying their mana costs." (Mnemonic Deluge): the repetition counts
+        // copies, so it attaches to the copy instruction. A bound count reads
+        // "Copy that card X times, where X is ..." (Infinite Diversity).
+        if let Some(cast_tail) = {
+                let body = repeated.trim_end_matches('.');
+                body.strip_prefix("Copy it. You may cast the copy")
+                    .or_else(|| body.strip_prefix("copy it. You may cast the copy"))
+                    // An authored separate "Copy that card." instruction.
+                    .or_else(|| body.strip_prefix("Copy that card. You may cast the copy"))
+                    .or_else(|| body.strip_prefix("copy that card. You may cast the copy"))
+            }
+            && matches!(cast_tail, "" | " without paying its mana cost")
+            && let Some(times) = match repeat.count.unhinted() {
+                Value::Fixed(2) => Some("twice".to_string()),
+                Value::Fixed(count) if *count > 2 => Some(format!(
+                    "{} times",
+                    small_number_word(*count as u32).unwrap_or_else(|| count.to_string())
+                )),
+                Value::Fixed(_) => None,
+                _ => Some(format!("X times, where X is {}", describe_value(&repeat.count))),
+            }
+        {
+            let cost = if cast_tail.is_empty() {
+                ""
+            } else {
+                " without paying their mana costs"
+            };
+            return format!("Copy that card {times}. You may cast the copies{cost}");
+        }
         // A repeated multi-clause process (Torment of Hailfire's "loses 3
         // life unless ...") cannot carry a trailing "X times" unambiguously.
         if !matches!(repeat.count.unhinted(), Value::Fixed(_))
@@ -10207,35 +10318,6 @@
                 describe_value(&repeat.count),
                 capitalize_first(&repeated)
             );
-        }
-        // "Copy that card three times. You may cast the copies without
-        // paying their mana costs." (Mnemonic Deluge): the repetition counts
-        // copies, so it attaches to the copy instruction.
-        if let Value::Fixed(count) = repeat.count.unhinted()
-            && *count >= 2
-            && let Some(cast_tail) = {
-                let body = repeated.trim_end_matches('.');
-                body.strip_prefix("Copy it. You may cast the copy")
-                    .or_else(|| body.strip_prefix("copy it. You may cast the copy"))
-                    // An authored separate "Copy that card." instruction.
-                    .or_else(|| body.strip_prefix("Copy that card. You may cast the copy"))
-                    .or_else(|| body.strip_prefix("copy that card. You may cast the copy"))
-            }
-            && matches!(cast_tail, "" | " without paying its mana cost")
-        {
-            let times = match *count {
-                2 => "twice".to_string(),
-                n => format!(
-                    "{} times",
-                    small_number_word(n as u32).unwrap_or_else(|| n.to_string())
-                ),
-            };
-            let cost = if cast_tail.is_empty() {
-                ""
-            } else {
-                " without paying their mana costs"
-            };
-            return format!("Copy that card {times}. You may cast the copies{cost}");
         }
         // "You may cast up to three spells from among face-up cards your
         // opponents own from exile without paying their mana costs" (Ashiok):

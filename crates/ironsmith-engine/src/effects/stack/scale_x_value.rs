@@ -12,11 +12,17 @@ use crate::zone::Zone;
 pub struct ScaleXValueEffect {
     pub target: ChooseSpec,
     pub multiplier: u32,
+    /// "have the value of X become 5": X is replaced by this number.
+    pub set_to: Option<u32>,
 }
 
 impl ScaleXValueEffect {
     pub fn new(target: ChooseSpec, multiplier: u32) -> Self {
-        Self { target, multiplier }
+        Self { target, multiplier, set_to: None }
+    }
+
+    pub fn set_to(target: ChooseSpec, value: u32) -> Self {
+        Self { target, multiplier: 1, set_to: Some(value) }
     }
 }
 
@@ -43,7 +49,10 @@ impl EffectExecutor for ScaleXValueEffect {
             return Ok(EffectOutcome::from_status(OutcomeStatus::Impossible));
         };
 
-        let scaled = x_value.saturating_mul(self.multiplier);
+        let scaled = match self.set_to {
+            Some(value) => value,
+            None => x_value.saturating_mul(self.multiplier),
+        };
         entry.x_value = Some(scaled);
 
         if let Some(object) = game.object_mut(object_id)

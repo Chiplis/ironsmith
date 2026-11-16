@@ -34,6 +34,7 @@ mod ninjutsu;
 mod phase_in;
 mod phase_out;
 mod prepare;
+mod trigger_additional_time;
 mod put_sticker;
 mod reconfigure;
 mod regenerate;
@@ -648,6 +649,7 @@ pub use ninjutsu::{NinjutsuCostEffect, NinjutsuEffect, SneakCostEffect};
 pub use phase_in::PhaseInEffect;
 pub use phase_out::{PhaseOutDuration, PhaseOutEffect};
 pub use prepare::PrepareEffect;
+pub use trigger_additional_time::TriggerAdditionalTimeEffect;
 pub use put_sticker::PutStickerEffect;
 pub use reconfigure::ReconfigureEffect;
 pub use regenerate::RegenerateEffect;
@@ -672,7 +674,9 @@ pub use untap::UntapEffect;
 pub(crate) mod face_down_entry;
 
 mod contributor_selection;
-pub(crate) use contributor_selection::stations_using_toughness;
+pub(crate) use contributor_selection::{
+    station_power_multiplier, station_power_multiplier_on_battlefield, stations_using_toughness,
+};
 
 #[cfg(test)]
 mod equip_permission_tests;

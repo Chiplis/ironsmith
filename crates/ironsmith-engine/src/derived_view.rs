@@ -1443,7 +1443,7 @@ impl<'a> DerivedGameView<'a> {
                     cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 }),
                 Grantable::DerivedAlternativeCast(spec) => {
-                    materialize_derived_alternative_cast(card, spec).map(|method| {
+                    materialize_derived_alternative_cast(card, spec, grant.source.source_id()).map(|method| {
                         GrantedAlternativeCast {
                             permission_identity: grant.permission_identity.clone(),
                             method,
@@ -1561,7 +1561,7 @@ impl<'a> DerivedGameView<'a> {
                     cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 }),
                 Grantable::DerivedAlternativeCast(spec) => {
-                    materialize_derived_alternative_cast(card, spec).map(|method| {
+                    materialize_derived_alternative_cast(card, spec, grant.source.source_id()).map(|method| {
                         GrantedAlternativeCast {
                             permission_identity: grant.permission_identity.clone(),
                             method,
@@ -2468,9 +2468,10 @@ fn grant_filter_context(
 fn materialize_derived_alternative_cast(
     card: &crate::object::Object,
     spec: &DerivedAlternativeCast,
+    grant_source: ObjectId,
 ) -> Option<crate::alternative_cast::AlternativeCastingMethod> {
     use crate::grant::DerivedAlternativeCastRuntimeExt as _;
-    spec.materialize_for(card)
+    spec.materialize_for_grant(card, grant_source)
 }
 
 #[cfg(test)]

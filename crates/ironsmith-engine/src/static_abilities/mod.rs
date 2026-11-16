@@ -359,6 +359,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// What this commander's deck-construction rule relaxes for its deck.
+    fn commander_deck_allowance(&self) -> Option<ironsmith_core::CommanderDeckAllowance> {
+        None
+    }
+
     /// The toxic value of a Toxic N ability (CR 702.164b).
     fn toxic_amount(&self) -> Option<u32> {
         None
@@ -2118,6 +2123,10 @@ impl StaticAbility {
 
     pub fn deck_color_choice_count(&self) -> Option<u32> {
         self.0.deck_color_choice_count()
+    }
+
+    pub fn commander_deck_allowance(&self) -> Option<ironsmith_core::CommanderDeckAllowance> {
+        self.0.commander_deck_allowance()
     }
 
     pub fn keyword_marker_mechanic(&self) -> Option<ironsmith_core::KeywordMarkerMechanic> {

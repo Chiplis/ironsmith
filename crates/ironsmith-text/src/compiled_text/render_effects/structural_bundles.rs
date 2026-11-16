@@ -6383,6 +6383,7 @@ pub(super) fn value_references_target_player(value: &Value) -> bool {
         | Value::UnspentMana(player)
         | Value::Speed(player)
         | Value::StartingLifeTotal(player)
+        | Value::StartingDeckSize(player)
         | Value::HalfLifeTotalRoundedUp(player)
         | Value::HalfLifeTotalRoundedDown(player)
         | Value::HalfStartingLifeTotalRoundedUp(player)

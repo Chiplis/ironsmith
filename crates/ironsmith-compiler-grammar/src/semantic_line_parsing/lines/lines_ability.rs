@@ -336,6 +336,40 @@ pub(super) fn parse_static_line_impl(
     }
     if matches!(
         special_shape,
+        Some(semantic_grammar::StaticSpecialLineShape::CommanderDeckAllowance)
+    ) && let Some(allowance) = semantic_grammar::parse_commander_deck_allowance_words(
+        &crate::lexer::parser_token_word_refs(parse_tokens),
+    ) {
+        // Rulebreaker: the whole line is the typed allowance deck validation
+        // reads from the commander.
+        crate::word_claims::claim_tokens(parse_tokens);
+        // Subtypes keep their printed capitalization ("Angel cards").
+        let cased = parse_tokens
+            .iter()
+            .map(|token| {
+                let mut token = token.clone();
+                if let Some(subtype) = token.as_word().and_then(|word| {
+                    crate::grammar::primitives::probe_shape(
+                        crate::grammar::leaf::parse_leaf_subtype_complete(word),
+                    )
+                }) {
+                    token = OwnedLexToken::word(subtype.to_string(), token.span);
+                }
+                token
+            })
+            .collect::<Vec<_>>();
+        let display = render_token_slice(&cased).trim().trim_end_matches('.').to_string();
+        let display = match display.chars().next() {
+            Some(first) => format!("{}{}", first.to_ascii_uppercase(), &display[first.len_utf8()..]),
+            None => display,
+        };
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::commander_deck_allowance(allowance, display).into()),
+            chosen_option,
+        );
+    }
+    if matches!(
+        special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
     ) {
         // "A deck can have any number of cards named X": the whole rule is

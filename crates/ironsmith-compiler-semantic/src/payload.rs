@@ -386,6 +386,12 @@ impl KeywordAction {
                 | Self::Devoid
                 | Self::Annihilator(_)
                 | Self::AnnihilatorValue(_)
+                // Living weapon (CR 702.92) is an ETB trigger and saddle
+                // (CR 702.171) an activated ability: "Each Equipment you
+                // control has living weapon", "... and has saddle 2" expand
+                // through the printed keyword builder.
+                | Self::LivingWeapon
+                | Self::Saddle { .. }
                 | Self::StaticMarker(_)
                 | Self::StaticMarkerText(_)
                 | Self::Marker(_)

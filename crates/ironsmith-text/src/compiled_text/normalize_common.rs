@@ -789,7 +789,12 @@ fn normalize_granted_triggered_ability_surface(surface: String) -> String {
     // Oracle keeps the explicit subject in optional instructions ("When this
     // creature dies, you may return it ..."); only a mandatory "You <verb>"
     // drops to the bare imperative.
-    let keeps_you_subject = tail.to_ascii_lowercase().starts_with("you may ");
+    // Life changes keep it too: Oracle prints "you lose 2 life" and "you
+    // gain 3 life", never the bare imperative.
+    let lower_tail = tail.to_ascii_lowercase();
+    let keeps_you_subject = lower_tail.starts_with("you may ")
+        || lower_tail.starts_with("you lose ")
+        || lower_tail.starts_with("you gain ");
     let tail = if keeps_you_subject {
         tail
     } else {
@@ -1339,6 +1344,14 @@ fn describe_token_blueprint_with_name_role(
     if !leading_supertypes.is_empty() {
         parts.push(supertype_words(&leading_supertypes));
     }
+    // "a {1}{G}{G} 2/2 Badger creature token": a token with a mana cost
+    // (CR 111.4) takes its colors from that cost (CR 202.2), so the cost is
+    // the description's color word.
+    let colors_from_mana_cost = card.color_indicator.is_none()
+        && card.mana_cost.as_ref().is_some_and(|cost| {
+            parts.push(cost.to_oracle());
+            true
+        });
 
     if let Some(pt) = card.power_toughness
         && !(has_characteristic_defining_pt
@@ -1365,7 +1378,7 @@ fn describe_token_blueprint_with_name_role(
         card.colors(),
         (card.is_creature() || explicit_colorless) && !all_colors,
     );
-    if !colors.is_empty() && !all_colors {
+    if !colors.is_empty() && !all_colors && !colors_from_mana_cost {
         parts.push(colors);
     }
     if !trailing_supertypes.is_empty() {
@@ -1716,6 +1729,8 @@ fn describe_token_blueprint_with_name_role(
         && card.is_creature()
         && !keyword_texts.is_empty()
         && extra_ability_texts.is_empty()
+        // A quoted rule closes its own sentence; the name precedes the list.
+        && !keyword_texts.iter().any(|text| text.ends_with('"'))
         && !matches!(
             grouped_ability_presentation,
             Some(

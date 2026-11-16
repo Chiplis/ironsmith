@@ -1369,6 +1369,24 @@ pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
                 *effect_player = player;
             }
         }
+        // "<player> may cast a spell from their hand without paying its mana
+        // cost": the subject casts. "Their hand" names the subject's own hand
+        // unless the subject is you, where it names the player the preceding
+        // instruction referred to (Kuroki, Thief of Talents).
+        EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+            player: effect_player,
+            zone_owner,
+            ..
+        }) => {
+            if matches!(*effect_player, PlayerAst::Implicit) {
+                *effect_player = player;
+                if *zone_owner == PlayerAst::That
+                    && !matches!(player, PlayerAst::You | PlayerAst::Implicit)
+                {
+                    *zone_owner = player;
+                }
+            }
+        }
         _ => for_each_nested_effects_mut(effect, true, |nested| {
             for nested_effect in nested {
                 bind_implicit_player_context(nested_effect, player);

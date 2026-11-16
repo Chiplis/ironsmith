@@ -519,14 +519,18 @@ pub(super) fn describe_counters_put_on_this_turn_constraint(
         }
         player => format!("{} has put", describe_player_filter(player)),
     };
+    let Some(counter_type) = constraint.counter_type else {
+        // Untyped: "that you've put a counter on this turn" (La Forge).
+        return match constraint.minimum {
+            1 => format!("that {actor} a counter on this turn"),
+            minimum => format!("that {actor} {minimum} or more counters on this turn"),
+        };
+    };
     let quantity = match constraint.minimum {
         1 => "one or more".to_string(),
         minimum => format!("{minimum} or more"),
     };
-    let counter = constraint
-        .counter_type
-        .map(|counter_type| counter_type.description().into_owned())
-        .unwrap_or_else(|| "counter".to_string());
+    let counter = counter_type.description().into_owned();
     format!("that {actor} {quantity} {counter} counters on this turn")
 }
 

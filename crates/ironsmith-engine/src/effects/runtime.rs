@@ -761,13 +761,26 @@ pub(crate) fn execute_effect_with_outputs_using<'a>(
                 crate::effects::outcome_recording::capture_instruction_records(game, |game| {
                     match game.token_resource_failure() {
                         Some(error) => Err(error),
-                        None => execute_effect_with_resource_scope_using(
-                            game,
-                            effect,
-                            ctx,
-                            origin,
-                            &mut execute,
-                        ),
+                        None => {
+                            let result = execute_effect_with_resource_scope_using(
+                                game,
+                                effect,
+                                ctx,
+                                origin,
+                                &mut execute,
+                            );
+                            // "instead it enters tapped and attacking" (Kira
+                            // Nerys): an instruction whose entries bypass the
+                            // shared battlefield-entry owner (token creation)
+                            // chooses their attack targets as it completes.
+                            if result.is_ok()
+                                && !game.effect_store.pending_entering_attackers.is_empty()
+                                && !ctx.decision_maker.awaiting_choice()
+                            {
+                                crate::effects::combat::drain_pending_entering_attackers(game, ctx);
+                            }
+                            result
+                        }
                     }
                 });
             if let Ok(outputs) = &mut result {

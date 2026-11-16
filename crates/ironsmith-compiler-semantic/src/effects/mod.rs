@@ -59,7 +59,7 @@ pub use ironsmith_core::{
     CastFaceDownUsingActivationManaEffect, RegisterExtraDieReplacementEffect, NoteActivationManaTypeEffect, NoteActivationManaPaymentEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, CoinFlipLifeStakesEffect, RedirectEnteringSourceEffect, OpenAttractionEffect, PayAnyEnergyEffect,
     PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect, PayManaEffect, PhaseInEffect,
     PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect, PoisonCountersEffect, PopulateEffect,
-    PrepareEffect, PreventAllCombatDamageEffect,
+    PrepareEffect, TriggerAdditionalTimeEffect, PreventAllCombatDamageEffect,
     PreventAllDamageEffect as CorePreventAllDamageEffect,
     PreventAllDamageToTargetEffect as CorePreventAllDamageToTargetEffect,
     PreventDamageEffect as CorePreventDamageEffect, PreventNextTimeDamageEffect,
@@ -175,11 +175,18 @@ pub type GrantNextSpellAbilityEffect =
 pub struct ScaleXValueEffect {
     pub target: crate::target::ChooseSpec,
     pub multiplier: u32,
+    /// The X value becomes this number instead of being multiplied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub set_to: Option<u32>,
 }
 
 impl ScaleXValueEffect {
     pub fn new(target: crate::target::ChooseSpec, multiplier: u32) -> Self {
-        Self { target, multiplier }
+        Self { target, multiplier, set_to: None }
+    }
+
+    pub fn set_to(target: crate::target::ChooseSpec, value: u32) -> Self {
+        Self { target, multiplier: 1, set_to: Some(value) }
     }
 }
 

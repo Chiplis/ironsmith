@@ -111,6 +111,22 @@ pub fn parse_quoted_gain_duration_shape(
         return None;
     }
     if tail_tokens.iter().any(|token| !matches!(token.kind, crate::lexer::TokenKind::Word | crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Period)) { return None; }
+    // "... has "At the beginning of your upkeep, you lose 2 life" for as long
+    // as it has an odor counter on it" (Olinda the Oblivious): the grant
+    // lasts while the affected object keeps that counter (CR 611.2b).
+    if let Some((counter_type, body)) =
+        crate::grammar::effects::parse_affected_object_counter_duration_suffix(
+            tokens.get(close_quote_token..)?,
+        )
+        && body.len() == 1
+    {
+        return Some(QuotedGainDurationShape {
+            close_quote_token,
+            duration: Until::ForAsLongAs(
+                ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(counter_type),
+            ),
+        });
+    }
     let tail_words = TokenWordView::new(tail_tokens).to_word_refs();
     // Contextual object-zone atoms are accepted only in this explicitly
     // quoted grant owner. Other duration consumers do not receive unresolved

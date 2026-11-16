@@ -325,6 +325,23 @@ impl EffectExecutor for FlipCoinEffect {
                 {
                     ctx.stop_resolution();
                 }
+                // "Whenever you flip one or more coins" (Chira, All In): every
+                // coin this instruction flipped is one observation.
+                if !results.is_empty() {
+                    let provenance = game.alloc_child_event_provenance(
+                        ctx.provenance,
+                        crate::events::EventKind::KeywordAction,
+                    );
+                    events.push(crate::triggers::TriggerEvent::new_with_provenance(
+                        crate::events::KeywordActionEvent::new(
+                            crate::events::KeywordActionKind::FlipCoins,
+                            player,
+                            ctx.source,
+                            u32::try_from(results.len()).unwrap_or(u32::MAX),
+                        ),
+                        provenance,
+                    ));
+                }
                 facts.push(ExecutionFact::CoinFlips(results));
                 Ok(EffectOutcome::with_details(
                     crate::effect::OutcomeStatus::Succeeded,

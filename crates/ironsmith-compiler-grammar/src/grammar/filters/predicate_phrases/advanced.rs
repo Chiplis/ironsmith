@@ -1231,12 +1231,19 @@ pub(super) fn is_initiative_status_clause(clause: LexedClause<'_>) -> bool {
 
 fn parse_ending_phase_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = crate::lexer::parser_token_word_refs(tokens);
-    if !matches!(words.as_slice(),
-        ["it", "is", "a" | "an" | "the", "ending", "phase"]
-        | ["its" | "it's", "a" | "an" | "the", "ending", "phase"])
-    { return None; }
+    // "it's an ending phase" / "it's a combat phase" (Merciful Mandate):
+    // any player's phase of that kind is in progress.
+    let predicate = match words.as_slice() {
+        ["it", "is", "a" | "an" | "the", phase, "phase"]
+        | ["its" | "it's", "a" | "an" | "the", phase, "phase"] => match *phase {
+            "ending" => PredicateAst::InEndingPhase,
+            "combat" => PredicateAst::InCombatPhase,
+            _ => return None,
+        },
+        _ => return None,
+    };
     crate::word_claims::claim_tokens(tokens);
-    Some(PredicateAst::InEndingPhase)
+    Some(predicate)
 }
 
 pub(super) fn parse_night_state_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -6720,6 +6727,28 @@ use crate::recognition::ParseOutcome;
 #[path = "advanced/predicate_readings.rs"]
 mod predicate_readings;
 
+/// "all cards exiled with this Saga share a card type" (All Good Things...):
+/// some card type is common to every matching object (none matching: false).
+fn parse_all_objects_share_card_type_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    let suffix: &[&str] = &["share", "a", "card", "type"];
+    if words.first() != Some(&"all") || !words.ends_with(suffix) || words.len() < suffix.len() + 2 {
+        return None;
+    }
+    let token_start = view.map_word_to_token_boundary(1)?;
+    let token_end = view.map_word_to_token_boundary(words.len() - suffix.len())?;
+    let filter = crate::grammar::primitives::probe_shape(
+        crate::object_filters::parse_object_filter_lexed(tokens.get(token_start..token_end)?, false),
+    )?;
+    crate::word_claims::claim_tokens(tokens);
+    Some(PredicateAst::ValueComparison {
+        left: Value::CardTypesSharedByAll(filter),
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    })
+}
+
 /// "<player> controls at least two creatures that share a creature type":
 /// the largest group of that player's creatures sharing one creature type.
 fn parse_player_controls_shared_creature_type_count_predicate(
@@ -7793,6 +7822,9 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     if let Some(predicate) =
         parse_player_controls_shared_creature_type_count_predicate(predicate_tokens)
     {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = parse_all_objects_share_card_type_predicate(predicate_tokens) {
         return Ok(predicate);
     }
     if let Some(predicate) = super::parse_completed_die_result_predicate(predicate_tokens) {

@@ -77,6 +77,8 @@ pub enum TaggedPermissionTargetSurface {
     LandsAndSpellsFromAmongCardsExiledThisWay,
     /// "lands and cast spells from among the exiled cards" (Elder Brain).
     LandsAndSpellsFromAmongTheExiledCards,
+    /// "the chosen cards" (Ensign Pavel Chekov).
+    TheChosenCards,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -789,6 +791,15 @@ fn parse_tagged_permission_target_lexed<'a>(
                     TaggedPermissionTargetSurface::Other,
                     None,
                 )),
+            // "You may play the chosen cards for as long as they remain
+            // exiled." (Ensign Pavel Chekov): the cards the preceding choice
+            // selected.
+            primitives::phrase(&["the", "chosen", "cards"]).value((
+                TaggedPermissionReference::LastTagged,
+                false,
+                TaggedPermissionTargetSurface::TheChosenCards,
+                None,
+            )),
             primitives::any_phrase(&[&["the", "copy"], &["that", "copy"], &["a", "copy"]]).value((
                 TaggedPermissionReference::LastTagged,
                 true,

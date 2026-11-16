@@ -233,6 +233,7 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         | Value::UnspentMana(player)
         | Value::Speed(player)
         | Value::StartingLifeTotal(player)
+        | Value::StartingDeckSize(player)
         | Value::HalfLifeTotalRoundedUp(player)
         | Value::HalfLifeTotalRoundedDown(player)
         | Value::HalfStartingLifeTotalRoundedUp(player)

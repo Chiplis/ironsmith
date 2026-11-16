@@ -633,6 +633,9 @@ pub enum StaticAbilityId {
     CopySourceSelectionReplacement,
     /// Inert marker of a printed battlefield casting permission. Appended.
     BattlefieldCastPermission,
+    /// "If a creature you control would enter ..., instead it enters tapped
+    /// and attacking" (Kira Nerys, Firebrand). Appended.
+    EnterTappedAndAttackingForFilter,
 }
 
 impl StaticAbilityId {
@@ -951,6 +954,7 @@ impl StaticAbilityId {
             | ShuffleIntoLibraryFromGraveyard
             | AllPermanentsEnterTapped
             | EnterTappedForFilter
+            | EnterTappedAndAttackingForFilter
             | EnterUntappedForFilter
             | EnterAsCopyAsEnters
             | AsEntersEffectProgram

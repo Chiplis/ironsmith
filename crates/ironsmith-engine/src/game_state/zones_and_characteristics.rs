@@ -4518,6 +4518,17 @@ retain_original_types: false, retain_original_name: false,
         if result.enters_tapped || choices.as_enters_tapped {
             self.tap(new_id);
         }
+        // "instead it enters tapped and attacking" (Kira Nerys): the entry
+        // owner chooses the attack target once the move completes.
+        if result.enters_attacking {
+            let moment = (
+                self.turn.turn_number,
+                self.turn_store.combat_phases_started_this_turn,
+            );
+            self.effect_store
+                .pending_entering_attackers
+                .push((new_id, moment.0, moment.1));
+        }
 
         // Apply enters with counters. Counters an object is given as it
         // enters are "put" on it (CR 122.6): each kind gets a counter
@@ -7911,6 +7922,16 @@ retain_original_types: false, retain_original_name: false,
             }
         }
         self.effect_store.goad_effects = active_goad;
+        if !self.effect_store.trigger_multiplier_effects.is_empty() {
+            let active_multipliers = self
+                .effect_store
+                .trigger_multiplier_effects
+                .iter()
+                .filter(|effect| effect.is_active(self, current_turn))
+                .cloned()
+                .collect();
+            self.effect_store.trigger_multiplier_effects = active_multipliers;
+        }
 
         let mut restriction_tracker = CantEffectTracker::default();
         for effect in active_restrictions {

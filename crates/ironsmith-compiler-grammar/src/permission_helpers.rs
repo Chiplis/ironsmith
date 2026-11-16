@@ -259,6 +259,9 @@ fn tagged_permission_object_surface(
                 ),
             })
         }
+        permission_tagged_facts::TaggedPermissionTargetSurface::TheChosenCards => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::TheChosenCards)
+        }
         permission_tagged_facts::TaggedPermissionTargetSurface::SpellFromAmongSourceExiledCards
         | permission_tagged_facts::TaggedPermissionTargetSurface::Other => None,
     }

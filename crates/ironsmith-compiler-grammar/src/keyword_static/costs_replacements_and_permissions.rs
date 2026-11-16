@@ -3877,6 +3877,81 @@ pub fn parse_lands_are_pt_creatures_still_lands_line(
     Ok(Some(abilities))
 }
 
+/// "Enchanted land is a 3/3 red Spirit creature with haste. It's still a
+/// land." (Crackling Emergence, the Zendikons): the same continuous land
+/// animation as "... creature that's still a land" (Living Terrain), printed
+/// as two sentences, optionally granting keywords to the animated permanent.
+/// Layer 4 adds the creature type and subtypes (the land type stays), layer 5
+/// sets the color, layer 6 grants the keywords and layer 7b sets the base
+/// power and toughness.
+pub fn parse_subject_is_pt_creature_with_keywords_still_land_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    if tokens.iter().any(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Semicolon | TokenKind::Colon)) {
+        return Ok(None);
+    }
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let [first, second] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let second_words = parser_token_word_refs(trim_edge_punctuation_tokens(second));
+    if !matches!(
+        second_words.as_slice(),
+        ["it's" | "it’s" | "its", "still", "a", "land"]
+            | ["it", "is" | "s", "still", "a", "land"]
+            | ["it", "'s", "still", "a", "land"]
+    ) {
+        return Ok(None);
+    }
+    let first = trim_edge_punctuation_tokens(first);
+    // "... creature with haste" / "... with vigilance and haste": the keyword
+    // grant follows the animation descriptor.
+    let with = first.iter().position(|token| token.is_word("with"));
+    let (animation_tokens, keyword_tokens) = match with {
+        Some(index) => (&first[..index], Some(&first[index + 1..])),
+        None => (first, None),
+    };
+    let mut synthetic = animation_tokens.to_vec();
+    synthetic.extend(crate::lexer::synthetic_word_tokens(["that", "is", "still", "a", "land"]));
+    let Some(fact) = type_and_color_facts::parse_land_animation_tokens(&synthetic) else {
+        return Ok(None);
+    };
+    let Some(filter) = complete_characteristic_subject(fact.subject_tokens)? else {
+        return Ok(None);
+    };
+    let actions = match keyword_tokens {
+        Some(keyword_tokens) => {
+            let Some(actions) = parse_ability_line(keyword_tokens)
+            else {
+                return Ok(None);
+            };
+            if actions.is_empty() || !actions.iter().all(|action| action.lowers_to_static_ability()) {
+                return Ok(None);
+            }
+            actions
+        }
+        None => Vec::new(),
+    };
+    let Some(animation) = parse_lands_are_pt_creatures_still_lands_line(&synthetic)? else {
+        return Ok(None);
+    };
+    // "It's still a land": the land type the additive layer-4 change keeps.
+    crate::word_claims::claim_tokens(second);
+    if let Some(index) = with {
+        crate::word_claims::claim_tokens(&first[index..=index]);
+    }
+    let mut abilities: Vec<StaticAbilityAst> = animation.into_iter().map(StaticAbilityAst::from).collect();
+    for action in actions {
+        abilities.push(StaticAbilityAst::GrantKeywordAction {
+            filter: filter.clone(),
+            action,
+            condition: None,
+        });
+    }
+    Ok(Some(abilities))
+}
+
 pub fn parse_static_base_power_toughness_value_tail(
     tail_tokens: &[OwnedLexToken],
 ) -> Option<(Value, Value)> {
@@ -9031,6 +9106,9 @@ pub fn parse_if_player_would_change_life_double_line(
         late_static_facts::LifeChangePlayerFact::You => PlayerFilter::You,
         late_static_facts::LifeChangePlayerFact::Opponent => PlayerFilter::Opponent,
         late_static_facts::LifeChangePlayerFact::Any => PlayerFilter::Any,
+        late_static_facts::LifeChangePlayerFact::EnchantedPlayer => PlayerFilter::TaggedPlayer(
+            (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
+        ),
     };
     let ability = StaticAbility::double_life_change_replacement(
         player,

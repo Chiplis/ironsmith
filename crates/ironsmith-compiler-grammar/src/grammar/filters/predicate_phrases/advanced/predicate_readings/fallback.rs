@@ -824,6 +824,17 @@ fn keyword_actions_this_turn(words: &[&str]) -> Option<PredicateAst> {
     let ["youve" | "you", actions @ .., "this", "turn"] = words else {
         return None;
     };
+    // "you faced a dilemma this turn" (The Caretaker): you chose one or more
+    // modes for a spell or ability this turn (the face-a-dilemma action).
+    if matches!(actions, ["faced", "a", "dilemma"] | ["have", "faced", "a", "dilemma"]) {
+        return Some(history_at_least(
+            ironsmith_core::TurnHistoryCount::KeywordActionsPerformed {
+                player: PlayerFilter::You,
+                actions: vec![ironsmith_core::KeywordActionKind::FaceDilemma],
+            },
+            1,
+        ));
+    }
     let mut kinds = Vec::new();
     let mut expect_action = true;
     let mut connector: Option<&str> = None;

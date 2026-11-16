@@ -3,6 +3,23 @@ use super::*;
 pub fn parse_token_definition_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenDefinitionSpec> {
+    // "{1}{G}{G} 2/2 Badger creature token": an authored mana cost leads the
+    // description (CR 111.4, 202.1); only artifact and creature tokens carry one.
+    let leading_cost = tokens
+        .iter()
+        .take_while(|token| token.kind == crate::lexer::TokenKind::ManaGroup)
+        .count();
+    if leading_cost > 0 && leading_cost < tokens.len() {
+        let cost = crate::grammar::values::parse_mana_cost_tokens(&tokens[..leading_cost]).ok()?;
+        let mut shape = parse_token_definition_shape_tokens(&tokens[leading_cost..])?;
+        match &mut shape {
+            TokenDefinitionSpec::Creature(creature) => creature.mana_cost = Some(cost),
+            TokenDefinitionSpec::Artifact(artifact) => artifact.mana_cost = Some(cost),
+            _ => return None,
+        }
+        crate::word_claims::claim_tokens(&tokens[..leading_cost]);
+        return Some(shape);
+    }
     // CR 111.10w/x and 111.11: these names denote a complete canonical
     // token definition, not a host-card special case or runtime name lookup.
     // A complete parser prevents modifiers/trailing text from being discarded.
@@ -314,6 +331,7 @@ pub fn parse_token_definition_shape_tokens(
             token_rules,
             leaves_damage_any_target: leaves_damage,
             keywords: token_keywords(&outer_words),
+            mana_cost: None,
         }));
     }
 
@@ -435,5 +453,6 @@ pub fn parse_token_definition_shape_tokens(
         use_source_chosen_creature_type,
         keywords: token_keywords(&outer_words),
         rules: creature_rules(&scope.rule_source, &rule_words, &outer_words, declared_name),
+        mana_cost: None,
     }))
 }

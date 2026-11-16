@@ -17,6 +17,9 @@ for (const card of JSON.parse(source)) {
   cards[card.name.toLowerCase()] = {
     name: card.name, legalities: Object.fromEntries(Object.keys(PUBLIC_FORMATS).map(f => [f, card.legalities[f] || 'not_legal'])),
     colors: card.color_identity || [], type: face.type_line || '',
+    // Mana value, for commander deck allowances that name it ("creature
+    // cards with mana value 7 or greater of any color identity").
+    ...(card.cmc ? { mv: card.cmc } : {}),
     ...(pdhCommanders.has(card.name) ? { pdhCommander: true } : {}),
     // Previewed on Scryfall but legal nowhere yet (scripts/download_scryfall_cards.py).
     ...(card.ironsmith_unreleased === true ? { unreleased: true } : {}),

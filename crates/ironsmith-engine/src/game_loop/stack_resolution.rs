@@ -1641,6 +1641,7 @@ fn resolve_stack_entry_full_inner(
     let mut entry = game
         .pop_from_stack()
         .ok_or_else(|| GameLoopError::InvalidState("Stack is empty".to_string()))?;
+    game.record_resolving_spell_lki(&entry);
     // A historically paired producer with missing acquisition evidence must
     // fail before exiling anything. Otherwise a later complete reader would
     // mistake that lost producer record for a known empty pair.

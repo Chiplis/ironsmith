@@ -110,6 +110,7 @@ pub(super) fn fixed_standard_gift_creature_definition(
             use_source_chosen_creature_type: false,
             keywords: Vec::new(),
             rules: Default::default(),
+            mana_cost: None,
         },
     )
 }

@@ -2952,8 +2952,39 @@ pub fn parse_anthem_with_trailing_segments_line(
         return Ok(None);
     }
 
-    let clause = parse_anthem_clause(&work_tokens, get_idx, head.tail_start)?;
-    let tail_tokens = trim_commas(&work_tokens[head.tail_start..]);
+    // "get +1/+1 for each other Nephilim you control and can't be blocked by
+    // monocolored creatures": the count belongs to the modifier; the sibling
+    // predicate after the unquoted `and <predicate verb>` is not part of the
+    // counted objects.
+    let mut clause_end = head.tail_start;
+    if work_tokens
+        .get(head.tail_start)
+        .is_some_and(|token| token.is_word("for"))
+        && work_tokens
+            .get(head.tail_start + 1)
+            .is_some_and(|token| token.is_any_word(&["each", "every"]))
+    {
+        let mut quoted = false;
+        for index in head.tail_start + 2..work_tokens.len().saturating_sub(1) {
+            let token = &work_tokens[index];
+            if token.kind == TokenKind::Quote {
+                quoted = !quoted;
+                continue;
+            }
+            if !quoted
+                && token.is_word("and")
+                && work_tokens[index + 1].is_any_word(&[
+                    "can't", "cant", "cannot", "can", "must", "attack", "attacks", "block",
+                    "blocks",
+                ])
+            {
+                clause_end = index;
+                break;
+            }
+        }
+    }
+    let clause = parse_anthem_clause(&work_tokens, get_idx, clause_end)?;
+    let tail_tokens = trim_commas(&work_tokens[clause_end..]);
     if tail_tokens.is_empty() {
         return Ok(None);
     }

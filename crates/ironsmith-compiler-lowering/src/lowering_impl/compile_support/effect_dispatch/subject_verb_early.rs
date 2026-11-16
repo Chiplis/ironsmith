@@ -266,6 +266,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime { .. })
     )
 }
 
@@ -2214,6 +2215,10 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target, relation, require_creatures }) => {
             let (target, choices)=resolve_target_spec_with_choices(target,&current_reference_env(ctx))?;
             Ok((vec![Effect::new(crate::effects::LinkPermanentsEffect { source: ChooseSpec::Source, target, relation: relation.clone(), require_creatures: *require_creatures })], choices))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime { target, duration }) => {
+            let (target, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            Ok((vec![Effect::trigger_additional_time(target, duration.clone())], choices))
         }
         SubjectVerbActionAst::Control(ControlActionAst::Unattach { object }) => {
             let (mut objects, choices) =

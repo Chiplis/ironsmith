@@ -3274,6 +3274,11 @@ pub struct ObjectFilterFields {
     pub noncommander: bool,
     pub tagged_constraints: Vec<TaggedObjectConstraint>,
     pub specific: Option<ObjectId>,
+    /// One object that never matches. Bound at runtime only, never authored:
+    /// a granted cast's cost that can't use the granting permanent ("Scotty
+    /// can't be beamed up to cast a spell this way", Scotty, Miracle Worker).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub excluded_specific: Option<ObjectId>,
     pub any_of: Vec<ObjectFilter>,
     pub source: bool,
     pub source_surface: Option<SourceReferenceSurface>,
@@ -3289,6 +3294,11 @@ pub struct ObjectFilterFields {
     /// ("four or more nonlands with activated abilities", CR 602.1).
     #[cfg_attr(feature = "serde", serde(default))]
     pub has_activated_ability: bool,
+    /// Requires at least this many activated abilities, mana abilities
+    /// included ("Activate only if this creature has another activated
+    /// ability", Tazri, Stalwart Survivor: this one and one more).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub min_activated_abilities: Option<u32>,
     /// Selection-set constraint: all chosen objects share at least one card
     /// type ("two that share a card type"). Never changes whether an
     /// individual object matches.
@@ -3639,6 +3649,7 @@ impl std::fmt::Debug for ObjectFilter {
             noncommander,
             tagged_constraints,
             specific,
+            excluded_specific,
             any_of,
             source,
             source_surface,
@@ -3648,6 +3659,7 @@ impl std::fmt::Debug for ObjectFilter {
             noted_name_pair,
             shares_color,
             has_activated_ability,
+            min_activated_abilities,
             shares_card_type,
             last_drawn_this_turn,
             mana_symbol_count,
@@ -3879,6 +3891,10 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("noncommander", noncommander);
         out.field("tagged_constraints", tagged_constraints);
         out.field("specific", specific);
+        // Runtime-only binding; absent from every compiled definition.
+        if excluded_specific.is_some() {
+            out.field("excluded_specific", excluded_specific);
+        }
         out.field("any_of", any_of);
         out.field("source", source);
         out.field("source_surface", source_surface);
@@ -3888,6 +3904,7 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("noted_name_pair", noted_name_pair);
         out.field("shares_color", shares_color);
         out.field("has_activated_ability", has_activated_ability);
+        out.field("min_activated_abilities", min_activated_abilities);
         out.field("shares_card_type", shares_card_type);
         out.field("last_drawn_this_turn", last_drawn_this_turn);
         out.field("mana_symbol_count", mana_symbol_count);
@@ -4647,6 +4664,7 @@ impl ObjectFilter {
             || self.has_tap_activated_ability
             || self.has_non_mana_activated_ability
             || self.has_activated_ability
+            || self.min_activated_abilities.is_some()
             || self.no_abilities
             || self.no_x_in_cost
             || self.has_x_in_cost
@@ -8365,6 +8383,9 @@ impl ObjectFilter {
         if self.has_non_mana_activated_ability {
             parts.push("with an activated ability that isn't a mana ability".to_string());
         }
+        if let Some(count) = self.min_activated_abilities {
+            parts.push(format!("with {count} or more activated abilities"));
+        }
 
         let has_source_exiled_constraint = self.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -10088,14 +10109,18 @@ fn describe_counters_put_on_this_turn_constraint(
         }
         player => format!("{} has put", describe_player_filter(player)),
     };
+    let Some(counter_type) = constraint.counter_type else {
+        // Untyped: "that you've put a counter on this turn" (La Forge).
+        return match constraint.minimum {
+            1 => format!("that {actor} a counter on this turn"),
+            minimum => format!("that {actor} {minimum} or more counters on this turn"),
+        };
+    };
     let quantity = match constraint.minimum {
         1 => "one or more".to_string(),
         minimum => format!("{minimum} or more"),
     };
-    let counter = constraint
-        .counter_type
-        .map(|counter_type| counter_type.description().into_owned())
-        .unwrap_or_else(|| "counter".to_string());
+    let counter = counter_type.description().into_owned();
     format!("that {actor} {quantity} {counter} counters on this turn")
 }
 
@@ -10626,6 +10651,10 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 "the greatest number of {} that have a creature type in common",
                 describe_count_filter_subject(filter)
             ),
+            Value::CardTypesSharedByAll(filter) => format!(
+                "the number of card types shared by all {}",
+                describe_count_filter_subject(filter)
+            ),
             Value::DividedRoundedDown(value, divisor) => {
                 format!(
                     "{} divided by {divisor}, rounded down",
@@ -10772,6 +10801,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::Speed(player) => format!("{player:?}'s speed"),
             Value::StartingLifeTotal(player) => format!("{player:?}'s starting life total"),
+            Value::StartingDeckSize(player) => format!("the number of cards in {player:?}'s starting deck"),
             Value::NamedActionCount {object,label,this_turn} => format!("the number of times {} has performed the {label} action{}",describe_counter_holder(object),if *this_turn {" this turn"}else{""}),
             Value::SourceChosenNumber { .. } => "the chosen number".to_string(),
             Value::DraftNotedHighestNumber { card_name } => {

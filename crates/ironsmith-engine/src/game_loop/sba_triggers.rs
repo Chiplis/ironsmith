@@ -754,6 +754,9 @@ fn stack_trigger_pass(
                 let object_id = entry.object_id;
                 let controller = entry.controller;
                 let provenance = entry.provenance;
+                let random_target_entry = entry.target_assignments.iter()
+                    .any(|assignment| crate::targeting::spec_selects_targets_at_random(&assignment.spec))
+                    .then(|| entry.clone());
                 game.try_push_to_stack(entry).map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
                 queue_becomes_targeted_events(
                     game,
@@ -764,6 +767,9 @@ fn stack_trigger_pass(
                     true,
                     provenance,
                 );
+                if let Some(entry) = random_target_entry {
+                    super::targeting::queue_random_target_selection_event(game, trigger_queue, &entry);
+                }
                 if destination_marker != origin_marker
                     && let Some(origin_marker) = origin_marker
                 {

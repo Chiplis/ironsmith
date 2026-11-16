@@ -14,6 +14,9 @@ pub struct LifeTotalCostConditionShape {
 pub enum EarlyKeywordMarkerKind {
     ToughnessCrewsVehicles,
     GreaterPowerCrewsVehicles,
+    /// "This creature stations Spacecraft and crews Vehicles as though its
+    /// power were tripled" (Sulu, Heroic Helmsman).
+    MultipliedPowerContributes,
     LoyaltyCounterPaysCrewCost,
 }
 
@@ -185,6 +188,12 @@ pub fn parse_early_keyword_marker_tokens(
     ) && suffix(&words, &["greater"])
     {
         return Some(EarlyKeywordMarkerKind::GreaterPowerCrewsVehicles);
+    }
+    if matches!(
+        ironsmith_core::keyword_marker_mechanic(&words.join(" ")),
+        Some(ironsmith_core::KeywordMarkerMechanic::ContributesMultipliedPower { .. })
+    ) {
+        return Some(EarlyKeywordMarkerKind::MultipliedPowerContributes);
     }
     (prefix(
         &words,

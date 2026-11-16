@@ -195,6 +195,7 @@ PlaySubgameEffect	ironsmith_core::PlaySubgameEffect<wire::WireEffect>	player
 PoisonCountersEffect	ironsmith_core::PoisonCountersEffect	player
 PopulateEffect	ironsmith_core::PopulateEffect	composition-m-z
 PrepareEffect	ironsmith_core::PrepareEffect	permanent
+TriggerAdditionalTimeEffect	ironsmith_core::TriggerAdditionalTimeEffect	permanent
 PreventAllCombatDamageEffect	ironsmith_core::PreventAllCombatDamageEffect	combat
 PreventAllDamageEffect	ironsmith_core::PreventAllDamageEffect<wire::WireEffect>	combat
 PreventAllDamageToTargetEffect	ironsmith_core::PreventAllDamageToTargetEffect<wire::WireEffect>	combat

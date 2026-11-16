@@ -339,6 +339,7 @@ impl Event {
                 from: Some(from),
                 creation: None,
                 enters_tapped,
+                enters_attacking: false,
                 enters_face_down:false,
                 enters_with_counters,
                 linked_exile_with_entering: Vec::new(),

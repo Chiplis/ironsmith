@@ -23539,6 +23539,105 @@ pub(in crate::compiled_text) fn describe_secret_number_extremes_effects(
     ))
 }
 
+/// "Exile the top three cards of your library. Each opponent secretly
+/// chooses a number 0 or greater. Then those numbers are revealed. Choose an
+/// opponent with the highest number. Itazura deals that much damage to them,
+/// then they may cast a spell from among those cards without paying its mana
+/// cost. You put a card from among them that wasn't cast this way into your
+/// hand." (Itazura, Lingering Wick)
+fn describe_secret_number_chosen_player_cast_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    let [segment] = program.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    describe_secret_number_chosen_player_cast_effects(&segment.default_effects, None)
+}
+
+pub(in crate::compiled_text) fn describe_secret_number_chosen_player_cast_effects(
+    effects: &[Effect],
+    source_subject: Option<&str>,
+) -> Option<String> {
+    let [exile_effect, choice_effect, chooser_effect, loop_effect, pick_effect, put_effect] =
+        effects
+    else {
+        return None;
+    };
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let _ = exile;
+    let choice = choice_effect.downcast_ref::<crate::effects::ChoosePlayerOptionEffect>()?;
+    let range = choice.number?;
+    if !choice.secret
+        || choice.guess
+        || range.max.is_some()
+        || choice.hidden_items_surface.is_some()
+        || choice.chooser != crate::effects::PlayerOptionChooser::Participant
+    {
+        return None;
+    }
+    let noun = player_option_participant_noun(&choice.participants)?;
+    let chooser = chooser_effect.downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let highest = if chooser.filter
+        == PlayerFilter::TaggedPlayer(ironsmith_core::player_number_extreme_tag(true))
+    {
+        true
+    } else if chooser.filter
+        == PlayerFilter::TaggedPlayer(ironsmith_core::player_number_extreme_tag(false))
+    {
+        false
+    } else {
+        return None;
+    };
+    let chosen = loop_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if chosen.filter != PlayerFilter::TaggedPlayer(chooser.tag.clone()) {
+        return None;
+    }
+    let [damage_effect, cast_effect] = chosen.effects.as_slice() else {
+        return None;
+    };
+    let amount = player_option_loop_source_damage_amount(damage_effect)?;
+    if !matches!(
+        amount.unhinted(),
+        Value::PlayersChosenNumberExtreme { highest: h, guess: false } if *h == highest
+    ) {
+        return None;
+    }
+    let cast = cast_effect
+        .downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()?;
+    if cast.zone != crate::zone::Zone::Exile
+        || !matches!(
+            cast.payment,
+            ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost
+        )
+    {
+        return None;
+    }
+    pick_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    put_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let exile_text = describe_effect_list(std::slice::from_ref(exile_effect));
+    let exile_text = exile_text.trim().trim_end_matches('.');
+    let source = source_subject
+        .map(str::trim)
+        .filter(|subject| !subject.is_empty())
+        .unwrap_or("this creature");
+    let source = {
+        let mut chars = source.chars();
+        chars
+            .next()
+            .map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()))
+            .unwrap_or_default()
+    };
+    let extreme = if highest { "highest" } else { "lowest" };
+    let article = if noun == "opponent" { "an" } else { "a" };
+    Some(format!(
+        "{exile_text}. Each {noun} secretly chooses a number {} or greater. Then those numbers are revealed. Choose {article} {noun} with the {extreme} number. {source} deals that much damage to them, then they may cast a spell from among those cards without paying its mana cost. You put a card from among them that wasn't cast this way into your hand",
+        range.min
+    ))
+}
+
 /// "Each player secretly chooses a number. Then those numbers are revealed.
 /// Each player with the highest number loses that much life. If you are one
 /// of those players, put two +1/+1 counters on this creature." (Menacing
@@ -24929,6 +25028,9 @@ fn describe_resolution_program_inner(
         return rendered;
     }
     if let Some(rendered) = describe_hidden_items_fewest_life_loss_program(program) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_secret_number_chosen_player_cast_program(program) {
         return rendered;
     }
     if let Some(rendered) = describe_secret_number_highest_loss_program(program) {
@@ -32962,6 +33064,9 @@ fn describe_resolution_program_preserving_source_lines(
     if let Some(rendered) = describe_hidden_items_fewest_life_loss_program(program) {
         return rendered;
     }
+    if let Some(rendered) = describe_secret_number_chosen_player_cast_program(program) {
+        return rendered;
+    }
     if let Some(rendered) = describe_secret_number_highest_loss_program(program) {
         return rendered;
     }
@@ -40722,11 +40827,16 @@ fn describe_structural_equipped_draw_reveal_mana_value_pump(ability: &Ability) -
     {
         return None;
     }
-    let [tag_triggering, draw_sequence] = draw_segment.default_effects.as_slice() else {
-        return None;
+    // The triggering creature is either tagged by an explicit snapshot
+    // effect or read through the trigger's own triggering tag.
+    let (tag_triggering, draw_sequence) = match draw_segment.default_effects.as_slice() {
+        [tag_triggering, draw_sequence] => (
+            Some(tag_triggering.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?),
+            draw_sequence,
+        ),
+        [draw_sequence] => (None, draw_sequence),
+        _ => return None,
     };
-    let tag_triggering =
-        tag_triggering.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
     let draw_sequence = draw_sequence.downcast_ref::<crate::effects::SequenceEffect>()?;
     let [draw_root, reveal_root] = draw_sequence.effects.as_slice() else {
         return None;
@@ -40768,7 +40878,7 @@ fn describe_structural_equipped_draw_reveal_mana_value_pump(ability: &Ability) -
         || power_tag != &draw_tagged.tag
         || !matches!(
             apply.target_spec.as_ref().map(ChooseSpec::base),
-            Some(ChooseSpec::Tagged(tag)) if tag == &tag_triggering.tag
+            Some(ChooseSpec::Tagged(tag)) if tag_triggering.map_or(tag.as_str() == "triggering", |triggering| tag == &triggering.tag)
         )
         || apply.until != crate::effect::Until::EndOfTurn
         || apply.modification.is_some()

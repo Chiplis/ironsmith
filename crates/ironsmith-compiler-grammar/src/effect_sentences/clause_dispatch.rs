@@ -875,9 +875,23 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
 fn parse_cast_single_spell_from_among_hand_cards_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
-    if clause_grammar::parse_tagged_permission_shape(tokens)
-        != Some(clause_grammar::TaggedPermissionShape::CastSingleFromAmongHandCards)
-    {
+    let shape = clause_grammar::parse_tagged_permission_shape(tokens);
+    if shape == Some(clause_grammar::TaggedPermissionShape::CastSingleFromReferencedPlayersHand) {
+        // "[<player> may] cast a spell from their hand without paying its
+        // mana cost": any nonland card in the referenced player's hand. The
+        // caster is the clause's subject, bound by the leading "<player> may"
+        // (Kuroki: "you may ..."; Cmdr. Troi: "that player may ..."); see
+        // `bind_implicit_player_context`.
+        return Some(
+            EffectAst::may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
+                PlayerAst::Implicit,
+                PlayerAst::That,
+                ObjectFilter::nonland(),
+                Zone::Hand,
+            ),
+        );
+    }
+    if shape != Some(clause_grammar::TaggedPermissionShape::CastSingleFromAmongHandCards) {
         return None;
     }
 
@@ -1731,6 +1745,13 @@ fn lower_direct_clause_shape(
                 span_from_tokens(tokens),
             ),
             2,
+        ),
+        clause_grammar::DirectClauseShape::SetX(value) => EffectAst::subject_verb_set_x_value(
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
+                span_from_tokens(tokens),
+            ),
+            value,
         ),
         clause_grammar::DirectClauseShape::OnlyChosenCanAttack => {
             EffectAst::subject_verb_cant_starting(

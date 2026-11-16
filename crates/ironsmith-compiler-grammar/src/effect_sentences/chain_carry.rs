@@ -4647,6 +4647,99 @@ fn bind_that_player_pronouns(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     rewritten
 }
 
+/// "For as long as Lwaxana Troi remains tapped, if a triggered ability of
+/// that creature triggers, that ability triggers an additional time."
+/// (Lwaxana Troi, Charming Guest): a carried duration scoping a resolved
+/// trigger-duplication rule over the referenced creature. The rule is keyed
+/// to that object, not granted to it as an ability.
+pub(crate) fn parse_duration_scoped_trigger_duplication_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = chain_grammar::parse_carry_duration_prefix_tokens(tokens) else {
+        return Ok(None);
+    };
+    if !shape.rest.first().is_some_and(|token| token.is_word("if")) {
+        return Ok(None);
+    }
+    if !crate::keyword_static::parse_referenced_object_trigger_duplication(shape.rest) {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::subject_verb_trigger_additional_time(
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+        shape.duration,
+    )]))
+}
+
+/// "Kang and that creature are goaded for as long as you control Kang."
+/// (Kang, Suspicious Captain): a compound subject of the source and a
+/// referenced object, each goaded for the same duration (CR 701.15). A
+/// source-control duration ends as the source's controller stops
+/// controlling it (CR 611.2b).
+pub(crate) fn parse_compound_subject_goaded_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(goaded) = tokens
+        .iter()
+        .position(|token| token.is_word(crate::keyword_forms::GOADED))
+    else {
+        return Ok(None);
+    };
+    if goaded < 4 || !tokens[goaded - 1].is_word("are") {
+        return Ok(None);
+    }
+    let subject = &tokens[..goaded - 1];
+    if !subject.iter().any(|token| token.is_word("and")) {
+        return Ok(None);
+    }
+    let mut targets = Vec::new();
+    for part in subject.split(|token| token.is_word("and") || token.kind == TokenKind::Comma) {
+        let words = token_word_refs(part);
+        if words.is_empty() {
+            continue;
+        }
+        let target = match words.as_slice() {
+            ["this"] | ["this", "creature" | "permanent"] => TargetAst::Source(None),
+            ["it"] | ["that", "creature" | "permanent"] => TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                None,
+            ),
+            _ => return Ok(None),
+        };
+        targets.push(target);
+    }
+    if targets.len() < 2 {
+        return Ok(None);
+    }
+    let mut tail = trim_lexed_commas(&tokens[goaded + 1..]);
+    while tail.last().is_some_and(|token| token.kind == TokenKind::Period) {
+        tail = &tail[..tail.len() - 1];
+    }
+    let tail_words = token_word_refs(tail);
+    let duration = match tail_words.as_slice() {
+        [] => Until::YourNextTurn,
+        ["for", "the", "rest", "of", "the" | "this", "game"] => Until::Forever,
+        ["for", "as", "long", "as", "you", "control", "this"]
+        | ["for", "as", "long", "as", "you", "control", "this", "creature" | "permanent"] => {
+            Until::YouStopControllingThis
+        }
+        ["for", "as", "long", "as", "this", .., "remains", "on", "the", "battlefield"] => {
+            Until::ThisLeavesTheBattlefield
+        }
+        _ => return Ok(None),
+    };
+    // Referenced objects first: a bare "it"/"that creature" reference binds
+    // to the most recent object mention, which would otherwise be the source
+    // goaded just before it. The renderer restores the authored order.
+    targets.sort_by_key(|target| matches!(target, TargetAst::Source(_)));
+    crate::word_claims::claim_tokens(tokens);
+    Ok(Some(
+        targets
+            .into_iter()
+            .map(|target| EffectAst::subject_verb_goad_for(target, duration.clone()))
+            .collect(),
+    ))
+}
+
 /// "For as long as that creature has a duty counter on it, it is goaded,
 /// can't attack you or a permanent you control, and can't block creatures
 /// you control." (Immortal Obligation): one carried duration scopes a passive

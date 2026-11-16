@@ -1739,10 +1739,14 @@ pub(super) fn compile_subject_verb_middle(
             );
             Ok((vec![move_rest], Vec::new()))
         }
-        SubjectVerbActionAst::Stack(StackActionAst::ScaleXValue { target, multiplier }) => {
+        SubjectVerbActionAst::Stack(StackActionAst::ScaleXValue { target, multiplier, set_to }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            Ok((vec![Effect::scale_x_value(spec, *multiplier)], choices))
+            let effect = match set_to {
+                Some(value) => Effect::set_x_value(spec, *value),
+                None => Effect::scale_x_value(spec, *multiplier),
+            };
+            Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
             tag,
@@ -2179,6 +2183,7 @@ pub(super) fn compile_subject_verb_middle(
             during_turns_attacked_with,
             during_turns_cast_another_spell,
             spell_cost_reduction_per_opponent,
+            beneficiary_is_each_exiler,
         }) => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -2224,6 +2229,12 @@ pub(super) fn compile_subject_verb_middle(
             {
                 grant_play = grant_play.cast_pool_is_plural(true);
             }
+            // "the chosen cards": an authored plural pool of chosen cards.
+            if surface.as_ref().is_some_and(|surface| {
+                surface.object == Some(ironsmith_core::GrantPlayTaggedObjectSurface::TheChosenCards)
+            }) {
+                grant_play = grant_play.cast_pool_is_plural(true);
+            }
             if let Some(filter) = filter.clone() {
                 grant_play = grant_play.with_filter(filter);
             }
@@ -2244,6 +2255,9 @@ pub(super) fn compile_subject_verb_middle(
                     .with_spell_cost_reduction_per_opponent(*spell_cost_reduction_per_opponent);
             }
             grant_play = grant_play.with_lands_enter_tapped(*lands_enter_tapped);
+            if *beneficiary_is_each_exiler {
+                grant_play = grant_play.to_each_exiler();
+            }
             if let Some(surface) = surface.clone() {
                 grant_play = grant_play.with_surface(surface);
             }

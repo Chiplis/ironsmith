@@ -889,6 +889,45 @@ impl ZoneChangeTrigger {
         if let Some(display) = spell_or_ability_you_control_exiles_display(self) {
             return display;
         }
+        // "Whenever a spell or ability you control causes one or more cards
+        // to be exiled from an opponent's library" (The Madcap Jester).
+        if self.from == ZonePattern::Specific(Zone::Library)
+            && self.to == ZonePattern::Specific(Zone::Exile)
+            && !self.this_object
+            && self.during_turn.is_none()
+            && let Some(cause_filter) = self.cause_filter.as_ref()
+            && matches!(
+                cause_filter.cause_type,
+                Some(crate::events::cause::CauseTypeFilter::EffectLike)
+            )
+            && cause_filter.source_filter.is_none()
+            && matches!(
+                cause_filter.controller_filter,
+                Some(crate::events::cause::ControllerFilter::ContextController)
+            )
+            && let Some(owner) = self.object_filter.owner.as_ref()
+        {
+            let mut residual = self.object_filter.clone();
+            residual.owner = None;
+            let library = match owner {
+                PlayerFilter::Opponent => Some("an opponent's library"),
+                PlayerFilter::You => Some("your library"),
+                PlayerFilter::Any => Some("a player's library"),
+                _ => None,
+            };
+            if residual == ObjectFilter::default()
+                && let Some(library) = library
+            {
+                let cards = if self.count_mode == CountMode::OneOrMore {
+                    "one or more cards"
+                } else {
+                    "a card"
+                };
+                return format!(
+                    "Whenever a spell or ability you control causes {cards} to be exiled from {library}"
+                );
+            }
+        }
         if self.from == ZonePattern::Any
             && self.to == ZonePattern::Specific(Zone::Battlefield)
             && self.player == PlayerRelation::Any

@@ -742,6 +742,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
             decode_as::<T, ironsmith_core::MustAttackPlayerThisTurnEffect>(effect)
         }
         "PrepareEffect" => decode_as::<T, ironsmith_core::PrepareEffect>(effect),
+        "TriggerAdditionalTimeEffect" => decode_as::<T, ironsmith_core::TriggerAdditionalTimeEffect>(effect),
         "SuspectEffect" => decode_as::<T, ironsmith_core::SuspectEffect>(effect),
         "TagAttachedToSourceEffect" => {
             decode_as::<T, ironsmith_core::TagAttachedToSourceEffect>(effect)
@@ -1162,10 +1163,13 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             )));
         }
         if let Some(payload) = decode_wire_effect::<wire::WireScaleXValueEffect>(effect) {
-            return Ok(Some(crate::effect::Effect::scale_x_value(
-                payload.target.clone(),
-                payload.multiplier,
-            )));
+            return Ok(Some(match payload.set_to {
+                Some(value) => crate::effect::Effect::set_x_value(payload.target.clone(), value),
+                None => crate::effect::Effect::scale_x_value(
+                    payload.target.clone(),
+                    payload.multiplier,
+                ),
+            }));
         }
         Ok(None)
     }
@@ -1324,6 +1328,18 @@ fn convert_derived_alternative_cast(
             condition,
             exiles_after_resolution,
         },
+        wire::WireDerivedAlternativeCast::BeamMeUpFromCardManaCost {
+            additional_costs,
+            excludes_grant_source,
+        } => {
+            crate::grant::DerivedAlternativeCast::BeamMeUpFromCardManaCost {
+                additional_costs: additional_costs
+                    .into_iter()
+                    .map(runtime_cost_from_core_model)
+                    .collect::<Result<Vec<_>, _>>()?,
+                excludes_grant_source,
+            }
+        }
     })
 }
 

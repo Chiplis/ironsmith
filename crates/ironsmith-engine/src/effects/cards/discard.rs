@@ -440,7 +440,27 @@ impl crate::effects::SimultaneousEffectProposal for DiscardProposal {
         let prepared = self.prepared.take().ok_or_else(|| {
             ExecutionError::InternalError("discard original was not retained".into())
         })?;
-        commit_selected_discard_original_stream(game, ctx, prepared)
+        // "Whenever you discard one or more cards at random" (Chira, All In):
+        // one observation per random discard instruction.
+        let random_discard = (self.effect.random && !prepared.chosen_cards.is_empty())
+            .then(|| (prepared.player_id, prepared.chosen_cards.len()));
+        let mut commit = commit_selected_discard_original_stream(game, ctx, prepared)?;
+        if let Some((player, count)) = random_discard {
+            let provenance = game.alloc_child_event_provenance(
+                ctx.provenance,
+                crate::events::EventKind::KeywordAction,
+            );
+            commit.outcome.outcome.events.push(crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::KeywordActionEvent::new(
+                    crate::events::KeywordActionKind::DiscardAtRandom,
+                    player,
+                    ctx.source,
+                    u32::try_from(count).unwrap_or(u32::MAX),
+                ),
+                provenance,
+            ));
+        }
+        Ok(commit)
     }
 
     fn commit_original(

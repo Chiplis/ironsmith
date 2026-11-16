@@ -1064,6 +1064,9 @@ pub struct Object {
     pub mana_spent_to_cast: ManaPool,
     /// Actual mana spent by the caster, excluding Assist payments by others.
     pub caster_mana_spent_to_cast: Option<u32>,
+    /// The player who paid part of this spell's cost with assist
+    /// (CR 702.132a), when one did. Cleared like other cast payment facts.
+    pub assisting_player: Option<PlayerId>,
     /// None is unknown historical evidence, never an implicit zero payment.
     pub mana_spent_on_x: Option<crate::mana::XManaAllocation>,
     /// Mana spent from sources that were snow when they produced it, by actual color.
@@ -1511,6 +1514,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            assisting_player: None,
             mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
@@ -1608,6 +1612,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            assisting_player: None,
             mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
@@ -2028,6 +2033,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            assisting_player: None,
             mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
@@ -2120,6 +2126,7 @@ impl Object {
             // Tokens are never cast.
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            assisting_player: None,
             mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
@@ -2203,6 +2210,7 @@ impl Object {
             // spent to cast it (converge, adamant, "if {G} was spent" read 0).
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            assisting_player: None,
             mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             // CR 707.2/707.10: copy the spell's layer-one definition and
@@ -2307,6 +2315,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            assisting_player: None,
             mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
@@ -2390,6 +2399,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            assisting_player: None,
             mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
@@ -3518,6 +3528,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            assisting_player: None,
             mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),

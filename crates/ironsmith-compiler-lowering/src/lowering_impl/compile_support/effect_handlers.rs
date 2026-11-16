@@ -382,6 +382,9 @@ pub fn compile_delayed_trigger_spec(
                 player: player.clone(),
             },
         ),
+        TriggerSpec::PlayerLosesGame(player) => Ok(
+            ironsmith_core::DelayedTriggerSpec::PlayerLosesGame(player.clone()),
+        ),
         TriggerSpec::KeywordAction { action, player, source_filter, during_your_turn } =>
             Ok(ironsmith_core::DelayedTriggerSpec::KeywordAction {
                 action: *action, player: player.clone(), source_filter: source_filter.clone(),

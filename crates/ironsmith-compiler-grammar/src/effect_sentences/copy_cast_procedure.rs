@@ -53,7 +53,9 @@ enum CopyStatement {
     ThenCast,
     /// "Copy that card three times." — several copies of the one card
     /// (CR 707.12), each cast by the plural cast statement that follows.
-    Times(CopyInstructionSurface, u32),
+    /// The count is fixed ("three times") or bound by a "where X is"
+    /// clause ("X times, where X is ...").
+    Times(CopyInstructionSurface, crate::effect::Value),
     /// "Copy them." / "Copy those cards." — one copy of each exiled card.
     Each,
     /// "For each card exiled this way, copy it, and you may cast the copy
@@ -140,14 +142,37 @@ fn plural_copy_statement(sentence: &SentenceInput) -> Option<CopyStatement> {
             Some(CopyStatement::Each)
         }
         ["copy", reference @ .., count, "times"] => {
-            let surface = match reference {
-                ["it"] => CopyInstructionSurface::SeparateIt,
-                ["that", "card"] => CopyInstructionSurface::SeparateThatCard,
-                _ => return None,
-            };
+            let surface = copy_times_reference_surface(reference)?;
             let count = crate::util::parse_number_word_u32(count)?;
-            (count >= 2).then_some(CopyStatement::Times(surface, count))
+            (count >= 2).then_some(CopyStatement::Times(
+                surface,
+                crate::effect::Value::Fixed(count as i32),
+            ))
         }
+        // "Copy that card X times, where X is the number of creature types
+        // among non-Borg creatures you control." (Infinite Diversity): the
+        // number of copies is the bound X, read as the procedure resolves.
+        ["copy", rest @ ..] => {
+            let where_at = rest.iter().position(|word| *word == "where")?;
+            let (reference, binding) = rest.split_at(where_at);
+            let [reference @ .., "x", "times"] = reference else {
+                return None;
+            };
+            if binding.len() <= 3 || binding[..3] != ["where", "x", "is"] {
+                return None;
+            }
+            let surface = copy_times_reference_surface(reference)?;
+            let value = super::dispatch_entry::where_x_value_from_tokens(sentence.lowered())?;
+            Some(CopyStatement::Times(surface, value))
+        }
+        _ => None,
+    }
+}
+
+fn copy_times_reference_surface(reference: &[&str]) -> Option<CopyInstructionSurface> {
+    match reference {
+        ["it"] => Some(CopyInstructionSurface::SeparateIt),
+        ["that", "card"] => Some(CopyInstructionSurface::SeparateThatCard),
         _ => None,
     }
 }
@@ -633,7 +658,7 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
                     cast.copy_instruction_surface = Some(surface);
                     effects.push(EffectAst::ForEach(
                         crate::cards::builders::ForEachEffectAst::RepeatEffects {
-                            count: crate::effect::Value::Fixed(count as i32),
+                            count,
                             effects: vec![build_may_cast_tagged_effect(&cast)],
                         },
                     ));

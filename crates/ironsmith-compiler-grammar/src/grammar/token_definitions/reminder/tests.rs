@@ -20,6 +20,7 @@ fn creature_definition() -> TokenDefinitionSpec {
         use_source_chosen_creature_type: false,
         keywords: Vec::new(),
         rules: Default::default(),
+        mana_cost: None,
     })
 }
 

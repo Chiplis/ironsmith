@@ -404,6 +404,8 @@ fn materialize_static_abilities(
                             // the payload ("Meet in Reverse — You draw cards
                             // from the bottom of your library", River Song).
                             | ironsmith_core::StaticAbilityPayload::RuleRestriction { .. }
+                            // "Rulebreaker — A deck with this commander ..."
+                            | ironsmith_core::StaticAbilityPayload::CommanderDeckAllowance { .. }
                     )
                 {
                     ability.label = format!(

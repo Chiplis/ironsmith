@@ -596,7 +596,8 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 visit(target);
             }
             SubjectVerbActionAst::Control(ControlActionAst::Unattach { object })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target: object, .. }) => visit(object),
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target: object, .. })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime { target: object, .. }) => visit(object),
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight {
                 creature1,
                 creature2,
@@ -2095,6 +2096,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
         | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves {
             ..

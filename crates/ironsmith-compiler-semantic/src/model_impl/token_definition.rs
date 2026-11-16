@@ -434,6 +434,9 @@ pub struct ArtifactTokenShape {
     /// legendary colorless Book artifact token with hexproof and ...",
     /// Volo, Itinerant Scholar).
     pub keywords: Vec<TokenKeywordShape>,
+    /// An authored mana cost ("a {6} artifact", CR 111.4 / 202.1): the
+    /// token's color (CR 202.2) and mana value (CR 202.3) come from it.
+    pub mana_cost: Option<crate::mana::ManaCost>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
@@ -499,6 +502,9 @@ pub struct CreatureTokenShape {
     pub use_source_chosen_creature_type: bool,
     pub keywords: Vec<TokenKeywordShape>,
     pub rules: CreatureTokenRulesShape,
+    /// An authored mana cost ("a {6} artifact", CR 111.4 / 202.1): the
+    /// token's color (CR 202.2) and mana value (CR 202.3) come from it.
+    pub mana_cost: Option<crate::mana::ManaCost>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]

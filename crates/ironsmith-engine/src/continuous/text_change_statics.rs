@@ -177,6 +177,8 @@ pub(crate) fn rewrite_static_model_words(
         P::CommanderPairing { .. } => {}
         P::DeckConstructionCopyLimit { .. } => {}
         P::DeckConstructionColorChoice { .. } => {}
+        // Read only by deck validation, before the game exists.
+        P::CommanderDeckAllowance { .. } => {}
         P::KeywordMarkerMechanic { .. } => {}
         P::Toxic { .. } => {}
         P::DraftRule { .. } => {}
@@ -208,6 +210,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::FlashIfTargetsMatching(filter) | P::RemoveAllAbilities(filter)
         | P::RemoveAllAbilitiesExceptMana(filter) | P::MakeColorless(filter)
         | P::EntersTappedForFilter(filter) | P::EntersUntappedForFilter(filter)
+        | P::EntersTappedAndAttackingForFilter(filter)
         | P::GoadMatching { filter } | P::CostIncreaseLife { filter, .. }
         | P::ActivateAbilitiesAsThoughHaste { filter, .. }
         | P::LoyaltyAbilitiesAnyTime { filter }
@@ -990,7 +993,8 @@ fn grantable_words(
             D::FlashbackFromCardManaCost { additional_costs } => {
                 *additional_costs = additional_costs.iter().map(|cost| rewrite_cost_words(cost, change)).collect::<Result<_, _>>()?;
             }
-            D::ZoneCastFromCardManaCost { additional_costs, .. } => {
+            D::ZoneCastFromCardManaCost { additional_costs, .. }
+            | D::BeamMeUpFromCardManaCost { additional_costs, .. } => {
                 *additional_costs = additional_costs.iter().map(|cost| rewrite_cost_words(cost, change)).collect::<Result<_, _>>()?;
             }
             D::GraveyardCastFromCardManaCost { additional_costs, condition, .. } => {

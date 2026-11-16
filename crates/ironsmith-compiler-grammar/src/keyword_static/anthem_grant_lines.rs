@@ -1563,6 +1563,132 @@ fn has_owned_granted_cost_companion(tokens: &[OwnedLexToken]) -> Result<bool, Ca
     Ok(owned)
 }
 
+/// "During your main phase, each card in your graveyard has beam me up. The
+/// beam me up cost is equal to that spell's mana cost. Scotty can't be beamed
+/// up to cast a spell this way." (Scotty, Miracle Worker): a graveyard grant
+/// of beam me up whose cost is each card's own mana cost. Beam me up's own
+/// cost component (returning another creature you control that can be beamed
+/// up) is part of the granted keyword; a trailing self-reference sentence
+/// keeps the granting permanent from being the creature returned for a cast
+/// through this grant (printed beam me up and other grants may still return
+/// it).
+fn parse_beam_me_up_cost_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
+    let sentences = sentences
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    let (first, companion, exclusion) = match sentences.as_slice() {
+        [first, companion] => (*first, *companion, None),
+        [first, companion, exclusion] => (*first, *companion, Some(*exclusion)),
+        _ => return Ok(None),
+    };
+    let Some(verb) = anthem_grant_grammar::parse_granted_keyword_verb_facts(first) else {
+        return Ok(None);
+    };
+    let keyword_words = crate::lexer::parser_token_word_refs(&first[verb.have_token + 1..]);
+    if keyword_words.as_slice() != ["beam", "me", "up"] {
+        return Ok(None);
+    }
+    let companion_words = crate::lexer::parser_token_word_refs(companion);
+    let cost_owner_ok = matches!(
+        companion_words.as_slice(),
+        ["the" | "its", "beam", "me", "up", "cost", "is", "equal", "to", rest @ ..]
+            if matches!(
+                rest,
+                ["its", "mana", "cost"]
+                    | ["that", "spell's" | "spells" | "card's" | "cards", "mana", "cost"]
+            )
+    );
+    if !cost_owner_ok {
+        return Ok(None);
+    }
+    // "Scotty can't be beamed up [to cast a spell this way]".
+    let excludes_grant_source = match exclusion {
+        None => false,
+        Some(exclusion) => {
+            let words = crate::lexer::parser_token_word_refs(exclusion);
+            let Some(negation) = words
+                .iter()
+                .position(|word| matches!(*word, "can't" | "cant" | "cannot"))
+            else {
+                return Ok(None);
+            };
+            // Only the "this way" form scopes the exclusion to this grant; a
+            // bare "can't be beamed up" is a different, global rule.
+            let tail = &words[negation + 1..];
+            let tail_ok = matches!(
+                tail,
+                ["be", rest @ ..]
+                    if rest.strip_suffix(&["to", "cast", "a", "spell", "this", "way"][..])
+                        .is_some_and(|participle| crate::keyword_forms::words_spell(
+                            participle,
+                            crate::keyword_forms::BEAMED_UP,
+                        ))
+            );
+            if negation == 0 || !tail_ok || !crate::util::is_source_reference_words(&words[..negation]) {
+                return Ok(None);
+            }
+            true
+        }
+    };
+    // "During your main phase, ...": the grant exists only during its
+    // controller's main phases.
+    let first_words = crate::lexer::parser_token_word_refs(first);
+    let (condition, subject_start) =
+        if first_words.starts_with(&["during", "your", "main", "phase"]) {
+            let Some(comma) = first[..verb.have_token].iter().position(|token| token.is_comma())
+            else {
+                return Ok(None);
+            };
+            (
+                Some(PredicateAst::Source(
+                    crate::host::SourcePredicateAst::SourceControllersMainPhase,
+                )),
+                comma + 1,
+            )
+        } else {
+            match parse_anthem_prefix_condition(first, verb.have_token) {
+                Ok(parsed) => parsed,
+                Err(_) => return Ok(None),
+            }
+        };
+    let subject_tokens = trim_commas(&first[subject_start..verb.have_token]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut returned = ObjectFilter::creature().controlled_by(PlayerFilter::You);
+    returned
+        .excluded_rules
+        .push(ironsmith_core::ObjectRule::CantBeBeamedUp);
+    let grantable = crate::model::CompilerGrantableCore::DerivedAlternativeCast(
+        ironsmith_core::DerivedAlternativeCast::BeamMeUpFromCardManaCost {
+            additional_costs: vec![crate::model::CompilerCost::ReturnChosenToHand {
+                count: 1,
+                filter: returned,
+            }],
+            excludes_grant_source,
+        },
+    );
+    let Some(spec) = extract_grant_spec_from_subject(&subject_tokens, grantable)? else {
+        return Ok(None);
+    };
+    if spec.zone != Zone::Graveyard {
+        return Ok(None);
+    }
+    let mut grant = StaticAbilityAst::Static(StaticAbility::grants(spec));
+    if let Some(condition) = condition {
+        grant = StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(grant),
+            condition,
+        };
+    }
+    crate::word_claims::claim_tokens(tokens);
+    Ok(Some(vec![grant]))
+}
+
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -1570,6 +1696,9 @@ pub fn parse_granted_keyword_static_line(
     // "<subject> has <keyword>" grant.
     if crate::lexer::token_word_refs(tokens).starts_with(&["you", "may", "have"]) {
         return Ok(None);
+    }
+    if let Some(abilities) = parse_beam_me_up_cost_grant_line(tokens)? {
+        return Ok(Some(abilities));
     }
     // A malformed protection grant is rejected before any sentence-boundary
     // decline, so no other reader can trim its delimiters away.

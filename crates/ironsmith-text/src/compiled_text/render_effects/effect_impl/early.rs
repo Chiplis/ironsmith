@@ -788,6 +788,25 @@ if filter.zone == Some(Zone::Hand)
         if let Some(text) = describe_repeated_comma_then_pair(sequence) {
             return text;
         }
+        // "You look at the top two cards of their library, then exile them
+        // face down." (Vulcan Mind-Meld): the exile names every looked card.
+        if sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+            && let [look_effect, exile_effect] = sequence.effects.as_slice()
+            && let Some(look) = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(exile) = exile_effect.downcast_ref::<crate::effects::ExileEffect>()
+            && matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if *tag == look.tag)
+            && matches!(look.count, Value::Fixed(count) if count > 1)
+        {
+            let exile_text = lowercase_first(describe_effect(exile_effect).trim_end_matches('.'));
+            if let Some(rest) = exile_text.strip_prefix("exile it")
+                && (rest.is_empty() || rest.starts_with(' '))
+            {
+                return format!(
+                    "{}, then exile them{rest}",
+                    describe_effect(look_effect).trim_end_matches('.')
+                );
+            }
+        }
         // "This Aura's controller sacrifices it" (Soul Ransom): the subject
         // helper names the source only so the sacrifice can name its
         // controller; it is not a separate choice.
@@ -7838,6 +7857,7 @@ if filter.zone == Some(Zone::Hand)
                 | Value::LifeTotalAsTurnBegan(_)
                 | Value::LifeTotalDifference(_)
                 | Value::StartingLifeTotal(_)
+                | Value::StartingDeckSize(_)
                 | Value::HalfLifeTotalRoundedUp(_)
                 | Value::HalfLifeTotalRoundedDown(_)
                 | Value::HalfStartingLifeTotalRoundedUp(_)

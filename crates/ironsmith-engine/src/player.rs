@@ -857,6 +857,10 @@ pub struct Player {
 
     // Commander damage tracking (commander identity -> damage)
     pub commander_damage: HashMap<ObjectId, u32>,
+    /// Cards in this player's starting deck (CR 103.2; commanders included,
+    /// CR 903.5a), recorded when the match starts. `None` for states built
+    /// without a deck setup.
+    pub starting_deck_size: Option<u32>,
 }
 
 impl Player {
@@ -899,6 +903,7 @@ impl Player {
             commanders: Vec::new(),
             commander_color_identities: std::collections::BTreeMap::new(),
             commander_damage: HashMap::new(),
+            starting_deck_size: None,
         }
     }
 

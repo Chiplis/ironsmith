@@ -1243,6 +1243,12 @@ pub struct GrantPlayTaggedEffect<C> {
     /// battlefield tapped. Appended; absent in older artifacts.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
     pub permanents_enter_tapped: bool,
+    /// "For each card exiled this way, the player who exiled it may play it"
+    /// (Vulcan Mind-Meld): each tagged card's permission belongs to the
+    /// player recorded as having exiled it, not to `player`. Appended;
+    /// absent in older artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub beneficiary_is_each_exiler: bool,
 }
 
 #[cfg(feature = "serde")]
@@ -1299,7 +1305,14 @@ impl<C> GrantPlayTaggedEffect<C> {
             while_player_controls: None,
             control_duration: None,
             permanents_enter_tapped: false,
+            beneficiary_is_each_exiler: false,
         }
+    }
+
+    /// Give each tagged card's permission to the player who exiled it.
+    pub fn to_each_exiler(mut self) -> Self {
+        self.beneficiary_is_each_exiler = true;
+        self
     }
 
     pub fn with_spell_cost_reduction_per_opponent(mut self, amount: u32) -> Self {

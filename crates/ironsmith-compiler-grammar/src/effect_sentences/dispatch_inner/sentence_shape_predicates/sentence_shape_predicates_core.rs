@@ -142,6 +142,13 @@ fn parse_effect_sentence_lexed_uncached(
     if let Some(effect) = parse_choose_color_from_among(tokens)? {
         return Ok(vec![effect]);
     }
+    // "For as long as they have a contract counter, when they lose the game,
+    // for each artifact and creature they controlled, ..." (Miss Highwater).
+    if let Some(effects) =
+        crate::effect_sentences::pair_procedure::lose_game_controlled_copies::parse_tokens(tokens)?
+    {
+        return Ok(effects);
+    }
     if let Some(effect)=crate::keyword_static::parse_resolving_spell_replacement_program(tokens)? {return Ok(vec![effect]);}
     if let Some(effect)=parse_owner_bottom_or_beneath_top_x(tokens)? {return Ok(vec![effect]);}
     if let Some(effects)=parse_audition_sentence(tokens)? {return Ok(effects);}

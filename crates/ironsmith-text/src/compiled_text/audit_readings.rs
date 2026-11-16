@@ -2668,6 +2668,7 @@ pub(crate) fn audit_payload_reading(
         P::DeckConstructionColorChoice { count } => format!(
             "As its owner creates their deck, they choose {count} different colors for this card"
         ),
+        P::CommanderDeckAllowance { allowance, .. } => allowance.describe(),
         P::Toxic { amount } => format!("Toxic {amount}"),
         // CR 123.8: a power/toughness sticker row and its ticket cost.
         P::TicketPowerToughnessSticker { tickets, power, toughness } => format!(
@@ -2769,6 +2770,40 @@ pub(crate) fn audit_payload_reading(
                 M::ContributesExtraPower { saddles, amount } => format!(
                     "This creature {} as though its power were {amount} greater", action(*saddles)
                 ),
+                M::ContributesMultipliedPower {
+                    stations,
+                    stations_spacecraft_only,
+                    crews,
+                    saddles,
+                    multiplier,
+                } => {
+                    let mut actions = Vec::new();
+                    if *stations {
+                        actions.push(if *stations_spacecraft_only {
+                            "stations Spacecraft"
+                        } else {
+                            "stations permanents"
+                        });
+                    }
+                    if *saddles {
+                        actions.push("saddles Mounts");
+                    }
+                    if *crews {
+                        actions.push("crews Vehicles");
+                    }
+                    let actions = match actions.as_slice() {
+                        [] => String::new(),
+                        [only] => (*only).to_string(),
+                        [init @ .., last] => format!("{} and {last}", init.join(", ")),
+                    };
+                    let multiplied = match multiplier {
+                        2 => "doubled".to_string(),
+                        3 => "tripled".to_string(),
+                        4 => "quadrupled".to_string(),
+                        other => format!("multiplied by {other}"),
+                    };
+                    format!("This creature {actions} as though its power were {multiplied}")
+                }
                 M::LoyaltyCounterPaysCrewCost => {
                     "You may remove a loyalty counter from a planeswalker you control rather than pay this Vehicle's crew cost".to_string()
                 }

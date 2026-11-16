@@ -46,6 +46,97 @@ function copyLimit(card, format) {
   const number = match && ({ two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 }[match[1]] || Number(match[1]));
   return number || (usesCommanders(format) ? 1 : 4);
 }
+// Rulebreaker commander deck-construction allowances, read from the
+// commander's rules the way the engine types them (CommanderDeckAllowance):
+// "A deck with this commander can have Angel cards of any color identity and
+// any basic land cards.", "... has no maximum deck size.", and "If <name> is
+// your commander, the color identity of instant and sorcery cards in your
+// deck can include one color of your choice not in your commander's color
+// identity, and your deck can have any basic land cards."
+const NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const countWord = word => NUMBER_WORDS[word] || Number(word) || null;
+// "<head> (and <head>)* cards [with mana value N or greater]" at the start of `words`.
+function deckCardClassList(words) {
+  const cardsAt = words.findIndex(word => word === 'cards' || word === 'card');
+  if (cardsAt <= 0) return null;
+  const classes = [];
+  let head = [];
+  for (const word of [...words.slice(0, cardsAt), 'and']) {
+    if (word !== 'and') { head.push(word); continue; }
+    if (!head.length) return null;
+    classes.push({ words: head, minManaValue: null });
+    head = [];
+  }
+  let used = cardsAt + 1;
+  const rest = words.slice(used);
+  if (rest[0] === 'with' && rest[1] === 'mana' && rest[2] === 'value') {
+    const minimum = countWord(rest[3]);
+    if (minimum === null || rest[4] !== 'or' || rest[5] !== 'greater') return null;
+    for (const cls of classes) cls.minManaValue = minimum;
+    used += 6;
+  }
+  return { classes, used };
+}
+// "can have" objects: "any <classes>" and "<classes> of any color identity", joined by "and".
+function deckAllowanceHaves(words, into) {
+  let rest = words;
+  while (rest.length) {
+    if (rest[0] === 'any') {
+      const list = deckCardClassList(rest.slice(1));
+      if (!list) return false;
+      into.push(...list.classes);
+      rest = rest.slice(1 + list.used);
+    } else {
+      const list = deckCardClassList(rest);
+      if (!list) return false;
+      const tail = rest.slice(list.used);
+      if (tail.slice(0, 4).join(' ') !== 'of any color identity') return false;
+      into.push(...list.classes);
+      rest = tail.slice(4);
+    }
+    if (!rest.length) return true;
+    if (rest[0] !== 'and') return false;
+    rest = rest.slice(1);
+  }
+  return false;
+}
+const ruleWords = text => text.toLowerCase().replace(/[’']/g, '').replace(/[.,]/g, ' ').split(/\s+/).filter(Boolean);
+function commanderAllowance(leaders) {
+  const allowance = { anyColorIdentity: [], extra: null, noMaximumDeckSize: false };
+  for (const card of leaders) {
+    for (const line of String(card?.rules || '').split('\n')) {
+      const body = line.replace(/^[^—:]{1,40}—\s*/, '');
+      const words = ruleWords(body);
+      const deckWith = ['a', 'deck', 'with', 'this', 'commander'];
+      if (deckWith.every((word, i) => words[i] === word)) {
+        const rest = words.slice(deckWith.length);
+        if (rest.join(' ') === 'has no maximum deck size') allowance.noMaximumDeckSize = true;
+        else if (rest[0] === 'can' && rest[1] === 'have') {
+          const classes = [];
+          if (deckAllowanceHaves(rest.slice(2), classes)) allowance.anyColorIdentity.push(...classes);
+        }
+        continue;
+      }
+      const match = /^if .+? is your commander, the color identity of (.+?) in your deck can include (\w+) colors? of your choice not in your commander[’']?s color identity(?:, and your deck can have (.+?))?\.?$/i.exec(body.trim());
+      if (!match) continue;
+      const list = deckCardClassList(ruleWords(match[1]));
+      const count = countWord(match[2].toLowerCase());
+      if (!list || list.used !== ruleWords(match[1]).length || !count) continue;
+      const haves = [];
+      if (match[3] && !deckAllowanceHaves(ruleWords(match[3]), haves)) continue;
+      allowance.anyColorIdentity.push(...haves);
+      allowance.extra = allowance.extra
+        ? { classes: [...allowance.extra.classes, ...list.classes], count: Math.max(allowance.extra.count, count) }
+        : { classes: list.classes, count };
+    }
+  }
+  return allowance;
+}
+function cardInClass(card, cls) {
+  const typeWords = new Set(ruleWords(String(card.type || '').replace(/—/g, ' ')));
+  return cls.words.every(word => typeWords.has(word))
+    && (cls.minManaValue === null || (card.mv || 0) >= cls.minManaValue);
+}
 function commanderEligible(card, format) {
   // Pauper EDH leads with a creature (or Background) printed at uncommon.
   if (format === 'paupercommander') return card.pdhCommander === true;
@@ -76,8 +167,13 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
   const configure = (name, message) => { configurationErrors.push(message); configurationProblems[name] ||= message; };
   if (!data?.cards) return { ready: false, errors: ['Card legality catalog has not loaded.'], cardProblems };
   const commanderFormat = usesCommanders(format);
+  // Pauper EDH commanders are uncommons, which its card legality (the 99's
+  // commons-only rule) never covers; their eligibility is checked below.
+  const leaders = commanders.map(name => lookup(data.cards, name));
+  const allowance = commanderAllowance(leaders.filter(Boolean));
   if (commanderFormat) {
-    if (![1, 2].includes(commanders.length) || deck.length + commanders.length !== 100) errors.push(`${rules.label} requires 100 cards including one commander or a legal commander pair.`);
+    const size = deck.length + commanders.length;
+    if (![1, 2].includes(commanders.length) || (allowance.noMaximumDeckSize ? size < 100 : size !== 100)) errors.push(`${rules.label} requires ${allowance.noMaximumDeckSize ? 'at least ' : ''}100 cards including one commander or a legal commander pair.`);
     if (sideboard.length) errors.push(`${rules.label} does not use a sideboard.`);
   } else {
     if (deck.length < 60) errors.push(`${rules.label} requires at least 60 main-deck cards.`);
@@ -99,9 +195,6 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
     written.set(card.name, name);
   }
   const flagCard = (card, message) => flag(written.get(card.name) || card.name, message);
-  // Pauper EDH commanders are uncommons, which its card legality (the 99's
-  // commons-only rule) never covers; their eligibility is checked below.
-  const leaders = commanders.map(name => lookup(data.cards, name));
   const exempt = new Set(format === 'paupercommander' ? leaders.filter(Boolean).map(card => card.name) : []);
   for (const [name, count] of counts) {
     const card = found.get(name);
@@ -123,13 +216,22 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
       if (!validPair(...leaders)) errors.push('These commanders do not form a legal pair.');
     }
     const colors = new Set(leaders.filter(Boolean).flatMap(c => c.colors));
+    const basicColors = { Plains: 'W', Island: 'U', Swamp: 'B', Mountain: 'R', Forest: 'G' };
+    // Colors outside the commanders' identity that extra-color cards use
+    // together ("one color of your choice", Tolabow, Loch Rascal).
+    const extraColorsUsed = new Set();
     for (const card of found.values()) {
-      if (card.colors.some(color => !colors.has(color))) flagCard(card, `${card.name} is outside the commanders’ color identity.`);
-      const basicColors = { Plains: 'W', Island: 'U', Swamp: 'B', Mountain: 'R', Forest: 'G' };
-      for (const [land, color] of Object.entries(basicColors)) {
-        if (new RegExp(`\\b${land}\\b`).test(card.type) && !colors.has(color)) flagCard(card, `${card.name} has a basic land type outside the commanders’ colors.`);
+      if (allowance.anyColorIdentity.some(cls => cardInClass(card, cls))) continue;
+      const landColors = Object.entries(basicColors).filter(([land]) => new RegExp(`\\b${land}\\b`).test(card.type)).map(([, color]) => color);
+      const outside = new Set([...card.colors, ...landColors].filter(color => !colors.has(color)));
+      if (outside.size && allowance.extra?.classes.some(cls => cardInClass(card, cls)) && outside.size <= allowance.extra.count) {
+        for (const color of outside) extraColorsUsed.add(color);
+        continue;
       }
+      if (card.colors.some(color => !colors.has(color))) flagCard(card, `${card.name} is outside the commanders’ color identity.`);
+      if (landColors.some(color => !colors.has(color))) flagCard(card, `${card.name} has a basic land type outside the commanders’ colors.`);
     }
+    if (extraColorsUsed.size > (allowance.extra?.count || 0)) errors.push(`The deck's cards use ${extraColorsUsed.size} colors outside the commanders’ color identity; the commander allows only ${allowance.extra?.count || 0} chosen color(s).`);
   }
   return {
     ready: errors.length === 0, errors: [...new Set(errors)], cardProblems,

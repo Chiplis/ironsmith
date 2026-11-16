@@ -4622,6 +4622,9 @@ pub(super) fn may_causative_clause(inner: &str) -> Option<String> {
         (" reveals ", "reveal"),
         (" returns ", "return"),
         (" fights ", "fight"),
+        // "you may have the chosen creatures fight each other" (T'Pring,
+        // Never Parted): a plural subject already uses the bare verb.
+        (" fight ", "fight"),
         (" deals ", "deal"),
         (" exchange ", "exchange"),
     ];

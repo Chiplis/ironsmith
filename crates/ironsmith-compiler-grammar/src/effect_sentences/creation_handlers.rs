@@ -1678,9 +1678,106 @@ fn split_token_copy_entry_counter_exception(
     ))
 }
 
+/// "Create a {1}{G}{G} 2/2 Badger creature token ...": an authored mana cost
+/// leads the token's description (CR 111.4, 202.1). Returns the instruction
+/// without that cost, which the created token's definition then carries.
+fn split_token_description_mana_cost(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, crate::mana::ManaCost)> {
+    let mut in_quotes = false;
+    let mut start = None;
+    let mut end = None;
+    let mut reaches_token = false;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Quote {
+            in_quotes = !in_quotes;
+            continue;
+        }
+        if in_quotes {
+            continue;
+        }
+        if token.is_any_word(&["token", "tokens"]) {
+            reaches_token = true;
+            break;
+        }
+        if token.kind == TokenKind::ManaGroup {
+            if end.is_some() {
+                return None;
+            }
+            start.get_or_insert(index);
+        } else if start.is_some() && end.is_none() {
+            end = Some(index);
+        }
+    }
+    let (start, end) = (start?, end?);
+    if !reaches_token {
+        return None;
+    }
+    // The cost follows the count ("a", "ten", "X") of the created tokens.
+    let count = tokens.get(start.checked_sub(1)?)?.as_word()?;
+    if !matches!(count, "a" | "an" | "x") && crate::util::parse_number_word_u32(count).is_none() {
+        return None;
+    }
+    let cost = crate::grammar::values::parse_mana_cost_tokens(&tokens[start..end]).ok()?;
+    let mut rest = tokens[..start].to_vec();
+    rest.extend_from_slice(&tokens[end..]);
+    crate::word_claims::claim_tokens(&tokens[start..end]);
+    Some((rest, cost))
+}
+
+fn set_created_token_mana_cost(effect: &mut EffectAst, cost: &crate::mana::ManaCost) -> bool {
+    if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { definition, .. }),
+        ..
+    }) = effect
+    {
+        return match definition {
+            crate::model::token_definition::TokenDefinitionSpec::Creature(shape) => {
+                shape.mana_cost = Some(cost.clone());
+                true
+            }
+            crate::model::token_definition::TokenDefinitionSpec::Artifact(shape) => {
+                shape.mana_cost = Some(cost.clone());
+                true
+            }
+            _ => false,
+        };
+    }
+    let mut attached = false;
+    super::super::effect_ast_traversal::for_each_nested_effects_mut(effect, false, |nested| {
+        if attached {
+            return;
+        }
+        for nested_effect in nested.iter_mut().rev() {
+            if set_created_token_mana_cost(nested_effect, cost) {
+                attached = true;
+                break;
+            }
+        }
+    });
+    attached
+}
+
+fn with_created_token_mana_cost(
+    mut create: EffectAst,
+    cost: &crate::mana::ManaCost,
+) -> Result<EffectAst, CardTextError> {
+    if set_created_token_mana_cost(&mut create, cost) {
+        Ok(create)
+    } else {
+        Err(CardTextError::ParseError(
+            "token description mana cost has no artifact or creature token to define".to_string(),
+        ))
+    }
+}
+
 pub fn lower_complete_simple_create_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    if let Some((rest, cost)) = split_token_description_mana_cost(tokens) {
+        return with_created_token_mana_cost(lower_complete_simple_create_shape(&rest)?, &cost);
+    }
     if let Some((prefix, counter_type, amount)) = split_token_copy_entry_counter_exception(tokens) {
         let create = lower_complete_simple_create_shape(&prefix)?;
         // Claim the validated entry-counter frame only after its complete
@@ -1800,6 +1897,9 @@ pub fn parse_create(
         rewritten.extend_from_slice(crate::util::trim_edge_punctuation_tokens(&tokens[index..]));
         rewritten.extend(crate::lexer::lex_line(&format!(", except it's {pt}"), 0)?);
         return parse_create(&rewritten, subject);
+    }
+    if let Some((rest, cost)) = split_token_description_mana_cost(tokens) {
+        return with_created_token_mana_cost(parse_create(&rest, subject)?, &cost);
     }
     if let Some((prefix, counter_type, amount)) = split_token_copy_entry_counter_exception(tokens) {
         let create = parse_create(&prefix, subject)?;

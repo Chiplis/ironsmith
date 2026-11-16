@@ -24,6 +24,7 @@ import { isVerifiedMultiplayerSecurityMode } from "@/lib/multiplayer-security";
 import { captureEngineRestorePoint, restoreEngineRestorePoint } from "@/lib/engine-restore-point";
 import { subscribePriorityAnalysisSnapshots } from "@/lib/priority-analysis-scheduler.js";
 import { castingMethodChoiceForAction, finishExplicitCastingMethod } from "@/lib/casting-method-choice";
+import { manaColorChoiceCommand } from "@/lib/mana-color-choice";
 import { startTransition, useContext, useState, useCallback, useRef, useMemo, useEffect, useSyncExternalStore } from "react";
 import { useGameSnapshot } from "@/hooks/useGameSnapshot";
 import { useWasmGame } from "@/hooks/useWasmGame";
@@ -1755,6 +1756,7 @@ export function GameProvider({ children }) {
   const dispatch = useCallback(
     async (command, successMessage, {
       castingAction = null,
+      manaColor = null,
       waitForPaymentReady = false,
       waitForLoopReady = false,
       expectedLoopSnapshotId = null,
@@ -1879,6 +1881,16 @@ export function GameProvider({ children }) {
                   successMessage,
                 );
               }
+              // A mana strip click already named the color it wants.
+              const colorState = stateRef.current;
+              const colorCommand = manaColor && samePlayerId(colorState?.decision?.player, colorState?.perspective)
+                ? manaColorChoiceCommand(colorState.decision, manaColor) : null;
+              if (colorCommand) {
+                await submitMultiplayerCommand(
+                  serializeMultiplayerCommand(colorCommand, colorState),
+                  successMessage,
+                );
+              }
             } finally {
               finishMultiplayerSubmission();
             }
@@ -1928,6 +1940,9 @@ export function GameProvider({ children }) {
           priorityCheckpoint.policy = priorityPolicy.beforeCommand(command, stateRef.current, { maintain: maintainRequested });
           let st = await dispatchForAutomation(game, command);
           st = await finishExplicitCastingMethod(st, castingAction, (nextCommand) => dispatchForAutomation(game, nextCommand));
+          const colorCommand = manaColor && samePlayerId(st?.decision?.player, stateRef.current?.perspective)
+            ? manaColorChoiceCommand(st.decision, manaColor) : null;
+          if (colorCommand) st = await dispatchForAutomation(game, colorCommand);
           // Goldfish opponents already governed by the automatic hold policy
           // grant their own intention too. Required choices always return to UI.
           if (isYield && !st?.loop_shortcut) {

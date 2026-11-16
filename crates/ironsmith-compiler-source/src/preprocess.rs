@@ -78,6 +78,49 @@ pub fn make_line_info(
 
 fn is_layout_whitespace(ch: char) -> bool { ch.is_whitespace() || ch == '\u{200b}' }
 
+/// Joins line breaks that fall inside a closed parenthetical.
+///
+/// Rules text puts each ability on its own line, and a parenthetical (reminder
+/// text) never spans abilities, so a raw line break between a `(` and its
+/// matching `)` is a source wrapping artifact ("after your draw\nstep"). Each
+/// such break becomes a space, which keeps every byte offset of the authored
+/// text stable. A `(` that never closes is left alone.
+pub fn join_parenthetical_line_breaks(text: String) -> String {
+    if !text.contains('\n') || !text.contains('(') {
+        return text;
+    }
+    let bytes = text.as_bytes();
+    let mut open_stack: Vec<usize> = Vec::new();
+    let mut joins: Vec<std::ops::Range<usize>> = Vec::new();
+    for (index, byte) in bytes.iter().enumerate() {
+        match byte {
+            b'(' => open_stack.push(index),
+            b')' => {
+                if let Some(open) = open_stack.pop()
+                    && open_stack.is_empty()
+                    && bytes[open..index].contains(&b'\n')
+                {
+                    joins.push(open..index);
+                }
+            }
+            _ => {}
+        }
+    }
+    if joins.is_empty() {
+        return text;
+    }
+    let mut out = text.into_bytes();
+    for range in joins {
+        for byte in &mut out[range] {
+            if matches!(*byte, b'\n' | b'\r') {
+                *byte = b' ';
+            }
+        }
+    }
+    // Only ASCII bytes were replaced by an ASCII byte, so the text stays UTF-8.
+    String::from_utf8(out).unwrap_or_default()
+}
+
 pub fn normalize_trimmed_line(line: &str) -> Option<NormalizedLine> {
     let source_start = line.find(|ch: char| !is_layout_whitespace(ch))?;
     let source_end = line

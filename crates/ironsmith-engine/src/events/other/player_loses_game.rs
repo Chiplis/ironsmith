@@ -10,11 +10,23 @@ use crate::ids::PlayerId;
 #[derive(Debug, Clone)]
 pub struct PlayerLosesGameEvent {
     pub player: PlayerId,
+    /// Last known information of the permanents the player controlled as
+    /// they lost (CR 800.4a): those objects leave the game with the player,
+    /// before any "when that player loses the game" ability resolves.
+    pub controlled_permanents: Vec<crate::snapshot::ObjectSnapshot>,
 }
 
 impl PlayerLosesGameEvent {
     pub fn new(player: PlayerId) -> Self {
-        Self { player }
+        Self { player, controlled_permanents: Vec::new() }
+    }
+
+    pub fn with_controlled_permanents(
+        mut self,
+        permanents: Vec<crate::snapshot::ObjectSnapshot>,
+    ) -> Self {
+        self.controlled_permanents = permanents;
+        self
     }
 }
 

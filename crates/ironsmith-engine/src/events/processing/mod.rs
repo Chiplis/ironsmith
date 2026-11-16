@@ -8147,6 +8147,8 @@ pub struct EtbEventResult {
     pub(crate) completed_program_outputs: Vec<crate::effects::PublishedEffectOutputs>,
     /// Whether the permanent enters tapped
     pub enters_tapped: bool,
+    /// Whether it enters attacking; the target is chosen after it enters.
+    pub enters_attacking: bool,
     pub enters_face_down: bool,
     /// Counters the permanent enters with (counter_type, count)
     pub enters_with_counters: Vec<(CounterType, u32)>,
@@ -10776,6 +10778,7 @@ fn prepare_etb_replacements_inner(
                 from,
                 creation: creation.clone(),
                 enters_tapped,
+                enters_attacking: false,
                 enters_face_down: false,
                 enters_with_counters,
                 linked_exile_with_entering: Vec::new(),
@@ -11025,6 +11028,7 @@ fn prepare_etb_replacements_inner(
                                 &state,
                             ))),
                             enters_tapped: etb.enters_tapped,
+                            enters_attacking: etb.enters_attacking,
                             enters_face_down: etb.enters_face_down,
                             enters_with_counters: etb.enters_with_counters.clone(),
                             linked_exile_with_entering: etb.linked_exile_with_entering.clone(),

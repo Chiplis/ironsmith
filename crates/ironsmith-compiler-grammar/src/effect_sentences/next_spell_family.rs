@@ -42,7 +42,12 @@ fn parse_next_spell_grant_ability(
         NextSpellKeywordActionShape::Known(action) => action,
         NextSpellKeywordActionShape::SingleWord(word) => parse_single_word_keyword_action(word)?,
     };
-    action.lowers_to_static_ability().then(|| vec![action.into()])
+    // Undaunted (CR 702.125a) is a cost reduction that functions on the
+    // stack, so a next-spell grant applies it as the spell is put on the
+    // stack, before its total cost is determined (CR 601.2a, 601.2f).
+    (action.lowers_to_static_ability()
+        || matches!(action, crate::payload::KeywordAction::Undaunted))
+    .then(|| vec![action.into()])
 }
 
 /// "Rather than pay the mana cost of the next spell you cast this turn, you

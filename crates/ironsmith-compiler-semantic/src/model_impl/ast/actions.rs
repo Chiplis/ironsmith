@@ -320,6 +320,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::FirstResolutionEachTurn { label, program }) => f.debug_struct("FirstResolutionEachTurn").field("label",label).field("program",program).finish(),
             Self::KeywordActions(KeywordActionAst::TriggerAbilitiesByClass { class,sources,source_selector,maximum,minimum,chooser,action_name }) => f.debug_struct("TriggerAbilitiesByClass").field("class",class).field("sources",sources).field("source_selector",source_selector).field("maximum",maximum).field("minimum",minimum).field("chooser",chooser).field("action_name",action_name).finish(),
             Self::KeywordActions(KeywordActionAst::LinkPermanents { target, relation, require_creatures }) => f.debug_struct("LinkPermanents").field("target",target).field("relation",relation).field("require_creatures",require_creatures).finish(),
+            Self::KeywordActions(KeywordActionAst::TriggerAdditionalTime { target, duration }) => f.debug_struct("TriggerAdditionalTime").field("target",target).field("duration",duration).finish(),
             Self::KeywordActions(KeywordActionAst::PairUnpairedCreatures) => f.write_str("PairUnpairedCreatures"),
             Self::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender) => f.write_str("EnterAttackingReturnedDefender"),
             Self::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent) => f.write_str("OptionalSourceCopiesForControllerAndOpponent"),
@@ -1277,10 +1278,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("removed_supertypes", removed_supertypes)
                 .field("target_reference_kind", target_reference_kind)
                 .finish(),
-            Self::Stack(StackActionAst::ScaleXValue { target, multiplier }) => f
+            Self::Stack(StackActionAst::ScaleXValue { target, multiplier, set_to }) => f
                 .debug_struct("ScaleXValue")
                 .field("target", target)
                 .field("multiplier", multiplier)
+                .field("set_to", set_to)
                 .finish(),
             Self::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                 tag,
@@ -1442,6 +1444,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 during_turns_attacked_with,
                 during_turns_cast_another_spell,
                 spell_cost_reduction_per_opponent,
+                beneficiary_is_each_exiler,
             }) => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
                 .field("starts_after_current_turn", starts_after_current_turn)
@@ -1467,6 +1470,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     "spell_cost_reduction_per_opponent",
                     spell_cost_reduction_per_opponent,
                 )
+                .field("beneficiary_is_each_exiler", beneficiary_is_each_exiler)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield {
                 tag, player, allow_land, without_paying_mana_cost, surface,

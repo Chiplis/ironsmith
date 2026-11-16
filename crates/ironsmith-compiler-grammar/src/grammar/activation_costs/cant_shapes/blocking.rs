@@ -116,9 +116,29 @@ fn parse_by_tail<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTail> {
         parse_power_threshold,
         parse_keyword_blockers,
         parse_color_blockers,
+        parse_color_count_blockers,
         parse_wall_blockers,
     ))
     .parse_next(input)
+}
+
+/// "can't be blocked by monocolored creatures" (Nephilim Epochal): blockers
+/// forbidden by how many colors they have (CR 105.2, 105.2a-c).
+fn parse_color_count_blockers<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTail> {
+    let count = alt((
+        primitives::kw("monocolored").value(0u8),
+        primitives::kw("multicolored").value(1u8),
+        primitives::kw("colorless").value(2u8),
+    ))
+    .parse_next(input)?;
+    parse_creature_noun.parse_next(input)?;
+    let mut filter = ObjectFilter::creature();
+    match count {
+        0 => filter.monocolored = true,
+        1 => filter.multicolored = true,
+        _ => filter.colorless = true,
+    }
+    Ok(BlockingCantTail::DisallowedBlockers(filter))
 }
 
 fn parse_except_by_tail<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTail> {

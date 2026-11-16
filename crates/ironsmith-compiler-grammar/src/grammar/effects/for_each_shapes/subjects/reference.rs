@@ -19,6 +19,19 @@ pub(super) fn contains_effect_verb_outside_filter_zone(tokens: &[OwnedLexToken])
         )
         .is_some();
     }
+    // "For each permanent you control that you've put a counter on this
+    // turn, ..." (La Forge, Thoughtful as Ever): a perfect-tense verb inside
+    // a "that you've ..." relative clause describes the object; it isn't an
+    // orphaned action clause.
+    if found.word_index >= 2
+        && matches!(words[found.word_index - 1], "youve" | "you've" | "you’ve")
+        && words[..found.word_index - 1].contains(&"that")
+    {
+        return super::super::super::chain_splitting::find_chain_verb_words(
+            words.get(found.word_index + 1..).unwrap_or_default(),
+        )
+        .is_some();
+    }
 
     true
 }

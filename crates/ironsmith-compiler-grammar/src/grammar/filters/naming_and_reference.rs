@@ -1545,6 +1545,56 @@ pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
     apply_spell_filter_parity_phrases(words, &mut filter);
     apply_spell_filter_cast_origin_tail(&mut filter, words);
     apply_spell_filter_exact_color_count(&mut filter, words);
+    // "artifact creature spell" (Võx, Child of the Collective): adjacent card
+    // types with no connective between them name one spell with every type,
+    // unlike the "instant or sorcery" list union.
+    // These words carry no commas, so any list connective at all ("instant,
+    // sorcery, Demon, and Spirit spells", Séance Board) marks a list.
+    let has_list_connective = words
+        .iter()
+        .any(|word| matches!(*word, "and" | "or" | "and/or" | "nor"));
+    if filter.card_types.len() > 1 && filter.all_card_types.is_empty() && !has_list_connective {
+        let positions = words
+            .iter()
+            .enumerate()
+            .filter(|(_, word)| parse_card_type(word).is_some())
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        if positions.len() == filter.card_types.len()
+            && positions.windows(2).all(|pair| pair[1] == pair[0] + 1)
+        {
+            filter.all_card_types = std::mem::take(&mut filter.card_types);
+        }
+    }
+    // "instant, sorcery, Demon, and Spirit spells" (Séance Board): a serial
+    // list whose every item is one type or subtype word, with a single item
+    // after its connective, names each item as its own alternative. "Elf or
+    // Warrior creature spells" instead ends in a modified head noun.
+    if !filter.card_types.is_empty() && !filter.subtypes.is_empty() {
+        let is_atom =
+            |word: &str| parse_card_type(word).is_some() || parse_subtype_flexible(word).is_some();
+        let head = words
+            .iter()
+            .position(|word| matches!(*word, "spell" | "spells"))
+            .unwrap_or(words.len());
+        let list = &words[..head];
+        let connectives = list
+            .iter()
+            .enumerate()
+            .filter(|(_, word)| matches!(**word, "and" | "or" | "and/or"))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        if let [connective] = connectives.as_slice()
+            && *connective >= 2
+            && list.len() == connective + 2
+            && list
+                .iter()
+                .enumerate()
+                .all(|(index, word)| index == *connective || is_atom(word))
+        {
+            filter.type_or_subtype_union = true;
+        }
+    }
 
     build_spell_filter_power_or_toughness_disjunction(&filter, words, words).unwrap_or(filter)
 }

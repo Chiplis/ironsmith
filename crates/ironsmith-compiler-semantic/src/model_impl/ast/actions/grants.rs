@@ -101,6 +101,9 @@ pub enum GrantActionAst {
         /// "That spell has undaunted." (Durnan of the Yawning Portal):
         /// generic reduction per opponent for spells cast this way.
         spell_cost_reduction_per_opponent: u32,
+        /// "the player who exiled it may play it" (Vulcan Mind-Meld): each
+        /// card's permission belongs to its recorded exiler.
+        beneficiary_is_each_exiler: bool,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
         tag: TagRef,

@@ -358,6 +358,20 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 // (Lynde, Cheerful Tormentor): an untargeted opponent chosen
                 // as the effect resolves.
                 TargetAst::Player(crate::target::PlayerFilter::Opponent, None)
+            } else if let Some(player) = match crate::lexer::token_word_refs(target_tokens).as_slice() {
+                ["an", "opponent", "of", "your", "choice"] | ["opponent", "of", "your", "choice"] => {
+                    Some(crate::target::PlayerFilter::Opponent)
+                }
+                ["a", "player", "of", "your", "choice"] | ["player", "of", "your", "choice"] => {
+                    Some(crate::target::PlayerFilter::Any)
+                }
+                _ => None,
+            } {
+                // "attach it to an opponent of your choice" (The Unluckiest
+                // Planeswalker): an untargeted player chosen as the effect
+                // resolves.
+                crate::word_claims::claim_tokens(target_tokens);
+                TargetAst::Player(player, None)
             } else {
                 parse_target_phrase(target_tokens)?
             };

@@ -1068,6 +1068,19 @@ fn resolve_it_tag_inner(
         // to itself. TappedThisWay is normalized back to It by resolve_it_tag.
         // Reject these aliases instead of recursively overflowing the worker.
         if previous == crate::tag::CompilerReferenceTag::It.key()
+            && refs.snapshot_tag_aliases.iter().any(|(alias, concrete)| {
+                alias == &runtime_bound_it_alias() && concrete == &previous
+            })
+        {
+            // `it` is the replaced event's bound object here: resolve the
+            // demonstrative against that binding directly.
+            let mut bound = refs.clone();
+            bound.last_object_tag =
+                crate::model::reference_state::RefState::Known(previous.clone());
+            bound.source_object_antecedent = false;
+            return resolve_it_tag(filter, &bound);
+        }
+        if previous == crate::tag::CompilerReferenceTag::It.key()
             || previous == crate::tag::CompilerReferenceTag::TappedThisWay.key()
         {
             return Err(CardTextError::ParseError(
@@ -2166,6 +2179,14 @@ pub fn source_superseded_antecedent_alias() -> TagKey {
     TagKey::from("__source_superseded_antecedent__")
 }
 
+/// Alias declaring that the generic `it` tag is a concrete runtime binding in
+/// this program (an event replacement binds the affected object as `it`), so
+/// a demonstrative superseded by a source subject ("sacrifice this Aura and
+/// that land gains indestructible") names that bound object.
+pub fn runtime_bound_it_alias() -> TagKey {
+    TagKey::from("__runtime_bound_it__")
+}
+
 /// A demonstrative surface ("that creature", "that spell") never names the
 /// source; when the source is the only live antecedent, it names the object
 /// the source subject superseded.
@@ -2520,6 +2541,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             resolve_contextual_player_filter(player, refs)?,
         )),
         Value::StartingLifeTotal(player) => Ok(Value::StartingLifeTotal(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
+        Value::StartingDeckSize(player) => Ok(Value::StartingDeckSize(
             resolve_contextual_player_filter(player, refs)?,
         )),
         Value::MaxCardsInHand(player) => Ok(Value::MaxCardsInHand(

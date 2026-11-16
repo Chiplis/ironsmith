@@ -2692,7 +2692,7 @@ fn materialize_granted_alternative_cast(
             let card = game.object(card_id)?;
             let usage_limit = spec.usage_limit();
             (
-                materialize_derived_alternative_cast(card, spec)?,
+                materialize_derived_alternative_cast(card, spec, grant.source.source_id())?,
                 usage_limit,
             )
         }
@@ -2718,8 +2718,9 @@ fn materialize_granted_alternative_cast(
 fn materialize_derived_alternative_cast(
     card: &crate::object::Object,
     spec: DerivedAlternativeCast,
+    grant_source: ObjectId,
 ) -> Option<AlternativeCastingMethod> {
-    spec.materialize_for(card)
+    spec.materialize_for_grant(card, grant_source)
 }
 
 fn normalize_grant_filter(mut filter: ObjectFilter) -> ObjectFilter {

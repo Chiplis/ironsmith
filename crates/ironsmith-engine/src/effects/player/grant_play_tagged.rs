@@ -77,6 +77,9 @@ pub struct GrantPlayTaggedEffect {
     /// "If you do, it enters tapped" (Kaldring, the Rimestaff): the land
     /// played or permanent spell cast through this permission enters tapped.
     pub permanents_enter_tapped: bool,
+    /// "the player who exiled it may play it" (Vulcan Mind-Meld): each
+    /// tagged card's permission belongs to its recorded exiler.
+    pub beneficiary_is_each_exiler: bool,
 }
 
 impl GrantPlayTaggedEffect {
@@ -117,6 +120,7 @@ impl GrantPlayTaggedEffect {
             while_player_controls: None,
             control_duration: None,
             permanents_enter_tapped: false,
+            beneficiary_is_each_exiler: false,
         }
     }
 
@@ -384,7 +388,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 | PlayerFilter::AliasedOwnerOf(crate::target::ObjectRef::Tagged(tag))
                 if tag == &self.tag
         );
-        let fixed_player_id = if player_is_each_tagged_owner {
+        let fixed_player_id = if player_is_each_tagged_owner || self.beneficiary_is_each_exiler {
             None
         } else {
             Some(resolve_player_filter(game, &self.player, ctx)?)
@@ -517,7 +521,16 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             let object_stable_id = object.stable_id;
             let object_zone = object.zone;
             let object_owner = object.owner;
-            let player_id = fixed_player_id.unwrap_or(object_owner);
+            // "the player who exiled it may play it" (Vulcan Mind-Meld): the
+            // exile instruction recorded each card's exiler.
+            let player_id = if self.beneficiary_is_each_exiler {
+                match game.source_exiler(object_id) {
+                    Some(exiler) => exiler,
+                    None => continue,
+                }
+            } else {
+                fixed_player_id.unwrap_or(object_owner)
+            };
             let duration_player = self.duration_player(ctx.controller, player_id);
             let expires_end_of_turn = self.expires_end_of_turn(game, duration_player);
 

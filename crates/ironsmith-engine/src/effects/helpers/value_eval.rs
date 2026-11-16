@@ -387,6 +387,17 @@ pub(crate) fn resolve_wide(
             });
             Ok(i64::from(seen.len() as i64))
         }
+        Value::CardTypesSharedByAll(filter) => {
+            let mut shared: Option<HashSet<_>> = None;
+            context.visit_property_objects(filter, |object| {
+                let types: HashSet<_> = object.card_types(game).into_iter().collect();
+                shared = Some(match shared.take() {
+                    None => types,
+                    Some(prior) => prior.intersection(&types).copied().collect(),
+                });
+            });
+            Ok(i64::from(shared.map_or(0, |types| types.len()) as i64))
+        }
         Value::CardTypesAmong(filter) => {
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
@@ -624,41 +635,73 @@ pub(crate) fn resolve_wide(
         Value::StationContributionOf(target_spec) => {
             // CR 702.184c / 608.2h: a contributor that left the battlefield
             // uses its last known information, including the static
-            // abilities that changed which characteristic it stations with.
-            let uses_toughness = context.execution().is_some_and(|ctx| {
-                match resolve_primary_object_from_value_spec(game, target_spec, ctx).ok() {
-                    Some(id)
-                        if game
-                            .object(id)
-                            .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield) =>
-                    {
-                        crate::effects::permanents::stations_using_toughness(game, id)
+            // abilities that changed which characteristic it stations with
+            // or multiplied the power it stations with.
+            let (uses_toughness, multiplier) = context
+                .execution()
+                .map(|ctx| {
+                    let stationed_is_spacecraft = match game.current_subtypes(ctx.source) {
+                        Some(subtypes) => subtypes.contains(&crate::types::Subtype::Spacecraft),
+                        None => game.object(ctx.source).is_some_and(|object| {
+                            object.has_subtype(crate::types::Subtype::Spacecraft)
+                        }),
+                    };
+                    match resolve_primary_object_from_value_spec(game, target_spec, ctx).ok() {
+                        Some(id)
+                            if game.object(id).is_some_and(|object| {
+                                object.zone == crate::zone::Zone::Battlefield
+                            }) =>
+                        {
+                            (
+                                crate::effects::permanents::stations_using_toughness(game, id),
+                                crate::effects::permanents::station_power_multiplier_on_battlefield(
+                                    game,
+                                    id,
+                                    stationed_is_spacecraft,
+                                ),
+                            )
+                        }
+                        _ => match target_spec.base() {
+                            ChooseSpec::Tagged(tag) => {
+                                let mechanics = ctx
+                                    .tagged_objects
+                                    .get(tag)
+                                    .and_then(|snapshots| snapshots.first())
+                                    .map(|snapshot| {
+                                        snapshot
+                                            .abilities
+                                            .iter()
+                                            .filter_map(|ability| match &ability.kind {
+                                                crate::ability::AbilityKind::Static(
+                                                    static_ability,
+                                                ) => static_ability.keyword_marker_mechanic(),
+                                                _ => None,
+                                            })
+                                            .collect::<Vec<_>>()
+                                    })
+                                    .unwrap_or_default();
+                                (
+                                    mechanics.contains(
+                                        &ironsmith_core::KeywordMarkerMechanic::StationsUsingToughness,
+                                    ),
+                                    crate::effects::permanents::station_power_multiplier(
+                                        mechanics.iter(),
+                                        stationed_is_spacecraft,
+                                    ),
+                                )
+                            }
+                            _ => (false, 1),
+                        },
                     }
-                    _ => match target_spec.base() {
-                        ChooseSpec::Tagged(tag) => ctx
-                            .tagged_objects
-                            .get(tag)
-                            .and_then(|snapshots| snapshots.first())
-                            .is_some_and(|snapshot| {
-                                snapshot.abilities.iter().any(|ability| {
-                                    matches!(&ability.kind,
-                                        crate::ability::AbilityKind::Static(static_ability)
-                                            if static_ability.keyword_marker_mechanic()
-                                                == Some(ironsmith_core::KeywordMarkerMechanic::StationsUsingToughness))
-                                })
-                            }),
-                        _ => false,
-                    },
-                }
-            });
-            context.object_number_wide(
-                target_spec,
-                if uses_toughness {
-                    NumericProperty::Toughness
-                } else {
-                    NumericProperty::Power
-                },
-            )
+                })
+                .unwrap_or((false, 1));
+            if uses_toughness {
+                context.object_number_wide(target_spec, NumericProperty::Toughness)
+            } else {
+                context
+                    .object_number_wide(target_spec, NumericProperty::Power)
+                    .map(|power| power.saturating_mul(multiplier))
+            }
         }
         Value::ToughnessOf(target_spec) => {
             if noncreature_permanent_reference(game, context, target_spec) {
@@ -1035,6 +1078,14 @@ pub(crate) fn resolve_wide(
         Value::StartingLifeTotal(player_spec) => {
             let player = context.single_player(value, player_spec)?;
             Ok(i64::from(player.starting_life))
+        }
+        // Not recorded (a state built without a deck setup): the library
+        // and command-zone commanders as they stand.
+        Value::StartingDeckSize(player_spec) => {
+            let player = context.single_player(value, player_spec)?;
+            Ok(i64::from(player.starting_deck_size.unwrap_or_else(|| {
+                (player.library.len() + player.commanders.len()) as u32
+            })))
         }
         Value::HalfLifeTotalRoundedUp(player_spec) => {
             let player = context.single_player(value, player_spec)?;

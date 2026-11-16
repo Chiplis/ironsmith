@@ -161,6 +161,7 @@ mod distinct_player_assignment_procedure;
 mod search_partition_procedure;
 mod lex_chain_helpers;
 mod looked_cards_family;
+pub(crate) use looked_cards_family::parse_looked_card_choice_filter as parse_looked_card_choice_filter_entry;
 mod looked_procedure;
 mod mill_procedure;
 mod next_spell_family;

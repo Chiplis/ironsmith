@@ -287,6 +287,10 @@ pub enum ReplacementAction {
     /// Enter tapped
     EnterTapped,
 
+    /// Enter tapped and attacking (Kira Nerys, Firebrand): marks the entry;
+    /// the attack target is chosen once the permanent has entered (CR 508.4).
+    EnterTappedAndAttacking,
+
     /// Enter untapped
     EnterUntapped,
 

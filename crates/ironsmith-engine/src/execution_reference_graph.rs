@@ -172,6 +172,7 @@ impl ReferenceMapper<'_> {
             PlayWithHandRevealedEffect,
             PopulateEffect,
             PrepareEffect,
+            TriggerAdditionalTimeEffect,
             ProliferateEffect,
             PutCounterOfChosenKindEffect,
             PutCounterOfKindChosenFromEffect,

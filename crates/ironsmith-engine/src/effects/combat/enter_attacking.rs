@@ -327,6 +327,34 @@ pub(crate) fn choose_enters_attacking_target(
         .or_else(|| targets.first().cloned())
 }
 
+/// Make each permanent a replacement marked as entering attacking (Kira
+/// Nerys, Firebrand) attacking, through the same post-move choice that
+/// "put onto the battlefield attacking" uses (CR 508.4). It never was
+/// declared as an attacker, so nothing "attacks". An entry that can't attack
+/// (outside combat, not a creature, controller not attacking) just stays on
+/// the battlefield. Pending entries survive an unanswered choice.
+pub(crate) fn drain_pending_entering_attackers(game: &mut GameState, ctx: &mut ExecutionContext<'_>) {
+    while let Some(&(creature, turn, combat)) = game.effect_store.pending_entering_attackers.first() {
+        if ctx.decision_maker.awaiting_choice() {
+            return;
+        }
+        if turn != game.turn.turn_number
+            || combat != game.turn_store.combat_phases_started_this_turn
+        {
+            game.effect_store.pending_entering_attackers.remove(0);
+            continue;
+        }
+        let target = choose_enters_attacking_target(game, ctx, creature);
+        if ctx.decision_maker.awaiting_choice() {
+            return;
+        }
+        game.effect_store.pending_entering_attackers.remove(0);
+        if let Some(target) = target {
+            game.add_entering_attacker(creature, target);
+        }
+    }
+}
+
 impl EffectExecutor for EnterAttackingEffect {
     fn execute(
         &self,

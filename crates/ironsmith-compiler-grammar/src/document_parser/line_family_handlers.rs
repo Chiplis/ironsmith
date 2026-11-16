@@ -2303,6 +2303,35 @@ fn is_this_spell_cost_modifier_line(ctx: &LineDispatchContext<'_>) -> bool {
     )
 }
 
+/// "The first spell you cast during each of your turns has assist. When you
+/// cast that spell, ..." (Yume, Chronicler of Valor): a first-spell keyword
+/// grant and its linked cast trigger, one source line with two abilities.
+pub(super) fn run_first_spell_grant_linked_cast_trigger_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> ParseOutcome<LineDispatchResult> {
+    let rule = RuleId::new("first-spell-grant-linked-cast-trigger");
+    let parse_tokens = ctx.line.tokens.clone();
+    let parsed = match crate::keyword_static::parse_first_spell_grant_with_linked_cast_trigger_line(
+        &parse_tokens,
+    ) {
+        Ok(Some(parsed)) => parsed,
+        Ok(None) => return ParseOutcome::NoMatch,
+        Err(error) => return line_family_error(ctx, rule, error),
+    };
+    line_family_match(
+        ctx,
+        LineDispatchResult::single(
+            RecognizedLine::Static(RecognizedStaticLine {
+                info: ctx.line.info.clone(),
+                parse_tokens,
+                chosen_option: None,
+                parsed: Some(Box::new(parsed)),
+            }),
+            ctx.idx + 1,
+        ),
+    )
+}
+
 pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
@@ -2491,6 +2520,18 @@ pub(super) fn run_statement_probe_line_family(
         ctx,
         rule,
         crate::keyword_static::parse_reveal_card_or_enter_tapped_line(&ctx.line.tokens)
+    )
+    .is_some()
+    {
+        return ParseOutcome::NoMatch;
+    }
+    // "Enchanted land is a 3/3 red Spirit creature with haste. It's still a
+    // land." is one continuous animation of the attached permanent, never a
+    // resolution program of the Aura.
+    if line_family_try!(
+        ctx,
+        rule,
+        crate::keyword_static::parse_subject_is_pt_creature_with_keywords_still_land_line(&ctx.line.tokens)
     )
     .is_some()
     {

@@ -107,6 +107,9 @@ pub(super) fn matches_subject(
     {
         return false;
     }
+    if filter.excluded_specific == Some(subject.object_id()) {
+        return false;
+    }
 
     if filter.source
         && ctx

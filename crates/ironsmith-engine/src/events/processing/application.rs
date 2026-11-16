@@ -432,6 +432,24 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::EnterTappedAndAttacking => {
+            use crate::events::{EnterBattlefieldEvent, downcast_event};
+            match apply_trait_enter_tapped(&event) {
+                Some(tapped) => {
+                    let mut entry = downcast_event::<EnterBattlefieldEvent>(tapped.inner())
+                        .cloned()
+                        .ok_or_else(|| {
+                            crate::effects::ExecutionError::InternalError(
+                                "enters-attacking replacement lost its entry".into(),
+                            )
+                        })?;
+                    entry.enters_attacking = true;
+                    TraitApplyResult::Modified(tapped.rewrap(entry))
+                }
+                None => TraitApplyResult::Unchanged(event),
+            }
+        }
+
         ReplacementAction::EnterUntapped => {
             let modified = apply_trait_enter_untapped(&event);
             match modified {

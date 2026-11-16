@@ -11,6 +11,7 @@ use super::line_family_handlers::{
     run_partner_variant_keyword_line_family, run_partner_with_keyword_line_family,
     run_split_top_and_face_down_look_line_family, run_split_top_look_and_top_land_play_line_family,
     run_start_your_engines_line_family, run_statement_line_family, run_statement_probe_line_family,
+    run_first_spell_grant_linked_cast_trigger_line_family,
     run_static_line_family, run_station_line_family, run_station_threshold_line_family,
     run_surge_line_family, run_trailing_keyword_activation_line_family, run_triggered_line_family,
     run_unsupported_line_family, run_ward_or_echo_static_prefix_line_family,
@@ -63,7 +64,7 @@ struct LineFamilyRuleDef {
     run: StructuredLineFamilyRuleFn,
 }
 
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 33] = [
+const LINE_FAMILY_RULES: [LineFamilyRuleDef; 34] = [
     LineFamilyRuleDef {
         id: RuleId::new("alternative-then-trigger-abilities"),
         head: HeadDiscriminator::words(&["you"]),
@@ -219,6 +220,11 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 33] = [
         id: RuleId::new("additional-combat-after-this-phase"),
         head: HeadDiscriminator::words(&[]),
         run: run_additional_combat_after_this_phase_line_family,
+    },
+    LineFamilyRuleDef {
+        id: RuleId::new("first-spell-grant-linked-cast-trigger"),
+        head: HeadDiscriminator::words(&["the", "first"]),
+        run: run_first_spell_grant_linked_cast_trigger_line_family,
     },
     LineFamilyRuleDef {
         id: RuleId::new("statement-probe"),

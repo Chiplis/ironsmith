@@ -176,8 +176,17 @@ fn source_filtered_target_restriction(
             filter.stack_kind = Some(crate::filter::StackObjectKind::Ability);
             filter
         }
-        TargetRestrictionEnvelope::AbilitiesFrom { source_descriptor_tokens } => {
+        TargetRestrictionEnvelope::AbilitiesFrom { source_descriptor_tokens, source_controller } => {
             let mut filter = parse_object_filter(&tokens[source_descriptor_tokens], false)?;
+            if let Some(opponents) = source_controller {
+                filter.controller =
+                    Some(if opponents { PlayerFilter::Opponent } else { PlayerFilter::You });
+                let words = crate::lexer::parser_token_word_refs(tokens);
+                let controller_words = if opponents { 3 } else { 2 };
+                if let Some(start) = words.len().checked_sub(controller_words) {
+                    crate::word_claims::claim_words(&words[start..]);
+                }
+            }
             // The targeting matcher separates the kind of the targeting
             // object from the current characteristics (or exact LKI) of its source.
             filter.zone = Some(crate::zone::Zone::Stack);

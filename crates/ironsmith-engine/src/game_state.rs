@@ -1501,6 +1501,15 @@ pub struct EffectStore {
     /// Active goad effects (a creature attacks each combat and attacks a player
     /// other than the goader if able).
     pub goad_effects: Vec<GoadEffectInstance>,
+    /// Resolved "triggers an additional time" rules keyed to one object
+    /// (Lwaxana Troi, Charming Guest), independent of its abilities.
+    pub trigger_multiplier_effects: Vec<TriggerMultiplierEffectInstance>,
+    /// Permanents a replacement made enter attacking (Kira Nerys,
+    /// Firebrand) whose attack target is still to be chosen. The entry
+    /// owner drains these with its decision context right after the move
+    /// completes (CR 508.4). Each entry records the turn and combat phase it
+    /// entered in; a stale entry is never made attacking later.
+    pub pending_entering_attackers: Vec<(ObjectId, u32, u32)>,
     /// (permanent identity, required defender, turn). These are requirements, not restrictions.
     pub attack_player_requirements: Vec<(ObjectId, PlayerId, u32)>,
     /// (permanent identity, its controller at resolution): "attacks during
@@ -1567,6 +1576,8 @@ impl Default for EffectStore {
             intrinsic_immediate_actions_used: HashSet::new(),
             restriction_effects: Vec::new(),
             goad_effects: Vec::new(),
+            trigger_multiplier_effects: Vec::new(),
+            pending_entering_attackers: Vec::new(),
             attack_player_requirements: Vec::new(),
             next_combat_attack_requirements: Vec::new(),
             goad_cleared_at: HashMap::new(),
@@ -3082,6 +3093,48 @@ impl RestrictionEffectInstance {
                 crate::continuous::continuous_duration_predicate_matches(predicate, game)
             }
             _ => true,
+        }
+    }
+}
+
+/// "If a triggered ability of that creature triggers, that ability triggers
+/// an additional time" for a duration, from a resolved effect (CR 603.2d).
+/// The rule names the exact object incarnation (CR 400.7) and does not
+/// depend on that object's abilities.
+#[derive(Debug, Clone)]
+pub struct TriggerMultiplierEffectInstance {
+    pub object: ObjectId,
+    pub source: ObjectId,
+    pub controller: PlayerId,
+    pub copies: usize,
+    pub duration: crate::effect::Until,
+    pub expires_end_of_turn: u32,
+}
+
+impl TriggerMultiplierEffectInstance {
+    pub fn is_active(&self, game: &GameState, current_turn: u32) -> bool {
+        match self.duration {
+            crate::effect::Until::Forever => true,
+            crate::effect::Until::EndOfTurn => current_turn <= self.expires_end_of_turn,
+            crate::effect::Until::YourNextTurn => {
+                !(current_turn > self.expires_end_of_turn && game.is_active_player(self.controller))
+            }
+            crate::effect::Until::YourNextTurnEnd => current_turn <= self.expires_end_of_turn,
+            crate::effect::Until::ThisLeavesTheBattlefield => game
+                .object(self.source)
+                .is_some_and(|obj| obj.zone == Zone::Battlefield),
+            crate::effect::Until::SourceUntaps => game
+                .object(self.source)
+                .is_some_and(|obj| obj.zone == Zone::Battlefield && game.is_tapped(self.source)),
+            crate::effect::Until::YouStopControllingThis => game.object(self.source).is_some_and(|obj| {
+                obj.zone == Zone::Battlefield
+                    && !game.is_phased_out(self.source)
+                    && game.controller_of(obj) == self.controller
+            }),
+            crate::effect::Until::ForAsLongAs(ref predicate) => {
+                crate::continuous::continuous_duration_predicate_matches(predicate, game)
+            }
+            _ => current_turn <= self.expires_end_of_turn,
         }
     }
 }
@@ -8209,6 +8262,7 @@ impl GameState {
             | crate::effect::Value::LeastCount(filter)
             | crate::effect::Value::GreatestSharedCreatureTypeCount(filter)
             | crate::effect::Value::GreatestSharedNameCount(filter)
+            | crate::effect::Value::CardTypesSharedByAll(filter)
             | crate::effect::Value::TotalPower(filter)
             | crate::effect::Value::TotalToughness(filter)
             | crate::effect::Value::TotalManaValue(filter)
@@ -8281,6 +8335,7 @@ impl GameState {
             | crate::effect::Value::UnspentMana(player)
             | crate::effect::Value::Speed(player)
             | crate::effect::Value::StartingLifeTotal(player)
+            | crate::effect::Value::StartingDeckSize(player)
             | crate::effect::Value::HalfLifeTotalRoundedUp(player)
             | crate::effect::Value::HalfLifeTotalRoundedDown(player)
             | crate::effect::Value::HalfStartingLifeTotalRoundedUp(player)
@@ -9206,6 +9261,32 @@ impl GameState {
             duration,
             expires_end_of_turn,
         });
+    }
+
+    /// Register a resolved "that ability triggers an additional time" rule
+    /// for one exact object (Lwaxana Troi, Charming Guest).
+    pub fn add_trigger_multiplier_effect(
+        &mut self,
+        object: ObjectId,
+        controller: PlayerId,
+        copies: usize,
+        duration: crate::effect::Until,
+        source: ObjectId,
+    ) {
+        let expires_end_of_turn = match duration {
+            crate::effect::Until::Forever => u32::MAX,
+            _ => self.turn.turn_number,
+        };
+        self.effect_store
+            .trigger_multiplier_effects
+            .push(TriggerMultiplierEffectInstance {
+                object,
+                source,
+                controller,
+                copies,
+                duration,
+                expires_end_of_turn,
+            });
     }
 
     pub fn add_temporary_spell_cost_reduction(
@@ -10339,11 +10420,29 @@ impl GameState {
             let lookback = self.trigger_source_lookback_snapshots();
             for &player in &losing {
                 self.player_mut(player).expect("validated player").has_lost = true;
+                // CR 800.4a: the loser's permanents leave the game with them;
+                // their last known information travels with the loss event.
+                let controlled = self
+                    .battlefield
+                    .iter()
+                    .filter_map(|id| self.object(*id))
+                    .filter(|object| self.controller_of(object) == player)
+                    .filter_map(|object| {
+                        crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(
+                            object, self,
+                        )
+                        .ok()
+                    })
+                    .collect::<Vec<_>>();
                 self.queue_trigger_event(
                     crate::provenance::ProvNodeId::default(),
-                    crate::events::Event::player_loses_game(player)
-                        .into_raw()
-                        .with_lookback_source_snapshots(lookback.clone()),
+                    crate::events::Event::new_with_provenance(
+                        crate::events::PlayerLosesGameEvent::new(player)
+                            .with_controlled_permanents(controlled),
+                        crate::provenance::ProvNodeId::default(),
+                    )
+                    .into_raw()
+                    .with_lookback_source_snapshots(lookback.clone()),
                 );
             }
             self.leave_game_group(&losing)?;

@@ -103,6 +103,56 @@ pub fn transport_copy_retarget_into_trailing_delayed_trigger(effects: &mut Vec<E
     subject_verb_followups::transport_copy_retarget_into_trailing_optional_copy(effects);
 }
 
+/// "For each opponent you attacked this turn, create a tapped and attacking
+/// 2/1 red Klingon Warrior creature token with haste." (Rite of Ascension):
+/// a fronted count of attacked players (or of players being attacked)
+/// repeats the following instruction that many times. Object, event, and
+/// participant iterations keep their own readers; only player counts that
+/// bind no iterated player are read here.
+fn parse_fronted_history_count_repeat(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let Some(comma) = tokens.iter().position(|token| token.is_comma()) else {
+        return Ok(None);
+    };
+    let head = crate::lexer::parser_token_word_refs(&tokens[..comma]);
+    // Only a counted player noun: the participant-loop reader declines a
+    // counted set of attacked players, and nothing else reads that lead-in.
+    // Object and event counts ("for each spell you've cast this turn") keep
+    // their own fronted readers.
+    if !matches!(
+        head.as_slice(),
+        ["for", "each", "opponent" | "opponents" | "player" | "players", ..]
+    ) {
+        return Ok(None);
+    }
+    let Some((count, used)) = crate::util::parse_for_each_count_value_words(&head) else {
+        return Ok(None);
+    };
+    if used != head.len()
+        || !matches!(
+            count.unhinted(),
+            Value::TurnHistoryCount(_) | Value::PlayersBeingAttacked
+        )
+    {
+        return Ok(None);
+    }
+    let body = trim_commas(&tokens[comma + 1..]);
+    if body.is_empty() {
+        return Ok(None);
+    }
+    let effects = super::chain_carry::parse_effect_chain_lexed(&body)?;
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    crate::word_claims::claim_words(&head);
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+        count,
+        effects,
+    })))
+}
+
 /// Parse a complete quantified token-creation sentence before any quoted
 /// token rule can be mistaken for the outer action. The unquoted prefix proves
 /// the participant and creation shape; the untouched tokens are then used to
@@ -2379,6 +2429,51 @@ pub(super) fn parse_if_you_cant_sentence(
     consult_family::parse_if_you_cant_sentence(tokens)
 }
 
+/// "Target opponent whose turn it is <acts>." (The Beamtown Bullies; Cmdr.
+/// Troi, Outgoing Empath): the target is restricted to the active player, who
+/// must be an opponent (CR 102.1, 115.1). Declare that player target, then the
+/// rest of the sentence acts through "that player".
+pub(crate) fn parse_target_active_opponent_sentence(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if !words.starts_with(&["target", "opponent", "whose", "turn", "it", "is"]) || words.len() <= 6 {
+        return None;
+    }
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let rest_start = view.token_start_indices().get(6).copied()?;
+    let mut rest = vec![
+        OwnedLexToken::word("that".to_string(), crate::cards::builders::TextSpan::synthetic()),
+        OwnedLexToken::word("player".to_string(), crate::cards::builders::TextSpan::synthetic()),
+    ];
+    rest.extend_from_slice(&tokens[rest_start..]);
+    let active_opponent = crate::target::PlayerFilter::excluding(
+        crate::target::PlayerFilter::Active,
+        crate::target::PlayerFilter::your_team(),
+    );
+    let target = view
+        .token_start_indices()
+        .get(2)
+        .copied()
+        .and_then(|end| parse_target_phrase(&tokens[..end]).ok())
+        .and_then(|target| match target {
+            TargetAst::Player(crate::target::PlayerFilter::Opponent, span) => {
+                Some(TargetAst::Player(active_opponent.clone(), span))
+            }
+            TargetAst::Player(crate::target::PlayerFilter::Target(inner), span)
+                if *inner == crate::target::PlayerFilter::Opponent =>
+            {
+                Some(TargetAst::Player(
+                    crate::target::PlayerFilter::Target(Box::new(active_opponent.clone())),
+                    span,
+                ))
+            }
+            _ => None,
+        })?;
+    let body = parse_effect_sentence_lexed(&rest).ok().filter(|body| !body.is_empty())?;
+    let mut effects = vec![EffectAst::subject_verb_explicit_target_only(target)];
+    effects.extend(body);
+    Some(effects)
+}
+
 /// The value a sentence's "where X is ..." clause binds X to.
 pub(crate) fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
     let binding_tokens =
@@ -3521,6 +3616,12 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
+        if let Some(effect) = parse_fronted_history_count_repeat(sentence)? {
+            effects.push(effect);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
 
         if effect_grammar::emblem_shapes::parse_damaged_player_emblem_payload_tokens(sentence)
             .is_some()
@@ -3634,54 +3735,12 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
         // "Target opponent whose turn it is puts target ... onto the
-        // battlefield under their control." (The Beamtown Bullies): the
-        // target is restricted to the active player, who must be an opponent
-        // (CR 102.1, 115.1). Declare that player target, then the rest of
-        // the sentence acts through "that player".
-        if direct_for_each_words.starts_with(&["target", "opponent", "whose", "turn", "it", "is"])
-            && direct_for_each_words.len() > 6
-        {
-            let view = crate::lexer::TokenWordView::new(&direct_for_each_tokens);
-            if let Some(rest_start) = view.token_start_indices().get(6).copied() {
-                let mut rest = vec![
-                    OwnedLexToken::word("that".to_string(), crate::cards::builders::TextSpan::synthetic()),
-                    OwnedLexToken::word("player".to_string(), crate::cards::builders::TextSpan::synthetic()),
-                ];
-                rest.extend_from_slice(&direct_for_each_tokens[rest_start..]);
-                let active_opponent = crate::target::PlayerFilter::excluding(
-                    crate::target::PlayerFilter::Active,
-                    crate::target::PlayerFilter::your_team(),
-                );
-                let target = view
-                    .token_start_indices()
-                    .get(2)
-                    .copied()
-                    .and_then(|end| parse_target_phrase(&direct_for_each_tokens[..end]).ok())
-                    .and_then(|target| match target {
-                        TargetAst::Player(crate::target::PlayerFilter::Opponent, span) => {
-                            Some(TargetAst::Player(active_opponent.clone(), span))
-                        }
-                        TargetAst::Player(crate::target::PlayerFilter::Target(inner), span)
-                            if *inner == crate::target::PlayerFilter::Opponent =>
-                        {
-                            Some(TargetAst::Player(
-                                crate::target::PlayerFilter::Target(Box::new(active_opponent.clone())),
-                                span,
-                            ))
-                        }
-                        _ => None,
-                    });
-                if let Some(target) = target
-                    && let Ok(body) = parse_effect_sentence_lexed(&rest)
-                    && !body.is_empty()
-                {
-                    effects.push(EffectAst::subject_verb_explicit_target_only(target));
-                    effects.extend(body);
-                    carried_context = None;
-                    sentence_idx += 1;
-                    continue;
-                }
-            }
+        // battlefield under their control." (The Beamtown Bullies).
+        if let Some(body) = parse_target_active_opponent_sentence(&direct_for_each_tokens) {
+            effects.extend(body);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
         }
         if let Some(effect) =
             crate::effect_sentences::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_fixed_direction_adjacent_player_control(
@@ -16280,6 +16339,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves {
                 ..
             })

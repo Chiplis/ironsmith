@@ -1165,11 +1165,23 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
         delayed_shapes::DelayedDiesShape::ThisWay {
             subject_tokens,
             effect_tokens,
-        } => (
-            delayed_dies_this_way_filter(subject_tokens, tokens)?,
-            None,
-            effect_tokens,
-        ),
+        } => {
+            let mut filter = delayed_dies_this_way_filter(subject_tokens, tokens)?;
+            // "Whenever a creature that fought this way dies this turn"
+            // (T'Pring, Never Parted): only the creatures that actually
+            // fought, not every object the instruction chose.
+            if crate::word_primitives::sequence_occurs(
+                &crate::lexer::token_word_refs(tokens),
+                &["that", "fought", "this", "way"],
+            ) && let Some(filter) = filter.as_mut()
+            {
+                filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                    tag: ironsmith_core::FOUGHT_THIS_WAY_TAG.into(),
+                    relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+                });
+            }
+            (filter, None, effect_tokens)
+        }
     };
     if remainder.is_empty() {
         return Err(CardTextError::ParseError(format!(

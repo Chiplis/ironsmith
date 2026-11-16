@@ -9,6 +9,7 @@ pub(super) fn narrow_trailing_condition_to_consequence_object(
     condition: Condition,
     if_true: &[Effect],
 ) -> Condition {
+    let condition = retarget_pronoun_characteristic_to_consequence_object(condition, if_true);
     let Condition::TaggedObjectMatches(tag, mut filter) = condition else {
         return condition;
     };
@@ -45,4 +46,61 @@ pub(super) fn narrow_trailing_condition_to_consequence_object(
         filter.card_types = object.card_types.clone();
     }
     Condition::TaggedObjectMatches(tag, filter)
+}
+
+/// "Mill two cards, then destroy the chosen permanent if its mana value is
+/// less than or equal to the number of cards in your graveyard" (Quag Feast):
+/// the postcondition's "its" names the object the gated action acts on, not
+/// the most recently remembered set (the milled cards).
+fn retarget_pronoun_characteristic_to_consequence_object(
+    condition: Condition,
+    if_true: &[Effect],
+) -> Condition {
+    let Condition::ValueComparison {
+        left,
+        operator,
+        right,
+    } = condition
+    else {
+        return condition;
+    };
+    let consequence_tag = match if_true {
+        [consequence] => consequence.target_spec().and_then(|spec| match spec.base() {
+            ChooseSpec::Tagged(tag) => Some(tag.clone()),
+            _ => None,
+        }),
+        _ => None,
+    };
+    let left = match consequence_tag {
+        Some(tag) => retarget_pronoun_characteristic(left, &tag),
+        None => left,
+    };
+    Condition::ValueComparison {
+        left,
+        operator,
+        right,
+    }
+}
+
+fn retarget_pronoun_characteristic(value: Value, consequence_tag: &TagKey) -> Value {
+    let (spec, rebuild): (Box<ChooseSpec>, fn(Box<ChooseSpec>) -> Value) = match value {
+        Value::PowerOf(spec) => (spec, Value::PowerOf),
+        Value::ToughnessOf(spec) => (spec, Value::ToughnessOf),
+        Value::ManaValueOf(spec) => (spec, Value::ManaValueOf),
+        other => return other,
+    };
+    let names_it = matches!(
+        spec.source_reference_surface(),
+        Some(ironsmith_core::SourceReferenceSurface::ThisPermanentType(text)) if text == "it"
+    );
+    let retarget = names_it
+        && matches!(spec.unhinted(), ChooseSpec::Tagged(tag) if tag != consequence_tag);
+    if !retarget {
+        return rebuild(spec);
+    }
+    let hints = spec.surface_hints().to_vec();
+    rebuild(Box::new(ChooseSpec::SurfaceHinted {
+        spec: Box::new(ChooseSpec::Tagged(consequence_tag.clone())),
+        hints,
+    }))
 }

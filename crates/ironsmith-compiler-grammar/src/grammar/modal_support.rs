@@ -1088,6 +1088,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves {
                 ..
             })

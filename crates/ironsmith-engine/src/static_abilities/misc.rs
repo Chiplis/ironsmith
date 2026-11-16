@@ -4983,6 +4983,81 @@ impl StaticAbilityKind for EnterTappedForFilter {
     }
 }
 
+/// "If a creature you control would enter while you control an attacking
+/// creature, instead it enters tapped and attacking." (Kira Nerys,
+/// Firebrand): the entry is only marked; the permanent enters tapped and, once
+/// it has entered, its controller chooses what it attacks (CR 508.4). It was
+/// never declared as an attacker. The condition is checked as the
+/// replacement applies.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnterTappedAndAttackingForFilter {
+    pub filter: ObjectFilter,
+    pub condition: Option<crate::ConditionExpr>,
+}
+
+impl EnterTappedAndAttackingForFilter {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self {
+            filter,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+}
+
+impl StaticAbilityKind for EnterTappedAndAttackingForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EnterTappedAndAttackingForFilter
+    }
+
+    fn display(&self) -> String {
+        let subject = self.filter.description();
+        let subject = if subject.starts_with("a ") || subject.starts_with("an ") {
+            subject
+        } else if subject.starts_with(['a', 'e', 'i', 'o', 'u']) {
+            format!("an {subject}")
+        } else {
+            format!("a {subject}")
+        };
+        let condition = self.condition.as_ref().map(|condition| {
+            let text = super::describe_static_condition(condition);
+            let text = text
+                .strip_prefix("as long as ")
+                .map(str::to_string)
+                .unwrap_or(text);
+            format!(" while {text}")
+        });
+        format!(
+            "If {subject} would enter{}, instead it enters tapped and attacking",
+            condition.unwrap_or_default()
+        )
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            ConditionalWouldEnterBattlefieldMatcher {
+                enter_matcher: WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+                condition: self.condition.clone(),
+            },
+            ReplacementAction::EnterTappedAndAttacking,
+        ))
+    }
+}
+
 /// Permanents matching a filter enter the battlefield untapped.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterUntappedForFilter {

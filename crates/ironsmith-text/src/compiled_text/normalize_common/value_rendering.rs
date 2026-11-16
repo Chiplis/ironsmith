@@ -6634,6 +6634,11 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
         Value::TurnHistoryCount(TurnHistoryCount::PlayersAttackedThisCombat(
             PlayerFilter::You,
         )) => Some("opponent you attacked".to_string()),
+        // "For each opponent you attacked this turn, create ..." (Rite of
+        // Ascension).
+        Value::TurnHistoryCount(TurnHistoryCount::OpponentsAttacked(PlayerFilter::You)) => {
+            Some("opponent you attacked this turn".to_string())
+        }
         // "draw a card for each player who was dealt combat damage this
         // turn" (Vivien's Stampede).
         Value::TurnHistoryCount(TurnHistoryCount::PlayersDealtCombatDamageBy {
@@ -7660,6 +7665,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_count_filter_value_subject(filter)
             )
         }
+        Value::CardTypesSharedByAll(filter) => {
+            format!(
+                "the number of card types shared by all {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
         Value::TotalPower(filter) if describe_object_you_sacrificed_this_way(filter).is_some() => {
             let object = describe_object_you_sacrificed_this_way(filter).unwrap_or("permanent");
             format!("the power of the {object} you sacrificed this way")
@@ -8257,6 +8268,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
             format!(
                 "the highest speed among {}",
                 describe_player_filter(filter)
+            )
+        }
+        Value::StartingDeckSize(filter) => {
+            format!(
+                "the number of cards in {} starting deck",
+                describe_possessive_player_filter(filter)
             )
         }
         Value::StartingLifeTotal(filter) => {

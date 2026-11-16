@@ -1490,12 +1490,106 @@ impl WasmGame {
         })
     }
 
+    /// The deck-construction allowances the commander(s) grant their deck
+    /// ("Rulebreaker — A deck with this commander can have ...").
+    fn commander_deck_allowance(
+        commander_definitions: &[CardDefinition],
+    ) -> ironsmith_core::CommanderDeckAllowance {
+        let mut allowance = ironsmith_core::CommanderDeckAllowance::default();
+        for definition in commander_definitions {
+            for ability in &definition.abilities {
+                if let ironsmith::ability::AbilityKind::Static(ability) = &ability.kind
+                    && let Some(granted) = ability.commander_deck_allowance()
+                {
+                    allowance.merge(&granted);
+                }
+            }
+        }
+        allowance
+    }
+
+    /// The allowances of `owner`'s designated commanders.
+    fn player_commander_deck_allowance(
+        &mut self,
+        owner: PlayerId,
+    ) -> ironsmith_core::CommanderDeckAllowance {
+        let names = self
+            .game
+            .player(owner)
+            .map(|player| {
+                player
+                    .commanders
+                    .iter()
+                    .filter_map(|commander| self.game.object(*commander))
+                    .map(|object| object.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let definitions = names
+            .iter()
+            .filter_map(|name| self.load_compilable_card_definition_result(name).ok())
+            .collect::<Vec<_>>();
+        Self::commander_deck_allowance(&definitions)
+    }
+
+    /// "has no maximum deck size" (CR 903.5a): the minimum stands, the
+    /// maximum does not.
+    fn commander_deck_size_fits(
+        allowance: &ironsmith_core::CommanderDeckAllowance,
+        expected: usize,
+        actual: usize,
+    ) -> bool {
+        if allowance.no_maximum_deck_size {
+            actual >= expected
+        } else {
+            actual == expected
+        }
+    }
+
+    /// Several cards' extra identity colors must together fit the chosen
+    /// color count ("one color of your choice", Tolabow, Loch Rascal).
+    fn validate_commander_extra_identity_colors(
+        allowance: &ironsmith_core::CommanderDeckAllowance,
+        extra_colors_used: ColorSet,
+    ) -> Result<(), String> {
+        let permitted = allowance
+            .extra_identity_colors
+            .as_ref()
+            .map_or(0, |extra| extra.count);
+        if extra_colors_used.count() > permitted {
+            return Err(format!(
+                "the deck's cards use {} colors outside the commander's color identity, but its commander allows only {permitted} chosen color(s)",
+                extra_colors_used.count()
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
     fn validate_commander_deck_card(
         &mut self,
         definition: &CardDefinition,
         commander_identity: ColorSet,
         seen_names: &mut HashSet<String>,
     ) -> Result<(), String> {
+        self.validate_commander_deck_card_allowing(
+            definition,
+            commander_identity,
+            &ironsmith_core::CommanderDeckAllowance::default(),
+            seen_names,
+        )
+        .map(|_| ())
+    }
+
+    /// Validate one deck card under the commander's allowances; returns the
+    /// chosen extra identity colors the card uses.
+    fn validate_commander_deck_card_allowing(
+        &mut self,
+        definition: &CardDefinition,
+        commander_identity: ColorSet,
+        allowance: &ironsmith_core::CommanderDeckAllowance,
+        seen_names: &mut HashSet<String>,
+    ) -> Result<ColorSet, String> {
         let card = &definition.card;
         let is_basic_land =
             card.has_supertype(Supertype::Basic) && card.has_card_type(CardType::Land);
@@ -1507,7 +1601,7 @@ impl WasmGame {
             ));
         }
 
-        self.validate_commander_card_identity(definition, commander_identity)
+        self.validate_commander_card_identity_allowing(definition, commander_identity, allowance)
     }
 
     fn validate_commander_card_identity(
@@ -1515,9 +1609,55 @@ impl WasmGame {
         definition: &CardDefinition,
         commander_identity: ColorSet,
     ) -> Result<(), String> {
+        self.validate_commander_card_identity_allowing(
+            definition,
+            commander_identity,
+            &ironsmith_core::CommanderDeckAllowance::default(),
+        )
+        .map(|_| ())
+    }
+
+    /// CR 903.5c under the commander's allowances: a card of a class that
+    /// "can have ... of any color identity" is exempt, and a card of an
+    /// extra-color class may carry up to the chosen number of colors outside
+    /// the commander's identity (returned, so the deck's total can be
+    /// checked).
+    fn validate_commander_card_identity_allowing(
+        &mut self,
+        definition: &CardDefinition,
+        commander_identity: ColorSet,
+        allowance: &ironsmith_core::CommanderDeckAllowance,
+    ) -> Result<ColorSet, String> {
         let card = &definition.card;
+        let mana_value = card.mana_value();
+        if allowance.ignores_color_identity(
+            &card.card_types,
+            &card.supertypes,
+            &card.subtypes,
+            mana_value,
+        ) {
+            return Ok(ColorSet::COLORLESS);
+        }
+        let extra_count = allowance.extra_identity_color_count(
+            &card.card_types,
+            &card.supertypes,
+            &card.subtypes,
+            mana_value,
+        );
+        let outside = |identity: ColorSet| {
+            [Color::White, Color::Blue, Color::Black, Color::Red, Color::Green]
+                .into_iter()
+                .filter(|color| identity.contains(*color) && !commander_identity.contains(*color))
+                .fold(ColorSet::COLORLESS, ColorSet::with)
+        };
 
         let basic_land_identity = Self::commander_basic_land_type_identity(card);
+        let identity = self.commander_definition_color_identity(definition)?;
+        let extra_used = outside(basic_land_identity.union(identity));
+        if extra_count > 0 && !extra_used.is_empty() && extra_used.count() <= extra_count {
+            return Ok(extra_used);
+        }
+
         if !commander_identity.contains_all(basic_land_identity) {
             return Err(format!(
                 "{} has a basic land type outside the commander's color identity",
@@ -1525,14 +1665,13 @@ impl WasmGame {
             ));
         }
 
-        let identity = self.commander_definition_color_identity(definition)?;
         if !commander_identity.contains_all(identity) {
             return Err(format!(
                 "{} is outside the commander's color identity",
                 card.name
             ));
         }
-        Ok(())
+        Ok(ColorSet::COLORLESS)
     }
 
     fn commander_draft_products(
@@ -1653,9 +1792,18 @@ impl WasmGame {
                 commander_identity =
                     commander_identity.union(self.commander_definition_color_identity(definition)?);
             }
+            let allowance = Self::commander_deck_allowance(&commander_definitions);
+            let mut extra_colors_used = ColorSet::COLORLESS;
             for definition in &main_deck {
-                self.validate_commander_card_identity(definition, commander_identity)?;
+                extra_colors_used = extra_colors_used.union(
+                    self.validate_commander_card_identity_allowing(
+                        definition,
+                        commander_identity,
+                        &allowance,
+                    )?,
+                );
             }
+            Self::validate_commander_extra_identity_colors(&allowance, extra_colors_used)?;
         }
         Ok(())
     }
@@ -1715,55 +1863,6 @@ impl WasmGame {
                 );
             }
 
-            let expected_deck_size = if commander_list.len() == 2 { 98 } else { 99 };
-            let manifest = manifest_by_player[player_index];
-            if deck.is_empty() {
-                let Some(manifest) = manifest else {
-                    return Err(format!(
-                        "Commander player {} needs an explicit deck or hidden manifest",
-                        player_index + 1
-                    ));
-                };
-                if manifest.deck_count != expected_deck_size
-                    || manifest.commander_count != commander_list.len()
-                {
-                    return Err(format!(
-                        "Commander player {} hidden setup must contain {expected_deck_size} main-deck cards and {} commander(s)",
-                        player_index + 1,
-                        commander_list.len()
-                    ));
-                }
-                if manifest.slot_commitments.len() != expected_deck_size {
-                    return Err(format!(
-                        "Commander player {} hidden manifest must commit every main-deck slot",
-                        player_index + 1
-                    ));
-                }
-                let mut slots = HashSet::new();
-                for slot in &manifest.slot_commitments {
-                    if slot.commitment.trim().is_empty() || !slots.insert(slot.slot) {
-                        return Err(format!(
-                            "Commander player {} hidden manifest has an empty or duplicate slot commitment",
-                            player_index + 1
-                        ));
-                    }
-                }
-            } else if deck.len() != expected_deck_size {
-                return Err(format!(
-                    "commander main decks must contain {expected_deck_size} cards for {count} commander(s)",
-                    count = commander_list.len()
-                ));
-            } else if let Some(manifest) = manifest
-                && ((manifest.deck_count != 0 && manifest.deck_count != expected_deck_size)
-                    || (manifest.commander_count != 0
-                        && manifest.commander_count != commander_list.len()))
-            {
-                    return Err(format!(
-                        "Commander player {} manifest counts do not match the explicit setup",
-                        player_index + 1
-                    ));
-            }
-
             self.ensure_card_definitions_loaded(commander_list.iter().map(String::as_str));
             let mut commander_definitions = Vec::with_capacity(commander_list.len());
             for commander_name in commander_list {
@@ -1803,16 +1902,76 @@ impl WasmGame {
                     commander_identity.union(self.commander_definition_color_identity(definition)?);
             }
 
+            // CR 903.5a: 100 cards including the commander(s), unless a
+            // commander lifts the maximum.
+            let allowance = Self::commander_deck_allowance(&commander_definitions);
+            let expected_deck_size = if commander_list.len() == 2 { 98 } else { 99 };
+            let manifest = manifest_by_player[player_index];
+            if deck.is_empty() {
+                let Some(manifest) = manifest else {
+                    return Err(format!(
+                        "Commander player {} needs an explicit deck or hidden manifest",
+                        player_index + 1
+                    ));
+                };
+                if !Self::commander_deck_size_fits(&allowance, expected_deck_size, manifest.deck_count)
+                    || manifest.commander_count != commander_list.len()
+                {
+                    return Err(format!(
+                        "Commander player {} hidden setup must contain {}{expected_deck_size} main-deck cards and {} commander(s)",
+                        player_index + 1,
+                        if allowance.no_maximum_deck_size { "at least " } else { "" },
+                        commander_list.len()
+                    ));
+                }
+                if manifest.slot_commitments.len() != manifest.deck_count {
+                    return Err(format!(
+                        "Commander player {} hidden manifest must commit every main-deck slot",
+                        player_index + 1
+                    ));
+                }
+                let mut slots = HashSet::new();
+                for slot in &manifest.slot_commitments {
+                    if slot.commitment.trim().is_empty() || !slots.insert(slot.slot) {
+                        return Err(format!(
+                            "Commander player {} hidden manifest has an empty or duplicate slot commitment",
+                            player_index + 1
+                        ));
+                    }
+                }
+            } else if !Self::commander_deck_size_fits(&allowance, expected_deck_size, deck.len()) {
+                return Err(format!(
+                    "commander main decks must contain {}{expected_deck_size} cards for {count} commander(s)",
+                    if allowance.no_maximum_deck_size { "at least " } else { "" },
+                    count = commander_list.len()
+                ));
+            } else if let Some(manifest) = manifest
+                && ((manifest.deck_count != 0 && manifest.deck_count != deck.len())
+                    || (manifest.commander_count != 0
+                        && manifest.commander_count != commander_list.len()))
+            {
+                    return Err(format!(
+                        "Commander player {} manifest counts do not match the explicit setup",
+                        player_index + 1
+                    ));
+            }
+
+
             if !deck.is_empty() {
                 self.ensure_card_definitions_loaded(deck.iter().map(String::as_str));
+                let mut extra_colors_used = ColorSet::COLORLESS;
                 for card_name in deck {
                     let definition = self.load_compilable_card_definition_result(card_name)?;
-                    self.validate_commander_deck_card(
-                        &definition,
-                        commander_identity,
-                        &mut seen_names,
-                    )?;
+                    extra_colors_used = extra_colors_used.union(
+                        self.validate_commander_deck_card_allowing(
+                            &definition,
+                            commander_identity,
+                            &allowance,
+                            &mut seen_names,
+                        )?,
+                    );
                 }
+                Self::validate_commander_extra_identity_colors(&allowance, extra_colors_used)?;
             }
         }
 
@@ -1849,7 +2008,16 @@ impl WasmGame {
         }
 
         let commander_identity = self.game.get_commander_color_identity(owner);
-        self.validate_commander_deck_card(definition, commander_identity, &mut seen_names)
+        let allowance = self.player_commander_deck_allowance(owner);
+        // A hidden deck is checked card by card as it is revealed, so a
+        // chosen extra color is bounded per card here.
+        let extra_used = self.validate_commander_deck_card_allowing(
+            definition,
+            commander_identity,
+            &allowance,
+            &mut seen_names,
+        )?;
+        Self::validate_commander_extra_identity_colors(&allowance, extra_used)
     }
 
     fn validate_hidden_normal_reveals(
@@ -3235,6 +3403,15 @@ impl WasmGame {
 
     fn finish_match_setup(&mut self, opening_hand_size: usize) -> Result<(), String> {
         self.reset_runtime_state();
+        // CR 103.2: the starting deck is the library as the game begins plus
+        // the commanders in the command zone (CR 903.5a), before any draw.
+        let starting_players: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
+        for player_id in starting_players {
+            if let Some(player) = self.game.player_mut(player_id) {
+                player.starting_deck_size =
+                    Some((player.library.len() + player.commanders.len()) as u32);
+            }
+        }
         // Sticker selection precedes drawing or exposing opening hands and
         // creates no player choice in constructed play (CR 103.2d).
         let pregame_order = self.game.team_apnap_player_order();

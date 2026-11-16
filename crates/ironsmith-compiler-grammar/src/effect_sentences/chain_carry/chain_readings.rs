@@ -1191,6 +1191,13 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
             // ..., you remove ... instead" (Soul Echo): one replacement, not
             // a comma-split chain.
             vec![effect]
+        } else if matches!(
+            crate::grammar::effects::clause_dispatch_shapes::parse_direct_clause_shape(&stripped),
+            Some(crate::grammar::effects::clause_dispatch_shapes::DirectClauseShape::SetX(_))
+        ) {
+            // "you may have the value of X become 5" (Glava): the stack
+            // object's X, not a "become" characteristic change.
+            vec![super::super::clause_dispatch::parse_effect_clause(&stripped)?]
         } else if let Some(effect) =
             super::super::dispatch_entry::parse_complete_become_statement(&stripped)?
         {

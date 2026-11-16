@@ -1763,6 +1763,58 @@ fn pre_rule_permission_spell_undaunted(
     }))
 }
 
+/// "For each card exiled this way, the player who exiled it may play it for
+/// as long as it remains exiled." (Vulcan Mind-Meld): one lasting play
+/// permission over every card this resolution exiled, each held by the player
+/// recorded as that card's exiler rather than by a single named player.
+fn pre_rule_each_exiler_play_permission(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    const HEAD: [&str; 12] = [
+        "for", "each", "card", "exiled", "this", "way", "the", "player", "who", "exiled", "it",
+        "may",
+    ];
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let view = crate::lexer::TokenWordView::new(&tokens);
+    let words = view.word_refs();
+    if words.len() <= HEAD.len() || words[..HEAD.len()] != HEAD {
+        return Ok(None);
+    }
+    let Some(may_idx) = view.token_start_indices().get(HEAD.len() - 1).copied() else {
+        return Ok(None);
+    };
+    let mut permission = vec![OwnedLexToken::synthetic_word("you")];
+    permission.extend_from_slice(&tokens[may_idx..]);
+    let Some(EffectAst::SubjectVerb(mut grant)) =
+        crate::permission_helpers::parse_cast_or_play_tagged_clause(&permission)?
+    else {
+        return Ok(None);
+    };
+    let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+        tag,
+        player,
+        beneficiary_is_each_exiler,
+        ..
+    }) = &mut grant.action
+    else {
+        return Ok(None);
+    };
+    if *player != PlayerAst::You || tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
+        return Ok(None);
+    }
+    *tag = crate::tag::declared_key(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG);
+    *beneficiary_is_each_exiler = true;
+    crate::word_claims::claim_tokens(&tokens);
+    state.effects.push(EffectAst::SubjectVerb(grant));
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("each-exiler-play-permission"),
+    }))
+}
+
 fn pre_rule_permission_spell_discount(
     state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -2416,6 +2468,11 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         "permission-spell-discount",
         &["spells"],
         pre_rule_permission_spell_discount
+    ),
+    pre_followup_rule!(
+        "each-exiler-play-permission",
+        &["for"],
+        pre_rule_each_exiler_play_permission
     ),
     pre_followup_rule!(
         "permission-spell-undaunted",

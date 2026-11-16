@@ -4361,6 +4361,7 @@ fn evaluate_condition_in_context(
     match condition {
         Condition::ItIsNight => Ok(game.is_night),
         Condition::InEndingPhase => Ok(game.turn.phase == crate::game_state::Phase::Ending),
+        Condition::InCombatPhase => Ok(game.turn.phase == crate::game_state::Phase::Combat),
         Condition::FirstCombatPhaseOfTurn => Ok(game.turn.phase
             == crate::game_state::Phase::Combat
             && game.turn_store.combat_phases_started_this_turn == 1),
@@ -5898,6 +5899,14 @@ fn evaluate_condition_in_context(
                 .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) < *limit)
                 .unwrap_or(true))
         }
+        // Life lost because damage was dealt is the damage's result (CR
+        // 120.3a), not a life-loss instruction of the spell or ability; a
+        // "spell or ability causes you to lose life" qualification reads only
+        // non-damage loss (the damage itself has its own "deals damage" event).
+        Condition::TriggeringEventCausedBy { effect_like_only: true, .. }
+            if shared.triggering_event.is_some_and(|event| {
+                event.downcast::<crate::events::LifeLossEvent>().is_some_and(|loss| loss.from_damage)
+            }) => Ok(false),
         Condition::TriggeringEventCausedBy { controller, effect_like_only } => Ok(shared.triggering_event
             .and_then(|event| event.cause()).is_some_and(|cause|
                 (!*effect_like_only || (cause.cause_type.is_effect_like() && cause.source.is_some()))

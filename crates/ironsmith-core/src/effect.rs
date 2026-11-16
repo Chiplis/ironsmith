@@ -605,6 +605,9 @@ pub enum GrantPlayTaggedObjectSurface {
     /// "lands and cast spells from among the exiled cards" (Elder Brain): the
     /// instruction's exiled set, authored as a definite description. Appended.
     LandsAndSpellsFromAmongTheExiledCards,
+    /// "the chosen cards" (Ensign Pavel Chekov): the cards a preceding choice
+    /// selected, possibly one per iterated player. Appended.
+    TheChosenCards,
 }
 
 /// Oracle-facing reference used by a flexible-mana suffix on a temporary
@@ -955,6 +958,10 @@ pub enum DelayedTriggerSpec {
         source: ObjectFilter,
         player: PlayerFilter,
     },
+    /// Append-only. "When [player] loses the game" (CR 104.3) for the
+    /// registration's lifetime. A player bound when the registration is
+    /// created ("they") is fixed to that exact player.
+    PlayerLosesGame(PlayerFilter),
 }
 
 /// Lifetime policy for a delayed trigger registration.
@@ -5820,6 +5827,30 @@ pub struct SuspectEffect {
 impl SuspectEffect {
     pub fn new(target: ChooseSpec) -> Self {
         Self { target }
+    }
+}
+
+/// "For as long as <duration>, if a triggered ability of that creature
+/// triggers, that ability triggers an additional time." (Lwaxana Troi,
+/// Charming Guest): a resolved rules modification keyed to the affected
+/// objects, not an ability they gain, so it keeps applying if they lose
+/// their abilities. Each triggered ability of an affected object triggers
+/// `copies` additional times while the duration lasts (CR 603.2d).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct TriggerAdditionalTimeEffect {
+    pub target: ChooseSpec,
+    pub duration: Until,
+    pub copies: u32,
+}
+
+impl TriggerAdditionalTimeEffect {
+    pub fn new(target: ChooseSpec, duration: Until) -> Self {
+        Self {
+            target,
+            duration,
+            copies: 1,
+        }
     }
 }
 

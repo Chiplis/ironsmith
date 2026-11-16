@@ -65,6 +65,7 @@ fn parse_existing_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     parse_turn_history_value_gate(tokens)
         .or_else(|| parse_life_above_starting_total_gate(tokens))
         .or_else(|| parse_cards_in_library_gate(tokens))
+        .or_else(|| parse_starting_deck_size_gate(tokens))
         .or_else(|| parse_damage_received_gate(tokens))
         .or_else(|| parse_discard_history_gate(tokens))
         .or_else(|| parse_life_changed_gate(tokens))
@@ -583,6 +584,35 @@ fn parse_cards_in_library_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
     let (operator, amount) = comparison_to_value_comparison_operator(comparison)?;
     Some(PredicateAst::ValueComparison {
         left: Value::CardsInLibrary(player),
+        operator,
+        right: Value::Fixed(amount),
+    })
+}
+
+/// "you had 200 or more cards in your starting deck" (Whtz, the
+/// Bibliophile): a comparison against the player's recorded starting-deck
+/// size (CR 103.2).
+fn parse_starting_deck_size_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let card_in_phrases: &[&[&str]] = &[&["card", "in"], &["cards", "in"]];
+    let atoms = [
+        WinnowSequence::any_phrase(&[&["you", "had"], &["you", "have"]]),
+        WinnowSequence::amount(
+            "quantity",
+            WinnowCaptureKind::UntilAnyPhrase(card_in_phrases),
+        ),
+        WinnowSequence::any_phrase(card_in_phrases),
+        WinnowSequence::phrase(&["your", "starting", "deck"]),
+    ];
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let quantity = matched.capture_clause("quantity", clause)?;
+    let (comparison, used) = predicate_quantity_prefix_tokens(quantity.tokens())?;
+    if used != quantity.tokens().len() {
+        return None;
+    }
+    let (operator, amount) = comparison_to_value_comparison_operator(comparison)?;
+    Some(PredicateAst::ValueComparison {
+        left: Value::StartingDeckSize(PlayerFilter::You),
         operator,
         right: Value::Fixed(amount),
     })

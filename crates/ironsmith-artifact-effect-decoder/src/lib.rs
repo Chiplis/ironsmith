@@ -245,6 +245,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "PoisonCountersEffect" => Some(EffectFamily::Player),
         "PopulateEffect" => Some(EffectFamily::CompositionMZ),
         "PrepareEffect" => Some(EffectFamily::Permanent),
+        "TriggerAdditionalTimeEffect" => Some(EffectFamily::Permanent),
         "PreventAllCombatDamageEffect" => Some(EffectFamily::Combat),
         "PreventAllDamageEffect" => Some(EffectFamily::Combat),
         "PreventAllDamageToTargetEffect" => Some(EffectFamily::Combat),

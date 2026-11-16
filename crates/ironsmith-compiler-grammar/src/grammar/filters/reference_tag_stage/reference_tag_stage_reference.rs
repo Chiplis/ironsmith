@@ -2541,10 +2541,29 @@ fn parse_object_filter_inner_unchecked(
         let has_or = parse_word_choice_anywhere(&normalized_segment_words, &["or"]).is_some();
         let has_and_or =
             parse_word_choice_anywhere(&normalized_segment_words, &["and/or"]).is_some();
+        // "artifact creature" names one object with both types only when the
+        // type words are immediately adjacent tokens. A comma or another word
+        // between them ("instant cards, sorcery cards, and/or ...", Frantic
+        // Firebolt) is a list of alternatives.
+        let card_type_token_indices = segment_tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| {
+                token.as_word().is_some() && parse_card_type(token.parser_text()).is_some()
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let card_types_adjacent = card_type_token_indices.len() > 1
+            && card_type_token_indices.windows(2).all(|pair| pair[1] == pair[0] + 1);
         if types.len() > 1 {
-            if has_conjunction {
+            if has_conjunction || !card_types_adjacent {
                 filter.card_types = types;
             } else {
+                // "Artifact creature spells" (Mycosynth Golem): the adjacent
+                // types are one conjunctive requirement. The scan above also
+                // collected them as an any-of list; keep only the
+                // conjunction so no reading sees "artifact or creature".
+                filter.card_types.retain(|card_type| !types.contains(card_type));
                 filter.all_card_types = types;
             }
         } else if types.len() == 1 {

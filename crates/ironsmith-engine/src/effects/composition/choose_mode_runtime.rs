@@ -321,6 +321,9 @@ pub(super) enum SelectedModeProgram {
     NoAction,
     Actions {
         dilemma_player: Option<PlayerId>,
+        /// The player whose modes the game chose at random (CR 700.2), for
+        /// "whenever you choose one or more modes at random".
+        random_mode_player: Option<PlayerId>,
         chosen_indices: Vec<usize>,
         include_common_prefix: bool,
         use_target_scopes: bool,
@@ -372,6 +375,7 @@ pub(super) fn select_mode_program(
     if let Some(token_mode) = endure_token_mode_when_permanent_is_gone(effect, game, ctx) {
         return Ok(Some(SelectedModeProgram::Actions {
             dilemma_player: None,
+            random_mode_player: None,
             chosen_indices: vec![token_mode],
             include_common_prefix: false,
             use_target_scopes: false,
@@ -400,6 +404,7 @@ pub(super) fn select_mode_program(
     if effect.modes.is_empty() || max_modes == 0 {
         return Ok(Some(SelectedModeProgram::Actions {
             dilemma_player: None,
+            random_mode_player: None,
             chosen_indices: Vec::new(),
             include_common_prefix: true,
             use_target_scopes: false,
@@ -472,11 +477,13 @@ pub(super) fn select_mode_program(
 
     // Per MTG rule 601.2b, modes are chosen during casting (before targets).
     // Check if modes were pre-chosen during the casting process.
+    let mut chose_at_random = false;
     let chosen_indices: Vec<usize> = if effect.chooser.is_none()
         && let Some(pre_chosen) = effect.announced_modes.as_ref().or(ctx.chosen_modes.as_ref())
     {
         pre_chosen.clone()
     } else if effect.random {
+        chose_at_random = true;
         let mut randomized_modes: Vec<usize> = (0..effect.modes.len())
             .filter(|idx| is_mode_legal(*idx))
             .collect();
@@ -606,6 +613,8 @@ pub(super) fn select_mode_program(
     Ok(Some(SelectedModeProgram::Actions {
         dilemma_player: (effect.faces_dilemma && !modes_were_announced
             && !valid_chosen_indices.is_empty()).then_some(chooser),
+        random_mode_player: (chose_at_random && !valid_chosen_indices.is_empty())
+            .then_some(chooser),
         chosen_indices: valid_chosen_indices,
         include_common_prefix: true,
         use_target_scopes: true,
@@ -684,10 +693,28 @@ pub(super) fn selected_mode_cursor(
         SelectedModeProgram::NoAction => (Vec::new(), true, false),
         SelectedModeProgram::Actions {
             dilemma_player,
+            random_mode_player,
             chosen_indices,
             include_common_prefix,
             use_target_scopes,
         } => {
+            if let Some(player) = random_mode_player {
+                children.push(ModalProgramChild {
+                    group: 0,
+                    effect: crate::effect::Effect::new(
+                        super::emit_keyword_action::PublishKeywordActionCompletion(
+                            crate::triggers::TriggerEvent::new_with_provenance(
+                                crate::events::KeywordActionEvent::new(
+                                    crate::events::KeywordActionKind::ChooseModesAtRandom,
+                                    player, ctx.source, chosen_indices.len() as u32,
+                                ), ctx.provenance,
+                            ),
+                        ),
+                    ),
+                    label: None,
+                    identity: vec![3],
+                });
+            }
             if let Some(player) = dilemma_player {
                 children.push(ModalProgramChild {
                     group: 0,

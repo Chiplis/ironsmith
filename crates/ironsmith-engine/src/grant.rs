@@ -87,9 +87,84 @@ impl ironsmith_core::GrantStaticAbility for StaticAbility {
 
 pub trait DerivedAlternativeCastRuntimeExt {
     fn materialize_for(&self, card: &Object) -> Option<AlternativeCastingMethod>;
+    /// The method a grant from `grant_source` offers `card`. A method whose
+    /// cost can't use the granting permanent ("Scotty can't be beamed up to
+    /// cast a spell this way") binds that exclusion here.
+    fn materialize_for_grant(
+        &self,
+        card: &Object,
+        grant_source: crate::ids::ObjectId,
+    ) -> Option<AlternativeCastingMethod>;
+}
+
+/// `effect` with every object choice it makes (directly or as a step of a
+/// sequence, as a lowered "return a creature" cost is) unable to pick
+/// `excluded`; `None` when it makes no such choice.
+fn effect_excluding_object(
+    effect: &crate::effect::Effect,
+    excluded: crate::ids::ObjectId,
+) -> Option<crate::effect::Effect> {
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+        let mut choose = choose.clone();
+        choose.filter.excluded_specific = Some(excluded);
+        return Some(crate::effect::Effect::new(choose));
+    }
+    let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let mut changed = false;
+    let effects = sequence
+        .effects
+        .iter()
+        .map(|step| match effect_excluding_object(step, excluded) {
+            Some(step) => {
+                changed = true;
+                step
+            }
+            None => step.clone(),
+        })
+        .collect();
+    changed.then(|| {
+        let mut sequence = sequence.clone();
+        sequence.effects = effects;
+        crate::effect::Effect::new(sequence)
+    })
+}
+
+/// A cost component whose object choice can't pick `excluded`. Components
+/// that choose no objects are unchanged.
+fn cost_excluding_object(cost: &Cost, excluded: crate::ids::ObjectId) -> Cost {
+    cost.effect_ref()
+        .and_then(|effect| effect_excluding_object(effect, excluded))
+        .and_then(|effect| Cost::try_effect(effect).ok())
+        .unwrap_or_else(|| cost.clone())
 }
 
 impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
+    fn materialize_for_grant(
+        &self,
+        card: &Object,
+        grant_source: crate::ids::ObjectId,
+    ) -> Option<AlternativeCastingMethod> {
+        let method = self.materialize_for(card)?;
+        match (self, method) {
+            (
+                Self::BeamMeUpFromCardManaCost {
+                    excludes_grant_source: true,
+                    ..
+                },
+                AlternativeCastingMethod::BeamMeUp { total_cost },
+            ) => Some(AlternativeCastingMethod::BeamMeUp {
+                total_cost: TotalCost::from_costs(
+                    total_cost
+                        .costs()
+                        .iter()
+                        .map(|cost| cost_excluding_object(cost, grant_source))
+                        .collect(),
+                ),
+            }),
+            (_, method) => Some(method),
+        }
+    }
+
     fn materialize_for(&self, card: &Object) -> Option<AlternativeCastingMethod> {
         match self {
             Self::FlashbackFromCardManaCost { additional_costs } => {
@@ -261,6 +336,24 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     None,
                     false,
                 ))
+            }
+            // Beam me up whose cost is the card's mana cost: instant and
+            // sorcery cards cast from the graveyard by paying that cost and
+            // returning another creature, then exiled.
+            Self::BeamMeUpFromCardManaCost { additional_costs, .. } => {
+                let mana_cost = card.mana_cost_owned()?;
+                if !card.has_card_type(CardType::Instant) && !card.has_card_type(CardType::Sorcery)
+                {
+                    return None;
+                }
+                if card.zone != Zone::Graveyard {
+                    return None;
+                }
+                let mut costs = vec![Cost::mana(mana_cost)];
+                costs.extend(additional_costs.iter().cloned());
+                Some(AlternativeCastingMethod::BeamMeUp {
+                    total_cost: TotalCost::from_costs(costs),
+                })
             }
             // CR 702.35a: the madness cost is the card's own mana cost. The
             // method exists wherever the card has madness; only the madness

@@ -215,6 +215,8 @@ pub enum PredicateAst {
     ThisSpellCastOrderThisGame(u32),
     /// Any player's whole ending phase, including its cleanup step.
     InEndingPhase,
+    /// Any player's combat phase ("if it's a combat phase").
+    InCombatPhase,
 }
 
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]

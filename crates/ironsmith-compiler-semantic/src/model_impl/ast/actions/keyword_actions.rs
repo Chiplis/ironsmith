@@ -212,5 +212,9 @@ pub enum KeywordActionAst {
     GrantExileControllerInspection { target: TargetAst, sources: TargetAst },
     RememberOriginalMovementArrivals { from: crate::effect::EffectId, zone: Zone, tag: TagRef },
     LinkPermanents { target: TargetAst, relation: String, require_creatures: bool },
+    /// "For as long as <duration>, if a triggered ability of <target>
+    /// triggers, that ability triggers an additional time" (Lwaxana Troi,
+    /// Charming Guest): a resolved rule keyed to the object, not a grant.
+    TriggerAdditionalTime { target: TargetAst, duration: crate::effect::Until },
 
 }

@@ -379,6 +379,15 @@ impl FightEffect {
         let creature2_snapshot = game
             .object(creature2_id)
             .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+        // "a creature that fought this way" names exactly these fighters.
+        ctx.tag_objects_unique(
+            ironsmith_core::FOUGHT_THIS_WAY_TAG,
+            creature1_snapshot
+                .iter()
+                .chain(creature2_snapshot.iter())
+                .cloned()
+                .collect(),
+        );
         let mut fight_events = Self::fight_events(
             game,
             ctx,

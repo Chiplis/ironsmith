@@ -33,7 +33,7 @@ pub fn compile_card_text_with_policy(
     text: impl Into<String>,
     allow_unsupported: bool,
 ) -> Result<facade::CompiledCardText<CardDefinition>, CardTextError> {
-    let text = text.into();
+    let text = ironsmith_compiler_source::join_parenthetical_line_breaks(text.into());
     // One vocabulary scope per compiled card: subtypes its own type line
     // declares (CR 205.3) are readable in its rules text, and never leak.
     ironsmith_core::custom_subtypes::with_compilation_scope(move || util::with_cached_parser_trace(move || {

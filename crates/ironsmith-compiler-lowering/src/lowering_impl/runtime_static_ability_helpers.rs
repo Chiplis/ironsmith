@@ -65,6 +65,9 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::Devour(_)
             | KeywordAction::DevourVariant { .. }
             | KeywordAction::Extort
+            // "The next artifact creature spell ... has undaunted" (Võx):
+            // the printed hand/stack cost reduction (CR 702.125a).
+            | KeywordAction::Undaunted
             | KeywordAction::Sunburst
             | KeywordAction::Firebending(_)
             | KeywordAction::FirebendingValue { .. }
@@ -80,6 +83,9 @@ pub fn executable_object_abilities_for_keyword_action(
             // activated abilities, granted through the printed expansion.
             | KeywordAction::Crew { .. }
             | KeywordAction::Saddle { .. }
+            // "Each Equipment you control has living weapon" (Ekthi): the
+            // printed ETB trigger of each Equipment (CR 702.92a).
+            | KeywordAction::LivingWeapon
     ) {
         return None;
     }

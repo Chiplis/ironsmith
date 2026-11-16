@@ -983,6 +983,18 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
                 .collect::<Vec<_>>(),
         ));
     }
+    // "Artifact creature spells you cast have affinity for artifacts."
+    // (Mycosynth Golem): every listed type at once.
+    if !filter.all_card_types.is_empty() {
+        qualifiers.push(
+            filter
+                .all_card_types
+                .iter()
+                .map(|card_type| card_type.name().to_ascii_lowercase())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+    }
     if let Some(card_types) = coordinated_card_types.as_ref() {
         qualifiers.push(join_with_and(
             &card_types

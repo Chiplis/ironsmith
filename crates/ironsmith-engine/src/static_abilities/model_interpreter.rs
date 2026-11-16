@@ -1085,6 +1085,12 @@ impl StaticAbilityModelInterpreter {
                     *count,
                 ))
             }
+            ironsmith_core::StaticAbilityPayload::CommanderDeckAllowance { allowance, display } => {
+                StaticAbility::new(super::CommanderDeckAllowanceRule {
+                    text: display.clone(),
+                    allowance: allowance.clone(),
+                })
+            }
             ironsmith_core::StaticAbilityPayload::ActivateAbilitiesAsThoughZone { .. }
             | ironsmith_core::StaticAbilityPayload::NamedActionPaymentAlternative { .. }
             | ironsmith_core::StaticAbilityPayload::NamedActionTokenAbilityGrant { .. }
@@ -2652,6 +2658,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::EntersTappedForFilter(filter) => {
                 StaticAbility::enters_tapped_for_filter(filter.clone())
             }
+            ironsmith_core::StaticAbilityPayload::EntersTappedAndAttackingForFilter(filter) => {
+                StaticAbility::new(super::misc::EnterTappedAndAttackingForFilter::new(filter.clone()))
+            }
             ironsmith_core::StaticAbilityPayload::EntersUntappedForFilter(filter) => {
                 StaticAbility::enters_untapped_for_filter(filter.clone())
             }
@@ -2861,6 +2870,11 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     fn deck_color_choice_count(&self) -> Option<u32> {
         self.leaf_static_ability()
             .and_then(StaticAbility::deck_color_choice_count)
+    }
+
+    fn commander_deck_allowance(&self) -> Option<ironsmith_core::CommanderDeckAllowance> {
+        self.leaf_static_ability()
+            .and_then(StaticAbility::commander_deck_allowance)
     }
 
     fn keyword_marker_mechanic(&self) -> Option<ironsmith_core::KeywordMarkerMechanic> {
@@ -4320,6 +4334,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PayLifeOrEnterTapped(_)
                 | ironsmith_core::StaticAbilityPayload::RevealCardOrEnterTapped { .. }
                 | ironsmith_core::StaticAbilityPayload::EntersTappedForFilter(_)
+                | ironsmith_core::StaticAbilityPayload::EntersTappedAndAttackingForFilter(_)
         )
     }
 

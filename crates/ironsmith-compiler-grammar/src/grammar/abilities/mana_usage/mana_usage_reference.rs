@@ -281,6 +281,17 @@ pub(super) fn parse_special_spell_filter(tokens: &[OwnedLexToken]) -> Option<Obj
     ) {
         return Some(ObjectFilter::default().in_zone(Zone::Exile));
     }
+    // "a spell from anywhere other than your hand" (Mm'menon, the Right
+    // Hand): the spell's cast origin is any zone but its caster's hand.
+    if matches_any_exact_tokens(
+        tokens,
+        &[
+            &["spell", "from", "anywhere", "other", "than", "your", "hand"],
+            &["spells", "from", "anywhere", "other", "than", "your", "hand"],
+        ],
+    ) {
+        return Some(ObjectFilter::default().not_cast_from_zone(Zone::Hand));
+    }
     if matches_any_exact_tokens(
         tokens,
         &[&["spell", "with", "devoid"], &["spells", "with", "devoid"]],

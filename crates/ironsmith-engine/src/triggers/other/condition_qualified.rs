@@ -142,6 +142,35 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
         // "Whenever a spell or ability an opponent controls destroys a
         // noncreature permanent you control": the destroying agent reads as
         // the subject of the active verb.
+        // "Whenever a spell or ability you control causes you to lose
+        // exactly 1 life": the causal clause is the whole authored event.
+        if condition.starts_with("a spell or ability ")
+            && condition.contains(" causes ")
+            && self.trigger.downcast_ref::<crate::triggers::PlayerLosesLifeTrigger>().is_some()
+        {
+            return format!("Whenever {condition}");
+        }
+        // "Whenever a source you control deals damage, if at least one
+        // permanent or player was dealt exactly 2 of that damage": an
+        // authored event-time `if` qualification keeps its own clause.
+        // "Whenever a source you control deals exactly 1 damage to you"
+        // (Sahir, Visitor in Darkness): an exact damage amount reads inside
+        // the damage event.
+        if let Some(amount) = condition.strip_prefix("the damage is exactly ") {
+            let event = self.trigger.display();
+            if let Some((head, tail)) = event.split_once(" deals damage") {
+                return format!("{head} deals exactly {amount} damage{tail}");
+            }
+        }
+        // "Whenever Miss Highwater deals combat damage to a player who
+        // doesn't have a contract counter": a relative clause on the damaged
+        // player reads directly after the event.
+        if condition.starts_with("who ") {
+            return format!("{} {}", self.trigger.display(), condition);
+        }
+        if condition.starts_with("if ") {
+            return format!("{}, {}", self.trigger.display(), condition);
+        }
         let event = self.trigger.display();
         if let Some(agent) = condition.strip_prefix("by ")
             && let Some(object) = event

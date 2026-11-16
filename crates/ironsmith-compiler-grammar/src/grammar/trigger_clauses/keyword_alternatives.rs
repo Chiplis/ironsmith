@@ -84,6 +84,84 @@ pub fn parse_shared_keyword_action_list(
     None
 }
 
+/// One randomized player action a trigger can observe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RandomActionTriggerArm {
+    Action(KeywordActionKind),
+    /// "roll one or more dice" (CR 706): the die-roll event family.
+    RollDice,
+}
+
+fn random_action_arm(words: &[&str]) -> Option<RandomActionTriggerArm> {
+    use RandomActionTriggerArm::{Action, RollDice};
+    Some(match words {
+        ["discard" | "discards", "one", "or", "more", "cards", "at", "random"] => {
+            Action(KeywordActionKind::DiscardAtRandom)
+        }
+        ["select" | "selects", "one", "or", "more", "targets", "at", "random"] => {
+            Action(KeywordActionKind::SelectTargetsAtRandom)
+        }
+        ["choose" | "chooses", "one", "or", "more", "modes", "at", "random"] => {
+            Action(KeywordActionKind::ChooseModesAtRandom)
+        }
+        ["flip" | "flips", "one", "or", "more", "coins"] => Action(KeywordActionKind::FlipCoins),
+        ["roll" | "rolls", "one", "or", "more", "dice"] => RollDice,
+        _ => return None,
+    })
+}
+
+/// A serial list of randomized actions sharing one player subject: "you
+/// discard one or more cards at random, select one or more targets at
+/// random, choose one or more modes at random, flip one or more coins, or
+/// roll one or more dice" (Chira, All In). Every arm must be a complete
+/// random action; returns the subject's token range and the arms in order.
+pub fn parse_shared_random_action_list(
+    tokens: &[OwnedLexToken],
+) -> Option<(Range<usize>, Vec<RandomActionTriggerArm>)> {
+    let mut end = tokens.len();
+    while end > 0 && tokens[end - 1].is_period() {
+        end -= 1;
+    }
+    let tokens = &tokens[..end];
+    if tokens.iter().any(|token| token.as_word().is_none() && !token.is_comma()) {
+        return None;
+    }
+    // Arms are separated by commas and a list-final "or"; the "or" inside
+    // "one or more" belongs to its arm.
+    let mut segments = Vec::new();
+    let mut start = 0;
+    for (index, token) in tokens.iter().enumerate() {
+        let inner_or = token.is_word("or")
+            && index > 0
+            && tokens[index - 1].is_word("one")
+            && tokens.get(index + 1).is_some_and(|next| next.is_word("more"));
+        if token.is_comma() || (token.is_word("or") && !inner_or) {
+            if start < index {
+                segments.push(start..index);
+            }
+            start = index + 1;
+        }
+    }
+    if start < tokens.len() {
+        segments.push(start..tokens.len());
+    }
+    if segments.len() < 2 {
+        return None;
+    }
+    let words = |range: &Range<usize>| -> Vec<&str> {
+        tokens[range.clone()].iter().filter_map(OwnedLexToken::as_word).collect()
+    };
+    let first = segments[0].clone();
+    let first_words = words(&first);
+    let (subject_len, first_arm) = (1..first_words.len())
+        .find_map(|split| random_action_arm(&first_words[split..]).map(|arm| (split, arm)))?;
+    let mut arms = vec![first_arm];
+    for segment in &segments[1..] {
+        arms.push(random_action_arm(&words(segment))?);
+    }
+    Some((first.start..first.start + subject_len, arms))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

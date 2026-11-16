@@ -1787,6 +1787,18 @@ fn parse_temporary_escape_grant(
     ability_tokens: &[OwnedLexToken],
     duration: &Until,
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // A quoted granted keyword ("gains "Escape—{3}{B}, Exile four other
+    // cards from your graveyard."", The Grim Captain's Locker) is the same
+    // single escape ability.
+    let ability_tokens = if ability_tokens.len() > 2
+        && ability_tokens.first().is_some_and(|token| token.kind == TokenKind::Quote)
+        && ability_tokens.last().is_some_and(|token| token.kind == TokenKind::Quote)
+        && ability_tokens.iter().filter(|token| token.kind == TokenKind::Quote).count() == 2
+    {
+        crate::util::trim_edge_punctuation_tokens(ability_tokens)
+    } else {
+        ability_tokens
+    };
     let Some(method) = crate::util::parse_escape_line_lexed(ability_tokens)? else {
         return Ok(None);
     };

@@ -1375,7 +1375,24 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Stack(StackActionAst::ScaleXValue { target, multiplier }),
+            SubjectVerbActionAst::Stack(StackActionAst::ScaleXValue {
+                target,
+                multiplier,
+                set_to: None,
+            }),
+        )
+    }
+
+    /// "have the value of X become N": the stack object's X becomes N.
+    pub fn subject_verb_set_x_value(target: TargetAst, value: u32) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Stack(StackActionAst::ScaleXValue {
+                target,
+                multiplier: 1,
+                set_to: Some(value),
+            }),
         )
     }
 
@@ -1858,6 +1875,7 @@ impl EffectAst {
                 during_turns_attacked_with: None,
                 during_turns_cast_another_spell: false,
                 spell_cost_reduction_per_opponent: 0,
+                beneficiary_is_each_exiler: false,
             }),
         )
     }
@@ -1889,6 +1907,7 @@ impl EffectAst {
                 during_turns_attacked_with: None,
                 during_turns_cast_another_spell: false,
                 spell_cost_reduction_per_opponent: 0,
+                beneficiary_is_each_exiler: false,
             }),
         )
     }
@@ -1922,6 +1941,7 @@ impl EffectAst {
                 during_turns_attacked_with: Some(condition),
                 during_turns_cast_another_spell: false,
                 spell_cost_reduction_per_opponent: 0,
+                beneficiary_is_each_exiler: false,
             }),
         )
     }
@@ -1953,6 +1973,7 @@ impl EffectAst {
                 during_turns_attacked_with: None,
                 during_turns_cast_another_spell: false,
                 spell_cost_reduction_per_opponent: 0,
+                beneficiary_is_each_exiler: false,
             }),
         )
     }
@@ -7282,6 +7303,19 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target }),
+        )
+    }
+
+    /// "if a triggered ability of <target> triggers, that ability triggers an
+    /// additional time" for `duration`, as a resolved rule.
+    pub fn subject_verb_trigger_additional_time(target: TargetAst, duration: Until) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime {
+                target,
+                duration,
+            }),
         )
     }
 

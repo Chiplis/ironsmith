@@ -1,4 +1,4 @@
-//! "Each opponent exiles cards from the top of their library until ..."
+//! "Each opponent [or player] exiles cards from the top of their library until ..."
 //! followed by a statement over every opponent's exiled cards:
 //! - "You may cast any number of spells from among those nonland cards
 //!   without paying their mana costs." (Fevered Suspicion): a free-cast
@@ -20,11 +20,21 @@ pub(super) fn read(
         return Ok(None);
     };
     let first_tokens = crate::lexer::trim_lexed_commas(first.lowered());
-    if !super::super::consult_family::consult_subject_is_each_opponent(first_tokens) {
+    // "Each player exiles ... until they exile a nonland card." (Etali,
+    // Primal Conqueror) runs the same traversal once per player.
+    let each_player = super::super::consult_family::consult_subject_is(first_tokens, &["each", "player"]);
+    if !each_player && !super::super::consult_family::consult_subject_is_each_opponent(first_tokens) {
         return Ok(None);
     }
-    let Some(parts) = super::super::consult_family::parse_consult_traversal_sentence(first_tokens)?
-    else {
+    let parts = if each_player {
+        super::super::consult_family::parse_consult_traversal_sentence_with_player(
+            first_tokens,
+            Some(PlayerAst::That),
+        )?
+    } else {
+        super::super::consult_family::parse_consult_traversal_sentence(first_tokens)?
+    };
+    let Some(parts) = parts else {
         return Ok(None);
     };
     let words = crate::lexer::parser_token_word_refs(second.lowered());
@@ -55,6 +65,32 @@ pub(super) fn read(
                 }),
             ]
         }
+        // "You may cast any number of spells from among the nonland cards
+        // exiled this way without paying their mana costs." (Etali, Primal
+        // Conqueror): each stopping nonland card may be cast, free.
+        [
+            "you", "may", "cast", "any", "number", "of", "spells", "from", "among", "the",
+            "nonland", "cards", "exiled", "this", "way", "without", "paying", "their", "mana",
+            "costs",
+        ] => {
+            let mut filter = ObjectFilter::tagged(parts.match_tag.clone()).in_zone(Zone::Exile);
+            filter.excluded_card_types.push(crate::types::CardType::Land);
+            vec![EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+                filter,
+                effects: vec![EffectAst::Permissions(
+                    crate::cards::builders::PermissionEffectAst::May {
+                        effects: vec![EffectAst::subject_verb_cast_tagged(
+                            crate::tag::CompilerReferenceTag::It.bind(),
+                            PlayerAst::You,
+                            false,
+                            false,
+                            true,
+                            None,
+                        )],
+                    },
+                )],
+            })]
+        }
         [
             "until", "end", "of", "turn", "you", "may", "cast", "cards", "exiled", "this", "way",
             "without", "paying", "their", "mana", "costs",
@@ -67,7 +103,11 @@ pub(super) fn read(
         )],
         _ => return Ok(None),
     };
-    let mut effects = super::super::consult_family::wrap_each_opponent_consult(parts.effects);
+    let mut effects = if each_player {
+        super::super::consult_family::wrap_each_player_consult(parts.effects)
+    } else {
+        super::super::consult_family::wrap_each_opponent_consult(parts.effects)
+    };
     effects.extend(statement);
     Ok(Some(effects))
 }

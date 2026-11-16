@@ -5184,6 +5184,9 @@ pub(super) fn finalize_spell_cast(
                     .unwrap_or(0),
             ),
         );
+        // CR 702.132a: the assisting player is part of this cast's payment
+        // record, read by "you and that player each draw a card" triggers.
+        spell_obj.assisting_player = assist_mana_spent_to_cast.as_ref().map(|(player, _)| *player);
         spell_obj.mana_spent_to_cast = mana_spent_to_cast;
         spell_obj.x_value = x_value;
     }

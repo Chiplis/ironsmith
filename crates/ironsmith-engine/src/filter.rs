@@ -4792,6 +4792,16 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if let Some(minimum) = self.min_activated_abilities
+            && subject
+                .tail_abilities()
+                .iter()
+                .filter(|ability| matches!(ability.kind, crate::ability::AbilityKind::Activated(_)))
+                .count()
+                < minimum as usize
+        {
+            return false;
+        }
         if !self.could_produce_mana.is_empty()
             && !subject_could_produce_any_mana_symbol(subject, &self.could_produce_mana, game)
         {
@@ -7339,6 +7349,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.has_activated_ability {
             parts.push("with activated abilities".to_string());
+        }
+        if let Some(count) = self.min_activated_abilities {
+            parts.push(format!("with {count} or more activated abilities"));
         }
 
         let has_source_exiled_constraint = self.tagged_constraints.iter().any(|constraint| {
