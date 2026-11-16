@@ -2210,6 +2210,119 @@ mod tests {
 
     struct DeclineDiscardDm;
 
+    struct PayDiscardDm;
+
+    impl DecisionMaker for PayDiscardDm {
+        fn decide_objects(&mut self, _game: &GameState, ctx: &SelectObjectsContext) -> Vec<ObjectId> {
+            vec![
+                ctx.candidates
+                    .iter()
+                    .find(|candidate| candidate.legal)
+                    .unwrap()
+                    .id,
+            ]
+        }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            vec![
+                ctx.options
+                    .iter()
+                    .find(|option| option.description == "Top of library")
+                    .unwrap()
+                    .index,
+            ]
+        }
+    }
+
+    #[test]
+    fn discard_entry_payment_rolls_back_hidden_destination_but_accepts_public_replacement() {
+        for destination in [Zone::Library, Zone::Exile, Zone::Graveyard] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            // A different characteristic and fallback exercise the shared
+            // payment mechanism without either named card's definition.
+            let entrant = crate::CardDefinitionBuilder::new(CardId::new(), "Discard gate")
+                .card_types(vec![CardType::Artifact])
+                .with_ability(Ability::static_ability(
+                    StaticAbility::discard_or_redirect_replacement(
+                        ObjectFilter::creature().in_zone(Zone::Hand),
+                        Zone::Exile,
+                    ),
+                ))
+                .build();
+            let entrant = game.create_object_from_definition(&entrant, alice, Zone::Hand);
+            let payment = CardBuilder::new(CardId::new(), "Creature payment")
+                .card_types(vec![CardType::Creature])
+                .build();
+            let payment = game.create_object_from_card(&payment, alice, Zone::Hand);
+            if destination != Zone::Graveyard {
+                let replacement = if destination == Zone::Library {
+                    StaticAbility::effect_discard_to_library_replacement()
+                } else {
+                    StaticAbility::exile_to_exile_instead_of_graveyard(
+                        ObjectFilter::creature().in_zone(Zone::Hand),
+                        crate::target::PlayerFilter::Any,
+                    )
+                };
+                let source = crate::CardDefinitionBuilder::new(CardId::new(), "Discard replacement")
+                    .card_types(vec![CardType::Artifact])
+                    .with_ability(Ability::static_ability(replacement))
+                    .build();
+                game.create_object_from_definition(&source, alice, Zone::Battlefield);
+            }
+            game.take_pending_trigger_events();
+            let mut dm = PayDiscardDm;
+            let mut ctx = ExecutionContext::new(ObjectId::from_raw(9_202), alice, &mut dm);
+            let receipt = move_to_battlefield_with_options(
+                &mut game,
+                &mut ctx,
+                entrant,
+                BattlefieldEntryOptions::preserve(false),
+            )
+            .expect("discard entry payment resolves")
+            .expect("completed entry");
+            let events = game.take_pending_trigger_events();
+            let discards = events
+                .iter()
+                .filter(|event| {
+                    matches!(
+                        event.kind(),
+                        crate::events::EventKind::Discard | crate::events::EventKind::CardDiscarded
+                    )
+                })
+                .count();
+            if destination == Zone::Library {
+                assert!(matches!(
+                    receipt.assert_without_additions(),
+                    BattlefieldEntryOutcome::Redirected(receipt) if receipt.final_zone == Zone::Exile
+                ));
+                assert_eq!(game.player(alice).unwrap().hand, vec![payment]);
+                assert_eq!(game.object(payment).unwrap().zone, Zone::Hand);
+                assert!(game.player(alice).unwrap().library.is_empty());
+                assert!(game.player(alice).unwrap().graveyard.is_empty());
+                assert_eq!(discards, 0);
+            } else {
+                assert!(matches!(
+                    receipt.assert_without_additions(),
+                    BattlefieldEntryOutcome::Moved(_)
+                ));
+                assert!(game.player(alice).unwrap().hand.is_empty());
+                let payments = if destination == Zone::Exile {
+                    &game.exile
+                } else {
+                    &game.player(alice).unwrap().graveyard
+                };
+                assert_eq!(payments.len(), 1);
+                assert_eq!(game.object(payments[0]).unwrap().name, "Creature payment");
+                assert_eq!(discards, 2);
+            }
+        }
+    }
+
     impl DecisionMaker for DeclineDiscardDm {
         fn decide_objects(
             &mut self,

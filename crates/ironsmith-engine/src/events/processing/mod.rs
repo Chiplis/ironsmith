@@ -1439,92 +1439,106 @@ fn handle_discard_or_redirect(
     replacement_scope: &crate::effects::ReplacementExecutionContext,
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> Result<InteractiveReplacementResult, crate::effects::ExecutionError> {
-    Ok(match response {
-        InteractiveReplacementResponse::Objects(cards) => {
-            // Handle new context-based discard response (vector of cards)
-            // For interactive replacement, we expect exactly 1 card
-            if let Some(&card_id) = cards.first() {
-                // A hidden hand card was opened on every peer before this
-                // answer replayed; the claim is checked like any other.
-                game.record_hidden_identity_obligations(
-                    &[card_id],
-                    filter,
-                    &crate::target::FilterContext::new(controller),
-                    "discard a card matching the filter",
-                );
-                let matching_cards = find_matching_cards_in_hand(game, controller, filter);
-                if matching_cards.contains(&card_id) {
-                    let cause =
-                        crate::events::cause::EventCause::from_effect(object_id, controller);
-                    let mut ctx = crate::effects::ExecutionContext::new(
-                        object_id,
-                        controller,
-                        decision_maker,
-                    )
-                    .with_cause(cause)
-                    .with_provenance(provenance);
-                    ctx.source_snapshot = source_snapshot.cloned();
-                    ctx.replacement = replacement_scope.clone();
-                    let Some(prepared) = crate::effects::cards::prepare_selected_discard_batch(
-                        game,
-                        &mut ctx,
-                        controller,
-                        vec![card_id],
-                        None,
-                        true,
-                    )?
-                    else {
-                        return Ok(InteractiveReplacementResult::redirected(redirect_zone));
-                    };
-                    let committed = crate::effects::cards::commit_selected_discard_batch(
-                        game, &mut ctx, prepared,
-                    )?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(InteractiveReplacementResult::redirected(redirect_zone));
-                    }
-                    let Some(originals) =
-                        committed.prepare_completion_with_outputs(game, &mut ctx)?
-                    else {
-                        return Ok(InteractiveReplacementResult::redirected(redirect_zone));
-                    };
-                    let type_verifiable = originals
-                        .result_for(card_id)
-                        .ok_or_else(|| {
-                            crate::effects::ExecutionError::InternalError(
-                                "entry discard payment lost its exact result".into(),
-                            )
-                        })?
-                        .type_verifiable;
-                    let mut outcome = originals
-                        .complete_added_programs_with_outputs(game, &mut ctx)?
-                        .into_outcome();
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(InteractiveReplacementResult::redirected(redirect_zone));
-                    }
-                    crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-                    for event in outcome.events {
-                        game.queue_trigger_event(event.provenance(), event);
-                    }
-                    if type_verifiable {
+    // CR 701.9c: an unverifiable characteristic-dependent discard is an
+    // illegal payment, not a completed discard followed by a failed entry.
+    // Keep the entire payment (replacement choices, movement and observations)
+    // atomic, just as for the sacrifice-or-redirect payment above.
+    let checkpoint = game.clone();
+    let result = (|| {
+        Ok(match response {
+            InteractiveReplacementResponse::Objects(cards) => {
+                // Handle new context-based discard response (vector of cards)
+                // For interactive replacement, we expect exactly 1 card
+                if let Some(&card_id) = cards.first() {
+                    // A hidden hand card was opened on every peer before this
+                    // answer replayed; the claim is checked like any other.
+                    game.record_hidden_identity_obligations(
+                        &[card_id],
+                        filter,
+                        &crate::target::FilterContext::new(controller),
+                        "discard a card matching the filter",
+                    );
+                    let matching_cards = find_matching_cards_in_hand(game, controller, filter);
+                    if matching_cards.contains(&card_id) {
+                        let cause =
+                            crate::events::cause::EventCause::from_effect(object_id, controller);
+                        let mut ctx = crate::effects::ExecutionContext::new(
+                            object_id,
+                            controller,
+                            &mut *decision_maker,
+                        )
+                        .with_cause(cause)
+                        .with_provenance(provenance);
+                        ctx.source_snapshot = source_snapshot.cloned();
+                        ctx.replacement = replacement_scope.clone();
+                        let Some(prepared) = crate::effects::cards::prepare_selected_discard_batch(
+                            game,
+                            &mut ctx,
+                            controller,
+                            vec![card_id],
+                            None,
+                            true,
+                        )?
+                        else {
+                            return Ok(InteractiveReplacementResult::redirected(redirect_zone));
+                        };
+                        let committed = crate::effects::cards::commit_selected_discard_batch(
+                            game, &mut ctx, prepared,
+                        )?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(InteractiveReplacementResult::redirected(redirect_zone));
+                        }
+                        let Some(originals) =
+                            committed.prepare_completion_with_outputs(game, &mut ctx)?
+                        else {
+                            return Ok(InteractiveReplacementResult::redirected(redirect_zone));
+                        };
+                        let type_verifiable = originals
+                            .result_for(card_id)
+                            .ok_or_else(|| {
+                                crate::effects::ExecutionError::InternalError(
+                                    "entry discard payment lost its exact result".into(),
+                                )
+                            })?
+                            .type_verifiable;
+                        if !type_verifiable {
+                            // Reject before running added programs or publishing
+                            // discard observations. The payment checkpoint below
+                            // also removes the provisional move and its history.
+                            return Ok(InteractiveReplacementResult::redirected(redirect_zone));
+                        }
+                        let mut outcome = originals
+                            .complete_added_programs_with_outputs(game, &mut ctx)?
+                            .into_outcome();
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(InteractiveReplacementResult::redirected(redirect_zone));
+                        }
+                        crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
+                        for event in outcome.events {
+                            game.queue_trigger_event(event.provenance(), event);
+                        }
                         InteractiveReplacementResult::enters_battlefield()
                     } else {
                         InteractiveReplacementResult::redirected(redirect_zone)
                     }
                 } else {
+                    // No card selected, redirect
                     InteractiveReplacementResult::redirected(redirect_zone)
                 }
-            } else {
-                // No card selected, redirect
+            }
+            InteractiveReplacementResponse::Decline
+            | InteractiveReplacementResponse::Accept
+            | InteractiveReplacementResponse::Options(_) => {
+                // Player chose not to discard, redirect
                 InteractiveReplacementResult::redirected(redirect_zone)
             }
-        }
-        InteractiveReplacementResponse::Decline
-        | InteractiveReplacementResponse::Accept
-        | InteractiveReplacementResponse::Options(_) => {
-            // Player chose not to discard, redirect
-            InteractiveReplacementResult::redirected(redirect_zone)
-        }
-    })
+        })
+    })();
+    let pending = decision_maker.awaiting_choice();
+    if pending || result.as_ref().map_or(true, |outcome| !outcome.enters) {
+        game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
+    }
+    result
 }
 
 /// Handle a reveal-card-or-enter-tapped interactive replacement.

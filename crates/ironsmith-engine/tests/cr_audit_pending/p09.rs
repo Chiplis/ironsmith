@@ -828,23 +828,66 @@ fn cr_701_9c_discard_into_hidden_zone_cannot_pay_a_characteristic_requirement() 
         "Mox Diamond",
         "Mana cost: {0}\nType: Artifact\nIf Mox Diamond would enter, you may discard a land card instead. If you do, put Mox Diamond onto the battlefield. If you don't, put it into its owner's graveyard.\n{T}: Add one mana of any color.",
     );
-    let mut game = new_game(2);
-    add(&mut game, &leng, p(0), Zone::Battlefield);
-    add(&mut game, &card_def("Forest", vec![CardType::Land], 0), p(0), Zone::Hand);
-    let mut dm = Dm {
-        boolean: true,
-        picks: vec!["Forest".into()],
-        option_text: Some("Top of library".into()),
-        ..Dm::default()
-    };
-    resolve_spell(&mut game, &mox, p(0), vec![], &mut dm);
-    let mox_on_bf = !battlefield_named(&game, "Mox Diamond").is_empty();
-    let forest_in_library = library(&game, p(0)).contains(&"Forest".to_string());
-    assert!(
-        !(mox_on_bf && forest_in_library),
-        "CR 701.9c: a land discarded face-down into the library has undefined characteristics, so it cannot pay Mox Diamond's 'discard a land card' (log {:?})",
-        dm.log
-    );
+    for destination in ["Top of library", "Graveyard"] {
+        let mut game = new_game(2);
+        add(&mut game, &leng, p(0), Zone::Battlefield);
+        let forest = add(
+            &mut game,
+            &card_def("Forest", vec![CardType::Land], 0),
+            p(0),
+            Zone::Hand,
+        );
+        let original_top = add(
+            &mut game,
+            &card_def("Original top", vec![CardType::Instant], 1),
+            p(0),
+            Zone::Library,
+        );
+        game.take_pending_trigger_events();
+        let mut dm = Dm {
+            boolean: true,
+            picks: vec!["Forest".into()],
+            option_text: Some(destination.into()),
+            ..Dm::default()
+        };
+        resolve_spell(&mut game, &mox, p(0), vec![], &mut dm);
+        assert_eq!(game.player(p(0)).unwrap().library, vec![original_top]);
+        assert!(game.stack.is_empty());
+        let events = game.take_pending_trigger_events();
+        let discards = events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event.kind(),
+                    ironsmith::events::EventKind::Discard
+                        | ironsmith::events::EventKind::CardDiscarded
+                )
+            })
+            .count();
+        if destination == "Top of library" {
+            assert_eq!(
+                game.player(p(0)).unwrap().hand,
+                vec![forest],
+                "CR 701.9c: illegal payment must restore the original land to hand (log {:?})",
+                dm.log
+            );
+            assert_eq!(game.object(forest).unwrap().zone, Zone::Hand);
+            assert!(battlefield_named(&game, "Mox Diamond").is_empty());
+            assert_eq!(graveyard(&game, p(0)), vec!["Mox Diamond"]);
+            assert_eq!(
+                discards, 0,
+                "rolled-back payment must publish no discard events"
+            );
+        } else {
+            assert!(hand(&game, p(0)).is_empty());
+            assert_eq!(battlefield_named(&game, "Mox Diamond").len(), 1);
+            assert_eq!(graveyard(&game, p(0)), vec!["Forest"]);
+            assert_eq!(
+                discards, 2,
+                "legal payment publishes its two discard observations once"
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
