@@ -1,4 +1,8 @@
-import initEngine, { WasmGame } from "./engine.js";
+import initEngine, {
+  WasmGame,
+  manabrewPrintedDefense,
+  manabrewPrintedLoyalty,
+} from "./engine.js";
 // Retain the engine's current source compiler before compatibility methods
 // replace these entry points with artifact-first registration.
 const registerSourceInEngine = WasmGame.prototype.registerExternalCardSources;
@@ -148,8 +152,15 @@ function manabrewCardBlock(card) {
   if (card?.power != null && card?.toughness != null) {
     lines.push(`Power/Toughness: ${card.power}/${card.toughness}`);
   }
-  if (card?.loyalty != null) lines.push(`Loyalty: ${card.loyalty}`);
-  if (card?.defense != null) lines.push(`Defense: ${card.defense}`);
+  // The deck protocol has no field for printed loyalty or defense; the engine
+  // ships a table for the faces a host leaves without one.
+  const typeWords = manabrewTypeLine(card).split(/[^A-Za-z]+/).map((word) => word.toLowerCase());
+  const loyalty = card?.loyalty
+    ?? (typeWords.includes("planeswalker") ? manabrewPrintedLoyalty(manabrewCardName(card)) : null);
+  const defense = card?.defense
+    ?? (typeWords.includes("battle") ? manabrewPrintedDefense(manabrewCardName(card)) : null);
+  if (loyalty != null) lines.push(`Loyalty: ${loyalty}`);
+  if (defense != null) lines.push(`Defense: ${defense}`);
   const text = String(card?.text ?? card?.oracleText ?? card?.oracle_text ?? "").trim();
   if (text) lines.push(text);
   return lines.join("\n");
@@ -159,13 +170,22 @@ function manabrewCardSource(card) {
   const deckName = manabrewCardName(card);
   if (!deckName) return null;
   const rawFaces = card?.cardFaces ?? card?.card_faces ?? card?.faces ?? [];
-  const faces = Array.isArray(rawFaces)
+  let faces = Array.isArray(rawFaces)
     ? rawFaces.slice(0, 2).map((face) => ({
         name: manabrewCardName(face),
         block: manabrewCardBlock(face),
         score: 1,
       })).filter((face) => face.name)
     : [];
+  // Protocol `CardRulesSummary.backFace`: a transform or modal double-faced
+  // card whose front face is the deck card itself.
+  const backFace = card?.backFace ?? card?.back_face;
+  if (faces.length < 2 && backFace && manabrewCardName(backFace)) {
+    faces = [
+      { name: deckName.split(" // ")[0].trim(), block: manabrewCardBlock(card), score: 1 },
+      { name: manabrewCardName(backFace), block: manabrewCardBlock(backFace), score: 1 },
+    ];
+  }
   if (faces.length === 2) {
     const combinedName = String(
       card?.combinedName ?? card?.combined_name
@@ -253,8 +273,11 @@ function wasmInitOptions(input) {
 }
 
 function requireManabrewProtocolVersion(engine, config) {
+  // A host that declares a protocol version must match the adapter's. The
+  // published Manabrew adapter declares none, which the engine accepts.
+  if (config?.protocolVersion == null) return;
   const expected = engine.manabrewProtocolVersion();
-  if (config?.protocolVersion !== expected) {
+  if (config.protocolVersion !== expected) {
     throw new Error(`Manabrew protocol version mismatch: expected ${expected}, received ${config?.protocolVersion ?? 0}`);
   }
 }

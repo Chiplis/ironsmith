@@ -19,6 +19,7 @@
       "default": "./ironsmith.js"
     },
     "./engine_bg.wasm": "./engine_bg.wasm",
+    "./ironsmith_bg.wasm": "./engine_bg.wasm",
     "./compiler_bg.wasm": "./compiler_bg.wasm",
     "./verifier_bg.wasm": "./verifier_bg.wasm",
     "./package.json": "./package.json"
