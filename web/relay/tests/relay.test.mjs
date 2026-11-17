@@ -57,3 +57,33 @@ test('an expired resume credential cannot create a replacement room', async t =>
   socket.send(JSON.stringify({ type: 'auth', token: id(), resume: true, format: 'modern', desiredPlayers: 2 }));
   assert.match((await next()).message, /expired/);
 });
+
+test('a seat can claim the room only while its host is offline, and the claim moves the host for everyone', { timeout: 30000 }, async t => {
+  const mf = await startRelay(); t.after(() => mf.dispose());
+  const room = id(); const host = `ws-${room}-${id()}`; const second = `ws-${room}-${id()}`; const third = `ws-${room}-${id()}`;
+  async function connect(peer, token, extra = {}) {
+    const response = await mf.dispatchFetch(`http://localhost/rooms/${room}/socket?peer=${peer}`, { headers: { Origin: origin, Upgrade: 'websocket' } });
+    const socket = response.webSocket; socket.accept(); const next = inbox(socket);
+    socket.send(JSON.stringify({ type: 'auth', token, format: 'commander', desiredPlayers: 3, ...extra }));
+    return { socket, next, first: await next() };
+  }
+  const hostToken = id();
+  const h = await connect(host, hostToken); assert.equal(h.first.hostClaims, true); assert.equal(h.first.config.host, host);
+  const a = await connect(second, id()); const b = await connect(third, id());
+  // The host is online: the claim is refused and answered with the real host.
+  a.socket.send(JSON.stringify({ type: 'claim_host' }));
+  assert.deepEqual(await a.next(), { type: 'host', peer: host });
+  h.socket.close(1000, 'leave');
+  assert.deepEqual(await a.next(), { type: 'offline', peer: host });
+  assert.deepEqual(await b.next(), { type: 'offline', peer: host });
+  // Both remaining seats claim; the room accepts exactly one and tells everyone.
+  a.socket.send(JSON.stringify({ type: 'claim_host' }));
+  b.socket.send(JSON.stringify({ type: 'claim_host' }));
+  assert.deepEqual(await a.next(), { type: 'host', peer: second });
+  assert.deepEqual(await b.next(), { type: 'host', peer: second });
+  // The late claim is refused: the winner is online.
+  assert.deepEqual(await b.next(), { type: 'host', peer: second });
+  // The original host returns to a room that names its new host.
+  const back = await connect(host, hostToken, { resume: true });
+  assert.equal(back.first.type, 'open'); assert.equal(back.first.config.host, second); assert.equal(back.first.config.lobby, host);
+});

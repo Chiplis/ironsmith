@@ -211,6 +211,8 @@ export class WebSocketPeer extends Events {
   tokenTime = performance.now();
   noDirect = new Set();
   witnessWaiters = new Map();
+  hostWaiters = [];
+  hostClaims = false;
   constructor(peerId, options = {}) {
     super();
     this.options = { ...options, transport: 'websocket' };
@@ -243,6 +245,7 @@ export class WebSocketPeer extends Events {
           saveRelayIdentity(this.room, this.options.url, { peerId: this.id, token: this.token, advertise: this.options.advertise });
           this.resuming = true;
           this.open = true; this.disconnected = false; this.config = msg.config;
+          this.hostClaims = msg.hostClaims === true;
           this.lastPong = Date.now(); this.lastPing = Date.now();
           this.pingTimer = setInterval(() => {
             if (Date.now() - this.lastPing > 90_000) this.lastPong = Date.now();
@@ -255,6 +258,14 @@ export class WebSocketPeer extends Events {
           return;
         }
         if (msg.type === 'error') { this.emit('error', new Error(msg.message)); return; }
+        if (msg.type === 'host') {
+          // The room moved (or confirmed) its host: see claimHost().
+          this.config = { ...this.config, host: msg.peer };
+          const waiters = this.hostWaiters.splice(0);
+          for (const waiter of waiters) { clearTimeout(waiter.timer); waiter.resolve(msg.peer); }
+          this.emit('host', msg.peer);
+          return;
+        }
         if (msg.type === 'witness_result') { this.settleWitness(msg); return; }
         if (msg.type === 'witness_event') { this.emit('witness', msg); return; }
         if (msg.type === 'offline') {
@@ -282,6 +293,7 @@ export class WebSocketPeer extends Events {
       this.queue = new Queue(); this.controlQueue = new Queue(); this.queuedSize = 0;
       for (const conn of [...this.connections.values()]) if (!conn.directActive || event.code === 4001) conn.close(false);
       this.rejectWitness(new Error('Relay is disconnected'));
+      this.rejectHostClaims(new Error('Relay is disconnected'));
       if (event.code === 4001) {
         this.destroyed = true;
         this.emit('error', new Error('This seat was reopened in another tab. Continue there.'));
@@ -361,6 +373,23 @@ export class WebSocketPeer extends Events {
       catch (error) { clearTimeout(timer); this.witnessWaiters.delete(requestId); reject(error); }
     });
   }
+  // Ask the room to make this peer its host. Resolves with the room's host
+  // after the request: this peer when the claim won, the existing host when it
+  // is still online or another seat claimed first.
+  claimHost(timeoutMs = 10_000) {
+    return new Promise((resolve, reject) => {
+      if (!this.open) { reject(new Error('Relay is disconnected')); return; }
+      if (!this.hostClaims) { reject(new Error('This lobby service does not support host migration')); return; }
+      const waiter = { resolve, reject };
+      waiter.timer = setTimeout(() => {
+        this.hostWaiters = this.hostWaiters.filter(entry => entry !== waiter);
+        reject(new Error('Lobby service did not answer the host claim'));
+      }, timeoutMs);
+      this.hostWaiters.push(waiter);
+      try { this.send({ type: 'claim_host' }); }
+      catch (error) { clearTimeout(waiter.timer); this.hostWaiters = this.hostWaiters.filter(entry => entry !== waiter); reject(error); }
+    });
+  }
   settleWitness(msg) {
     const waiter = this.witnessWaiters.get(msg.id);
     if (!waiter) return;
@@ -370,6 +399,9 @@ export class WebSocketPeer extends Events {
   rejectWitness(error) {
     for (const waiter of this.witnessWaiters.values()) { clearTimeout(waiter.timer); waiter.reject(error); }
     this.witnessWaiters.clear();
+  }
+  rejectHostClaims(error) {
+    for (const waiter of this.hostWaiters.splice(0)) { clearTimeout(waiter.timer); waiter.reject(error); }
   }
   advertise(lobby, force = false) {
     if (!force && JSON.stringify(lobby) === JSON.stringify(this.lobby)) return;
@@ -386,6 +418,7 @@ export class WebSocketPeer extends Events {
     clearInterval(this.pingTimer); clearInterval(this.advertiseTimer); clearTimeout(this.flushTimer);
     for (const conn of [...this.connections.values()]) conn.close(false);
     this.rejectWitness(new Error('Left the lobby'));
+    this.rejectHostClaims(new Error('Left the lobby'));
     this.open = false; this.disconnected = true; this.queue = new Queue(); this.controlQueue = new Queue(); this.queuedSize = 0;
     this.socket?.close(1000, 'Leaving lobby'); this.emit('close');
   }

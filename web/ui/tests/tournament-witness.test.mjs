@@ -61,7 +61,7 @@ async function waitFor(page, predicate, label, timeoutMs = 30000) {
     if (predicate(snap)) return snap;
     await new Promise(r => setTimeout(r, 100));
   }
-  console.error(label, JSON.stringify({ mode: snap?.multiplayer?.mode, statuses: snap?.statusEvents?.slice(-8) }, null, 1));
+  console.error(label, JSON.stringify({ mode: snap?.multiplayer?.mode, role: snap?.multiplayer?.role, started: snap?.multiplayer?.matchStarted, seq: snap?.multiplayer?.lastAppliedSequence, hostPeerId: snap?.multiplayer?.hostPeerId, localPeerId: snap?.multiplayer?.localPeerId, statuses: snap?.statusEvents?.slice(-14), notices: snap?.noticeEvents?.slice(-6) }));
   assert.fail(`Timed out: ${label}`);
 }
 
@@ -132,4 +132,35 @@ test('an online seat answers the witness automatically and keeps its seat', { ti
   const snap = await lobby(host);
   assert.equal(snap.syncEvents.some(e => e.command?.reason === WITNESS_FORFEIT_REASON), false);
   assert.equal(snap.multiplayer.matchStarted, true);
+});
+
+test('a Verified relay match moves to the guest when the host leaves and stays verifiable after the host returns', { timeout: 240000 }, async t => {
+  const { host, guest, witnessKey } = await startTournamentMatch(t, 5196);
+  // The harness engine cannot submit Verified actions, so this covers the
+  // takeover and the reconnect handshake at the match's genesis.
+  const before = await lobby(guest);
+  const hostContext = host.context(), fixtureUrl = host.url();
+  await host.close();
+  const promoted = await waitFor(guest, s => s.multiplayer.role === 'host', 'guest takes over the Verified match', 90000);
+  assert.equal(promoted.multiplayer.hostPeerId, before.multiplayer.localPeerId);
+  assert.equal(promoted.multiplayer.securityMode, 'verified');
+  assert.equal(promoted.multiplayer.lastAppliedSequence, 0);
+
+  const returning = await hostContext.newPage();
+  returning.on('pageerror', e => console.error('returning host page error:', e.message));
+  await returning.goto(fixtureUrl);
+  await returning.waitForFunction(() => window.__peerHarness?.ready);
+  await returning.evaluate(lobbyId => window.__peerHarness.joinLobby({ name: 'ignored', lobbyId }), before.multiplayer.lobbyId);
+  const rejoined = await waitFor(returning, s => s.multiplayer.role === 'client' && s.multiplayer.matchStarted
+    && s.multiplayer.lastAppliedSequence === 0, 'original host rejoins as a guest', 90000);
+  assert.equal(rejoined.multiplayer.hostPeerId, before.multiplayer.localPeerId);
+  assert.equal(rejoined.multiplayer.localPlayerIndex, 0);
+  await waitFor(guest, s => s.multiplayer.players.every(p => p.connected !== false), 'promoted host sees the seat return', 60000);
+  const report = await guest.evaluate(async () => {
+    const { verifyLiveAuditTranscript } = await import('/src/lib/multiplayer-audit.js');
+    const { auditTranscript } = await window.__peerHarness.snapshot();
+    return (await verifyLiveAuditTranscript(auditTranscript, globalThis.crypto, { requireEngineReplay: false })).witness;
+  });
+  assert.equal(report.witnessPublicKey, witnessKey);
+  assert.deepEqual(report.players.map(p => p.name), ['Alice', 'Bob']);
 });

@@ -142,7 +142,7 @@ export class LobbyRoom {
           } catch (error) { return error.message; }
         });
         if (authError) throw new Error(authError);
-        send(ws, { type: 'open', peer: state.peer, config: await this.ctx.storage.get('config') });
+        send(ws, { type: 'open', peer: state.peer, config: await this.ctx.storage.get('config'), hostClaims: true });
         return;
       }
       // Bound abuse and accidental loops without writing storage for game frames.
@@ -160,6 +160,28 @@ export class LobbyRoom {
           available: listing.available === true && Number(listing.playerCount) < config.desiredPlayers,
         }) });
         if (!response.ok) send(ws, { type: 'error', message: 'Public directory is full; lobby is still joinable by code' });
+        return;
+      }
+      if (msg.type === 'claim_host') {
+        // Host migration: a seat may take over only while the current host has
+        // no live socket. The room is the arbiter, so two seats cannot both win.
+        let changed = false;
+        const config = await this.ctx.blockConcurrencyWhile(async () => {
+          const current = await this.ctx.storage.get('config');
+          const hostOnline = this.sockets().some(socket => {
+            const a = socket.deserializeAttachment(); return a.authenticated && a.peer === current.host;
+          });
+          if (hostOnline || current.host === state.peer) return current;
+          // `lobby` keeps the room's original id: it names the match for the witness.
+          const next = { ...current, lobby: current.lobby || current.host, host: state.peer };
+          await this.ctx.storage.put('config', next);
+          changed = true;
+          return next;
+        });
+        if (!changed) { send(ws, { type: 'host', peer: config.host }); return; }
+        for (const socket of this.sockets()) {
+          if (socket.deserializeAttachment().authenticated) send(socket, { type: 'host', peer: config.host });
+        }
         return;
       }
       if (msg.type === 'witness') {

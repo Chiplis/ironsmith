@@ -105,6 +105,13 @@ import { formatDeckRequirement } from "../../lib/lobby-deck.js";
 import { answerMatchSeedRevealRequest, collectMatchSeedReveals, pinPlayersToGenesisRoster, rememberStartedGenesis, resolveMatchSeedReveal, rotateGenesisSeedNonce } from "./genesis-binding.js";
 import { initialAuditStateHashForMatch } from "../../lib/multiplayer-audit.js";
 
+// Relay host migration: how long a lost host may take to return before a seat
+// claims the room, and the extra wait per seat further down the order.
+const RELAY_HOST_CLAIM_GRACE_MS = 15000;
+const RELAY_HOST_CLAIM_STAGGER_MS = 10000;
+// A guest that refreshed holds only its saved transcript. It gives every seat
+// with a live game time to take over first, then restores and hosts itself.
+const RELAY_GUEST_RESTORE_WAIT_MS = RELAY_HOST_CLAIM_GRACE_MS + 3 * RELAY_HOST_CLAIM_STAGGER_MS;
 const MAX_LOBBY_CHAT_LENGTH = 120;
 const LOBBY_CHAT_EMOJI_PATTERNS = [
   new RegExp("\\p{Extended_Pictographic}", "u"),
@@ -235,6 +242,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const ziffleTokensForPosition = useCallback((...args) => servicesRef.current.ziffleTokensForPosition(...args), [servicesRef]);
   const lastForegroundRecoveryRef = useRef(0);
   const hostRecoveryGraceRef = useRef(null);
+  const relayHostClaimRef = useRef(null);
   const resyncInProgressRef = useRef(false);
   const resyncRetryRef = useRef({ attempts: 0, timer: null });
   const requestResync = useCallback((reason = "Resyncing with host...", { forceCheckpoint = true } = {}) => {
@@ -384,7 +392,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         verified: isVerifiedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload)),
       });
 
-      if (isRelayId(matchPayload.lobbyId)) assertFormatMatch(matchPayload);
+      // Verified matches carry decks as each seat's opened list, not as
+      // top-level decks: check what the live match start checks.
+      if (isRelayId(matchPayload.lobbyId)) assertFormatMatch({ ...matchPayload,
+        decks: validationDecksForMatchPayload(matchPayload),
+        sideboards: validationSideboardsForMatchPayload(matchPayload),
+        commanders: validationCommandersForMatchPayload(matchPayload) });
       const currentGame = gameRef.current;
       if (!currentGame || typeof currentGame.startMatch !== "function") {
         throw new Error("Game engine cannot replay a resync transcript");
@@ -446,6 +459,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         matchClockObservationExemptSequenceRef.current = Number(message.lastSequence) + 1;
         awaitingStateResyncRef.current = false;
         resyncRetryRef.current.attempts = 0;
+        // A resync replaces this seat's transcript: refresh its saved copy.
+        void Promise.resolve(servicesRef.current.persistGuestJournal?.()).catch(() => {});
         safeSend(hostConnectionRef.current, { type: "resync_ack", protocolVersion: PROTOCOL_VERSION, lastSequence: Number(message.lastSequence) });
         setStatus(`Resynced with trusted host at action ${message.lastSequence}`);
         await servicesRef.current.drainPendingSequencedActions();
@@ -628,7 +643,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         );
         updateMultiplayer((prev) => ({
           ...prev,
-          role: acceptedMatchPayload.hostPeerId === prev.localPeerId ? "host" : prev.role,
+          // The seat hosting now, which after a host migration is not the seat
+          // that created the match.
+          role: (acceptedMatchPayload.currentHostPeerId || acceptedMatchPayload.hostPeerId) === prev.localPeerId ? "host" : prev.role,
           lobbyId: acceptedMatchPayload.lobbyId || prev.lobbyId,
           hostPeerId:
             acceptedMatchPayload.currentHostPeerId
@@ -657,6 +674,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         );
         awaitingStateResyncRef.current = false;
         resyncRetryRef.current.attempts = 0;
+        // A resync replaces this seat's transcript: refresh its saved copy.
+        void Promise.resolve(servicesRef.current.persistGuestJournal?.()).catch(() => {});
         safeSend(hostConnectionRef.current, {
           type: "resync_ack",
           protocolVersion: PROTOCOL_VERSION,
@@ -926,7 +945,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       );
       updateMultiplayer((prev) => ({
         ...prev,
-        role: acceptedMatchPayload.hostPeerId === prev.localPeerId ? "host" : prev.role,
+        // The seat hosting now, which after a host migration is not the seat
+        // that created the match.
+        role: (matchPayload.currentHostPeerId || acceptedMatchPayload.hostPeerId) === prev.localPeerId ? "host" : prev.role,
         lobbyId: acceptedMatchPayload.lobbyId || prev.lobbyId,
         hostPeerId: matchPayload.currentHostPeerId || acceptedMatchPayload.hostPeerId || prev.hostPeerId,
         desiredPlayers: acceptedMatchPayload.players?.length ?? prev.desiredPlayers,
@@ -967,6 +988,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         lastSequence,
       });
       resyncRetryRef.current.attempts = 0;
+        // A resync replaces this seat's transcript: refresh its saved copy.
+        void Promise.resolve(servicesRef.current.persistGuestJournal?.()).catch(() => {});
       } catch (error) {
         awaitingStateResyncRef.current = true;
         updateMultiplayer(prev => ({ ...prev, submittingAction: false }));
@@ -3947,11 +3970,181 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     [configureHostConnection, configurePeerConnection]
   );
 
+  // Relay rooms cannot reuse the departed host's peer id (the room reserves it
+  // for that browser), so the room itself names the host. A seat that wins the
+  // room's claim keeps its own peer and starts accepting the other seats.
+  const becomeRelayHost = useCallback(
+    async (lobbyId, localPlayerIndex) => {
+      const peer = peerRef.current;
+      const peerId = String(peer?.id || "");
+      if (!peerId) return;
+      const previousHostConnection = hostConnectionRef.current;
+      hostConnectionRef.current = null;
+      if (previousHostConnection) {
+        clearConnectionHeartbeat(connectionHeartbeatKey("host", previousHostConnection.peer));
+        try {
+          previousHostConnection.close();
+        } catch (err) {
+          void err;
+        }
+      }
+      clearAllPeerResyncs();
+      awaitingStateResyncRef.current = false;
+      hostRecoveryGraceRef.current = null;
+      const now = Date.now();
+      const nextSession = updateMultiplayer((prev) => ({
+        ...prev,
+        role: "host",
+        mode: prev.matchStarted ? "in_match" : "lobby",
+        lobbyId,
+        hostPeerId: peerId,
+        localPeerId: peerId,
+        localPlayerIndex,
+        // Every other seat reconnects to this peer; until it does it is
+        // offline under the normal disconnect policy.
+        players: reindexPlayers(prev.players.map((player) => (
+          Number(player.index) === localPlayerIndex
+            ? { ...player, peerId, currentPeerId: peerId, connected: true }
+            : {
+                ...player,
+                connected: false,
+                disconnectedAtMs: player.disconnectedAtMs || now,
+                autoForfeitAtMs: player.autoForfeitAtMs || (now + DISCONNECT_AUTO_FORFEIT_MS),
+              }
+        ))),
+        submittingAction: false,
+      }));
+      writeStoredPlayerIndex(lobbyId, localPlayerIndex);
+      if (matchStartPayloadRef.current) {
+        matchStartPayloadRef.current = {
+          ...cloneMultiplayerPayload(matchStartPayloadRef.current),
+          currentLobbyId: lobbyId,
+          currentHostPeerId: peerId,
+          currentHostPlayerIndex: localPlayerIndex,
+          currentPlayers: toPublicPlayers(nextSession.players),
+        };
+      }
+      try {
+        await servicesRef.current.persistRelayCheckpoint();
+      } catch (error) {
+        setStatus(`Could not save recovered host match: ${toErrorMessage(error)}`, true);
+        return;
+      }
+      setStatus("The host left. You are now hosting this match.");
+    },
+    [clearAllPeerResyncs, clearConnectionHeartbeat, setStatus, updateMultiplayer]
+  );
+
+  // A guest that refreshed while the host is away has no live game, only the
+  // transcript it saved. Once no live seat has taken over, it rebuilds the
+  // match from that copy and asks the room for the host role.
+  const restoreRelayGuestAsHost = useCallback(
+    (lobbyId) => {
+      const session = multiplayerRef.current;
+      const peer = peerRef.current;
+      if (session.role !== "client" || session.matchStarted || !peer?.open || !peer.hostClaims) {
+        return false;
+      }
+      const lostHostPeerId = String(session.hostPeerId || lobbyId);
+      const now = Date.now();
+      if (hostRecoveryGraceRef.current?.hostPeerId !== lostHostPeerId) {
+        hostRecoveryGraceRef.current = { lobbyId, hostPeerId: lostHostPeerId, startedAt: now };
+      }
+      if (now - hostRecoveryGraceRef.current.startedAt < RELAY_GUEST_RESTORE_WAIT_MS) return false;
+      if (relayHostClaimRef.current) return false;
+      const stillWaiting = () => peerRef.current === peer && multiplayerRef.current.role === "client";
+      relayHostClaimRef.current = (async () => {
+        const checkpoint = await relayCheckpoint(lobbyId);
+        const localPlayerIndex = normalizePlayerIndex(checkpoint?.session?.localPlayerIndex);
+        if (!checkpoint?.match || checkpoint.session?.localPeerId !== peer.id || localPlayerIndex == null) return;
+        if (!stillWaiting() || multiplayerRef.current.matchStarted) return;
+        setStatus("The host has not returned. Restoring the match from this browser...");
+        actionHistoryRef.current = [];
+        updateMultiplayer((prev) => ({
+          ...prev,
+          ...checkpoint.session,
+          role: "client",
+          mode: "joining",
+          localPeerId: peer.id,
+          lastAppliedSequence: 0,
+          matchStarted: false,
+          submittingAction: false,
+        }));
+        await applyStateResync(checkpoint);
+        if (!stillWaiting()) return;
+        const hostPeerId = await peer.claimHost();
+        if (!stillWaiting()) return;
+        if (hostPeerId === peer.id) {
+          await becomeRelayHost(lobbyId, localPlayerIndex);
+          return;
+        }
+        // Another seat hosts after all: join its match instead of this copy.
+        const current = multiplayerRef.current;
+        void servicesRef.current.joinLobby({ name: current.localName, lobbyId,
+          deckText: current.localDeckText, commanderText: current.localCommanderText, resumeAsGuest: true });
+      })()
+        .catch((error) => {
+          setStatus(`Could not restore saved game: ${toErrorMessage(error)}`, true);
+        })
+        .finally(() => {
+          relayHostClaimRef.current = null;
+        });
+      return false;
+    },
+    [applyStateResync, becomeRelayHost, setStatus, updateMultiplayer]
+  );
+
+  const claimRelayHost = useCallback(
+    (lobbyId) => {
+      const session = multiplayerRef.current;
+      const peer = peerRef.current;
+      if (session.role === "client" && !session.matchStarted) return restoreRelayGuestAsHost(lobbyId);
+      if (session.role !== "client" || !peer?.open || !peer.hostClaims) {
+        return false;
+      }
+      const localPlayerIndex = resolveReconnectPlayerIndex(session, lobbyId);
+      if (localPlayerIndex == null) return false;
+      const lostHostPeerId = String(session.hostPeerId || lobbyId);
+      const now = Date.now();
+      // A refreshed host replays its journal and returns under the same peer
+      // id; give it time before any seat replaces it.
+      if (hostRecoveryGraceRef.current?.hostPeerId !== lostHostPeerId) {
+        hostRecoveryGraceRef.current = { lobbyId, hostPeerId: lostHostPeerId, startedAt: now };
+      }
+      // The lowest connected seat claims first. Later seats follow at
+      // intervals in case that seat left at the same moment; the room accepts
+      // only the first claim, and only while the host is offline.
+      const candidates = session.players
+        .filter((player) => player.peerId !== lostHostPeerId && player.connected !== false)
+        .sort((left, right) => Number(left.index || 0) - Number(right.index || 0));
+      let rank = candidates.findIndex((player) => Number(player.index) === localPlayerIndex);
+      if (rank < 0) rank = candidates.length;
+      const waitMs = RELAY_HOST_CLAIM_GRACE_MS + rank * RELAY_HOST_CLAIM_STAGGER_MS;
+      if (now - hostRecoveryGraceRef.current.startedAt < waitMs) return false;
+      if (relayHostClaimRef.current) return false;
+      relayHostClaimRef.current = peer.claimHost()
+        .then(async (hostPeerId) => {
+          if (peerRef.current !== peer || multiplayerRef.current.role !== "client") return;
+          // Losing the claim needs nothing here: the peer's "host" event has
+          // already pointed this seat at the room's host.
+          if (hostPeerId === peer.id) await becomeRelayHost(lobbyId, localPlayerIndex);
+        })
+        .catch((error) => {
+          recordPeerSyncPerf("relay:host_claim_failed", { error: toErrorMessage(error) });
+        })
+        .finally(() => {
+          relayHostClaimRef.current = null;
+        });
+      return false;
+    },
+    [becomeRelayHost, restoreRelayGuestAsHost]
+  );
+
   const promoteLocalPlayerToHost = useCallback(
     (reason = "Lobby host disconnected.") => {
       const session = multiplayerRef.current;
       const lobbyId = String(session.lobbyId || session.hostPeerId || "").trim();
-      if (isRelayId(lobbyId)) return false;
+      if (isRelayId(lobbyId)) return claimRelayHost(lobbyId);
       // A refreshed host restores its journal before reclaiming the signaling
       // ID. Do not elect a competing host during that recovery window.
       if (session.matchStarted && isTrustedMultiplayerSecurityMode(session.securityMode)) {
@@ -4234,6 +4427,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       return true;
     },
     [
+      claimRelayHost,
       clearAllPeerResyncs,
       clearAllConnectionHeartbeats,
       configureIncomingConnection,
@@ -4325,7 +4519,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           players: resume.session.players.map(player => ({ ...player, connected: player.peerId === resume.session.localPeerId })) });
         if (resume.match) {
           try {
-            if (isRelayId(resume.session.lobbyId)) assertFormatMatch(resume.match);
+            // Verified matches keep decks out of the match payload: check the
+            // same opened lists the live match start checks.
+            if (isRelayId(resume.session.lobbyId)) assertFormatMatch({ ...resume.match,
+              decks: validationDecksForMatchPayload(resume.match),
+              sideboards: validationSideboardsForMatchPayload(resume.match),
+              commanders: validationCommandersForMatchPayload(resume.match) });
             // Start continuity from the persisted transcript rather than an old in-memory game.
             actionHistoryRef.current = [];
             updateMultiplayer(prev => ({ ...prev, lastAppliedSequence: 0, matchStarted: false }));
@@ -4334,7 +4533,16 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             updateMultiplayer(prev => ({ ...prev, players: prev.players.map(player => ({
               ...player, connected: player.peerId === prev.localPeerId,
             })) }));
-          } catch (error) { setStatus(`Could not restore saved game: ${error.message}`, true); return; }
+          } catch (error) {
+            setStatus(`Could not restore saved game: ${error.message}`, true);
+            // The saved journal is not the only copy in a relay room: another
+            // seat may be hosting by now, so rejoin the match as this seat.
+            if (isRelayId(resume.session.lobbyId)) {
+              void servicesRef.current.joinLobby({ name, lobbyId: resume.session.lobbyId,
+                deckText, commanderText, resumeAsGuest: true });
+            }
+            return;
+          }
         }
       }
       const peer = createPeer(resume && transport !== "websocket" ? resume.session.localPeerId : "", peerOptionsRef.current);
@@ -4399,9 +4607,26 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       });
       setStatus(`Registering lobby with signaling service (${peerServerLabelRef.current})...`);
 
+      // Another seat took over this relay room while this browser was away:
+      // rejoin its match as the original seat instead of hosting a fork.
+      const rejoinSupersededHost = () => {
+        if (peerRef.current !== peer) return;
+        const session = multiplayerRef.current;
+        void servicesRef.current.joinLobby({ name: session.localName || name,
+          lobbyId: session.lobbyId || resume?.session?.lobbyId || peer.id,
+          deckText: session.localDeckText ?? deckText, commanderText: session.localCommanderText ?? commanderText,
+          resumeAsGuest: true });
+      };
+      peer.on?.("host", (hostPeerId) => {
+        if (hostPeerId && hostPeerId !== peer.id) rejoinSupersededHost();
+      });
       peer.on("open", async (peerId) => {
         clearTimeout(openTimeout);
         clearReconnect();
+        if (isRelayId(peerId) && peer.config?.host && peer.config.host !== peerId) {
+          rejoinSupersededHost();
+          return;
+        }
         const session = multiplayerRef.current;
         const isReconnect =
           session.role === "host" && session.localPeerId && session.localPeerId === peerId;
@@ -4571,7 +4796,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         try { await loadFormatCatalog(); } catch (error) { setStatus(error.message, true); return; }
       }
       const saved = isRelayId(lobbyId) ? readRelaySession(lobbyId.split('-')[1]) : readPeerSession(lobbyId);
-      if (saved?.peerId === lobbyId && !resumeAsGuest) {
+      // A relay seat that took over hosting keeps its own peer id, so the
+      // saved role (not the lobby id) says whether this browser was the host.
+      const savedAsHost = isRelayId(lobbyId) && saved?.session
+        ? saved.session.role === "host"
+        : saved?.peerId === lobbyId;
+      if (savedAsHost && !resumeAsGuest) {
         try {
           const checkpoint = await relayCheckpoint(lobbyId);
           const session = checkpoint?.session || saved.session;
@@ -4650,7 +4880,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       setStatus(`Connecting to the lobby signaling service (${peerServerLabelRef.current})...`);
 
       const scheduleHostReconnect = (reason) => {
-        if (peerRef.current !== peer || peer.destroyed) {
+        if (peerRef.current !== peer || peer.destroyed || multiplayerRef.current.role === "host") {
           return;
         }
         const inMatch = multiplayerRef.current.matchStarted;
@@ -4675,7 +4905,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         );
         hostReconnectTimer = window.setTimeout(() => {
           hostReconnectTimer = null;
-          if (peerRef.current !== peer || peer.destroyed) {
+          if (peerRef.current !== peer || peer.destroyed || multiplayerRef.current.role === "host") {
             return;
           }
           setStatus(inMatch ? "Reconnecting to match host..." : "Reconnecting to lobby host...");
@@ -4685,6 +4915,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 
       const connectToHost = () => {
         if (peerRef.current !== peer || peer.destroyed) return;
+        // This seat took over hosting; the other seats connect to it.
+        if (multiplayerRef.current.role === "host") return;
 
         const currentConn = hostConnectionRef.current;
         if (currentConn?.open) return;
@@ -4950,6 +5182,14 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         clearReconnect();
         clearHostReconnect();
         const previousPeerId = multiplayerRef.current.localPeerId;
+        const roomHostPeerId = isRelayId(peerId) ? String(peer.config?.host || "") : "";
+        if (multiplayerRef.current.role === "host") {
+          // Signaling returned for a seat that took over hosting.
+          if (roomHostPeerId && roomHostPeerId !== peerId) { rejoinAsGuest(); return; }
+          void servicesRef.current.syncWitnessStatus();
+          setStatus(`Lobby signaling reconnected: ${peerId}`);
+          return;
+        }
         // The relay room, not the host, says whether this is a tournament.
         const roomTournamentId = String(peer.config?.tournamentId || "");
         let tournament = null;
@@ -4962,6 +5202,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         updateMultiplayer((prev) => ({
           ...prev,
           localPeerId: peerId,
+          // The room names its current host, which changes on host migration.
+          ...(roomHostPeerId ? { hostPeerId: roomHostPeerId } : {}),
           ...(peer.config ? {
             format: peer.config.format,
             securityMode: tournament ? MULTIPLAYER_SECURITY_VERIFIED : MULTIPLAYER_SECURITY_TRUSTED,
@@ -4971,7 +5213,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             ...(tournament ? { localName: tournament.playerName } : {}),
           } : {}),
         }));
-        if (previousPeerId === peerId && hostConnectionRef.current?.open) {
+        if (previousPeerId === peerId && hostConnectionRef.current?.open
+            && (!roomHostPeerId || hostConnectionRef.current.peer === roomHostPeerId)) {
           void servicesRef.current.syncWitnessStatus();
           setStatus(`Lobby signaling reconnected: ${peerId}`);
           return;
@@ -4979,9 +5222,39 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         setStatus("Connecting to lobby host...");
         connectToHost();
       });
+      const rejoinAsGuest = () => {
+        if (peerRef.current !== peer) return;
+        void joinLobby({ name, lobbyId, deckText, commanderText, resumeAsGuest: true });
+      };
+      peer.on?.("host", (hostPeerId) => {
+        if (peerRef.current !== peer || !hostPeerId || hostPeerId === peer.id) return;
+        const session = multiplayerRef.current;
+        // Another seat hosts now. A seat that was hosting rejoins as a guest;
+        // a guest moves its host connection.
+        if (session.role === "host") { rejoinAsGuest(); return; }
+        if (String(session.hostPeerId || "") === hostPeerId && hostConnectionRef.current?.peer === hostPeerId) return;
+        updateMultiplayer((prev) => ({ ...prev, hostPeerId }));
+        const staleConn = hostConnectionRef.current;
+        if (staleConn) {
+          hostConnectionRef.current = null;
+          clearConnectionHeartbeat(connectionHeartbeatKey("host", staleConn.peer));
+          try {
+            staleConn.close();
+          } catch (err) {
+            void err;
+          }
+        }
+        clearHostReconnect();
+        setStatus("The match has a new host. Reconnecting...");
+        connectToHost();
+      });
       peer.on("connection", (conn) => {
         if (conn?.metadata?.channel === "peer-direct") {
           configurePeerConnection(conn);
+          return;
+        }
+        if (multiplayerRef.current.role === "host") {
+          configureHostConnection(conn);
           return;
         }
         try {
@@ -5029,6 +5302,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     [
       createLobby,
       clearConnectionHeartbeat,
+      configureHostConnection,
       configurePeerConnection,
       emitZiffleDiagnosticNotice,
       handleHostMessage,

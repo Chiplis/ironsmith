@@ -127,7 +127,9 @@ function transaction(db, stores, mode, run) {
 
 // Only called at match initialization/recovery. Accepted actions are appended by
 // appendRelayAction, never by rewriting the history on the publication path.
-export async function initializeRelayMatch(lobbyId, value) {
+// `force` rewrites a journal of the same match, for a seat whose transcript was
+// replaced by a resync rather than extended.
+export async function initializeRelayMatch(lobbyId, value, { force = false } = {}) {
   const db = await database();
   return transaction(db, ['checkpoints', 'actions'], 'readwrite', (tx, done, fail) => {
     const headers = tx.objectStore('checkpoints'), actions = tx.objectStore('actions');
@@ -136,7 +138,7 @@ export async function initializeRelayMatch(lobbyId, value) {
     request.onsuccess = () => {
       try {
         const previous = request.result;
-        if (previous?.storageVersion === 2 && previous.matchId === matchId
+        if (!force && previous?.storageVersion === 2 && previous.matchId === matchId
             && sameJournalMatch(previous.match, value.match)) { done(previous.lastSequence); return; }
         // Clear only this room's old journal; other rooms retain their recovery.
         actions.delete(IDBKeyRange.bound([roomKey], [roomKey, []]));
@@ -190,7 +192,10 @@ export async function relayCheckpoint(lobbyId, value) {
         if (actions.length !== header.lastSequence || actions.some((entry, i) => Number(entry.seq) !== i + 1)) {
           fail(new Error('Saved action transcript is incomplete')); return;
         }
-        done({ ...header, session: { ...header.session, lastAppliedSequence: header.lastSequence },
+        // The journal is its own resync carrier: it speaks the protocol its
+        // match was saved under, so a journal from another protocol is refused.
+        done({ ...header, protocolVersion: header.match?.protocolVersion,
+          session: { ...header.session, lastAppliedSequence: header.lastSequence },
           match: { ...header.match, currentPlayers: header.session.players }, actions });
       };
     };

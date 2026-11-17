@@ -203,7 +203,7 @@ async function genesis(lobby, state, config, body) {
   const { request } = body;
   if (request.tournamentId !== config.tournamentId) throw new Error('Genesis request is for another tournament');
   if (request.format !== config.format) throw new Error('Genesis request is for another format');
-  if (request.lobbyId !== config.host) throw new Error('Genesis request is for another lobby');
+  if (request.lobbyId !== (config.lobby || config.host)) throw new Error('Genesis request is for another lobby');
   if (!request.matchId || request.matchId.length > 128) throw new Error('Genesis request match id is invalid');
   if (request.players.some(p => p.peerId.match(PEER)?.[1] !== state.room)) throw new Error('Genesis request seats a peer outside this room');
   if (new Set(request.players.map(p => p.peerId)).size !== request.players.length) throw new Error('A peer occupies two seats');

@@ -5041,10 +5041,12 @@ export function usePeerLobbyValidation(base, servicesRef) {
 
 	      updateMultiplayer((prev) => ({
 	        ...prev,
-	        role: payload.hostPeerId === prev.localPeerId ? "host" : prev.role,
+	        // The seat hosting now: after a host migration that is not the
+	        // seat that created the match.
+	        role: (payload.currentHostPeerId || payload.hostPeerId) === prev.localPeerId ? "host" : prev.role,
 	        mode: "in_match",
 	        lobbyId: payload.lobbyId || prev.lobbyId,
-	        hostPeerId: payload.hostPeerId || prev.hostPeerId,
+	        hostPeerId: payload.currentHostPeerId || payload.hostPeerId || prev.hostPeerId,
 	        localPlayerIndex: localEntry.index,
 	        desiredPlayers: payload.players.length,
 	        startingLife: payload.startingLife,
