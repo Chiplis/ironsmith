@@ -38,8 +38,23 @@ jobs:
           cargo install wasm-pack --version 0.13.1 --locked
           npm install --global npm@11.5.1 vite@7.3.1
 
+      # The optimized engine build exceeds the hosted runner's RAM; without
+      # extra swap the runner is shut down mid-compile.
+      - name: Add swap
+        run: |
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 32G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h
+          df -h / /mnt
+
       - name: Build lean npm artifact
         shell: bash
+        env:
+          CARGO_BUILD_JOBS: 2
         run: |
           args=()
           if [[ "$GITHUB_REF" == refs/tags/ironsmith-wasm-v* ]]; then
