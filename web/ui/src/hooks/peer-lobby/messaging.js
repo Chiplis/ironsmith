@@ -4025,7 +4025,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         };
       }
       try {
-        await servicesRef.current.persistRelayCheckpoint();
+        await servicesRef.current.persistRelayCheckpoint({ force: true });
       } catch (error) {
         setStatus(`Could not save recovered host match: ${toErrorMessage(error)}`, true);
         return;

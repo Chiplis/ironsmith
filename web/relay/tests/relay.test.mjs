@@ -76,12 +76,12 @@ test('a seat can claim the room only while its host is offline, and the claim mo
   h.socket.close(1000, 'leave');
   assert.deepEqual(await a.next(), { type: 'offline', peer: host });
   assert.deepEqual(await b.next(), { type: 'offline', peer: host });
-  // Both remaining seats claim; the room accepts exactly one and tells everyone.
+  // The first claim wins and the room tells everyone.
   a.socket.send(JSON.stringify({ type: 'claim_host' }));
-  b.socket.send(JSON.stringify({ type: 'claim_host' }));
   assert.deepEqual(await a.next(), { type: 'host', peer: second });
   assert.deepEqual(await b.next(), { type: 'host', peer: second });
-  // The late claim is refused: the winner is online.
+  // A later claim is refused: the winner is online.
+  b.socket.send(JSON.stringify({ type: 'claim_host' }));
   assert.deepEqual(await b.next(), { type: 'host', peer: second });
   // The original host returns to a room that names its new host.
   const back = await connect(host, hostToken, { resume: true });

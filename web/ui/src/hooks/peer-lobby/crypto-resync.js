@@ -4713,14 +4713,16 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     }, { force: true });
   }
 
-  async function persistRelayCheckpoint() {
+  // `force` replaces a journal this browser already keeps for the match: a
+  // guest that becomes the host turns its guest copy into the host journal.
+  async function persistRelayCheckpoint({ force = false } = {}) {
     const session = multiplayerRef.current;
     if (!canPersistMatch(session) || session.role !== "host" || !session.matchStarted) return;
     const match = buildHostedResyncPayload();
     if (!match) return;
     await initializeRelayMatch(session.lobbyId, {
       match, session, actions: actionHistoryRef.current,
-    });
+    }, { force });
   }
 
   async function publishCurrentRuntimeState(stateHint = null) {
