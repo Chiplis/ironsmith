@@ -109,6 +109,11 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
         } else {
             self.surface.trim().to_string()
         };
+        // "At the beginning of your first upkeep": the qualification is part
+        // of the step's own name, so the surface is the whole event clause.
+        if let Some(rest) = condition.strip_prefix("at the beginning of ") {
+            return format!("At the beginning of {rest}");
+        }
         // Mana-production qualifications can retain the complete authored
         // event clause, rather than joining two descriptions with "while".
         if self.trigger.downcast_ref::<crate::triggers::ManaFromSourceTrigger>().is_some()

@@ -1325,6 +1325,21 @@ pub fn push_outlaw_subtypes(out: &mut Vec<Subtype>) {
     }
 }
 
+/// "Sea monster" batches Krakens, Leviathans, Octopuses, Serpents, and Whales.
+pub fn push_sea_monster_subtypes(out: &mut Vec<Subtype>) {
+    for subtype in [
+        Subtype::Kraken,
+        Subtype::Leviathan,
+        Subtype::Octopus,
+        Subtype::Serpent,
+        Subtype::Whale,
+    ] {
+        if !out.contains(&subtype) {
+            out.push(subtype);
+        }
+    }
+}
+
 pub fn is_permanent_type(card_type: CardType) -> bool {
     matches!(
         card_type,

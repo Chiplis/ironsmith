@@ -90,6 +90,7 @@ enum SimpleObjectFilterAtom {
     ExcludedColor(ColorSet),
     Outlaw,
     NonOutlaw,
+    SeaMonster,
     Nonenchanted,
 }
 
@@ -698,6 +699,10 @@ fn parse_simple_filter_body(
                 push_outlaw_subtypes(&mut filter.subtypes);
                 saw_inclusive_subtype_bundle = true;
             }
+            SimpleObjectFilterAtom::SeaMonster => {
+                crate::util::push_sea_monster_subtypes(&mut filter.subtypes);
+                saw_inclusive_subtype_bundle = true;
+            }
             SimpleObjectFilterAtom::NonOutlaw => {
                 push_outlaw_subtypes(&mut filter.excluded_subtypes);
             }
@@ -785,6 +790,7 @@ fn parse_simple_object_filter_atom(input: &mut WordInput<'_>) -> WResult<SimpleO
 fn parse_compound_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
     alt((
         parse_time_lord_compound_atom,
+        parse_sea_monster_batch_atom,
         parse_urzas_land_compound_atom,
         parse_split_hyphenated_subtype_atom,
         parse_token_headed_subtype_atom,
@@ -833,6 +839,14 @@ fn parse_split_hyphenated_subtype_atom(
 fn parse_time_lord_compound_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
     word_phrase(&["time", "lord"])
         .value(SimpleObjectFilterAtom::Subtype(Subtype::TimeLord))
+        .parse_next(input)
+}
+
+/// Parse the two-word `sea monster` batch (Krakens, Leviathans, Octopuses,
+/// Serpents, and Whales).
+fn parse_sea_monster_batch_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
+    alt((word_phrase(&["sea", "monster"]), word_phrase(&["sea", "monsters"])))
+        .value(SimpleObjectFilterAtom::SeaMonster)
         .parse_next(input)
 }
 

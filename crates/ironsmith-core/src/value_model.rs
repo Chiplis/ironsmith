@@ -2903,6 +2903,9 @@ pub enum TurnHistoryCondition {
     /// objects a completed custom named action (here "revive") was performed
     /// with this turn.
     SourceWasNamedActionObjectThisTurn(String),
+    /// Append-only. "if it was cast for its emerge cost": the triggering
+    /// object's cast receipt records the named alternative cost.
+    TriggeringObjectPaidLabel(OptionalCostRef),
 }
 
 /// Selects which captured representation of a tagged object is used when a

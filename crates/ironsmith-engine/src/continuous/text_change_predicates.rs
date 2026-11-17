@@ -563,6 +563,7 @@ fn rewrite_turn_history_condition_words(condition: &TurnHistoryCondition, change
         | TurnHistoryCondition::SourceEnteredFromZoneThisTurn(_)
         | TurnHistoryCondition::SourceWasCastFromZoneThisTurn(_)
         | TurnHistoryCondition::SourceWasNamedActionObjectThisTurn(_)
+        | TurnHistoryCondition::TriggeringObjectPaidLabel(_)
         | TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn | TurnHistoryCondition::TriggeringPlayersTurn { .. }
         | TurnHistoryCondition::ControllerTeamGainedLifeThisTurn | TurnHistoryCondition::TriggeringObjectsNoneWereCastOrNoManaSpent
         | TurnHistoryCondition::AllPlayersLifeAtMost(_) | TurnHistoryCondition::TriggeringAbilityIsManaAbility

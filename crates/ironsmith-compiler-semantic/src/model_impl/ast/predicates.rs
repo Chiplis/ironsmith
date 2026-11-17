@@ -319,6 +319,9 @@ pub enum TurnHistoryPredicateAst {
     /// "if it was revived": the source was an object of that completed
     /// custom named action this turn.
     SourceWasNamedActionObjectThisTurn(String),
+    /// "if it was cast for its emerge cost": the triggering object's cast
+    /// receipt records the named alternative cost.
+    TriggeringObjectPaidLabel(OptionalCostRef),
 }
 
 /// Whether a compared value measures the source object itself ("the number

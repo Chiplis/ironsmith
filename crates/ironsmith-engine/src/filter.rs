@@ -6842,6 +6842,20 @@ impl ObjectFilterExt for ObjectFilter {
                 parts.push("outlaw".to_string());
                 remaining.retain(|subtype| !outlaw_pack.contains(subtype));
             }
+            let sea_monster_pack = [
+                Subtype::Kraken,
+                Subtype::Leviathan,
+                Subtype::Octopus,
+                Subtype::Serpent,
+                Subtype::Whale,
+            ];
+            if sea_monster_pack
+                .iter()
+                .all(|subtype| remaining.contains(subtype))
+            {
+                parts.push("sea monster".to_string());
+                remaining.retain(|subtype| !sea_monster_pack.contains(subtype));
+            }
             parts.extend(remaining.iter().map(std::string::ToString::to_string));
             parts
         } else {

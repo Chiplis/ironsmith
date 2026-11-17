@@ -440,6 +440,20 @@ fn describe_cast_spell_subtypes(filter: &ObjectFilter) -> Option<String> {
         subtype_words.push("outlaw".to_string());
         remaining.retain(|subtype| !outlaw_pack.contains(subtype));
     }
+    let sea_monster_pack = [
+        Subtype::Kraken,
+        Subtype::Leviathan,
+        Subtype::Octopus,
+        Subtype::Serpent,
+        Subtype::Whale,
+    ];
+    if sea_monster_pack
+        .iter()
+        .all(|subtype| remaining.contains(subtype))
+    {
+        subtype_words.push("sea monster".to_string());
+        remaining.retain(|subtype| !sea_monster_pack.contains(subtype));
+    }
     subtype_words.extend(remaining.iter().map(std::string::ToString::to_string));
     Some(join_with_or(&subtype_words))
 }

@@ -7668,6 +7668,20 @@ impl ObjectFilter {
                 parts.push("outlaw".to_string());
                 remaining.retain(|subtype| !outlaw_pack.contains(subtype));
             }
+            let sea_monster_pack = [
+                Subtype::Kraken,
+                Subtype::Leviathan,
+                Subtype::Octopus,
+                Subtype::Serpent,
+                Subtype::Whale,
+            ];
+            if sea_monster_pack
+                .iter()
+                .all(|subtype| remaining.contains(subtype))
+            {
+                parts.push("sea monster".to_string());
+                remaining.retain(|subtype| !sea_monster_pack.contains(subtype));
+            }
             // A subtype that the same filter also excludes is already spelled out by
             // the "non-<subtype>" prefix, so repeating it as the noun doubles the
             // word ("non-human Human creature"). Only drop it when a card type is

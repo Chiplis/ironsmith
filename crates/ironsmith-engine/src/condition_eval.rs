@@ -3270,6 +3270,13 @@ fn evaluate_turn_history_condition(
         TurnHistoryCondition::SourceWasCastFromZoneThisTurn(zone) => game
             .object(ctx.source)
             .is_some_and(|object| game.turn_store.turn_history.object_was_cast_from_zone(object.stable_id, *zone)),
+        // The entering permanent keeps the receipt of the spell it resolved
+        // from; its snapshot covers one that has already left.
+        TurnHistoryCondition::TriggeringObjectPaidLabel(label) => triggering_snapshot()
+            .is_some_and(|snapshot| snapshot.optional_costs_paid.was_paid_label(label.clone())
+                || game.find_object_by_stable_id(snapshot.stable_id)
+                    .and_then(|id| game.object(id))
+                    .is_some_and(|object| object.optional_costs_paid.was_paid_label(label.clone()))),
         TurnHistoryCondition::SourceWasNamedActionObjectThisTurn(label) => {
             game.object_was_named_action_object_this_turn(ctx.source, label)
         }

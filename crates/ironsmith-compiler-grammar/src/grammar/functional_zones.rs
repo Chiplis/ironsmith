@@ -100,6 +100,10 @@ const STATIC_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
         Zone::Command,
     ),
     (
+        &["this", "card", "is", "in", "your", "command", "zone"],
+        Zone::Command,
+    ),
+    (
         &[
             "there", "is", "this", "card", "in", "the", "command", "zone",
         ],
@@ -173,6 +177,14 @@ const TRIGGER_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
     ),
     (
         &["if", "this", "card", "is", "in", "the", "command", "zone"],
+        Zone::Command,
+    ),
+    (
+        &["if", "this", "is", "in", "your", "command", "zone"],
+        Zone::Command,
+    ),
+    (
+        &["if", "this", "card", "is", "in", "your", "command", "zone"],
         Zone::Command,
     ),
 ];

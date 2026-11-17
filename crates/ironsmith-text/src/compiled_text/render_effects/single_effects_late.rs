@@ -2269,11 +2269,23 @@ pub(super) fn describe_mana_usage_ability_source_filter(filter: &ObjectFilter) -
     if includes_outlaw {
         descriptors.push("outlaw".to_string());
     }
+    let sea_monster = [
+        crate::types::Subtype::Kraken,
+        crate::types::Subtype::Leviathan,
+        crate::types::Subtype::Octopus,
+        crate::types::Subtype::Serpent,
+        crate::types::Subtype::Whale,
+    ];
+    let includes_sea_monster = sea_monster.iter().all(|kind| filter.subtypes.contains(kind));
+    if includes_sea_monster {
+        descriptors.push("sea monster".to_string());
+    }
     descriptors.extend(
         filter
             .subtypes
             .iter()
             .filter(|kind| !includes_outlaw || !outlaw.contains(kind))
+            .filter(|kind| !includes_sea_monster || !sea_monster.contains(kind))
             .map(|kind| kind.to_string()),
     );
 

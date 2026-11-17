@@ -1290,6 +1290,12 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
             idx += 2;
             continue;
         }
+        // The two-word "sea monster" batch names five creature types.
+        if matches!(words.get(idx..idx + 2), Some(&["sea", "monster" | "monsters"])) {
+            crate::util::push_sea_monster_subtypes(&mut filter.subtypes);
+            idx += 2;
+            continue;
+        }
         // Spell subtypes that double as English nouns ("Omen", "Chorus") are
         // rejected by the rules-text subtype classifier; directly before
         // "spell(s)" they can only be the spell type ("cast a Dragon spell or

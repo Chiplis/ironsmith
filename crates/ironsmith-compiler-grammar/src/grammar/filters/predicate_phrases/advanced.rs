@@ -4004,13 +4004,16 @@ pub(super) fn parse_behold_spell_label_shape(tokens: &[OwnedLexToken]) -> Option
 /// target's own cast receipt records the named alternative cost.
 fn parse_target_was_cast_for_named_cost_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
-    let rest = match words.as_slice() {
-        ["that", "creature" | "permanent" | "spell", rest @ ..] => rest,
+    // "Whenever a creature you control enters, if it was cast for its emerge
+    // cost": the pronoun is the object whose event triggered the ability.
+    let (triggering_object, rest) = match words.as_slice() {
+        ["that", "creature" | "permanent" | "spell", rest @ ..] => (false, rest),
+        ["it", rest @ ..] => (true, rest),
         _ => return None,
     };
     let keyword = match rest {
         ["was", "cast", "for", "its", keyword, "cost"] => *keyword,
-        ["was", "cast", "using", keyword] => *keyword,
+        ["was", "cast", "using", keyword] if !triggering_object => *keyword,
         _ => return None,
     };
     let label = match keyword {
@@ -4039,7 +4042,14 @@ fn parse_target_was_cast_for_named_cost_shape(tokens: &[OwnedLexToken]) -> Optio
         }
         kind => kind,
     };
-    Some(PredicateAst::TargetPaidLabel(ironsmith_core::OptionalCostRef::new(kind)))
+    let reference = ironsmith_core::OptionalCostRef::new(kind);
+    if triggering_object {
+        crate::word_claims::claim_words(&words);
+        return Some(PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::TriggeringObjectPaidLabel(reference),
+        ));
+    }
+    Some(PredicateAst::TargetPaidLabel(reference))
 }
 
 pub(super) fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {

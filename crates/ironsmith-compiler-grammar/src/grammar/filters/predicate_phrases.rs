@@ -539,7 +539,10 @@ fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
             Zone::Exile,
         )));
     }
-    if surface::exact_any(zone, &[&["the", "command", "zone"], &["command", "zone"]]) {
+    if surface::exact_any(
+        zone,
+        &[&["the", "command", "zone"], &["command", "zone"], &["your", "command", "zone"]],
+    ) {
         return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(
             Zone::Command,
         )));

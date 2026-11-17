@@ -1100,6 +1100,9 @@ pub fn resolve_condition_from_predicate(
             TurnHistoryPredicateAst::SourceWasCastFromZoneThisTurn(zone) => {
                 ironsmith_core::TurnHistoryCondition::SourceWasCastFromZoneThisTurn(*zone)
             }
+            TurnHistoryPredicateAst::TriggeringObjectPaidLabel(label) => {
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectPaidLabel(label.clone())
+            }
             TurnHistoryPredicateAst::SourceWasNamedActionObjectThisTurn(label) => {
                 ironsmith_core::TurnHistoryCondition::SourceWasNamedActionObjectThisTurn(label.clone())
             }

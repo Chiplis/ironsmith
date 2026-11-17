@@ -1625,6 +1625,9 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
         TurnHistoryCondition::SourceWasCastFromZoneThisTurn(zone) => {
             format!("it was cast from a {zone} this turn")
         }
+        TurnHistoryCondition::TriggeringObjectPaidLabel(label) => {
+            format!("it was cast for its {} cost", label.display_label().to_ascii_lowercase())
+        }
         TurnHistoryCondition::SourceWasNamedActionObjectThisTurn(label) => {
             format!("it was {}", ironsmith_core::keyword_forms::derive_participle(label))
         }
@@ -2846,6 +2849,20 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     {
                         alternatives.push("an outlaw".to_string());
                         remaining.retain(|subtype| !outlaw_pack.contains(subtype));
+                    }
+                    let sea_monster_pack = [
+                        Subtype::Kraken,
+                        Subtype::Leviathan,
+                        Subtype::Octopus,
+                        Subtype::Serpent,
+                        Subtype::Whale,
+                    ];
+                    if sea_monster_pack
+                        .iter()
+                        .all(|subtype| remaining.contains(subtype))
+                    {
+                        alternatives.push("a sea monster".to_string());
+                        remaining.retain(|subtype| !sea_monster_pack.contains(subtype));
                     }
                     alternatives.extend(
                         remaining

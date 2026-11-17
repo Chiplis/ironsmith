@@ -2280,6 +2280,20 @@ fn parse_object_filter_inner_unchecked(
             continue;
         }
 
+        // The two-word "sea monster" batch: Krakens, Leviathans, Octopuses,
+        // Serpents, and Whales.
+        if matches!(all_words.get(idx..idx + 2), Some(&["sea", "monster" | "monsters"])) {
+            crate::word_claims::claim_words(&all_words[idx..idx + 2]);
+            crate::util::push_sea_monster_subtypes(&mut filter.subtypes);
+            saw_subtype = true;
+            continue;
+        }
+        if matches!(*word, "monster" | "monsters")
+            && idx.checked_sub(1).and_then(|previous| all_words.get(previous)) == Some(&"sea")
+        {
+            continue;
+        }
+
         // "your first outlaw spell each turn" (Discreet Retreat).
         if is_outlaw_word(word) {
             crate::word_claims::claim_word(word);

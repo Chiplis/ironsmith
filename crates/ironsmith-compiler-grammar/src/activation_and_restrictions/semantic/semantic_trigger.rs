@@ -7339,6 +7339,19 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     condition: crate::cards::builders::PredicateAst::FirstUpkeepStepOfTurn,
                     surface: "during the first upkeep each turn".to_string(),
                 })
+            } else if crate::word_primitives::sequence_occurs(words, &["your", "first", "upkeep"])
+            {
+                // "at the beginning of your first upkeep": the upkeep step of
+                // your first turn of the game, never a later or extra one.
+                use crate::cards::builders::PredicateAst;
+                Ok(TriggerSpec::ConditionQualified {
+                    trigger: Box::new(upkeep),
+                    condition: PredicateAst::And(
+                        Box::new(PredicateAst::YourFirstTurnsOfTheGameOrFewer(1)),
+                        Box::new(PredicateAst::FirstUpkeepStepOfTurn),
+                    ),
+                    surface: "at the beginning of your first upkeep".to_string(),
+                })
             } else {
                 Ok(upkeep)
             }
