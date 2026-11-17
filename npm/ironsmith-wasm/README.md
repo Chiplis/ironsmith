@@ -9,12 +9,12 @@ This is the lean Ironsmith build: engine code is included, but the global card r
 Pin an exact version while the public API is pre-1.0:
 
 ```sh
-npm install --save-exact ironsmith-wasm@0.1.0
+npm install --save-exact ironsmith-wasm@0.9.0
 ```
 
 ## Initialize
 
-The package facade initializes the adjacent engine, compiler, and verifier modules. Vite and other modern ESM bundlers understand these module-relative assets.
+The package facade initializes the adjacent engine and verifier modules. Vite and other modern ESM bundlers understand these module-relative assets.
 
 ```ts
 import init, { WasmGame } from "ironsmith-wasm";
@@ -23,9 +23,9 @@ await init();
 const engine = new WasmGame();
 ```
 
-If your host manages WASM assets itself, the three binaries are exported as `engine_bg.wasm`, `compiler_bg.wasm`, and `verifier_bg.wasm`. Pass their URLs, bytes, responses, or compiled modules to `init({ engine, compiler, verifier })`.
+If your host manages WASM assets itself, the two binaries are exported as `engine_bg.wasm` and `verifier_bg.wasm`. Pass their URLs, bytes, responses, or compiled modules to `init({ engine, verifier })`; `verifier: false` skips the verifier.
 
-The facade preserves source-based registration methods by compiling source in the compiler module and loading versioned typed artifacts into the parser-free engine module. Linked faces are registered as one artifact batch, with their local IDs remapped atomically by each engine session.
+Card source is compiled by the engine module itself. Since 0.9.0 the package no longer ships the standalone compiler module (`compiler_bg.wasm`): source-based registration (`registerExternalCardSources`, `registerManabrewDeckSources`, `compileAndRegisterCardSources`) is unchanged, pre-compiled artifacts passed as `source.artifacts` still load, and `compileCardArtifact` / `validateCompiledCardArtifact` / `compileAndRegisterCard` throw.
 
 ## Load a Manabrew deck
 
@@ -152,8 +152,8 @@ the action chain back, and accept the `cancel` output then.
 The package also exports `ironsmith-wasm/ironsmith_bg.wasm` as an alias of
 `engine_bg.wasm`, so a host written against the single-module 0.1.x layout
 (Manabrew imports `ironsmith-wasm/ironsmith_bg.wasm?url` and passes it to
-`init({ module_or_path })`) keeps working; the compiler and verifier modules
-load from their module-relative default locations.
+`init({ module_or_path })`) keeps working; the verifier module loads from its
+module-relative default location.
 
 The in-repository browser game and multiplayer replay use `startMatch`, native
 UI commands, and their own audit protocol. They do not call Manabrew setup or

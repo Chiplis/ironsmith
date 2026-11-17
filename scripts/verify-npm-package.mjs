@@ -26,12 +26,11 @@ if (manifest.name !== "ironsmith-wasm" || !manifest.version) {
 }
 
 const module = await import(pathToFileURL(resolve(packageDir, "ironsmith.js")));
-const [engineBytes, compilerBytes, verifierBytes] = await Promise.all([
+const [engineBytes, verifierBytes] = await Promise.all([
   readFile(resolve(packageDir, "engine_bg.wasm")),
-  readFile(resolve(packageDir, "compiler_bg.wasm")),
   readFile(resolve(packageDir, "verifier_bg.wasm")),
 ]);
-await module.default({ engine: engineBytes, compiler: compilerBytes, verifier: verifierBytes });
+await module.default({ engine: engineBytes, verifier: verifierBytes });
 const engine = new module.WasmGame();
 if (engine.registrySize() !== 0) {
   throw new Error("npm artifact is not lean: registry should be empty before card loading");
@@ -85,13 +84,16 @@ for (const file of [
   "engine.js",
   "engine_bg.wasm",
   "compiler.js",
-  "compiler_bg.wasm",
   "verifier.js",
   "verifier_bg.wasm"
 ]) {
   if (!packedFiles.has(file)) {
     throw new Error(`npm tarball is missing ${file}`);
   }
+}
+
+if (packedFiles.has("compiler_bg.wasm")) {
+  throw new Error("npm tarball must not ship the standalone compiler module");
 }
 
 if (!skipVite) {

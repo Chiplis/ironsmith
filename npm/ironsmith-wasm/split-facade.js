@@ -6,10 +6,11 @@ import initEngine, {
 // Retain the engine's current source compiler before compatibility methods
 // replace these entry points with artifact-first registration.
 const registerSourceInEngine = WasmGame.prototype.registerExternalCardSources;
-import initCompiler, {
-  compileCardArtifact,
-  validateCompiledCardArtifact,
-} from "./compiler.js";
+import initCompiler, * as compilerModule from "./compiler.js";
+const { compileCardArtifact, validateCompiledCardArtifact } = compilerModule;
+// The npm package replaces the standalone compiler with a stub and compiles
+// card source in the engine module instead.
+const compilerAvailable = compilerModule.available !== false;
 import initVerifier, {
   ziffleBuildRevealToken,
   ziffleBuildRevealTokens,
@@ -258,6 +259,7 @@ let initialized;
 let compilerInitialization;
 let verifierInitialization;
 export function initCompilerRuntime(input) {
+  if (!compilerAvailable) return Promise.resolve(null);
   compilerInitialization ||= initCompiler(wasmInitOptions(input)).catch(error => { compilerInitialization = null; throw error; });
   return compilerInitialization;
 }

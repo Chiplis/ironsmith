@@ -11,7 +11,6 @@ const crateDir = resolve(root, "crates/ironsmith-wasm");
 const templateDir = resolve(root, "npm/ironsmith-wasm");
 const productDirs = [
   { name: "engine", crateDir, features: ["wasm-lean"] },
-  { name: "compiler", crateDir: resolve(root, "crates/ironsmith-compiler-wasm"), features: [] },
   { name: "verifier", crateDir: resolve(root, "crates/ironsmith-verifier-wasm"), features: [] },
 ];
 
@@ -91,6 +90,13 @@ if (!skipBuild) {
   await cp(resolve(templateDir, "split-facade.d.ts"), resolve(outDir, "ironsmith.d.ts"));
 }
 
+// The engine module compiles card source itself, so the package ships a stub in
+// place of the standalone compiler module (and drops any stale binary).
+await cp(resolve(templateDir, "compiler-stub.js"), resolve(outDir, "compiler.js"));
+await cp(resolve(templateDir, "compiler-stub.d.ts"), resolve(outDir, "compiler.d.ts"));
+await rm(resolve(outDir, "compiler_bg.wasm"), { force: true });
+await rm(resolve(outDir, "compiler_bg.wasm.d.ts"), { force: true });
+
 await prepareExactBuildSnapshots(outDir);
 
 const requiredFiles = [
@@ -99,7 +105,6 @@ const requiredFiles = [
   "engine.js",
   "engine_bg.wasm",
   "compiler.js",
-  "compiler_bg.wasm",
   "verifier.js",
   "verifier_bg.wasm"
 ];
