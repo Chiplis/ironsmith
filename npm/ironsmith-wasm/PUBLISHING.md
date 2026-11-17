@@ -11,13 +11,9 @@ node scripts/build-npm-package.mjs
 node scripts/verify-npm-package.mjs
 ```
 
-The build uses `wasm-lean` with default Cargo features disabled, runs the release optimizer, and writes only generated output to `target/npm/ironsmith-wasm`. Verification instantiates the artifact in Node, exercises external and Manabrew card loading, inspects `npm pack --dry-run`, and bundles a temporary Vite consumer.
+The build uses `wasm-lean` with default Cargo features disabled and the size-optimized `wasm-dist` Cargo profile, binds the modules with the `wasm-bindgen` CLI, and writes only generated output to `target/npm/ironsmith-wasm`. The CLI must be the same version as the `wasm-bindgen` crate in `Cargo.lock` (`cargo install wasm-bindgen-cli --version <version> --locked`). Verification instantiates the artifact in Node, exercises external and Manabrew card loading, inspects `npm pack --dry-run`, and bundles a temporary Vite consumer.
 
-Use `--no-opt` only for a faster local iteration build:
-
-```sh
-node scripts/build-npm-package.mjs --no-opt
-```
+Set `CARGO_TARGET_DIR=target` to reuse an existing local `wasm-dist` build instead of the script's own `target/npm-cargo` directory.
 
 ## GitHub release
 

@@ -35,7 +35,9 @@ jobs:
       - name: Install release tools
         run: |
           rustup target add wasm32-unknown-unknown
-          cargo install wasm-pack --version 0.13.1 --locked
+          # The CLI must match the wasm-bindgen crate version in Cargo.lock.
+          bindgen_version="$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')"
+          cargo install wasm-bindgen-cli --version "$bindgen_version" --locked
           npm install --global npm@11.5.1 vite@7.3.1
 
       # The optimized engine build exceeds the hosted runner's RAM; without

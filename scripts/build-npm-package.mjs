@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { prepareExactBuildSnapshots } from './prepare-exact-build-snapshots.mjs';
@@ -9,14 +9,18 @@ import { prepareExactBuildSnapshots } from './prepare-exact-build-snapshots.mjs'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const crateDir = resolve(root, "crates/ironsmith-wasm");
 const templateDir = resolve(root, "npm/ironsmith-wasm");
-const productDirs = [
-  { name: "engine", crateDir, features: ["wasm-lean"] },
-  { name: "verifier", crateDir: resolve(root, "crates/ironsmith-verifier-wasm"), features: [] },
+// Each product is a cdylib crate; `artifact` is its file name in the cargo
+// output directory.
+const products = [
+  { name: "engine", package: "ironsmith-engine-wasm", artifact: "ironsmith_engine_wasm.wasm" },
+  { name: "verifier", package: "ironsmith-verifier-wasm", artifact: "ironsmith_verifier_wasm.wasm" },
 ];
+// The size-optimized profile (opt-level "z", fat LTO). Plain `release` yields
+// an engine module about twice as large.
+const cargoProfile = "wasm-dist";
 
 let outDir = resolve(root, "target/npm/ironsmith-wasm");
 let expectedVersion;
-let noOpt = false;
 let skipBuild = false;
 
 for (let index = 2; index < process.argv.length; index += 1) {
@@ -26,7 +30,7 @@ for (let index = 2; index < process.argv.length; index += 1) {
   } else if (argument === "--expected-version") {
     expectedVersion = process.argv[++index];
   } else if (argument === "--no-opt") {
-    noOpt = true;
+    // Accepted for compatibility; the build no longer runs a separate optimizer.
   } else if (argument === "--skip-build") {
     skipBuild = true;
   } else {
@@ -47,44 +51,41 @@ if (expectedVersion && expectedVersion !== version) {
 if (!skipBuild) {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
-  const partsDir = resolve(root, "target/npm/ironsmith-wasm-parts");
-  await rm(partsDir, { recursive: true, force: true });
-  await mkdir(partsDir, { recursive: true });
-  for (const product of productDirs) {
-    const productOut = resolve(partsDir, product.name);
-    const wasmPackArgs = [
-      "build",
-      "--target",
-      "web",
-      "--release",
-      "--out-dir",
-      relative(product.crateDir, productOut),
-      "--out-name",
-      product.name,
-    ];
-    if (noOpt) wasmPackArgs.push("--no-opt");
-    wasmPackArgs.push(product.crateDir, "--no-default-features");
-    if (product.features.length > 0) {
-      wasmPackArgs.push("--features", product.features.join(","));
-    }
-    const result = spawnSync("wasm-pack", wasmPackArgs, {
+  const targetDir = resolve(root, process.env.CARGO_TARGET_DIR ?? "target/npm-cargo");
+  const run = (command, args) => {
+    const result = spawnSync(command, args, {
       cwd: root,
-      env: {
-        ...process.env,
-        CARGO_TARGET_DIR:
-          resolve(root, process.env.CARGO_TARGET_DIR ?? "target/npm-cargo")
-      },
+      env: { ...process.env, CARGO_TARGET_DIR: targetDir },
       stdio: "inherit"
     });
     if (result.status !== 0) {
-      throw new Error(
-        `wasm-pack failed for ${product.name} with status ${result.status ?? "unknown"}`
-      );
+      throw new Error(`${command} failed with status ${result.status ?? result.error ?? "unknown"}`);
     }
-    for (const entry of await readdir(productOut)) {
-      if (entry === "package.json" || entry === "README.md" || entry === ".gitignore") continue;
-      await cp(resolve(productOut, entry), resolve(outDir, entry), { recursive: true });
-    }
+  };
+  // wasm-pack cannot select a custom cargo profile, so build and bind directly.
+  // The wasm-bindgen CLI must match the wasm-bindgen crate version in Cargo.lock.
+  run("cargo", [
+    "build",
+    "--locked",
+    "--profile",
+    cargoProfile,
+    "--target",
+    "wasm32-unknown-unknown",
+    ...products.flatMap((product) => ["-p", product.package]),
+    "--no-default-features",
+    "--features",
+    "ironsmith-engine-wasm/wasm-lean",
+  ]);
+  for (const product of products) {
+    run("wasm-bindgen", [
+      resolve(targetDir, "wasm32-unknown-unknown", cargoProfile, product.artifact),
+      "--target",
+      "web",
+      "--out-dir",
+      outDir,
+      "--out-name",
+      product.name,
+    ]);
   }
   await cp(resolve(templateDir, "split-facade.js"), resolve(outDir, "ironsmith.js"));
   await cp(resolve(templateDir, "split-facade.d.ts"), resolve(outDir, "ironsmith.d.ts"));
