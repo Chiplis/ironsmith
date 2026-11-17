@@ -3507,9 +3507,13 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         if (!reveal) {
           throw new Error("Missing transcripted fair-random reveal");
         }
+        // Seats forfeited before this action contribute nothing.
+        const forfeitedSeats = servicesRef.current.forfeitedPlayersBeforeSequence(audit.seq);
         const expectedPlayers = reindexPlayers(
           matchStartPayloadRef.current?.players || multiplayerRef.current.players || []
-        ).map((player) => Number(player.index)).sort((left, right) => left - right);
+        ).map((player) => Number(player.index))
+          .filter((player) => !forfeitedSeats.has(player))
+          .sort((left, right) => left - right);
         const commits = Array.isArray(reveal.commits) ? reveal.commits : [];
         const reveals = Array.isArray(reveal.reveals) ? reveal.reveals : [];
         if (commits.length !== expectedPlayers.length || reveals.length !== expectedPlayers.length) {

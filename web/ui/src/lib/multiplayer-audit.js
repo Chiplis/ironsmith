@@ -1,6 +1,7 @@
 import { assertZiffleEpochHistory, assertZiffleEpochVerification, ziffleInputDeckFields } from "./ziffle-private-epochs.js";
 import { sha256Bytes } from "./sha256.js";
 import { genesisAuditKeyLookup, verifyZiffleCeremonyStepSignatures } from "./ziffle-step-signatures.js";
+import { normalizeZiffleKeyShareDeals, verifyZiffleKeyShareDeals } from "./ziffle-key-shares.js";
 import { WITNESS_DISPUTE_TYPE, WITNESS_FORFEIT_REASON, verifyForfeitCertificate, verifyTranscriptWitness, verifyWitnessDispute } from "./tournament/witness-protocol.js";
 
 const textEncoder = new TextEncoder();
@@ -22,7 +23,7 @@ export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
 // Shared pass intentions require audit32 and typed public digest12.
 // Genesis has no signed engine hash. Numeric protocol admission is a release
 // gate, not exact-build authentication; historical signatures keep their bytes.
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 32;
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 33;
 export const CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION = 12;
 const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, CURRENT_AUDIT_PROTOCOL_VERSION]);
 
@@ -2162,6 +2163,11 @@ export function matchGenesisPayload(match) {
           deckHash: String(ceremony.deckHash || ""),
         }))
       : [],
+    // Seat-key shares (lib/ziffle-key-shares.js); only matches of three or
+    // more seats deal them.
+    ...(Array.isArray(match?.ziffleKeyShares) && match.ziffleKeyShares.length > 0
+      ? { ziffleKeyShares: normalizeZiffleKeyShareDeals(match.ziffleKeyShares) }
+      : {}),
   };
 }
 
@@ -2493,6 +2499,12 @@ export async function verifySignedMatchGenesis(match, cryptoImpl = globalThis.cr
     // assembler cannot author another player's shuffle.
     await verifyZiffleCeremonyStepSignatures(ceremony, genesisAuditKeyLookup(players), cryptoImpl);
   }
+  await verifyZiffleKeyShareDeals({
+    deals: match?.ziffleKeyShares,
+    keys: ziffleKeys,
+    context: String(match.auditMatchId || match.matchId || ""),
+    auditPublicKeyForSeat: genesisAuditKeyLookup(players),
+  }, cryptoImpl);
   const host = players.find((player) => Number(player?.index) === Number(genesis.hostSeat));
   if (!host?.auditPublicKey) {
     throw new Error("Match genesis host signer is missing");
@@ -3897,6 +3909,7 @@ async function verifyShuffleProofList({
   acceptedCeremonies = [],
   protocolVersion = 14,
   players = new Map(),
+  forfeitedSeats = [],
   seq,
 }) {
   const expectedKeysJson = canonicalJson(expectedZiffleKeys || []);
@@ -3936,6 +3949,8 @@ async function verifyShuffleProofList({
     await verifyZiffleCeremonyStepSignatures(
       proof,
       (seat) => String(players.get(Number(seat))?.auditPublicKey || ""),
+      undefined,
+      { forfeitedSeats },
     );
     const ceremony = ziffleCeremonyFromShuffleProof(proof, seq);
     if (proof.inputDeck) {
@@ -4297,6 +4312,9 @@ export async function verifyLiveAuditTranscript(
         Number(player.index) !== forfeitTarget
       );
     }
+    // Forfeited seats take no further part: their shuffle steps are proxied
+    // and they contribute nothing to shared randomness.
+    const activeSeats = new Set(activeQuorumPlayers.map((player) => Number(player.index)));
     const actionZiffleCeremonies = await verifyShuffleProofList({
       shuffleProofs: audit.shuffleProofs || [],
       verifyShuffleProof: options.verifyShuffleProof,
@@ -4305,6 +4323,7 @@ export async function verifyLiveAuditTranscript(
       acceptedCeremonies: verifiedZiffleCeremonies,
       protocolVersion: transcript.protocolVersion,
       players,
+      forfeitedSeats: expectedPlayers.filter((seat) => !activeSeats.has(Number(seat))),
       seq: expectedSeq,
     });
     const actionVerifiedZiffleCeremonies = [
@@ -4340,7 +4359,7 @@ export async function verifyLiveAuditTranscript(
     for (const reveal of audit.rngReveals || []) {
       await verifyFairRandomReveal({
         reveal,
-        expectedPlayers,
+        expectedPlayers: expectedPlayers.filter((seat) => activeSeats.has(Number(seat))),
         players,
         matchId: audit.matchId,
         seq: audit.seq,

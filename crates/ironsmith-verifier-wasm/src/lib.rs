@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 
-use ironsmith_verifier_ziffle::Operation;
+use ironsmith_verifier_ziffle::{KeyShareOperation, Operation};
 
 fn execute(operation: Operation, input: JsValue) -> Result<JsValue, JsValue> {
     ironsmith_verifier_wasm_api::execute_verifier(operation, input, ironsmith_verifier::execute)
@@ -39,4 +39,24 @@ pub fn reveal_card(input: JsValue) -> Result<JsValue, JsValue> {
 #[wasm_bindgen(js_name = ziffleRevealCards)]
 pub fn reveal_cards(input: JsValue) -> Result<JsValue, JsValue> {
     execute(Operation::RevealCards, input)
+}
+
+#[wasm_bindgen(js_name = ziffleDealKeyShares)]
+pub fn deal_key_shares(input: JsValue) -> Result<JsValue, JsValue> {
+    ironsmith_verifier_wasm_api::execute_key_share(KeyShareOperation::Deal, input)
+}
+
+#[wasm_bindgen(js_name = ziffleOpenKeyShare)]
+pub fn open_key_share(input: JsValue) -> Result<JsValue, JsValue> {
+    ironsmith_verifier_wasm_api::execute_key_share(KeyShareOperation::Open, input)
+}
+
+#[wasm_bindgen(js_name = ziffleVerifyKeyShare)]
+pub fn verify_key_share(input: JsValue) -> Result<JsValue, JsValue> {
+    ironsmith_verifier_wasm_api::execute_key_share(KeyShareOperation::Verify, input)
+}
+
+#[wasm_bindgen(js_name = ziffleRecoverKey)]
+pub fn recover_key(input: JsValue) -> Result<JsValue, JsValue> {
+    ironsmith_verifier_wasm_api::execute_key_share(KeyShareOperation::Recover, input)
 }

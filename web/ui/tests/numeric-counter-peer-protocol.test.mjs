@@ -56,7 +56,7 @@ for (const route of routes) {
   });
 
   test(`${route.name} dispatches current protocol31 through the same admission gate`, async () => {
-    assert.equal(PROTOCOL_VERSION, 32);
+    assert.equal(PROTOCOL_VERSION, 33);
     const h = harness(route.name, route.end);
     await h.receive({ type: route.type, protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION, entry: "entry", text: "text" });
     assert.deepEqual(h.calls, [route.accepted]);

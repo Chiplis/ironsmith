@@ -9,6 +9,11 @@
 // exact output and proof it produced. Every ceremony verifier requires one
 // valid signature by the expected seat for every step, so an assembler cannot
 // fabricate, reorder, drop, or transplant anyone else's step.
+//
+// A forfeited seat cannot shuffle any more, and its step adds no secrecy once
+// it is gone. Its step is then built by a seat still in the match, which names
+// itself as `proxy` and signs in the forfeited seat's place. Every remaining
+// seat still contributes its own signed step.
 import {
   canonicalJson,
   importAuditPublicKey,
@@ -23,6 +28,11 @@ function sortedZiffleKeySeats(keys) {
   return (Array.isArray(keys) ? keys : [])
     .map((key) => Number(key?.player))
     .sort((left, right) => left - right);
+}
+
+export function ziffleStepProxy(step) {
+  const proxy = step?.proxy;
+  return proxy === null || proxy === undefined || proxy === "" ? null : Number(proxy);
 }
 
 // `ceremony` needs: owner, zone (default library), deckCount, context,
@@ -47,6 +57,7 @@ export async function ziffleShuffleStepStatement(ceremony, previousSteps, step, 
     deckCount: Number(ceremony?.deckCount),
     stepIndex,
     shuffler: Number(step?.shuffler),
+    ...(ziffleStepProxy(step) == null ? {} : { proxy: ziffleStepProxy(step) }),
     inputDigest,
     outputDigest: await sha256Hex(`deck:${String(step?.deckHex || "")}`, cryptoImpl),
     proofDigest: await sha256Hex(`proof:${String(step?.proofHex || "")}`, cryptoImpl),
@@ -65,12 +76,15 @@ const VERIFIED_STEP_SIGNATURE_CACHE_LIMIT = 512;
 // step is attributed to the i-th seat in ascending key order (the order the
 // Rust verifier enforces), and every step carries a valid signature by that
 // seat's audit key. `auditPublicKeyForSeat(seat)` must resolve keys from the
-// signed genesis roster only.
+// signed genesis roster only. `forfeitedSeats` are the seats forfeited before
+// the ceremony; only their steps may be signed by a proxy.
 export async function verifyZiffleCeremonyStepSignatures(
   ceremony,
   auditPublicKeyForSeat,
   cryptoImpl = globalThis.crypto,
+  { forfeitedSeats = [] } = {},
 ) {
+  const forfeited = new Set([...forfeitedSeats].map(Number));
   const steps = Array.isArray(ceremony?.steps) ? ceremony.steps : [];
   const seats = sortedZiffleKeySeats(ceremony?.keys);
   const label = `ziffle shuffle for player ${Number(ceremony?.owner) + 1}`;
@@ -83,17 +97,24 @@ export async function verifyZiffleCeremonyStepSignatures(
     if (Number(step?.shuffler) !== seat) {
       throw new Error(`The ${label} step ${index} is attributed to the wrong player`);
     }
+    const proxy = ziffleStepProxy(step);
+    if (proxy != null && (
+      !forfeited.has(seat) || forfeited.has(proxy) || proxy === seat || !seats.includes(proxy)
+    )) {
+      throw new Error(`The ${label} step ${index} was shuffled on behalf of a player who can still shuffle`);
+    }
+    const signer = proxy ?? seat;
     const signature = String(step?.signature || "");
-    const publicKeyHex = String(auditPublicKeyForSeat(seat) || "");
+    const publicKeyHex = String(auditPublicKeyForSeat(signer) || "");
     if (!signature || !publicKeyHex) {
-      throw new Error(`The ${label} step ${index} is not signed by player ${seat + 1}`);
+      throw new Error(`The ${label} step ${index} is not signed by player ${signer + 1}`);
     }
     const statement = await ziffleShuffleStepStatement(ceremony, steps.slice(0, index), step, cryptoImpl);
     const cacheKey = await sha256Hex(canonicalJson({ statement, signature, publicKeyHex }), cryptoImpl);
     if (verifiedStepSignatureCache.has(cacheKey)) continue;
     const publicKey = await importAuditPublicKey(publicKeyHex, cryptoImpl);
     if (!await verifyAuditPayload(publicKey, statement, signature, cryptoImpl)) {
-      throw new Error(`The ${label} step ${index} has an invalid signature from player ${seat + 1}`);
+      throw new Error(`The ${label} step ${index} has an invalid signature from player ${signer + 1}`);
     }
     if (verifiedStepSignatureCache.size >= VERIFIED_STEP_SIGNATURE_CACHE_LIMIT) {
       verifiedStepSignatureCache.delete(verifiedStepSignatureCache.values().next().value);

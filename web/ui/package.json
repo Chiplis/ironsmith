@@ -29,7 +29,7 @@
     "test:hidden-info": "node tests/hidden-info-inventory.mjs",
     "test:wasm-real-engine": "node --test tests/wasm-real-engine-cheat.e2e.test.js",
     "formats:build": "node scripts/build-format-catalog.mjs",
-    "test:relay": "node --test --test-concurrency=1 tests/relay-format.test.mjs tests/relay-resync.test.mjs ../relay/tests/relay.test.mjs ../relay/tests/witness.test.mjs tests/relay-browser.test.mjs tests/relay-host-migration.test.mjs tests/relay-direct.test.mjs tests/tournament-witness.test.mjs",
+    "test:relay": "node --test --test-concurrency=1 tests/ziffle-key-shares.test.mjs tests/relay-format.test.mjs tests/relay-resync.test.mjs ../relay/tests/relay.test.mjs ../relay/tests/witness.test.mjs tests/relay-browser.test.mjs tests/relay-host-migration.test.mjs tests/relay-direct.test.mjs tests/tournament-witness.test.mjs",
     "i18n:check": "node scripts/check-ui-i18n.mjs",
     "test:i18n": "node --test tests/ui-i18n.test.js tests/decision-text-translation.test.js tests/card-translation-face.test.js tests/scryfall-i18n-text.test.js tests/priority-advance-locale.test.js",
     "assets:mana": "node ./scripts/sync-mana-assets.mjs",

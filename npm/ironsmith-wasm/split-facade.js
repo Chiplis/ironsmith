@@ -15,9 +15,13 @@ import initVerifier, {
   ziffleBuildRevealToken,
   ziffleBuildRevealTokens,
   ziffleBuildShuffleStep,
+  ziffleDealKeyShares,
   ziffleKeygen,
+  ziffleOpenKeyShare,
+  ziffleRecoverKey,
   ziffleRevealCard,
   ziffleRevealCards,
+  ziffleVerifyKeyShare,
   ziffleVerifyShuffle,
 } from "./verifier.js";
 
@@ -28,9 +32,13 @@ export {
   ziffleBuildRevealToken,
   ziffleBuildRevealTokens,
   ziffleBuildShuffleStep,
+  ziffleDealKeyShares,
   ziffleKeygen,
+  ziffleOpenKeyShare,
+  ziffleRecoverKey,
   ziffleRevealCard,
   ziffleRevealCards,
+  ziffleVerifyKeyShare,
   ziffleVerifyShuffle,
 };
 
@@ -249,9 +257,13 @@ const verifierMethods = {
   ziffleBuildRevealToken,
   ziffleBuildRevealTokens,
   ziffleBuildShuffleStep,
+  ziffleDealKeyShares,
   ziffleKeygen,
+  ziffleOpenKeyShare,
+  ziffleRecoverKey,
   ziffleRevealCard,
   ziffleRevealCards,
+  ziffleVerifyKeyShare,
   ziffleVerifyShuffle,
 };
 

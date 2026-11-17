@@ -2,9 +2,13 @@ import initWasm, {
   ziffleBuildRevealToken,
   ziffleBuildRevealTokens,
   ziffleBuildShuffleStep,
+  ziffleDealKeyShares,
   ziffleKeygen,
+  ziffleOpenKeyShare,
+  ziffleRecoverKey,
   ziffleRevealCard,
   ziffleRevealCards,
+  ziffleVerifyKeyShare,
   ziffleVerifyShuffle,
 } from "../../../wasm_demo/pkg/verifier.js";
 import wasmUrl from "../../../wasm_demo/pkg/verifier_bg.wasm?url";
@@ -13,9 +17,13 @@ const verifier = {
   ziffleBuildRevealToken,
   ziffleBuildRevealTokens,
   ziffleBuildShuffleStep,
+  ziffleDealKeyShares,
   ziffleKeygen,
+  ziffleOpenKeyShare,
+  ziffleRecoverKey,
   ziffleRevealCard,
   ziffleRevealCards,
+  ziffleVerifyKeyShare,
   ziffleVerifyShuffle,
 };
 
@@ -23,9 +31,13 @@ const ZIFFLE_METHODS = new Set([
   "ziffleBuildRevealToken",
   "ziffleBuildRevealTokens",
   "ziffleBuildShuffleStep",
+  "ziffleDealKeyShares",
   "ziffleKeygen",
+  "ziffleOpenKeyShare",
+  "ziffleRecoverKey",
   "ziffleRevealCard",
   "ziffleRevealCards",
+  "ziffleVerifyKeyShare",
   "ziffleVerifyShuffle",
 ]);
 

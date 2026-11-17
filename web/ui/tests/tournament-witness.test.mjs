@@ -25,7 +25,7 @@ async function organizerInvites(names) {
   return { tournamentId: await tournamentIdForDescriptor(tournament), codes };
 }
 
-async function setup(t, port) {
+async function setup(t, port, labels = ['host', 'guest']) {
   const base = `http://127.0.0.1:${port}`;
   const { privateKey } = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const jwk = await webcrypto.subtle.exportKey('jwk', privateKey);
@@ -42,7 +42,7 @@ async function setup(t, port) {
   await server.listen(); t.after(() => server.close());
   const browser = await chromium.launch({ headless: true }); t.after(() => browser.close());
   const pages = [];
-  for (const label of ['host', 'guest']) {
+  for (const label of labels) {
     const page = await (await browser.newContext()).newPage();
     page.on('pageerror', e => console.error(`${label} page error:`, e.message));
     await page.goto(`${base}/tests/fixtures/peer-lobby-harness.html`);
@@ -163,4 +163,49 @@ test('a Verified relay match moves to the guest when the host leaves and stays v
   });
   assert.equal(report.witnessPublicKey, witnessKey);
   assert.deepEqual(report.players.map(p => p.name), ['Alice', 'Bob']);
+});
+
+test('a three-seat Verified match splits every seat key and rebuilds a forfeited seat\'s key', { timeout: 240000 }, async t => {
+  const env = await setup(t, 5198, ['host', 'second', 'third']);
+  const [host, second, third] = env.pages;
+  const names = ['Alice', 'Bob', 'Cara'];
+  const { tournamentId, codes } = await organizerInvites(names);
+  for (const [index, page] of env.pages.entries()) {
+    await page.evaluate(code => window.__peerHarness.redeemTournamentInvite(code), codes[index]);
+  }
+  const deck = { deckText: '99 Plains', commanderText: '1 Isamaru, Hound of Konda' };
+  await host.evaluate(([tournamentId, deck]) => window.__peerHarness.createLobby({
+    name: 'ignored', transport: 'websocket', format: 'commander', desiredPlayers: 3, tournamentId, ...deck,
+  }), [tournamentId, deck]);
+  const hosted = await waitFor(host, s => s.multiplayer.mode === 'lobby' && s.multiplayer.lobbyId, 'host opens tournament lobby');
+  for (const [index, page] of [second, third].entries()) {
+    await page.evaluate(([lobbyId, deck]) => window.__peerHarness.joinLobby({ name: 'ignored', lobbyId, ...deck }), [hosted.multiplayer.lobbyId, deck]);
+    await waitFor(host, s => s.multiplayer.players.length === index + 2, `seat ${index + 2} joins`);
+  }
+  await waitFor(host, s => s.canStartHostedMatch, 'all seats ready');
+  await host.evaluate(() => window.__peerHarness.startHostedMatch());
+  for (const page of env.pages) await waitFor(page, s => s.multiplayer.matchStarted, 'match starts');
+
+  // Every seat accepted a genesis that carries one deal per seat, each sealed
+  // to the two other seats and needing both of them.
+  for (const page of env.pages) {
+    const deals = (await lobby(page)).auditTranscript.match.ziffleKeyShares;
+    assert.deepEqual(deals.map(deal => [deal.dealer, deal.threshold, deal.shares.map(share => share.holder)]),
+      [[0, 2, [1, 2]], [1, 2, [0, 2]], [2, 2, [0, 1]]]);
+  }
+
+  // The third seat goes silent and is forfeited; the two remaining seats
+  // exchange their shares of its key and rebuild it.
+  await third.close();
+  await host.evaluate(() => window.__peerHarness.openWitnessChallenge({ accusedSeat: 2, reason: 'disconnect' }));
+  for (const page of [host, second]) {
+    await waitFor(page, s => s.syncEvents.some(e => e.command?.reason === WITNESS_FORFEIT_REASON), 'witness forfeit applies', 60000);
+    await waitFor(page, s => s.statusEvents.some(e => /Rebuilt Cara's hidden-card key/.test(e.message)), 'forfeited key rebuilt', 60000);
+  }
+  const verified = await host.evaluate(async () => {
+    const { verifyLiveAuditTranscript } = await import('/src/lib/multiplayer-audit.js');
+    const { auditTranscript } = await window.__peerHarness.snapshot();
+    return (await verifyLiveAuditTranscript(auditTranscript, globalThis.crypto, { requireEngineReplay: false })).verifiedActions;
+  });
+  assert.ok(verified >= 1);
 });

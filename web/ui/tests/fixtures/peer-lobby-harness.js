@@ -97,6 +97,7 @@ function createFakeGame() {
     startMatch: 0,
   };
 
+  const seatKeySalt = Math.random().toString(16).slice(2, 10);
   const fakeHex = (label) => Array.from(String(label || "fixture"))
     .map((char) => char.charCodeAt(0).toString(16).padStart(2, "0"))
     .join("")
@@ -264,9 +265,29 @@ function createFakeGame() {
   return {
     validateMatchConfig: async () => ({ valid: true, issues: [] }),
     ziffleKeygen: async ({ context = "fixture", deckCount = 60 }) => ({
-      publicKeyHex: fakeHex(`public:${context}:${deckCount}`),
-      secretKeyHex: fakeHex(`secret:${context}:${deckCount}`),
+      // Every seat's key is its own, as with real keys.
+      publicKeyHex: fakeHex(`${seatKeySalt}:public:${context}:${deckCount}`),
+      secretKeyHex: fakeHex(`${seatKeySalt}:secret:${context}:${deckCount}`),
       ownershipProofHex: fakeHex(`proof:${context}:${deckCount}`),
+    }),
+    ziffleDealKeyShares: async ({ dealer = 0, publicKeyHex = "", holders = [], threshold = 0 }) => ({
+      dealer: Number(dealer),
+      threshold: Number(threshold),
+      commitmentsHex: Array.from({ length: Number(threshold) }, (_, index) =>
+        (index === 0 ? String(publicKeyHex) : fakeHex(`commitment:${dealer}:${index}`))),
+      shares: holders.map((holder) => ({
+        holder: Number(holder.player),
+        ephemeralHex: fakeHex(`ephemeral:${dealer}:${holder.player}`),
+        cipherHex: fakeHex(`share:${dealer}:${holder.player}`),
+      })),
+    }),
+    ziffleOpenKeyShare: async ({ share }) => ({
+      holder: Number(share.holder),
+      shareHex: String(share.cipherHex || ""),
+    }),
+    ziffleVerifyKeyShare: async ({ shareHex = "" }) => ({ valid: Boolean(shareHex) }),
+    ziffleRecoverKey: async ({ publicKeyHex = "" }) => ({
+      secretKeyHex: fakeHex(`recovered:${publicKeyHex}`),
     }),
     ziffleBuildShuffleStep: async ({ context = "fixture", deckCount = 60, shuffler = 0 }) => ({
       shuffler: Number(shuffler || 0),

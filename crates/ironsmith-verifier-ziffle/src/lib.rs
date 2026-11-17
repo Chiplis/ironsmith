@@ -13,7 +13,9 @@ use ziffle::{
 };
 
 mod chain;
+mod key_shares;
 pub use chain::execute_with_input_chain;
+pub use key_shares::{KeyShareOperation, execute_key_share};
 use chain::{PreparedInput, ZiffleInputDeck};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

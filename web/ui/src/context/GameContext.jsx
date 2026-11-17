@@ -2750,6 +2750,11 @@ export function GameProvider({ children }) {
       dispatch: (command, label) => dispatch(command, label),
       submitMultiplayerCommand: (command, label) => submitMultiplayerCommand(command, label),
       cancelDecision: () => cancelDecision(),
+      // Lobbies the UI flow cannot script directly, such as three-seat tables.
+      createLobby: (options) => createLobby(options),
+      joinLobby: (options) => joinLobby(options),
+      startHostedMatch: () => startHostedMatch(),
+      redeemTournamentInvite: (code) => redeemTournamentInvite(code),
     };
     window.__ironsmithE2E = e2eApi;
     return () => {

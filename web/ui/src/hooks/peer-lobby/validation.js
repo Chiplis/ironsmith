@@ -110,6 +110,29 @@ import { disclosureDueForPlayer } from "./end-of-match-disclosure.js";
 import { assertGenesisSeedRevealBinding, assertVerifiedMatchStartIsFresh, rememberStartedGenesis, rotateGenesisSeedNonce } from "./genesis-binding.js";
 import { sequencedActionSignedPayload, initialAuditStateHashForMatch } from "../../lib/multiplayer-audit.js";
 import { genesisAuditKeyLookup, signZiffleShuffleStep, verifyZiffleCeremonyStepSignatures } from "../../lib/ziffle-step-signatures.js";
+import {
+  missingZiffleKeyShareHolders,
+  openZiffleKeyShare,
+  recoverZiffleSecretKey,
+  signZiffleKeyShareDeal,
+  validZiffleKeyShares,
+  verifyZiffleKeyShareDeals,
+  ziffleKeyShareDealRequest,
+  ziffleKeyShareDealsEqual,
+  ziffleKeySharesRequired,
+} from "../../lib/ziffle-key-shares.js";
+
+// Seat-key share requests ride the shuffle-step request/response channel, so
+// they inherit its routing, wait accounting and response-timeout claims.
+const ZIFFLE_KEY_SHARE_DEAL_OPERATION = "key_share_deal";
+const ZIFFLE_KEY_SHARE_RELEASE_OPERATION = "key_share_release";
+const ZIFFLE_KEY_SHARE_FORFEIT_WAIT_MS = 15000;
+// One browser tab is one seat, so this state is module-scoped like the genesis
+// binding. Keys are `${matchId}` or `${matchId}:${seat}`.
+const localZiffleKeyShareDeals = new Map();
+const knownZiffleKeyShares = new Map();
+const recoveredZiffleKeys = new Map();
+const ziffleKeyRecoveriesInFlight = new Map();
 
 
 function matchStickerSheetsFromPlayers(players) {
@@ -139,6 +162,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
   const ensureAuditIdentity = useCallback((...args) => servicesRef.current.ensureAuditIdentity(...args), [servicesRef]);
   const ensureDirectPeerConnections = useCallback((...args) => servicesRef.current.ensureDirectPeerConnections(...args), [servicesRef]);
   const ensureZiffleIdentity = useCallback((...args) => servicesRef.current.ensureZiffleIdentity(...args), [servicesRef]);
+  const forfeitedPlayersBeforeSequence = useCallback((...args) => servicesRef.current.forfeitedPlayersBeforeSequence(...args), [servicesRef]);
   const freshCryptoRequirementsForSequence = useCallback((...args) => servicesRef.current.freshCryptoRequirementsForSequence(...args), [servicesRef]);
   const handleHistoricalSequencedAction = useCallback((...args) => servicesRef.current.handleHistoricalSequencedAction(...args), [servicesRef]);
   const importCachedAuditPublicKey = useCallback((...args) => servicesRef.current.importCachedAuditPublicKey(...args), [servicesRef]);
@@ -996,10 +1020,12 @@ export function usePeerLobbyValidation(base, servicesRef) {
     if (!currentGame || typeof currentGame.ziffleBuildShuffleStep !== "function") {
       throw new Error("Ziffle shuffle backend is not available");
     }
-    const step = await currentGame.ziffleBuildShuffleStep({
+    const built = await currentGame.ziffleBuildShuffleStep({
       ...cloneMultiplayerPayload(request),
       entropyHex: randomAuditHex(32),
     });
+    // A step shuffled in place of a forfeited seat names this seat as proxy.
+    const step = request?.proxy == null ? built : { ...built, proxy: Number(request.proxy) };
     // Ziffle proofs need no secret, so the step is attributable only through
     // this signature by our genesis audit key over the exact ceremony, input,
     // and output (lib/ziffle-step-signatures.js).
@@ -1018,15 +1044,373 @@ export function usePeerLobbyValidation(base, servicesRef) {
     return genesisAuditKeyLookup(payload?.players || []);
   }
 
-  async function assertZiffleCeremonyStepsSigned(ceremony, payload = matchStartPayloadRef.current) {
-    await verifyZiffleCeremonyStepSignatures(ceremony, genesisAuditKeyForSeat(payload));
+  // A ceremony may carry proxy steps only for seats forfeited before it. The
+  // genesis ceremonies pass an empty set.
+  async function assertZiffleCeremonyStepsSigned(
+    ceremony,
+    payload = matchStartPayloadRef.current,
+    forfeitedSeats = forfeitedPlayersBeforeSequence(ceremony?.epoch),
+  ) {
+    await verifyZiffleCeremonyStepSignatures(
+      ceremony,
+      genesisAuditKeyForSeat(payload),
+      undefined,
+      { forfeitedSeats },
+    );
+  }
+
+  // ---- Seat-key shares (lib/ziffle-key-shares.js) --------------------------
+
+  function ziffleKeyShareBackend() {
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.ziffleRecoverKey !== "function") {
+      throw new Error("Ziffle key-share backend is not available");
+    }
+    return currentGame;
+  }
+
+  function ziffleKeyShareMatch(payload = matchStartPayloadRef.current) {
+    return {
+      context: String(payload?.auditMatchId || ""),
+      deals: Array.isArray(payload?.ziffleKeyShares) ? payload.ziffleKeyShares : [],
+      keys: Array.isArray(payload?.ziffleKeys) ? payload.ziffleKeys : [],
+    };
+  }
+
+  function knownZiffleKeySharesFor(context, seat) {
+    const key = `${context}:${Number(seat)}`;
+    if (!knownZiffleKeyShares.has(key)) knownZiffleKeyShares.set(key, new Map());
+    return knownZiffleKeyShares.get(key);
+  }
+
+  // Deals this seat's key to the other seats of `rosterKeys`. A seat only ever
+  // deals to the roster it sees in its own lobby, never to keys a requester
+  // names: whoever holds every share holds the key.
+  async function buildLocalZiffleKeyShareDeal(request, rosterKeys = zifflePublicKeysForPlayers()) {
+    const backend = ziffleKeyShareBackend();
+    const context = String(request?.context || "").trim();
+    if (!context) throw new Error("Ziffle key-share deal is missing its match");
+    const keys = cloneMultiplayerPayload(rosterKeys || []);
+    const rosterJson = canonicalMultiplayerPayload(keys);
+    if (canonicalMultiplayerPayload(request?.keys || []) !== rosterJson) {
+      throw new Error("Ziffle key-share deal was requested for a different player roster");
+    }
+    if (!ziffleKeySharesRequired(keys.length)) {
+      throw new Error("A two-player match does not deal ziffle key shares");
+    }
+    const keyPair = await ensureZiffleIdentity({ context });
+    const own = keys.find((key) => String(key?.publicKeyHex || "") === String(keyPair.publicKeyHex || ""));
+    if (!own) throw new Error("This seat's ziffle key is not in the match roster");
+    const cached = localZiffleKeyShareDeals.get(context);
+    if (cached?.rosterJson === rosterJson) return cloneMultiplayerPayload(cached.deal);
+    const dealt = await backend.ziffleDealKeyShares(ziffleKeyShareDealRequest({
+      context,
+      keys,
+      dealer: Number(own.player),
+      keyPair,
+      entropyHex: randomAuditHex(32),
+    }));
+    const { keyPair: auditKeyPair } = await ensureAuditIdentity();
+    const deal = await signZiffleKeyShareDeal(auditKeyPair, context, dealt);
+    localZiffleKeyShareDeals.set(context, { rosterJson, deal });
+    return cloneMultiplayerPayload(deal);
+  }
+
+  // Host: collects one deal per seat for the match genesis.
+  async function buildZiffleKeySharesForPayload(payload, players, keys) {
+    const orderedPlayers = reindexPlayers(players);
+    if (!ziffleKeySharesRequired(orderedPlayers.length)) return;
+    const context = String(payload.auditMatchId || "");
+    const request = { operation: ZIFFLE_KEY_SHARE_DEAL_OPERATION, context, keys };
+    const deals = await Promise.all(orderedPlayers.map(async (dealer) => {
+      if (dealer.peerId === multiplayerRef.current.localPeerId) {
+        return buildLocalZiffleKeyShareDeal(request, keys);
+      }
+      const conn = clientConnectionsRef.current.get(dealer.peerId);
+      if (!conn || conn.open === false) {
+        throw new Error(`Cannot request ziffle key shares from ${dealer.name}`);
+      }
+      const requestId = makeZiffleRequestId("ziffle-key-shares");
+      const dealerLabel = dealer.name || `Player ${Number(dealer.index) + 1}`;
+      const waiter = waitForZiffleShuffleStep(requestId, 60000, {
+        peerIndex: Number(dealer.index),
+        peerName: dealerLabel,
+        title: "Waiting for key shares",
+        description:
+          `${dealerLabel} must split their hidden-card key among the other players before the match can start.`,
+      });
+      safeSend(conn, {
+        type: "ziffle_shuffle_step_request",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId,
+        request,
+      });
+      return waiter;
+    }));
+    payload.ziffleKeyShares = await verifyZiffleKeyShareDeals({
+      deals,
+      keys,
+      context,
+      auditPublicKeyForSeat: genesisAuditKeyLookup(orderedPlayers),
+    });
+  }
+
+  // Every seat: the genesis must carry honest deals. This seat opens the share
+  // each other seat sealed to it, which fails if that dealer cheated.
+  async function verifyZiffleKeySharesForPayload(payload) {
+    const { context, deals: payloadDeals, keys } = ziffleKeyShareMatch(payload);
+    const deals = await verifyZiffleKeyShareDeals({
+      deals: payloadDeals,
+      keys,
+      context,
+      auditPublicKeyForSeat: genesisAuditKeyForSeat(payload),
+    });
+    if (deals.length === 0) return;
+    const localIndex = resolveLocalCryptoPlayerIndex(payload);
+    if (localIndex == null) return;
+    const backend = ziffleKeyShareBackend();
+    const keyPair = await ensureZiffleIdentity({ context });
+    const own = localZiffleKeyShareDeals.get(context)?.deal;
+    for (const deal of deals) {
+      if (deal.dealer === Number(localIndex)) {
+        if (own && !ziffleKeyShareDealsEqual(own, deal)) {
+          throw new Error("The match start carries a ziffle key-share deal this seat did not make");
+        }
+        continue;
+      }
+      const opened = await openZiffleKeyShare(backend, {
+        deals,
+        context,
+        dealer: deal.dealer,
+        holder: Number(localIndex),
+        holderSecretKeyHex: keyPair.secretKeyHex,
+      });
+      knownZiffleKeySharesFor(context, deal.dealer).set(opened.holder, opened);
+    }
+  }
+
+  // Opens every share of `seat`'s key this seat can read: its own, and those
+  // held by seats whose keys it has already rebuilt.
+  async function collectLocalZiffleKeyShares(seat) {
+    const { context, deals } = ziffleKeyShareMatch();
+    const known = knownZiffleKeySharesFor(context, seat);
+    const localIndex = resolveLocalCryptoPlayerIndex();
+    for (const holder of missingZiffleKeyShareHolders(deals, seat, [...known.values()])) {
+      const holderSecretKeyHex = localIndex != null && holder === Number(localIndex)
+        ? (await ensureZiffleIdentity({ context })).secretKeyHex
+        : recoveredZiffleKeys.get(`${context}:${holder}`)?.secretKeyHex;
+      if (!holderSecretKeyHex) continue;
+      const opened = await openZiffleKeyShare(ziffleKeyShareBackend(), {
+        deals,
+        context,
+        dealer: seat,
+        holder,
+        holderSecretKeyHex,
+      });
+      known.set(opened.holder, opened);
+    }
+    return known;
+  }
+
+  // A seat releases shares of a key only once its owner is forfeited in the
+  // transcript this seat accepted. The answer carries every share it knows, so
+  // a share collected from a seat that later left is not lost with it.
+  async function answerZiffleKeyShareRelease(request) {
+    const { context, deals } = ziffleKeyShareMatch();
+    if (!multiplayerRef.current.matchStarted || !context || String(request?.context || "") !== context) {
+      throw new Error("Ziffle key-share release belongs to a different match");
+    }
+    const seat = Number(request?.forfeited);
+    if (!deals.some((deal) => Number(deal?.dealer) === seat)) {
+      throw new Error("Ziffle key-share release names an unknown player");
+    }
+    const deadline = Date.now() + ZIFFLE_KEY_SHARE_FORFEIT_WAIT_MS;
+    while (!forfeitedPlayersBeforeSequence().has(seat)) {
+      if (Date.now() >= deadline) {
+        throw new Error(`Player ${seat + 1} has not been forfeited`);
+      }
+      await sleep(100);
+    }
+    const known = await collectLocalZiffleKeyShares(seat);
+    return { shares: [...known.values()] };
+  }
+
+  async function requestZiffleKeyShareRelease(player, seat) {
+    const { context } = ziffleKeyShareMatch();
+    const playerIndex = Number(player.index || 0);
+    const routePeerId = routePeerIdForPlayer(player);
+    if (!routePeerId) throw new Error(`Missing peer for ziffle key-share player ${playerIndex + 1}`);
+    const label = player.name || `Player ${playerIndex + 1}`;
+    const requestId = makeZiffleRequestId("ziffle-key-share-release");
+    const requestedAtMs = Date.now();
+    const waiter = waitForZiffleShuffleStep(requestId, PROTOCOL_RESPONSE_TIMEOUT_MS, {
+      peerIndex: playerIndex,
+      peerName: label,
+      title: "Rebuilding a forfeited player's key",
+      description:
+        `${label} must release their share of a forfeited player's hidden-card key `
+        + "so the remaining players can keep drawing.",
+    });
+    const requestPayload = {
+      type: "ziffle_shuffle_step_request",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      request: { operation: ZIFFLE_KEY_SHARE_RELEASE_OPERATION, context, forfeited: Number(seat) },
+    };
+    await sendDirectProtocolMessage(routePeerId, requestPayload);
+    return waitForProtocolResponse(waiter, {
+      basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
+      targetPlayerIndex: playerIndex,
+      targetPeerId: player.peerId,
+      requesterIndex: resolveLocalPlayerIndex(multiplayerRef.current),
+      requestType: requestPayload.type,
+      requestId,
+      requestPayload,
+      responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+      requestedAtMs,
+    });
+  }
+
+  // Rebuilds a forfeited seat's secret key from the shares the other seats
+  // hold. `visiting` breaks cycles between seats that each held a share of the
+  // other's key.
+  async function recoverForfeitedZiffleKey(seat, visiting = new Set()) {
+    const forfeitedSeat = Number(seat);
+    const payload = matchStartPayloadRef.current;
+    const { context, deals, keys } = ziffleKeyShareMatch(payload);
+    if (deals.length === 0) {
+      throw new Error("This match dealt no ziffle key shares, so a forfeited player's key cannot be rebuilt");
+    }
+    const cacheKey = `${context}:${forfeitedSeat}`;
+    if (recoveredZiffleKeys.has(cacheKey)) return recoveredZiffleKeys.get(cacheKey);
+    const localSeat = resolveLocalCryptoPlayerIndex(payload);
+    if (localSeat != null && Number(localSeat) === forfeitedSeat) {
+      // A forfeited seat that is still connected has its own key.
+      const own = await ensureZiffleIdentity({ context });
+      return { publicKeyHex: String(own.publicKeyHex || ""), secretKeyHex: String(own.secretKeyHex || "") };
+    }
+    if (visiting.size === 0 && ziffleKeyRecoveriesInFlight.has(cacheKey)) {
+      return ziffleKeyRecoveriesInFlight.get(cacheKey);
+    }
+    const run = (async () => {
+      const forfeitedSeats = forfeitedPlayersBeforeSequence();
+      if (!forfeitedSeats.has(forfeitedSeat)) {
+        throw new Error(`Player ${forfeitedSeat + 1} has not been forfeited`);
+      }
+      const backend = ziffleKeyShareBackend();
+      const known = await collectLocalZiffleKeyShares(forfeitedSeat);
+      const missing = () => missingZiffleKeyShareHolders(deals, forfeitedSeat, [...known.values()]);
+      if (missing().length > 0) {
+        const localIndex = resolveLocalCryptoPlayerIndex(payload);
+        const remaining = reindexPlayers(payload?.players || []).filter((player) =>
+          Number(player.index) !== Number(localIndex) && !forfeitedSeats.has(Number(player.index)));
+        await Promise.all(remaining.map(async (player) => {
+          const response = await requestZiffleKeyShareRelease(player, forfeitedSeat);
+          const shares = await validZiffleKeyShares(backend, {
+            deals,
+            dealer: forfeitedSeat,
+            shares: response?.shares,
+          });
+          for (const share of shares) known.set(share.holder, share);
+          if (!known.has(Number(player.index))) {
+            throw new Error(
+              `${player.name || `Player ${Number(player.index) + 1}`} did not release a valid share of `
+              + `player ${forfeitedSeat + 1}'s hidden-card key`
+            );
+          }
+        }));
+      }
+      // A share held by another forfeited seat opens with that seat's rebuilt key.
+      const nextVisiting = new Set([...visiting, forfeitedSeat]);
+      for (const holder of missing()) {
+        if (!forfeitedSeats.has(holder) || nextVisiting.has(holder)) continue;
+        await recoverForfeitedZiffleKey(holder, nextVisiting).catch(() => null);
+      }
+      await collectLocalZiffleKeyShares(forfeitedSeat);
+      const lost = missing();
+      if (lost.length > 0) {
+        throw new Error(
+          `Player ${forfeitedSeat + 1}'s hidden-card key cannot be rebuilt: the share held by `
+          + `player ${lost[0] + 1} left the match with them`
+        );
+      }
+      const recovered = await recoverZiffleSecretKey(backend, {
+        deals,
+        keys,
+        dealer: forfeitedSeat,
+        shares: [...known.values()],
+      });
+      recoveredZiffleKeys.set(cacheKey, recovered);
+      setStatus(
+        `Rebuilt ${playerNameForIndex(payload?.players || [], forfeitedSeat)}'s hidden-card key `
+        + "so the remaining players can keep drawing"
+      );
+      return recovered;
+    })();
+    if (visiting.size > 0) return run;
+    ziffleKeyRecoveriesInFlight.set(cacheKey, run);
+    try {
+      return await run;
+    } finally {
+      ziffleKeyRecoveriesInFlight.delete(cacheKey);
+    }
+  }
+
+  // Reveal tokens of a forfeited seat, made with its rebuilt key.
+  async function buildRecoveredZiffleRevealTokens(ceremony, positions, seat) {
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.ziffleBuildRevealToken !== "function") {
+      throw new Error("Ziffle reveal-token backend is not available");
+    }
+    const recovered = await recoverForfeitedZiffleKey(seat);
+    const input = {
+      deckCount: Number(ceremony.deckCount),
+      deckHash: String(ceremony.deckHash || ""),
+      context: String(ceremony.context || ""),
+      keyContext: ziffleKeyContextForCeremony(ceremony),
+      keys: cloneMultiplayerPayload(ceremony.keys || []),
+      steps: cloneMultiplayerPayload(ceremony.steps || []),
+      ...ziffleInputDeckFields(ceremony),
+      publicKeyHex: recovered.publicKeyHex,
+      secretKeyHex: recovered.secretKeyHex,
+      player: Number(seat),
+    };
+    if (typeof currentGame.ziffleBuildRevealTokens === "function") {
+      return currentGame.ziffleBuildRevealTokens({
+        ...input,
+        cardPositions: positions,
+        entropyHex: randomAuditHex(32),
+      });
+    }
+    const tokens = [];
+    for (const cardPosition of positions) {
+      tokens.push({
+        ...await currentGame.ziffleBuildRevealToken({
+          ...input,
+          cardPosition: Number(cardPosition),
+          entropyHex: randomAuditHex(32),
+        }),
+        cardPosition,
+      });
+    }
+    return tokens;
   }
 
   async function answerZiffleShuffleStepRequest(conn, message) {
     // Announce the (first) response so peers can close their wait on this seat.
     conn = servicesRef.current.protocolResponseConn?.(conn, message) || conn;
     try {
-      const step = await buildLocalZiffleShuffleStep(message.request || {});
+      const request = message.request || {};
+      let step;
+      if (request.operation === ZIFFLE_KEY_SHARE_DEAL_OPERATION) {
+        step = await buildLocalZiffleKeyShareDeal(request);
+      } else if (request.operation === ZIFFLE_KEY_SHARE_RELEASE_OPERATION) {
+        step = await answerZiffleKeyShareRelease(request);
+      } else {
+        // Only the seat assembling a ceremony proxies for a forfeited seat.
+        const { proxy: _proxy, ...shuffleRequest } = request;
+        step = await buildLocalZiffleShuffleStep(shuffleRequest);
+      }
       safeSend(conn, {
         type: "ziffle_shuffle_step_response",
         protocolVersion: PROTOCOL_VERSION,
@@ -1108,6 +1492,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       deckHex: String(step.deckHex || ""),
       proofHex: String(step.proofHex || ""),
       signature: String(step.signature || ""),
+      ...(step.proxy == null ? {} : { proxy: Number(step.proxy) }),
     });
   }
 
@@ -1128,20 +1513,24 @@ export function usePeerLobbyValidation(base, servicesRef) {
     const localPeerId = String(session.localPeerId || "");
     const startedAt = nowMonotonicMs();
     const rounds = [];
+    // A forfeited seat cannot shuffle; this seat shuffles in its place.
+    const forfeitedSeats = forfeitedPlayersBeforeSequence();
 
     for (const shuffler of orderedPlayers) {
       const shufflerIndex = Number(shuffler.index || 0);
       const isLocalShuffler =
         shufflerIndex === Number(localIndex)
         || (localPeerId && String(shuffler.peerId || "") === localPeerId);
+      const proxied = !isLocalShuffler && forfeitedSeats.has(shufflerIndex);
       const roundStartedAt = nowMonotonicMs();
       let results;
-      if (isLocalShuffler) {
+      if (isLocalShuffler || proxied) {
         results = await Promise.all(ceremonies.map(async (ceremony) => {
           const stepStartedAt = nowMonotonicMs();
-          const step = await buildLocalZiffleShuffleStep(
-            ziffleShuffleRequestForCeremony(ceremony, shuffler)
-          );
+          const step = await buildLocalZiffleShuffleStep({
+            ...ziffleShuffleRequestForCeremony(ceremony, shuffler),
+            ...(proxied ? { proxy: Number(localIndex) } : {}),
+          });
           ceremony.timings.stepMs.push(nowMonotonicMs() - stepStartedAt);
           return { ceremony, step };
         }));
@@ -1214,7 +1603,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
     const verifyMs = nowMonotonicMs() - verifyStartedAt;
     await Promise.all(ceremonies.map((ceremony) => assertZiffleCeremonyStepsSigned(
       ceremony,
-      options.payload || matchStartPayloadRef.current
+      options.payload || matchStartPayloadRef.current,
+      forfeitedSeats
     )));
     for (const { ceremony, verified } of verifiedCeremonies) {
       ceremony.verification = verified;
@@ -2630,6 +3020,15 @@ export function usePeerLobbyValidation(base, servicesRef) {
             () => buildLocalZiffleRevealTokens(ceremony, positions)
           );
         }
+        if (ziffleKeyShareMatch().deals.length > 0 && forfeitedPlayersBeforeSequence().has(tokenPlayer)) {
+          // That seat is out of the match: use its key, rebuilt from the
+          // shares it dealt to the remaining seats.
+          return timePeerSyncPhase(
+            "ziffle_reveal_token_batch:build_recovered_tokens",
+            { ...signerPerf, token_player: tokenPlayer },
+            () => buildRecoveredZiffleRevealTokens(ceremony, positions, tokenPlayer)
+          );
+        }
         const peer = players.find((player) => Number(player.index) === tokenPlayer) || {
           index: tokenPlayer,
         };
@@ -3350,9 +3749,13 @@ export function usePeerLobbyValidation(base, servicesRef) {
 
   async function validateCompleteRngCommitSet(commits, request) {
     const entries = Array.isArray(commits) ? commits : [];
+    // Forfeited seats contribute nothing to shared randomness.
+    const forfeitedSeats = forfeitedPlayersBeforeSequence(request?.seq);
     const expectedPlayers = reindexPlayers(
       matchStartPayloadRef.current?.players || multiplayerRef.current.players || []
-    ).map((player) => Number(player.index)).sort((left, right) => left - right);
+    ).map((player) => Number(player.index))
+      .filter((player) => !forfeitedSeats.has(player))
+      .sort((left, right) => left - right);
     if (entries.length !== expectedPlayers.length) {
       throw new Error("Random reveal request must include every player commitment");
     }
@@ -3631,7 +4034,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
   }
 
   async function collectFairRandomReveal(requirement, seq, options = {}) {
-    const players = reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || []);
+    // Forfeited seats contribute nothing to shared randomness.
+    const forfeitedSeats = forfeitedPlayersBeforeSequence(seq);
+    const players = reindexPlayers(matchStartPayloadRef.current?.players || multiplayerRef.current.players || [])
+      .filter((player) => !forfeitedSeats.has(Number(player.index)));
     const localIndex = resolveLocalCryptoPlayerIndex();
     if (localIndex == null) {
       throw new Error("Local player seat is not assigned");
@@ -4816,6 +5222,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       ceremonies.push(ceremony);
       runtimeHiddenDeckManifests.push(runtimeManifestForZiffleCeremony(manifest, ceremony));
     }
+    await buildZiffleKeySharesForPayload(payload, orderedPlayers, keys);
     payload.ziffleKeys = keys;
     payload.ziffleCeremonies = ceremonies;
     payload.runtimeHiddenDeckManifests = runtimeHiddenDeckManifests;
@@ -4837,7 +5244,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       throw new Error("Ziffle mental-poker backend is not available");
     }
     for (const ceremony of ceremonies) {
-      await assertZiffleCeremonyStepsSigned(ceremony, payload);
+      await assertZiffleCeremonyStepsSigned(ceremony, payload, []);
       const verified = await currentGame.ziffleVerifyShuffle({
         deckCount: Number(ceremony.deckCount),
         context: String(ceremony.context || ""),
@@ -4913,6 +5320,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      }
 	      if (verifiedMode) {
 	        await verifyZiffleCeremoniesForPayload(payload);
+	        await verifyZiffleKeySharesForPayload(payload);
 	      }
       await servicesRef.current.resetOptimisticState?.("Match initialization");
       servicesRef.current.resetProtocolActionOrder?.("Match initialization");
@@ -5089,5 +5497,5 @@ export function usePeerLobbyValidation(base, servicesRef) {
   );
 
 
-  return { fairRandomRevealLockConflict, answerRngCommitRequest, answerRngRevealRequest, answerZiffleRevealTokenRequest, answerZiffleShuffleStepRequest, appendZiffleShuffleStep, applyMatchStart, applySequencedActionMessage, applySequencedActionMessageInner, applyVerifiedShuffleProofs, assertZiffleShuffleProofBoundToSignedMatch, authorizedZiffleRevealPositionsForOwner, bufferFutureSequencedAction, bufferedSequencedActionOptions, buildLiveZiffleShuffleProofs, buildLocalRngRevealsForRequirements, buildLocalShuffleProofsForRequirements, buildLocalZiffleRevealToken, buildLocalZiffleRevealTokens, buildLocalZiffleShuffleStep, buildZiffleCeremoniesForPayload, collectFairRandomReveal, collectZiffleRevealTokens, collectZiffleRevealTokensBatch, compactActionAuthorizationForDiagnostics, compactCryptoRequirementForDiagnostics, currentHostRouteInfo, drainPendingSequencedActions, fairRandomCommitSetHash, fairRandomRequestContextKey, fairRandomRequirementId, handIdsForRevealKey, hydrateViewedCardsFromLiveObjects, isHiddenViewedCardName, isInspectorOnlyViewedCards, localZiffleHandRevealKey, localZiffleHandRevealObjectIdsKey, normalizedZiffleShuffleCeremony, openConnectionForPeerCandidates, openZiffleRoute, playerIndexForPeerId, preserveViewedCardsFromHint, previewZiffleActionRequirements, recordZiffleShufflePerf, restoreSequencedActionValidationSnapshotIfCurrent, revealLocalZiffleHand, revealLocalZiffleHandInner, rngCommitmentForNonce, routePeerIdForPlayer, routingPlayers, runBatchedZiffleShuffleCeremonies, sendDirectProtocolMessage, sequencedActionValidationSnapshotStillCurrent, signRngCommitmentEntry, signRngRevealEntry, validateCompleteRngCommitSet, validateIncomingRngRequest, verifyRngCommitmentEntry, verifyRngRevealEntry, verifyShuffleProofsForRequirements, verifyZiffleCeremoniesForPayload, viewedCardsStateHint, waitForAuthorizedZiffleRevealPositions, waitForRevealAuthorizationSequence, waitForZiffleCeremony, waitForZiffleRoute, zifflePositionFromRequirement, zifflePositionsDetail, ziffleRequirementType, ziffleRequirementViewer, ziffleRequirementZone, ziffleRequirementsAuthorizeRevealPositions, ziffleRequirementsAuthorizeRevealPositionsByMetadata, ziffleRevealAuthorizedByAction, ziffleRevealAuthorizedByOutboundCryptoRequest, ziffleRevealPositionFromRequirement, ziffleRevealTokenOptionsForLocalHandReveal, ziffleRoutePeerCandidates, ziffleShuffleRequestForCeremony };
+  return { recoverForfeitedZiffleKey, fairRandomRevealLockConflict, answerRngCommitRequest, answerRngRevealRequest, answerZiffleRevealTokenRequest, answerZiffleShuffleStepRequest, appendZiffleShuffleStep, applyMatchStart, applySequencedActionMessage, applySequencedActionMessageInner, applyVerifiedShuffleProofs, assertZiffleShuffleProofBoundToSignedMatch, authorizedZiffleRevealPositionsForOwner, bufferFutureSequencedAction, bufferedSequencedActionOptions, buildLiveZiffleShuffleProofs, buildLocalRngRevealsForRequirements, buildLocalShuffleProofsForRequirements, buildLocalZiffleRevealToken, buildLocalZiffleRevealTokens, buildLocalZiffleShuffleStep, buildZiffleCeremoniesForPayload, collectFairRandomReveal, collectZiffleRevealTokens, collectZiffleRevealTokensBatch, compactActionAuthorizationForDiagnostics, compactCryptoRequirementForDiagnostics, currentHostRouteInfo, drainPendingSequencedActions, fairRandomCommitSetHash, fairRandomRequestContextKey, fairRandomRequirementId, handIdsForRevealKey, hydrateViewedCardsFromLiveObjects, isHiddenViewedCardName, isInspectorOnlyViewedCards, localZiffleHandRevealKey, localZiffleHandRevealObjectIdsKey, normalizedZiffleShuffleCeremony, openConnectionForPeerCandidates, openZiffleRoute, playerIndexForPeerId, preserveViewedCardsFromHint, previewZiffleActionRequirements, recordZiffleShufflePerf, restoreSequencedActionValidationSnapshotIfCurrent, revealLocalZiffleHand, revealLocalZiffleHandInner, rngCommitmentForNonce, routePeerIdForPlayer, routingPlayers, runBatchedZiffleShuffleCeremonies, sendDirectProtocolMessage, sequencedActionValidationSnapshotStillCurrent, signRngCommitmentEntry, signRngRevealEntry, validateCompleteRngCommitSet, validateIncomingRngRequest, verifyRngCommitmentEntry, verifyRngRevealEntry, verifyShuffleProofsForRequirements, verifyZiffleCeremoniesForPayload, viewedCardsStateHint, waitForAuthorizedZiffleRevealPositions, waitForRevealAuthorizationSequence, waitForZiffleCeremony, waitForZiffleRoute, zifflePositionFromRequirement, zifflePositionsDetail, ziffleRequirementType, ziffleRequirementViewer, ziffleRequirementZone, ziffleRequirementsAuthorizeRevealPositions, ziffleRequirementsAuthorizeRevealPositionsByMetadata, ziffleRevealAuthorizedByAction, ziffleRevealAuthorizedByOutboundCryptoRequest, ziffleRevealPositionFromRequirement, ziffleRevealTokenOptionsForLocalHandReveal, ziffleRoutePeerCandidates, ziffleShuffleRequestForCeremony };
 }

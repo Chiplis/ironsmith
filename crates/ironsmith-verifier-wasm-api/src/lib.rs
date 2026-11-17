@@ -1,6 +1,6 @@
 //! Shared byte/JavaScript boundary for the verifier.
 
-use ironsmith_verifier_ziffle::{Operation, VerifierError};
+use ironsmith_verifier_ziffle::{KeyShareOperation, Operation, VerifierError};
 use wasm_bindgen::prelude::*;
 
 pub type VerifierExecutor = fn(Operation, &[u8]) -> Result<Vec<u8>, VerifierError>;
@@ -32,6 +32,13 @@ pub fn execute_verifier(
 pub fn execute_keygen(input: JsValue) -> Result<JsValue, JsValue> {
     let json = input_json(input)?;
     let output = ironsmith_verifier_ziffle::execute_keygen(json.as_bytes())
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    output_json(output)
+}
+
+pub fn execute_key_share(operation: KeyShareOperation, input: JsValue) -> Result<JsValue, JsValue> {
+    let json = input_json(input)?;
+    let output = ironsmith_verifier_ziffle::execute_key_share(operation, json.as_bytes())
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
     output_json(output)
 }

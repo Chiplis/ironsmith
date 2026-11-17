@@ -1,5 +1,10 @@
 import { buildZiffleInputDeck } from "../src/lib/ziffle-private-epochs.js";
 import { signZiffleShuffleStep, ziffleShuffleStepStatement } from "../src/lib/ziffle-step-signatures.js";
+import {
+  signZiffleKeyShareDeal,
+  ziffleKeyShareThreshold,
+  ziffleKeySharesRequired,
+} from "../src/lib/ziffle-key-shares.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
@@ -184,6 +189,33 @@ async function signTestZiffleCeremony(ceremony, signers) {
     steps.push({ ...step, signature: memo.get(statementKey) });
   }
   return { ...ceremony, steps };
+}
+
+// Matches of three or more seats bind one signed seat-key deal per player into
+// the genesis. The genesis checks their shape and signatures; the share values
+// themselves are opened by their holders, so placeholders serve here.
+async function signTestZiffleKeyShares(matchId, ziffleKeys, signers) {
+  if (!ziffleKeySharesRequired(ziffleKeys.length)) return {};
+  const keyPairs = new Map(signers.map((signer) => [Number(signer.index), signer.keyPair]));
+  const threshold = ziffleKeyShareThreshold(ziffleKeys.length);
+  return {
+    ziffleKeyShares: await Promise.all(ziffleKeys.map((key) => signZiffleKeyShareDeal(
+      keyPairs.get(Number(key.player)),
+      matchId,
+      {
+        dealer: Number(key.player),
+        threshold,
+        commitmentsHex: Array.from({ length: threshold }, (_, index) =>
+          (index === 0 ? key.publicKeyHex : `test-commitment-${key.player}-${index}`)),
+        shares: ziffleKeys.filter((holder) => holder.player !== key.player).map((holder) => ({
+          holder: Number(holder.player),
+          ephemeralHex: `test-ephemeral-${key.player}-${holder.player}`,
+          cipherHex: `test-share-${key.player}-${holder.player}`,
+        })),
+      },
+      webcrypto,
+    ))),
+  };
 }
 
 function actionEnvelopePayload(audit) {
@@ -375,6 +407,7 @@ async function buildCurrentProtocolTranscript({
     deckAuditManifests: normalizedDeckAuditManifests,
     ziffleKeys,
     ziffleCeremonies,
+    ...await signTestZiffleKeyShares(matchId, ziffleKeys, privatePlayers),
   };
   match.genesis = await buildSignedMatchGenesis({
     keyPair: host.keyPair,
@@ -3038,6 +3071,7 @@ test("match genesis and resync envelopes bind roster, actions and final state", 
     players,
     deckAuditManifests: manifests.map(publicDeckManifest),
     ziffleKeys,
+    ...await signTestZiffleKeyShares("m", ziffleKeys, signers),
     ziffleCeremonies: await Promise.all(players.map((player) => signTestZiffleCeremony({
       owner: player.index,
       deckCount: player.deckCount,
@@ -3247,6 +3281,7 @@ test("open decklist match genesis verifies main-deck and sideboard slot openings
       players,
       deckAuditManifests: manifests.map(publicDeckManifest),
       ziffleKeys,
+      ...await signTestZiffleKeyShares(matchId, ziffleKeys, signers),
       ziffleCeremonies: await Promise.all(players.map((player) => signTestZiffleCeremony({
         owner: player.index,
         deckCount: player.deckCount,

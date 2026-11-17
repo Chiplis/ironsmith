@@ -109,9 +109,13 @@ const WORKER_METHODS = [
   "ziffleBuildRevealToken",
   "ziffleBuildRevealTokens",
   "ziffleBuildShuffleStep",
+  "ziffleDealKeyShares",
   "ziffleKeygen",
+  "ziffleOpenKeyShare",
+  "ziffleRecoverKey",
   "ziffleRevealCard",
   "ziffleRevealCards",
+  "ziffleVerifyKeyShare",
   "ziffleVerifyShuffle",
 ];
 
@@ -121,9 +125,13 @@ const ZIFFLE_WORKER_METHODS = new Set([
   "ziffleBuildRevealToken",
   "ziffleBuildRevealTokens",
   "ziffleBuildShuffleStep",
+  "ziffleDealKeyShares",
   "ziffleKeygen",
+  "ziffleOpenKeyShare",
+  "ziffleRecoverKey",
   "ziffleRevealCard",
   "ziffleRevealCards",
+  "ziffleVerifyKeyShare",
   "ziffleVerifyShuffle",
 ]);
 

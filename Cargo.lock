@@ -1644,6 +1644,9 @@ dependencies = [
 name = "ironsmith-verifier-ziffle"
 version = "0.1.0"
 dependencies = [
+ "ark-ec",
+ "ark-ff",
+ "ark-secp256k1",
  "ark-serialize",
  "ark-std",
  "serde",

@@ -12,6 +12,10 @@ export {
 export function ziffleBuildRevealToken(input: unknown): unknown;
 export function ziffleBuildRevealTokens(input: unknown): unknown;
 export function ziffleBuildShuffleStep(input: unknown): unknown;
+export function ziffleDealKeyShares(input: unknown): unknown;
+export function ziffleOpenKeyShare(input: unknown): unknown;
+export function ziffleRecoverKey(input: unknown): unknown;
+export function ziffleVerifyKeyShare(input: unknown): unknown;
 export function ziffleRevealCard(input: unknown): unknown;
 export function ziffleRevealCards(input: unknown): unknown;
 export function ziffleVerifyShuffle(input: unknown): unknown;
