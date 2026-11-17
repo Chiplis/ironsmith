@@ -13,7 +13,9 @@ ironsmith-card-catalog = { path = "../ironsmith-card-catalog" }
 ironsmith = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false }
 ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }
 ironsmith-dynamic-compile = { path = "../ironsmith-dynamic-compile", default-features = false, optional = true }
-manabrew-protocol = { path = "../../vendor/manabrew-protocol", version = "3.0.0" }
+# Pinned exactly: the Manabrew adapter mirrors this version's DTO shapes and
+# reports its major as the adapter's protocol version.
+manabrew-protocol = "=6.5.0"
 rand = "0.10.1"
 rand_chacha = "0.10.0"
 serde = { version = "1.0.228", features = ["derive", "rc"] }
@@ -25,6 +27,11 @@ wasm-bindgen = "0.2.120"
 js-sys = "0.3.97"
 console_error_panic_hook = "0.1.7"
 getrandom = { version = "0.4.2", features = ["wasm_js"] }
+
+# manabrew-protocol 6 depends on forge-foundation, whose rand 0.8 pulls
+# getrandom 0.2; that version needs its `js` backend on wasm32-unknown-unknown.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom-02 = { package = "getrandom", version = "0.2", features = ["js"] }
 
 [lib]
 path = "../ironsmith-wasm/src/lib.rs"

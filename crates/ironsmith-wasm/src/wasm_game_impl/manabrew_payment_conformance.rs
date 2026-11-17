@@ -1253,10 +1253,13 @@ fn payment_contract_matrix() {
 }
 
 #[test]
-fn waterbend_v3_uses_typed_use_release_actions_and_exact_runtime_preferences() {
-    assert_eq!(manabrew_protocol::protocol::PROTOCOL_VERSION, 3);
-    assert!(validate_manabrew_protocol_version(3).is_ok());
-    for stale in [0, 2, 4] { assert!(validate_manabrew_protocol_version(stale).is_err()); }
+fn waterbend_uses_typed_use_release_actions_and_exact_runtime_preferences() {
+    assert_eq!(manabrew_protocol::VERSION, "6.5.0");
+    assert_eq!(manabrew_protocol_major(), 6);
+    assert!(validate_manabrew_protocol_version(Some(6)).is_ok());
+    // The published Manabrew adapter declares no version.
+    assert!(validate_manabrew_protocol_version(None).is_ok());
+    for stale in [0, 3, 5, 7] { assert!(validate_manabrew_protocol_version(Some(stale)).is_err()); }
     let mut game = fixture();
     let resource = card(&mut game, "An arbitrary display label", vec![CardType::Artifact], Zone::Battlefield);
     let mut request = request(&mut game, ManaCost::new().add_generic(1).with_waterbend().add_generic(1));

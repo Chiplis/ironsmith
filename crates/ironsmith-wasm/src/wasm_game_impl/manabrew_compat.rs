@@ -2,13 +2,15 @@ use std::collections::BTreeMap;
 
 use manabrew_protocol::game::{
     CardDto, CardIdentity, CardView, CombatAssignmentDto, DayTime, GameViewDto, Mana, ManaColor,
-    PlayerCounterKind, PlayerDto, PlayerStatus, StackObjectDto, StepKind, ZoneDto, ZoneKind,
+    PlayerCounterKind, PlayerDto, PlayerStatus, RoomDoor, StackObjectDto, StepKind, ZoneDto,
+    ZoneKind,
 };
 use manabrew_protocol::prompts::choose_attackers::AttackerOptionDto;
 use manabrew_protocol::prompts::choose_blockers::BlockableAttackerDto;
 use manabrew_protocol::prompts::common::{
     ActivatableAbilityInfo, AttackAssignment, AttackTargetDto, AttackTargetKind, AvailableAction,
     AvailableActionKind, BlockAssignment, PaymentAction, PaymentActionKind, PaymentResourceKind,
+    AlternativeCostKind,
     PlayCardMode, PromptPresentation, TargetKind, TargetRef,
 };
 use manabrew_protocol::prompts::scry::ScryDestination;
@@ -17,7 +19,8 @@ use manabrew_protocol::prompts::{
     ChooseBlockersInput, ChooseBlockersOutput, ChooseBoardTargetsInput, ChooseBoardTargetsOutput,
     ChooseBooleanInput, ChooseBooleanOutput, ChooseCardsInput, ChooseCardsOutput, ChooseColorInput,
     ChooseColorOutput, ChooseFromSelectionInput, ChooseFromSelectionOutput, ChooseNumberInput,
-    ChooseNumberOutput, MulliganInput, MulliganOutput, PayManaCostInput, PayManaCostOutput,
+    ChooseNumberOutput, MulliganInput, MulliganOutput, MulliganPutBackInput,
+    MulliganPutBackOutput, PayManaCostInput, PayManaCostOutput,
     PromptInput, PromptOutput, ReorderInput, ReorderItem, ReorderOutput, ResponseViolation,
     ScryInput, ScryOutput, SelectionOption,
 };
@@ -31,8 +34,10 @@ type JsonMap = serde_json::Map<String, Value>;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ManabrewMatchConfigInput {
+    /// Optional: the published Manabrew adapter does not declare a version.
+    /// A declared version must match the adapter's.
     #[serde(default)]
-    protocol_version: u32,
+    protocol_version: Option<u32>,
     player_names: Vec<String>,
     starting_life: i32,
     #[serde(default)]
@@ -66,16 +71,32 @@ struct ManabrewViewResult {
 
 enum ManabrewResponseAction {
     Dispatch(UiCommand),
+    /// Take back the action chain this prompt belongs to.
+    Cancel,
     Continue {
         input: PromptInput,
         binding: ManabrewPromptBinding,
     },
 }
 
-fn validate_manabrew_protocol_version(version: u32) -> Result<(), String> {
-    let expected = manabrew_protocol::protocol::PROTOCOL_VERSION;
-    if version == expected { Ok(()) } else {
-        Err(format!("Manabrew protocol version mismatch: expected {expected}, received {version}"))
+/// The adapter's protocol version: the major of the pinned `manabrew-protocol`
+/// crate, whose DTO shapes this adapter emits and accepts.
+fn manabrew_protocol_major() -> u32 {
+    manabrew_protocol::VERSION
+        .split('.')
+        .next()
+        .and_then(|major| major.parse().ok())
+        .expect("manabrew-protocol has a numeric major version")
+}
+
+fn validate_manabrew_protocol_version(version: Option<u32>) -> Result<(), String> {
+    let expected = manabrew_protocol_major();
+    match version {
+        None => Ok(()),
+        Some(version) if version == expected => Ok(()),
+        Some(version) => Err(format!(
+            "Manabrew protocol version mismatch: expected {expected}, received {version}"
+        )),
     }
 }
 
@@ -200,8 +221,99 @@ fn manabrew_type_line(card: &JsonMap) -> String {
     }
 }
 
-fn manabrew_card_source_block(card: &Value) -> String {
-    let card = object_value(card);
+/// Printed loyalty (planeswalkers) and defense (battles) by face name. The
+/// Manabrew deck protocol carries neither, and they cannot be derived from a
+/// card's type line or rules text, so the adapter ships them. Regenerate with
+/// `scripts/generate_printed_loyalty.py`.
+static MANABREW_PRINTED_STATS: &str = include_str!("printed_loyalty.tsv");
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ManabrewPrintedStat {
+    Loyalty,
+    Defense,
+}
+
+fn manabrew_printed_stat(name: &str, stat: ManabrewPrintedStat) -> Option<&'static str> {
+    static TABLE: std::sync::OnceLock<HashMap<(String, bool), &'static str>> =
+        std::sync::OnceLock::new();
+    TABLE
+        .get_or_init(|| {
+            MANABREW_PRINTED_STATS
+                .lines()
+                .filter_map(|line| {
+                    let mut fields = line.split('\t');
+                    let name = fields.next()?.trim();
+                    let kind = fields.next()?.trim();
+                    let value = fields.next()?.trim();
+                    (!name.is_empty() && !value.is_empty())
+                        .then(|| ((name.to_lowercase(), kind == "D"), value))
+                })
+                .collect()
+        })
+        .get(&(
+            name.trim().to_lowercase(),
+            stat == ManabrewPrintedStat::Defense,
+        ))
+        .copied()
+}
+
+fn manabrew_type_line_has(card: &JsonMap, card_type: &str) -> bool {
+    manabrew_type_line(card)
+        .split(|character: char| !character.is_ascii_alphabetic())
+        .any(|word| word.eq_ignore_ascii_case(card_type))
+}
+
+/// The printed stat a card of this type needs: what the host supplied, or
+/// else the adapter's table. `None` when the card is not of that type.
+fn manabrew_required_stat(
+    card: &Value,
+    stat: ManabrewPrintedStat,
+) -> Option<Result<String, String>> {
+    let object = object_value(card);
+    let (card_type, field) = match stat {
+        ManabrewPrintedStat::Loyalty => ("Planeswalker", "loyalty"),
+        ManabrewPrintedStat::Defense => ("Battle", "defense"),
+    };
+    let supplied = scalar_string(object.get(field));
+    if !manabrew_type_line_has(object, card_type) {
+        return supplied.map(Ok);
+    }
+    let name = manabrew_card_name(card).unwrap_or_default();
+    Some(
+        supplied
+            .or_else(|| manabrew_printed_stat(&name, stat).map(str::to_string))
+            .ok_or_else(|| {
+                format!(
+                    "{name} is a {} with no printed {field}; supply `{field}` on the deck card",
+                    card_type.to_lowercase()
+                )
+            }),
+    )
+}
+
+/// Every face of a deck card that would enter without its printed loyalty or
+/// defense, as (face name, reason).
+fn manabrew_missing_printed_stats(card: &Value) -> Vec<String> {
+    let object = object_value(card);
+    let mut faces: Vec<&Value> = manabrew_card_faces(card).iter().take(2).collect();
+    if faces.len() < 2 {
+        faces = vec![card];
+        if let Some(back) = first_value(object, &["backFace", "back_face"]) {
+            faces.push(back);
+        }
+    }
+    faces
+        .into_iter()
+        .flat_map(|face| {
+            [ManabrewPrintedStat::Loyalty, ManabrewPrintedStat::Defense]
+                .into_iter()
+                .filter_map(move |stat| manabrew_required_stat(face, stat)?.err())
+        })
+        .collect()
+}
+
+fn manabrew_card_source_block(card_value: &Value) -> String {
+    let card = object_value(card_value);
     let mut lines = Vec::new();
     if let Some(mana_cost) = scalar_string(first_value(card, &["manaCost", "mana_cost"])) {
         lines.push(format!("Mana cost: {mana_cost}"));
@@ -212,10 +324,12 @@ fn manabrew_card_source_block(card: &Value) -> String {
     if let (Some(power), Some(toughness)) = (power, toughness) {
         lines.push(format!("Power/Toughness: {power}/{toughness}"));
     }
-    if let Some(loyalty) = scalar_string(card.get("loyalty")) {
+    if let Some(Ok(loyalty)) = manabrew_required_stat(card_value, ManabrewPrintedStat::Loyalty)
+    {
         lines.push(format!("Loyalty: {loyalty}"));
     }
-    if let Some(defense) = scalar_string(card.get("defense")) {
+    if let Some(Ok(defense)) = manabrew_required_stat(card_value, ManabrewPrintedStat::Defense)
+    {
         lines.push(format!("Defense: {defense}"));
     }
     if let Some(oracle_text) =
@@ -235,7 +349,7 @@ fn manabrew_card_source(card: &Value) -> Option<ExternalCardSourceFile> {
     let deck_name = manabrew_card_name(card)?;
     let card_object = object_value(card);
     let faces = manabrew_card_faces(card);
-    let linked_faces = faces
+    let mut linked_faces = faces
         .iter()
         .take(2)
         .filter_map(|face| {
@@ -246,6 +360,31 @@ fn manabrew_card_source(card: &Value) -> Option<ExternalCardSourceFile> {
             })
         })
         .collect::<Vec<_>>();
+    // Protocol `CardRulesSummary::back_face`: a transform or modal double-faced
+    // card whose front face is the deck card itself.
+    if linked_faces.len() < 2
+        && let Some(back) = first_value(card_object, &["backFace", "back_face"])
+        && let Some(back_name) = manabrew_card_name(back)
+    {
+        let front_name = deck_name
+            .split(" // ")
+            .next()
+            .unwrap_or(&deck_name)
+            .trim()
+            .to_string();
+        linked_faces = vec![
+            ExternalCardFaceSource {
+                name: front_name,
+                block: manabrew_card_source_block(card),
+                score: Some(1.0),
+            },
+            ExternalCardFaceSource {
+                name: back_name,
+                block: manabrew_card_source_block(back),
+                score: Some(1.0),
+            },
+        ];
+    }
 
     if linked_faces.len() == 2 {
         let front_name = linked_faces[0].name.clone();
@@ -847,6 +986,7 @@ fn protocol_card(game: &GameState, id: ObjectId) -> Option<CardDto> {
             set_code: String::new(),
             card_number: String::new(),
             is_token: object.kind == ObjectKind::Token,
+            token_script: None,
         },
         color: colors,
         mana_cost: object
@@ -911,8 +1051,98 @@ fn protocol_card(game: &GameState, id: ObjectId) -> Option<CardDto> {
             .collect(),
         is_madness_exiled: game.is_madness_exiled(id),
         is_plotted: game.plotted_by(id).is_some(),
+        // CR 903.8: {2} for each previous cast from the command zone.
+        commander_tax: (object.zone == Zone::Command && game.is_commander(id)).then(|| {
+            game.commander_cast_count(id).saturating_mul(2).min(i32::MAX as u32) as i32
+        }),
+        zone: match object.zone {
+            Zone::Battlefield => Some(ZoneKind::Battlefield),
+            Zone::Hand => Some(ZoneKind::Hand),
+            Zone::Library => Some(ZoneKind::Library),
+            Zone::Graveyard => Some(ZoneKind::Graveyard),
+            Zone::Exile => Some(ZoneKind::Exile),
+            Zone::Command => Some(ZoneKind::Command),
+            _ => None,
+        },
         ..CardDto::default()
     })
+}
+
+/// The protocol's name for an alternative cost, when it has one. Costs it does
+/// not name are sent as `PlayCardMode::StaticAlternative`.
+fn protocol_alternative_cost_kind(name: &str) -> Option<AlternativeCostKind> {
+    let normalized = name
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    Some(match normalized.as_str() {
+        "flashback" => AlternativeCostKind::Flashback,
+        "spectacle" => AlternativeCostKind::Spectacle,
+        "evoke" => AlternativeCostKind::Evoke,
+        "dash" => AlternativeCostKind::Dash,
+        "blitz" => AlternativeCostKind::Blitz,
+        "escape" => AlternativeCostKind::Escape,
+        "overload" => AlternativeCostKind::Overload,
+        "madness" => AlternativeCostKind::Madness,
+        "foretell" => AlternativeCostKind::Foretell,
+        "emerge" => AlternativeCostKind::Emerge,
+        "suspend" => AlternativeCostKind::Suspend,
+        "morph" => AlternativeCostKind::Morph,
+        "megamorph" => AlternativeCostKind::Megamorph,
+        "bestow" => AlternativeCostKind::Bestow,
+        "warp" => AlternativeCostKind::Warp,
+        "plot" | "plotted" => AlternativeCostKind::Plotted,
+        "awaken" => AlternativeCostKind::Awaken,
+        "disturb" => AlternativeCostKind::Disturb,
+        "harmonize" => AlternativeCostKind::Harmonize,
+        "freerunning" => AlternativeCostKind::Freerunning,
+        "impending" => AlternativeCostKind::Impending,
+        "mayhem" => AlternativeCostKind::Mayhem,
+        "morethanmeetstheeye" => AlternativeCostKind::MTMtE,
+        "mutate" => AlternativeCostKind::Mutate,
+        "prowl" => AlternativeCostKind::Prowl,
+        "sneak" => AlternativeCostKind::Sneak,
+        "surge" => AlternativeCostKind::Surge,
+        "webslinging" => AlternativeCostKind::WebSlinging,
+        "prototype" => AlternativeCostKind::Prototype,
+        _ => return None,
+    })
+}
+
+fn protocol_play_card_mode(
+    game: &GameState,
+    spell: ObjectId,
+    method: &ironsmith::alternative_cast::CastingMethod,
+) -> PlayCardMode {
+    use ironsmith::alternative_cast::CastingMethod;
+    let named = |index: usize| {
+        game.object(spell)
+            .and_then(|object| object.alternative_casts.get(index))
+            .and_then(|alternative| protocol_alternative_cost_kind(alternative.name()))
+            .map(|cost| PlayCardMode::Alternative { cost })
+            .unwrap_or(PlayCardMode::StaticAlternative)
+    };
+    match method {
+        CastingMethod::Normal => PlayCardMode::Normal,
+        CastingMethod::SplitOtherHalf => PlayCardMode::RoomRightSplit,
+        CastingMethod::GrantedFlashback => PlayCardMode::Alternative {
+            cost: AlternativeCostKind::Flashback,
+        },
+        CastingMethod::GrantedEscape { .. } => PlayCardMode::Alternative {
+            cost: AlternativeCostKind::Escape,
+        },
+        CastingMethod::Alternative(index) => named(*index),
+        CastingMethod::AlternativePrice {
+            prototype: Some(_), ..
+        } => PlayCardMode::Alternative {
+            cost: AlternativeCostKind::Prototype,
+        },
+        CastingMethod::ExactPermission { origin, .. } => {
+            protocol_play_card_mode(game, spell, origin)
+        }
+        _ => PlayCardMode::StaticAlternative,
+    }
 }
 
 fn visible_card(game: &GameState, id: ObjectId) -> Option<CardView> {
@@ -926,6 +1156,14 @@ fn hidden_card(game: &GameState, id: ObjectId) -> CardView {
 }
 
 impl WasmGame {
+    /// The state a Manabrew view or prompt describes. While a spell or ability
+    /// is partway through resolving (or being cast), the engine keeps that
+    /// in-progress state beside the committed one; the pending decision refers
+    /// to it, exactly as the native snapshot does.
+    fn manabrew_game(&self) -> &GameState {
+        self.pending_decision_game.as_deref().unwrap_or(&self.game)
+    }
+
     fn register_manabrew_deck_sources_input(
         &mut self,
         decks: &[Value],
@@ -935,9 +1173,49 @@ impl WasmGame {
         ))
     }
 
+    /// One issue per deck card that would enter without its printed loyalty
+    /// or defense, in the shape deck validation already reports.
+    fn manabrew_printed_stat_issues(input: &ManabrewMatchConfigInput) -> Vec<MatchValidationIssue> {
+        const SECTIONS: &[&str] = &["cards", "commanders", "sideboard", "companion"];
+        let mut issues = Vec::new();
+        for (player_index, deck) in input.decks.iter().enumerate() {
+            let deck_object = object_value(deck);
+            let mut seen = HashSet::new();
+            for section in SECTIONS {
+                let cards: Vec<&Value> = match deck_object.get(*section) {
+                    Some(Value::Array(cards)) => cards.iter().collect(),
+                    Some(card @ Value::Object(_)) => vec![card],
+                    _ => Vec::new(),
+                };
+                for card in cards {
+                    let Some(card_name) = manabrew_card_name(card) else {
+                        continue;
+                    };
+                    if !seen.insert(card_name.to_lowercase()) {
+                        continue;
+                    }
+                    for error in manabrew_missing_printed_stats(card) {
+                        issues.push(MatchValidationIssue {
+                            player_index,
+                            player_name: input
+                                .player_names
+                                .get(player_index)
+                                .cloned()
+                                .unwrap_or_default(),
+                            section: section.to_string(),
+                            card_name: card_name.clone(),
+                            error,
+                        });
+                    }
+                }
+            }
+        }
+        issues
+    }
+
     fn manabrew_player(&self, index: u8) -> Result<PlayerId, ProtocolError> {
         let player = PlayerId::from_index(index);
-        self.game.player(player).map(|_| player).ok_or_else(|| {
+        self.manabrew_game().player(player).map(|_| player).ok_or_else(|| {
             protocol_error(
                 ProtocolErrorCode::WrongPlayer,
                 format!("player-{index} is not a player in this match"),
@@ -949,7 +1227,7 @@ impl WasmGame {
     }
 
     fn manabrew_card_is_visible(&self, id: ObjectId, viewer: Option<PlayerId>) -> bool {
-        let Some(object) = self.game.object(id) else {
+        let Some(object) = self.manabrew_game().object(id) else {
             return false;
         };
         let has_view_permission = self
@@ -964,7 +1242,7 @@ impl WasmGame {
                     && (view.public
                         || viewer == Some(view.viewer)
                         || (view.zone != Zone::OutsideGame
-                            && viewer == Some(self.game.controlling_player_for(view.viewer))))
+                            && viewer == Some(self.manabrew_game().controlling_player_for(view.viewer))))
             });
         if has_view_permission {
             return true;
@@ -973,14 +1251,14 @@ impl WasmGame {
             Zone::OutsideGame => viewer == Some(object.owner),
             Zone::Hand => {
                 viewer == Some(object.owner)
-                    || viewer == Some(self.game.controlling_player_for(object.owner))
+                    || viewer == Some(self.manabrew_game().controlling_player_for(object.owner))
             }
             Zone::Library => false,
-            Zone::Battlefield if self.game.is_face_down(id) => viewer.is_some_and(|viewer| {
-                self.game.can_player_look_at_face_down_permanent(id, viewer)
+            Zone::Battlefield if self.manabrew_game().is_face_down(id) => viewer.is_some_and(|viewer| {
+                self.manabrew_game().can_player_look_at_face_down_permanent(id, viewer)
             }),
-            Zone::Exile if self.game.is_face_down(id) => viewer.is_some_and(|viewer| {
-                self.game
+            Zone::Exile if self.manabrew_game().is_face_down(id) => viewer.is_some_and(|viewer| {
+                self.manabrew_game()
                     .can_player_look_at_face_down_exiled_card(id, viewer)
             }),
             _ => true,
@@ -996,7 +1274,7 @@ impl WasmGame {
         ids.into_iter()
             .filter_map(|id| {
                 if self.manabrew_card_is_visible(id, viewer) {
-                    let mut card = visible_card(&self.game, id)?;
+                    let mut card = visible_card(self.manabrew_game(), id)?;
                     if let CardView::Visible(dto) = &mut card {
                         dto.tapped |= self.manabrew_selected_tap(id);
                     }
@@ -1004,7 +1282,7 @@ impl WasmGame {
                 } else if omit_hidden {
                     None
                 } else {
-                    Some(hidden_card(&self.game, id))
+                    Some(hidden_card(self.manabrew_game(), id))
                 }
             })
             .collect()
@@ -1022,7 +1300,7 @@ impl WasmGame {
             .any(|selected| {
                 selected.source == id
                     && self
-                        .game
+                        .manabrew_game()
                         .current_ability(id, selected.ability_index)
                         .is_some_and(|ability| {
                             matches!(&ability.kind,
@@ -1047,17 +1325,17 @@ impl WasmGame {
 
     fn manabrew_zones(&self, viewer: Option<PlayerId>) -> Vec<ZoneDto> {
         let mut zones = Vec::new();
-        for player in &self.game.players {
+        for player in &self.manabrew_game().players {
             let owner_id = player_id(player.id);
             let battlefield: Vec<_> = self
-                .game
+                .manabrew_game()
                 .battlefield
                 .iter()
                 .copied()
                 .filter(|id| {
-                    self.game
+                    self.manabrew_game()
                         .object(*id)
-                        .is_some_and(|object| self.game.controller_of(object) == player.id)
+                        .is_some_and(|object| self.manabrew_game().controller_of(object) == player.id)
                 })
                 .collect();
             zones.push(ZoneDto {
@@ -1085,12 +1363,12 @@ impl WasmGame {
                 cards: self.manabrew_zone_cards(player.graveyard.iter().copied(), viewer, false),
             });
             let exile: Vec<_> = self
-                .game
+                .manabrew_game()
                 .exile
                 .iter()
                 .copied()
                 .filter(|id| {
-                    self.game
+                    self.manabrew_game()
                         .object(*id)
                         .is_some_and(|object| object.owner == player.id)
                 })
@@ -1102,12 +1380,12 @@ impl WasmGame {
                 cards: self.manabrew_zone_cards(exile, viewer, false),
             });
             let command: Vec<_> = self
-                .game
+                .manabrew_game()
                 .command_zone
                 .iter()
                 .copied()
                 .filter(|id| {
-                    self.game
+                    self.manabrew_game()
                         .object(*id)
                         .is_some_and(|object| object.owner == player.id)
                 })
@@ -1176,14 +1454,14 @@ impl WasmGame {
             .fold(0u32, u32::saturating_add)
             .min(i32::MAX as u32) as i32;
         let life = self
-            .game
+            .manabrew_game()
             .player(player)
             .map(|player| player.life.saturating_sub(life_paid))?;
         Some((pool, life))
     }
 
     fn manabrew_players(&self) -> Vec<PlayerDto> {
-        self.game
+        self.manabrew_game()
             .players
             .iter()
             .map(|player| {
@@ -1228,15 +1506,19 @@ impl WasmGame {
                 let commander_damage = player
                     .commander_damage
                     .iter()
-                    .map(|(commander, damage)| (object_id(&self.game, *commander), *damage as i32))
+                    .map(|(commander, damage)| (object_id(self.manabrew_game(), *commander), *damage as i32))
                     .collect();
                 PlayerDto {
                     id: player_id(player.id),
                     name: player.name.clone(),
-                    status: if player.has_left_game {
-                        PlayerStatus::Conceded
-                    } else if player.has_lost {
+                    // A player who lost has also left the game (CR 104.5), so
+                    // check the loss first. The engine does not record whether
+                    // a loss was a concession; the host knows which seat sent
+                    // the concede directive and labels that itself.
+                    status: if player.has_lost {
                         PlayerStatus::Lost
+                    } else if player.has_left_game {
+                        PlayerStatus::Conceded
                     } else {
                         PlayerStatus::Playing
                     },
@@ -1246,10 +1528,39 @@ impl WasmGame {
                         .copied()
                         .unwrap_or(true),
                     life: projected.map(|(_, life)| life).unwrap_or(player.life),
+                    max_hand_size: player.max_hand_size,
+                    unlimited_hand_size: player.max_hand_size == i32::MAX,
+                    lands_played_this_turn: player
+                        .lands_played_this_turn
+                        .saturating_add(player.nonland_land_play_usage_this_turn)
+                        .min(i32::MAX as u32) as i32,
+                    max_land_plays_per_turn: player.land_plays_per_turn.min(i32::MAX as u32)
+                        as i32,
+                    unlimited_land_plays: false,
+                    cards_drawn_this_turn: 0,
+                    damage_prevention: 0,
+                    is_extra_turn: false,
+                    extra_turn_count: 0,
+                    controlled_by: None,
+                    player_keywords: Vec::new(),
+                    commander_casts: player
+                        .commanders
+                        .iter()
+                        .map(|commander| {
+                            (
+                                object_id(self.manabrew_game(), *commander),
+                                self.manabrew_game().commander_cast_count(*commander),
+                            )
+                        })
+                        .collect(),
+                    dungeon_state: None,
+                    active_scheme_names: None,
+                    team_number: None,
+                    has_enduring_story: false,
                     counters,
                     mana_pool,
                     commander_damage,
-                    has_city_blessing: self.game.has_citys_blessing(player.id),
+                    has_city_blessing: self.manabrew_game().has_citys_blessing(player.id),
                     ring_level: player.ring_temptations as i32,
                     speed: player.speed.unwrap_or(0) as i32,
                 }
@@ -1258,24 +1569,77 @@ impl WasmGame {
     }
 
     fn manabrew_stack(&self) -> Vec<StackObjectDto> {
-        self.game
+        self.manabrew_game()
             .stack
             .iter()
             .enumerate()
             .filter_map(|(index, entry)| {
-                let object = self.game.object(entry.object_id)?;
-                let chars = self.game.current_characteristics(entry.object_id)?;
+                let live = self
+                    .manabrew_game()
+                    .object(entry.object_id)
+                    .zip(self.manabrew_game().current_characteristics(entry.object_id));
+                let Some((object, chars)) = live else {
+                    // CR 113.7a: an ability on the stack exists independently
+                    // of its source. Once the source has left its zone, show
+                    // the ability from what the stack entry remembers of it.
+                    if !entry.is_ability {
+                        return None;
+                    }
+                    let name = entry
+                        .source_name
+                        .clone()
+                        .or_else(|| {
+                            entry
+                                .source_snapshot
+                                .as_ref()
+                                .map(|snapshot| snapshot.name.to_string())
+                        })
+                        .unwrap_or_else(|| "Ability".to_string());
+                    let source_id = entry
+                        .source_stable_id
+                        .map(|stable| format!("card-{}", stable.0.0))
+                        .unwrap_or_else(|| format!("card-object-{}", entry.object_id.0));
+                    return Some(StackObjectDto {
+                        id: format!(
+                            "stack-ability-{}",
+                            entry.ability_id.unwrap_or(entry.object_id).0
+                        ),
+                        source_id,
+                        controller_id: player_id(entry.controller),
+                        owner_id: player_id(entry.controller),
+                        identity: Some(CardIdentity {
+                            name,
+                            ..CardIdentity::default()
+                        }),
+                        targets: entry
+                            .targets
+                            .iter()
+                            .copied()
+                            .map(|target| protocol_target(self.manabrew_game(), target))
+                            .collect(),
+                        ..StackObjectDto::default()
+                    });
+                };
                 Some(StackObjectDto {
                     id: format!("stack-{}-{index}", object.stable_id.0.0),
-                    source_id: object_id(&self.game, entry.object_id),
+                    source_id: object_id(self.manabrew_game(), entry.object_id),
                     controller_id: player_id(entry.controller),
-                    identity: CardIdentity {
+                    owner_id: player_id(object.owner),
+                    identity: Some(CardIdentity {
                         name: chars.name.to_owned_string(),
                         set_code: String::new(),
                         card_number: String::new(),
                         is_token: object.kind == ironsmith::object::ObjectKind::Token,
-                    },
+                        token_script: None,
+                    }),
                     text: chars.compiled_card_text.to_string(),
+                    source_ability_text: None,
+                    // An ability's stack object is not a card; give the client
+                    // the permanent or card it came from to render.
+                    source_card: entry
+                        .is_ability
+                        .then(|| protocol_card(self.manabrew_game(), entry.object_id))
+                        .flatten(),
                     is_permanent_spell: !entry.is_ability
                         && !chars.card_types.contains(&CardType::Instant)
                         && !chars.card_types.contains(&CardType::Sorcery),
@@ -1288,7 +1652,7 @@ impl WasmGame {
                         .targets
                         .iter()
                         .copied()
-                        .map(|target| protocol_target(&self.game, target))
+                        .map(|target| protocol_target(self.manabrew_game(), target))
                         .collect(),
                 })
             })
@@ -1297,15 +1661,15 @@ impl WasmGame {
 
     fn manabrew_state(&self, viewer: Option<PlayerId>) -> StateUpdate {
         let combat_assignments = self
-            .game
+            .manabrew_game()
             .combat
             .as_ref()
             .into_iter()
             .flat_map(|combat| {
                 combat.blockers.iter().flat_map(|(attacker, blockers)| {
                     blockers.iter().map(|blocker| CombatAssignmentDto {
-                        blocker_id: object_id(&self.game, *blocker),
-                        attacker_id: object_id(&self.game, *attacker),
+                        blocker_id: object_id(self.manabrew_game(), *blocker),
+                        attacker_id: object_id(self.manabrew_game(), *attacker),
                     })
                 })
             })
@@ -1317,36 +1681,43 @@ impl WasmGame {
         StateUpdate {
             game_view: GameViewDto {
                 game_id: self.manabrew_game_id.clone(),
-                turn: self.game.turn.turn_number,
-                step: protocol_step(&self.game),
+                turn: self.manabrew_game().turn.turn_number,
+                step: protocol_step(self.manabrew_game()),
                 combat_assignments,
-                active_player_id: player_id(self.game.turn.active_player),
+                active_player_id: player_id(self.manabrew_game().turn.active_player),
                 priority_player_id: player_id(
-                    self.game
+                    self.manabrew_game()
                         .turn
                         .priority_player
-                        .unwrap_or(self.game.turn.active_player),
+                        .unwrap_or(self.manabrew_game().turn.active_player),
                 ),
                 players: self.manabrew_players(),
                 zones: self.manabrew_zones(viewer),
                 stack: self.manabrew_stack(),
                 game_over: self.game_over.is_some(),
                 winner_id,
-                monarch_id: self.game.monarch.map(player_id),
-                initiative_holder_id: self.game.initiative.map(player_id),
-                day_time: if !self.game.has_day_night {
+                monarch_id: self.manabrew_game().monarch.map(player_id),
+                initiative_holder_id: self.manabrew_game().initiative.map(player_id),
+                day_time: if !self.manabrew_game().has_day_night {
                     DayTime::Neither
-                } else if self.game.is_night {
+                } else if self.manabrew_game().is_night {
                     DayTime::Night
                 } else {
                     DayTime::Day
                 },
+                active_plane_names: None,
+                // Ironsmith keeps no Manabrew checkpoints or decision journal;
+                // the restore, recording and repeat directives are rejected.
+                checkpoints: Vec::new(),
+                restore_vote: None,
+                snapshot_recording: false,
+                decision_history: None,
             },
         }
     }
 
     fn manabrew_source_card_id(&self, context: &DecisionContext) -> Option<String> {
-        context.source().map(|source| object_id(&self.game, source))
+        context.source().map(|source| object_id(self.manabrew_game(), source))
     }
 
     fn manabrew_action_card(&self, action: &LegalAction) -> Option<ObjectId> {
@@ -1396,9 +1767,12 @@ impl WasmGame {
         index: usize,
         action: &LegalAction,
     ) -> Option<AvailableAction> {
-        use ironsmith::alternative_cast::CastingMethod;
-
         let id = format!("action-{index}");
+        // The engine's own wording ("Cast X with flashback", "Activate X: ...").
+        let described = Some(describe_action_with_face_up_cost(self.manabrew_game(), action, None))
+            // An unnamed printed alternative cost carries an internal name.
+            .map(|label| label.replace("(parsed alternative cost)", "(alternative cost)"))
+            .filter(|label| !label.trim().is_empty());
         match action {
             LegalAction::PassPriority
             | LegalAction::KeepOpeningHand
@@ -1408,17 +1782,19 @@ impl WasmGame {
             LegalAction::CastExiledCardFaceDown { card_id, .. } => Some(AvailableAction {
                 id,
                 kind: AvailableActionKind::Cast {
-                    card_id: object_id(&self.game, *card_id),
+                    card_id: object_id(self.manabrew_game(), *card_id),
                     mode: PlayCardMode::StaticAlternative,
                     label: "Cast exiled card face down".into(),
+                    face_index: None,
                 },
             }),
             LegalAction::OpenExiledCardForPlay { card_id, .. } => Some(AvailableAction {
                 id,
                 kind: AvailableActionKind::Cast {
-                    card_id: object_id(&self.game, *card_id),
+                    card_id: object_id(self.manabrew_game(), *card_id),
                     mode: PlayCardMode::StaticAlternative,
                     label: "Play exiled card".into(),
+                    face_index: None,
                 },
             }),
             LegalAction::CastSpell {
@@ -1428,48 +1804,48 @@ impl WasmGame {
             } => Some(AvailableAction {
                 id,
                 kind: AvailableActionKind::Cast {
-                    card_id: object_id(&self.game, *spell_id),
-                    mode: match casting_method {
-                        CastingMethod::Normal => PlayCardMode::Normal,
-                        CastingMethod::FaceDown => PlayCardMode::StaticAlternative,
-                        CastingMethod::SplitOtherHalf => PlayCardMode::RoomRightSplit,
-                        _ => PlayCardMode::StaticAlternative,
-                    },
-                    label: format!(
-                        "Cast {}",
-                        self.game.current_name(*spell_id).unwrap_or_default()
-                    ),
+                    card_id: object_id(self.manabrew_game(), *spell_id),
+                    mode: protocol_play_card_mode(self.manabrew_game(), *spell_id, casting_method),
+                    label: described.unwrap_or_else(|| {
+                        format!(
+                            "Cast {}",
+                            self.manabrew_game().current_name(*spell_id).unwrap_or_default()
+                        )
+                    }),
+                    face_index: None,
                 },
             }),
             LegalAction::PlayLand { land_id } => Some(AvailableAction {
                 id,
                 kind: AvailableActionKind::Cast {
-                    card_id: object_id(&self.game, *land_id),
+                    card_id: object_id(self.manabrew_game(), *land_id),
                     mode: PlayCardMode::Normal,
                     label: format!(
                         "Play {}",
-                        self.game.current_name(*land_id).unwrap_or_default()
+                        self.manabrew_game().current_name(*land_id).unwrap_or_default()
                     ),
+                    face_index: None,
                 },
             }),
             // CR 712.12: the back face of a land//land modal DFC.
             LegalAction::PlayLandBackFace { land_id } => Some(AvailableAction {
                 id,
                 kind: AvailableActionKind::Cast {
-                    card_id: object_id(&self.game, *land_id),
+                    card_id: object_id(self.manabrew_game(), *land_id),
                     mode: PlayCardMode::Normal,
                     label: format!(
                         "Play {}",
-                        self.game
+                        self.manabrew_game()
                             .object(*land_id)
                             .and_then(|object| {
                                 ironsmith::decision::linked_back_face_land_definition(
-                                    &self.game, object,
+                                    self.manabrew_game(), object,
                                 )
                             })
                             .map(|def| def.card.name)
                             .unwrap_or_default()
                     ),
+                    face_index: None,
                 },
             }),
             LegalAction::ActivateAbility {
@@ -1482,22 +1858,56 @@ impl WasmGame {
             } => Some(AvailableAction {
                 id,
                 kind: AvailableActionKind::ActivateAbility(ActivatableAbilityInfo {
-                    card_id: object_id(&self.game, *source),
+                    card_id: object_id(self.manabrew_game(), *source),
                     ability_index: *ability_index,
-                    description: format!("Activate ability {}", ability_index + 1),
+                    // The client shows this on the source card, so the engine's
+                    // "Activate <name>: " lead-in is redundant there.
+                    description: described
+                        .map(|label| {
+                            let lead_in = format!(
+                                "Activate {}: ",
+                                self.manabrew_game().current_name(*source).unwrap_or_default()
+                            );
+                            label
+                                .strip_prefix(&lead_in)
+                                .map(str::to_string)
+                                .unwrap_or(label)
+                        })
+                        .unwrap_or_else(|| format!("Activate ability {}", ability_index + 1)),
                     is_mana_ability: matches!(action, LegalAction::ActivateManaAbility { .. }),
+                    level_up: None,
                     cost: None,
                     produced_mana: None,
                 }),
+            }),
+            LegalAction::SpecialAction(
+                ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id, door },
+            ) => Some(AvailableAction {
+                id,
+                kind: AvailableActionKind::Cast {
+                    card_id: object_id(self.manabrew_game(), *room_id),
+                    // CR 709.5: the printed left half is the front face. The
+                    // engine names doors relative to the permanent's current
+                    // half, which is the right one once it has been swapped.
+                    mode: PlayCardMode::UnlockDoor {
+                        door: match door {
+                            ironsmith::special_actions::RoomDoor::Linked => RoomDoor::Right,
+                            ironsmith::special_actions::RoomDoor::Current => RoomDoor::Left,
+                        },
+                    },
+                    label: described.unwrap_or_else(|| "Unlock door".to_string()),
+                    face_index: None,
+                },
             }),
             _ => self
                 .manabrew_action_card(action)
                 .map(|card| AvailableAction {
                     id,
                     kind: AvailableActionKind::Cast {
-                        card_id: object_id(&self.game, card),
+                        card_id: object_id(self.manabrew_game(), card),
                         mode: PlayCardMode::StaticAlternative,
-                        label: format!("{action:?}"),
+                        label: described.unwrap_or_else(|| "Special action".to_string()),
+                        face_index: None,
                     },
                 }),
         }
@@ -1718,8 +2128,11 @@ impl WasmGame {
                 payment_actions.push(PaymentAction { id, kind });
             };
 
+        // Each probe is one planner run; a very wide board keeps its tail unprobed.
+        const MAX_ACTIVATION_PROBES: usize = 24;
+        let mut activation_probes = 0usize;
         let activation_inventory = ironsmith::mana_payment::mana_payment_activation_inventory_checked(
-            &self.game,
+            self.manabrew_game(),
             &context.request,
         )?;
         for option in &activation_inventory {
@@ -1765,9 +2178,9 @@ impl WasmGame {
                 continue;
             }
 
-            let card_id = object_id(&self.game, option.source);
+            let card_id = object_id(self.manabrew_game(), option.source);
             let source_name = self
-                .game
+                .manabrew_game()
                 .object(option.source)
                 .map(|object| object.name.to_string())
                 .unwrap_or_else(|| format!("Mana source #{}", option.source.0));
@@ -1793,6 +2206,23 @@ impl WasmGame {
                         color_restriction: option.color_restriction.clone(),
                     },
                 );
+                // Selecting an activation requires the plan to use it. One that
+                // leaves the cost unpayable (the blue ability of a dual land for
+                // a red cost) is a dead end, and a client that taps a land by
+                // clicking it takes the first action it is offered for that card.
+                if context.plan.payable && activation_probes < MAX_ACTIVATION_PROBES {
+                    activation_probes += 1;
+                    let mut probe = context.request.clone();
+                    probe.preferences = preferences.clone();
+                    probe.preferences.normalize();
+                    match ironsmith::mana_payment::plan_mana_payment(self.manabrew_game(), &probe) {
+                        Ok(plans) if plans.first().is_some_and(|plan| plan.payable) => {}
+                        Err(ironsmith::mana_payment::ManaPaymentFailure::EffectExecutionFailed(
+                            error,
+                        )) => return Err(error),
+                        _ => continue,
+                    }
+                }
                 let produced_mana = manabrew_mana_pool_entries(&option.expected_mana);
                 add_action(
                     PaymentActionKind::ActivateManaAbility(ActivatableAbilityInfo {
@@ -1800,6 +2230,7 @@ impl WasmGame {
                         ability_index: option.ability_index,
                         description: source_name,
                         is_mana_ability: true,
+                        level_up: None,
                         cost: None,
                         produced_mana: (!produced_mana.is_empty()).then_some(produced_mana),
                     }),
@@ -1809,7 +2240,7 @@ impl WasmGame {
         }
 
         for source_option in
-            ironsmith::mana_payment::mana_payment_source_inventory(&self.game, &context.request)
+            ironsmith::mana_payment::mana_payment_source_inventory(self.manabrew_game(), &context.request)
         {
             let source_has_blocking_activation = context
                 .request
@@ -1855,7 +2286,7 @@ impl WasmGame {
                     continue;
                 }
 
-                let card_id = object_id(&self.game, source_option.source);
+                let card_id = object_id(self.manabrew_game(), source_option.source);
                 let mut preferences = context.request.preferences.clone();
                 if let Some(selected) = selected {
                     preferences
@@ -1871,7 +2302,9 @@ impl WasmGame {
                         ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => {
                             PaymentResourceKind::Waterbend
                         }
-                        ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter => { PaymentResourceKind::PutMinusOneCounter }
+                        // Upstream protocol 6 has no resource for this custom-mechanics
+                        // payment; it stays available through automatic payment.
+                        ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter => continue,
                         ironsmith::mana_payment::ManaPaymentSourceKind::Delve => {
                             PaymentResourceKind::Delve
                         }
@@ -1901,7 +2334,9 @@ impl WasmGame {
                         ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => {
                             PaymentResourceKind::Waterbend
                         }
-                        ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter => { PaymentResourceKind::PutMinusOneCounter }
+                        // Upstream protocol 6 has no resource for this custom-mechanics
+                        // payment; it stays available through automatic payment.
+                        ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter => continue,
                         ironsmith::mana_payment::ManaPaymentSourceKind::Delve => {
                             PaymentResourceKind::Delve
                         }
@@ -1916,11 +2351,11 @@ impl WasmGame {
         }
 
         for (pip, amount) in
-            ironsmith::mana_payment::mana_payment_life_options(&self.game, &context.request)
+            ironsmith::mana_payment::mana_payment_life_options(self.manabrew_game(), &context.request)
         {
             let mut life_request = context.request.clone();
             life_request.preferences.required_life_pips.push(pip);
-            let life_plans = match ironsmith::mana_payment::plan_mana_payment(&self.game, &life_request) {
+            let life_plans = match ironsmith::mana_payment::plan_mana_payment(self.manabrew_game(), &life_request) {
                 Ok(plans) => plans,
                 Err(ironsmith::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)) => return Err(error),
                 Err(_) => continue,
@@ -1939,7 +2374,7 @@ impl WasmGame {
         // choices are paid interactively, rather than chosen by a simulation.
         drop(add_action);
         for (source, ability_index) in
-            ironsmith::mana_payment::manual_mana_abilities_checked(&self.game, &context.request)?
+            ironsmith::mana_payment::manual_mana_abilities_checked(self.manabrew_game(), &context.request)?
         {
             if self.manabrew_can_defer_mana_activation(source, ability_index) {
                 continue;
@@ -1956,11 +2391,12 @@ impl WasmGame {
             payment_actions.push(PaymentAction {
                 id,
                 kind: PaymentActionKind::ActivateManaAbility(ActivatableAbilityInfo {
-                    card_id: object_id(&self.game, source),
+                    card_id: object_id(self.manabrew_game(), source),
                     ability_index,
-                    description: current_ability_action_text(&self.game, source, ability_index)
+                    description: current_ability_action_text(self.manabrew_game(), source, ability_index)
                         .unwrap_or_else(|| "Activate mana ability".into()),
                     is_mana_ability: true,
+                    level_up: None,
                     cost: None,
                     produced_mana: None,
                 }),
@@ -1971,10 +2407,10 @@ impl WasmGame {
     }
 
     fn manabrew_can_defer_mana_activation(&self, source: ObjectId, index: usize) -> bool {
-        if ironsmith::game_loop::mana_ability_is_undo_safe(&self.game, source, index) {
+        if ironsmith::game_loop::mana_ability_is_undo_safe(self.manabrew_game(), source, index) {
             return true;
         }
-        self.game
+        self.manabrew_game()
             .current_ability(source, index)
             .is_some_and(|ability| {
                 matches!(&ability.kind, ironsmith::ability::AbilityKind::Activated(a)
@@ -2010,11 +2446,11 @@ impl WasmGame {
         match context {
             DecisionContext::ManaPayment(ctx) => {
                 let source_name = self
-                    .game
+                    .manabrew_game()
                     .object(ctx.source)
                     .map(|object| object.name.to_string())
                     .unwrap_or_else(|| ctx.subject.clone());
-                let source_id = object_id(&self.game, ctx.source);
+                let source_id = object_id(self.manabrew_game(), ctx.source);
                 let (actions, action_commands, can_confirm_manually) =
                     self.manabrew_payment_actions(ctx).map_err(|error| protocol_error(
                         ProtocolErrorCode::InvalidShape, format!("Payment analysis incomplete: {error}"), None))?;
@@ -2041,6 +2477,7 @@ impl WasmGame {
                         request_hash: ctx.plan.request_hash.to_string(),
                         actions: action_commands,
                         can_confirm_manually,
+                        payable: ctx.plan.payable,
                     },
                 ))
             }
@@ -2055,20 +2492,25 @@ impl WasmGame {
                     .position(|action| matches!(action, LegalAction::TakeMulligan));
                 if let (Some(keep_index), Some(mulligan_index)) = (keep_index, mulligan_index) {
                     let hand_card_ids = self
-                        .game
+                        .manabrew_game()
                         .player(ctx.player)
                         .map(|player| {
                             player
                                 .hand
                                 .iter()
-                                .map(|id| object_id(&self.game, *id))
+                                .map(|id| object_id(self.manabrew_game(), *id))
                                 .collect()
                         })
                         .unwrap_or_default();
                     return Ok((
                         PromptInput::Mulligan(MulliganInput {
                             hand_card_ids,
-                            mulligan_count: 0,
+                            mulligan_count: self
+                                .pregame
+                                .as_ref()
+                                .and_then(|pregame| pregame.mulligans_taken.get(&ctx.player))
+                                .copied()
+                                .unwrap_or(0) as _,
                         }),
                         ManabrewPromptBinding::Mulligan {
                             keep_index,
@@ -2136,9 +2578,14 @@ impl WasmGame {
                 Ok((
                     PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
                         presentation: presentation("Choose", Some(ctx.description.clone()), source),
-                        options: selection_options(
-                            legal.iter().map(|option| option.description.clone()),
-                        ),
+                        options: legal
+                            .iter()
+                            .map(|option| SelectionOption {
+                                label: option.description.clone(),
+                                weight: option.point_cost.max(1) as usize,
+                                can_repeat: option.repeatable,
+                            })
+                            .collect(),
                         min_total: ctx.min,
                         max_total: ctx.max,
                     }),
@@ -2192,8 +2639,34 @@ impl WasmGame {
                     .collect();
                 let objects = legal
                     .iter()
-                    .map(|candidate| (object_id(&self.game, candidate.id), candidate.id))
+                    .map(|candidate| (object_id(self.manabrew_game(), candidate.id), candidate.id))
                     .collect();
+                // CR 103.5: the cards a mulligan puts on the bottom have their
+                // own protocol prompt.
+                if matches!(
+                    self.pregame.as_ref().map(|pregame| &pregame.stage),
+                    Some(PregameStage::BottomCards {
+                        pending_order: None,
+                        ..
+                    })
+                ) {
+                    return Ok((
+                        PromptInput::MulliganPutBack(MulliganPutBackInput {
+                            hand_card_ids: legal
+                                .iter()
+                                .map(|candidate| object_id(self.manabrew_game(), candidate.id))
+                                .collect(),
+                            cards: legal
+                                .iter()
+                                .filter_map(|candidate| {
+                                    protocol_card(self.manabrew_game(), candidate.id)
+                                })
+                                .collect(),
+                            count: ctx.min,
+                        }),
+                        ManabrewPromptBinding::Objects { objects },
+                    ));
+                }
                 Ok((
                     PromptInput::ChooseCards(ChooseCardsInput {
                         presentation: presentation(
@@ -2203,7 +2676,7 @@ impl WasmGame {
                         ),
                         cards: legal
                             .iter()
-                            .filter_map(|candidate| protocol_card(&self.game, candidate.id))
+                            .filter_map(|candidate| protocol_card(self.manabrew_game(), candidate.id))
                             .collect(),
                         min: if ctx.allow_partial_completion {
                             0
@@ -2216,12 +2689,42 @@ impl WasmGame {
                 ))
             }
             DecisionContext::Order(ctx) => {
-                let indices = ctx
-                    .items
-                    .iter()
-                    .enumerate()
-                    .map(|(index, (id, _))| (object_id(&self.game, *id), index))
-                    .collect();
+                // Trigger ordering hands out placeholder ids for the pending
+                // abilities and names their sources separately, so an item is
+                // not always a game object. Every item still needs a wire id
+                // and a card: an empty or shortened list can never be answered.
+                let mut indices = HashMap::new();
+                let mut items = Vec::with_capacity(ctx.items.len());
+                for (index, (id, label)) in ctx.items.iter().enumerate() {
+                    let item_source = ctx.item_sources.get(index).copied().flatten();
+                    let real = item_source.is_none() && self.manabrew_game().object(*id).is_some();
+                    let mut item_id = if real {
+                        object_id(self.manabrew_game(), *id)
+                    } else {
+                        format!("order-{index}")
+                    };
+                    if indices.contains_key(&item_id) {
+                        item_id = format!("order-{index}");
+                    }
+                    let card = item_source
+                        .or(real.then_some(*id))
+                        .and_then(|object| protocol_card(self.manabrew_game(), object))
+                        .unwrap_or_else(|| CardDto {
+                            id: item_id.clone(),
+                            identity: CardIdentity {
+                                name: label.clone(),
+                                ..CardIdentity::default()
+                            },
+                            text: label.clone(),
+                            ..CardDto::default()
+                        });
+                    indices.insert(item_id.clone(), index);
+                    items.push(ReorderItem {
+                        id: item_id,
+                        card,
+                        oracle: (!real && !label.trim().is_empty()).then(|| label.clone()),
+                    });
+                }
                 Ok((
                     PromptInput::Reorder(ReorderInput {
                         presentation: presentation(
@@ -2229,17 +2732,7 @@ impl WasmGame {
                             Some(ctx.description.clone()),
                             source,
                         ),
-                        items: ctx
-                            .items
-                            .iter()
-                            .filter_map(|(id, _)| {
-                                protocol_card(&self.game, *id).map(|card| ReorderItem {
-                                    id: object_id(&self.game, *id),
-                                    card,
-                                    oracle: None,
-                                })
-                            })
-                            .collect(),
+                        items,
                     }),
                     ManabrewPromptBinding::Reorder { indices },
                 ))
@@ -2292,7 +2785,7 @@ impl WasmGame {
                         cards: ctx
                             .cards
                             .iter()
-                            .filter_map(|(id, _)| protocol_card(&self.game, *id))
+                            .filter_map(|(id, _)| protocol_card(self.manabrew_game(), *id))
                             .collect(),
                         zones: vec![ScryDestination::LibraryTop, secondary_zone],
                     }),
@@ -2300,7 +2793,7 @@ impl WasmGame {
                         objects: ctx
                             .cards
                             .iter()
-                            .map(|(id, _)| (object_id(&self.game, *id), *id))
+                            .map(|(id, _)| (object_id(self.manabrew_game(), *id), *id))
                             .collect(),
                         secondary_zone_index: 1,
                     },
@@ -2314,7 +2807,7 @@ impl WasmGame {
                     .attacker_options
                     .iter()
                     .map(|option| {
-                        let attacker_id = object_id(&self.game, option.creature);
+                        let attacker_id = object_id(self.manabrew_game(), option.creature);
                         attackers.insert(attacker_id.clone(), option.creature);
                         let valid_target_ids = option
                             .valid_targets
@@ -2323,20 +2816,20 @@ impl WasmGame {
                                 let (id, label, kind) = match target {
                                     AttackTarget::Player(player) => (
                                         player_id(*player),
-                                        self.game
+                                        self.manabrew_game()
                                             .player(*player)
                                             .map(|player| player.name.clone())
                                             .unwrap_or_else(|| player_id(*player)),
                                         AttackTargetKind::Player,
                                     ),
                                     AttackTarget::Planeswalker(object) => (
-                                        object_id(&self.game, *object),
-                                        self.game.current_name(*object).unwrap_or_default(),
+                                        object_id(self.manabrew_game(), *object),
+                                        self.manabrew_game().current_name(*object).unwrap_or_default(),
                                         AttackTargetKind::Planeswalker,
                                     ),
                                     AttackTarget::Battle(object) => (
-                                        object_id(&self.game, *object),
-                                        self.game.current_name(*object).unwrap_or_default(),
+                                        object_id(self.manabrew_game(), *object),
+                                        self.manabrew_game().current_name(*object).unwrap_or_default(),
                                         AttackTargetKind::Battle,
                                     ),
                                     // Never a declarable attack target.
@@ -2373,13 +2866,13 @@ impl WasmGame {
                     .blocker_options
                     .iter()
                     .map(|option| {
-                        let attacker_id = object_id(&self.game, option.attacker);
+                        let attacker_id = object_id(self.manabrew_game(), option.attacker);
                         objects.insert(attacker_id.clone(), option.attacker);
                         let valid_blocker_ids = option
                             .valid_blockers
                             .iter()
                             .map(|(blocker, _)| {
-                                let id = object_id(&self.game, *blocker);
+                                let id = object_id(self.manabrew_game(), *blocker);
                                 objects.insert(id.clone(), *blocker);
                                 if !available.contains(&id) {
                                     available.push(id.clone());
@@ -2392,7 +2885,10 @@ impl WasmGame {
                             valid_blocker_ids,
                             min_blockers: option.min_blockers.min(u32::MAX as usize) as u32,
                             max_blockers: None,
-                            must_be_blocked: option.min_blockers > 0,
+                            // `min_blockers` is how many creatures a block of this
+                            // attacker needs (menace), not a requirement to block it;
+                            // the engine reports no "must be blocked" requirement here.
+                            must_be_blocked: false,
                         }
                     })
                     .collect();
@@ -2421,7 +2917,7 @@ impl WasmGame {
                 let mut candidates = Vec::new();
                 for requirement in &ctx.requirements {
                     for target in &requirement.legal_targets {
-                        let reference = protocol_target(&self.game, *target);
+                        let reference = protocol_target(self.manabrew_game(), *target);
                         let key = format!("{:?}:{}", reference.kind, reference.id);
                         if targets.insert(key, *target).is_none() {
                             candidates.push(reference);
@@ -2441,6 +2937,7 @@ impl WasmGame {
                         min_targets: min_targets.min(i32::MAX as usize) as i32,
                         max_targets: max_targets.min(i32::MAX as usize) as i32,
                         chosen_targets: 0,
+                        cancellable: self.is_cancelable(),
                     }),
                     ManabrewPromptBinding::Targets { targets },
                 ))
@@ -2569,6 +3066,44 @@ impl WasmGame {
                 None,
             )
         })?;
+        // A decision with exactly one possible answer is not put to the player:
+        // an optional choice with no legal option (a kicker the player cannot
+        // pay; the protocol cannot show disabled options), and a combat
+        // declaration with nothing to declare.
+        for _ in 0..16 {
+            let forced = match self.pending_decision.as_ref() {
+                Some(DecisionContext::SelectOptions(ctx))
+                    if ctx.min == 0 && ctx.options.iter().all(|option| !option.legal) =>
+                {
+                    Some(UiCommand::SelectOptions {
+                        option_indices: Vec::new(),
+                    })
+                }
+                Some(DecisionContext::Attackers(ctx)) if ctx.attacker_options.is_empty() => {
+                    Some(UiCommand::DeclareAttackers {
+                        declarations: Vec::new(),
+                        bands: Vec::new(),
+                    })
+                }
+                Some(DecisionContext::Blockers(ctx))
+                    if ctx
+                        .blocker_options
+                        .iter()
+                        .all(|option| option.valid_blockers.is_empty()) =>
+                {
+                    Some(UiCommand::DeclareBlockers {
+                        declarations: Vec::new(),
+                    })
+                }
+                _ => None,
+            };
+            let Some(command) = forced else {
+                break;
+            };
+            if self.dispatch_typed_command(command, 0.0).is_err() {
+                break;
+            }
+        }
         let Some(context) = self.pending_decision.clone() else {
             self.manabrew_open_prompt = None;
             return Ok(None);
@@ -2582,6 +3117,7 @@ impl WasmGame {
                 prompt_id: open.prompt_id,
                 deciding_player_id: player_id(open.deciding_player),
                 source_card: open.source_card.clone(),
+                source_ability_text: None,
                 input: open.input.clone(),
             }));
         }
@@ -2601,7 +3137,7 @@ impl WasmGame {
             source_card_id: self.manabrew_source_card_id(&context),
             source_card: context
                 .source()
-                .and_then(|source| protocol_card(&self.game, source)),
+                .and_then(|source| protocol_card(self.manabrew_game(), source)),
             input,
             binding,
         };
@@ -2609,6 +3145,7 @@ impl WasmGame {
             prompt_id: open.prompt_id,
             deciding_player_id: player_id(open.deciding_player),
             source_card: open.source_card.clone(),
+            source_ability_text: None,
             input: open.input.clone(),
         };
         self.manabrew_open_prompt = Some(open);
@@ -2626,7 +3163,7 @@ impl WasmGame {
             }),
             Err(prompt_error) => {
                 return ManabrewViewResult {
-                    protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
+                    protocol_version: manabrew_protocol_major(),
                     state: self.manabrew_state(viewer),
                     prompt: None,
                     error: error.or(Some(prompt_error)),
@@ -2634,7 +3171,7 @@ impl WasmGame {
             }
         };
         ManabrewViewResult {
-            protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
+            protocol_version: manabrew_protocol_major(),
             state: self.manabrew_state(viewer),
             prompt,
             error,
@@ -2691,6 +3228,11 @@ impl WasmGame {
                 ResponseViolation::UnknownActionId(action) => protocol_error(
                     ProtocolErrorCode::UnknownActionId,
                     format!("unknown action id {action}"),
+                    Some(prompt_id),
+                ),
+                ResponseViolation::CancelNotAllowed => protocol_error(
+                    ProtocolErrorCode::CancelNotAllowed,
+                    "this prompt cannot be cancelled",
                     Some(prompt_id),
                 ),
             })?;
@@ -2800,13 +3342,74 @@ impl WasmGame {
     }
 
     fn manabrew_opaque_exile_identity(&self, card: ObjectId) -> Option<(u8, u16, String)> {
-        self.game.hidden_card_info(card).map(|info| {
+        self.manabrew_game().hidden_card_info(card).map(|info| {
             let (slot, commitment) = match (info.public_slot, info.public_commitment.as_ref()) {
                 (Some(slot), Some(commitment)) => (slot, commitment.clone()),
                 _ => (info.slot, info.commitment.clone()),
             };
             (info.owner.0, slot, commitment)
         })
+    }
+
+    /// A protocol pass. `exhaust_stack` and `until` grant the engine's own
+    /// priority yield, which keeps passing for this seat until the stack
+    /// empties or the named step arrives, and always stops for a required
+    /// choice, a new stack object, or the end of the turn.
+    fn manabrew_pass_command(
+        &self,
+        until: Option<&manabrew_protocol::prompts::choose_action::PassUntil>,
+        exhaust_stack: bool,
+    ) -> UiCommand {
+        // A plain pass is sent by reference so that it continues a yield
+        // another seat has already granted.
+        let plain = UiCommand::PriorityAction {
+            action_index: None,
+            action_ref: Some(PriorityActionRef::PassPriority),
+        };
+        if !self.manabrew_game().stack.is_empty() {
+            return if exhaust_stack {
+                UiCommand::PriorityYield {
+                    mode: PassMode::Stack,
+                    stops: Vec::new(),
+                }
+            } else {
+                plain
+            };
+        }
+        let Some(until) = until else {
+            return plain;
+        };
+        let stops = if until.player_id == player_id(self.manabrew_game().turn.active_player) {
+            let stop = match until.phase {
+                StepKind::Untap => "step:Untap",
+                StepKind::Upkeep => "step:Upkeep",
+                StepKind::Draw => "step:Draw",
+                StepKind::Main1 => "phase:Main",
+                StepKind::CombatBegin => "step:BeginCombat",
+                StepKind::CombatDeclareAttackers => "step:DeclareAttackers",
+                StepKind::CombatDeclareBlockers => "step:DeclareBlockers",
+                StepKind::CombatFirstStrikeDamage => "step:FirstStrikeDamage",
+                StepKind::CombatDamage => "step:CombatDamage",
+                StepKind::CombatEnd => "step:EndCombat",
+                StepKind::Main2 => "phase:Main2",
+                StepKind::EndOfTurn => "step:End",
+                StepKind::Cleanup => "step:Cleanup",
+            };
+            vec![stop.to_string()]
+        } else if until.through_combat {
+            // The destination is in a later turn: yield for the rest of this
+            // one. With no stops the engine also declares no attackers.
+            Vec::new()
+        } else {
+            // As above, but still ask this seat about its own attack. No
+            // player receives priority in the cleanup step, so this stop only
+            // keeps the attack declaration a required choice.
+            vec!["step:Cleanup".to_string()]
+        };
+        UiCommand::PriorityYield {
+            mode: PassMode::Phases,
+            stops,
+        }
     }
 
     fn manabrew_response_action(
@@ -2831,13 +3434,28 @@ impl WasmGame {
                 PromptOutput::ChooseAction(output),
             ) => {
                 let index = match output {
-                    ChooseActionOutput::Pass { .. } => *pass_index,
+                    ChooseActionOutput::Pass {
+                        until,
+                        exhaust_stack,
+                    } => {
+                        let passes_priority = matches!(
+                            self.pending_decision.as_ref(),
+                            Some(DecisionContext::Priority(priority))
+                                if matches!(
+                                    priority.actions.get(*pass_index),
+                                    Some(LegalAction::PassPriority)
+                                )
+                        );
+                        if passes_priority {
+                            return Ok(ManabrewResponseAction::Dispatch(
+                                self.manabrew_pass_command(until.as_ref(), exhaust_stack),
+                            ));
+                        }
+                        *pass_index
+                    }
                     ChooseActionOutput::Act { action_id } => *actions
                         .get(&action_id)
                         .ok_or_else(|| invalid(format!("unknown action id {action_id}")))?,
-                    ChooseActionOutput::RestoreSnapshot { .. } => {
-                        return Err(invalid("snapshot restoration is not supported".to_string()));
-                    }
                 };
                 if let Some(captured) = opaque_exile.get(&index) {
                     let Some(context @ DecisionContext::Priority(priority)) = self.pending_decision.as_ref() else {
@@ -2852,7 +3470,7 @@ impl WasmGame {
                         _ => return Err(invalid("opaque exile prompt lost its captured reference".into())),
                     };
                     if self.manabrew_opaque_exile_identity(card) != captured.hidden_identity
-                        || resolve_priority_action(&self.game, priority, None, Some(&captured.action_ref))
+                        || resolve_priority_action(self.manabrew_game(), priority, None, Some(&captured.action_ref))
                             .map_err(|error| invalid(error.to_string()))?.is_none() {
                         return Err(invalid("opaque exile prompt lost its exact paired origin".into()));
                     }
@@ -3007,6 +3625,9 @@ impl WasmGame {
                 ManabrewPromptBinding::Objects { objects },
                 PromptOutput::ChooseCards(ChooseCardsOutput::ChooseCardsDecision {
                     chosen_card_ids,
+                })
+                | PromptOutput::MulliganPutBack(MulliganPutBackOutput::MulliganPutBackDecision {
+                    card_ids: chosen_card_ids,
                 }),
             ) => {
                 let object_ids = chosen_card_ids
@@ -3023,6 +3644,14 @@ impl WasmGame {
                     object_stable_ids: Vec::new(),
                     object_hidden_refs: Vec::new(),
                 }))
+            }
+            (
+                ManabrewPromptBinding::Targets { .. },
+                PromptOutput::ChooseBoardTargets(ChooseBoardTargetsOutput::Cancel),
+            ) => {
+                // `validate_response` admits Cancel only for a prompt issued as
+                // cancellable; the engine re-checks at dispatch.
+                Ok(ManabrewResponseAction::Cancel)
             }
             (
                 ManabrewPromptBinding::Targets { targets },
@@ -3190,9 +3819,14 @@ impl WasmGame {
                     request_hash,
                     actions,
                     can_confirm_manually,
+                    payable,
                 },
                 PromptOutput::PayManaCost(output),
             ) => match output {
+                PayManaCostOutput::Pay { .. } if !*payable => Err(invalid(
+                    "this cost cannot be paid with the current payment choices; cancel, or undo and choose differently"
+                        .to_string(),
+                )),
                 PayManaCostOutput::Pay { auto } => {
                     if auto || *can_confirm_manually {
                         Ok(ManabrewResponseAction::Dispatch(UiCommand::ManaPayment {
@@ -3230,10 +3864,29 @@ impl WasmGame {
     }
 }
 
+/// Printed loyalty for a planeswalker face the adapter knows, by name.
+#[wasm_bindgen(js_name = manabrewPrintedLoyalty)]
+pub fn manabrew_printed_loyalty(name: &str) -> Option<String> {
+    manabrew_printed_stat(name, ManabrewPrintedStat::Loyalty).map(str::to_string)
+}
+
+/// Printed defense for a battle face the adapter knows, by name.
+#[wasm_bindgen(js_name = manabrewPrintedDefense)]
+pub fn manabrew_printed_defense(name: &str) -> Option<String> {
+    manabrew_printed_stat(name, ManabrewPrintedStat::Defense).map(str::to_string)
+}
+
 #[wasm_bindgen]
 impl WasmGame {
     #[wasm_bindgen(js_name = manabrewProtocolVersion)]
-    pub fn manabrew_protocol_version(&self) -> u32 { manabrew_protocol::protocol::PROTOCOL_VERSION }
+    pub fn manabrew_protocol_version(&self) -> u32 { manabrew_protocol_major() }
+
+    /// The exact `manabrew-protocol` crate version (also the `@manabrew/protocol`
+    /// npm version) whose DTO shapes this adapter implements.
+    #[wasm_bindgen(js_name = manabrewProtocolCrateVersion)]
+    pub fn manabrew_protocol_crate_version(&self) -> String {
+        manabrew_protocol::VERSION.to_string()
+    }
 
     #[wasm_bindgen(js_name = registerManabrewDeckSources)]
     pub fn register_manabrew_deck_sources(&mut self, decks: JsValue) -> Result<JsValue, JsValue> {
@@ -3252,7 +3905,12 @@ impl WasmGame {
         validate_manabrew_protocol_version(input.protocol_version)
             .map_err(|error| JsValue::from_str(&error))?;
         self.register_manabrew_deck_sources_input(&input.decks);
-        let validation = self.validate_match_setup_input(&manabrew_match_setup(&input))?;
+        let mut validation = self.validate_match_setup_input(&manabrew_match_setup(&input))?;
+        let missing = Self::manabrew_printed_stat_issues(&input);
+        if !missing.is_empty() {
+            validation.valid = false;
+            validation.issues.extend(missing);
+        }
         manabrew_to_js(&validation, "Manabrew match validation")
     }
 
@@ -3264,6 +3922,10 @@ impl WasmGame {
             })?;
         validate_manabrew_protocol_version(input.protocol_version)
             .map_err(|error| JsValue::from_str(&error))?;
+        // Such a permanent would be put into the graveyard as it enters.
+        if let Some(issue) = Self::manabrew_printed_stat_issues(&input).first() {
+            return Err(JsValue::from_str(&issue.error));
+        }
         self.register_manabrew_deck_sources_input(&input.decks);
         let setup = manabrew_match_setup(&input);
         let seed = setup.seed;
@@ -3294,7 +3956,7 @@ impl WasmGame {
                 Err(error) => {
                     return manabrew_to_js(
                         &ManabrewViewResult {
-                            protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
+                            protocol_version: manabrew_protocol_major(),
                             state: self.manabrew_state(None),
                             prompt: None,
                             error: Some(error),
@@ -3366,6 +4028,7 @@ impl WasmGame {
                 let command = manabrew_to_js(&command, "Ironsmith command")?;
                 self.dispatch(command)
             }
+            ManabrewResponseAction::Cancel => self.cancel_decision(),
             ManabrewResponseAction::Continue { input, binding } => {
                 let next_prompt_id = self.manabrew_next_prompt_id;
                 let Some(after_next_prompt_id) = next_prompt_id.checked_add(1) else {
@@ -3454,6 +4117,27 @@ impl WasmGame {
                     return manabrew_to_js(&result, "Manabrew directive result");
                 }
             }
+            // Checkpoint restore, snapshot recording and action repeat belong
+            // to engines that journal decisions. Ironsmith publishes no
+            // checkpoints (`GameViewDto::checkpoints` stays empty), so these
+            // are refused without disturbing the open prompt.
+            DirectiveInput::RequestRestore { .. }
+            | DirectiveInput::RestoreVote { .. }
+            | DirectiveInput::SetSnapshotRecording { .. }
+            | DirectiveInput::StartRecording
+            | DirectiveInput::StopRecording
+            | DirectiveInput::RequestRepeat { .. }
+            | DirectiveInput::RepeatVote { .. } => {
+                let result = self.manabrew_result(
+                    Some(player_id),
+                    Some(protocol_error(
+                        ProtocolErrorCode::InvalidShape,
+                        "the Ironsmith runtime does not support this directive",
+                        None,
+                    )),
+                );
+                return manabrew_to_js(&result, "Manabrew directive result");
+            }
         }
         self.manabrew_open_prompt = None;
         let result = self.manabrew_result(Some(player_id), None);
@@ -3481,7 +4165,7 @@ mod manabrew_tests {
     #[test]
     fn manabrew_brawl_import_uses_distinct_format_and_rules_life() {
         let two_player = ManabrewMatchConfigInput {
-            protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
+            protocol_version: Some(manabrew_protocol_major()),
             player_names: vec!["Alice".to_string(), "Bob".to_string()],
             starting_life: 40,
             seed: Some(7),
@@ -4356,7 +5040,7 @@ mod unsigned_number_transport_contract_tests {
         let game=WasmGame::new();let (mut input,mut binding)=game.build_manabrew_prompt(&context(min,max)).unwrap();let mut remaining=chosen;let mut prompts=0;
         loop {prompts+=1;assert!(prompts<=3,"bounded unsigned choice must terminate");let PromptInput::ChooseNumber(number)=&input else{panic!("number prompt required")};let chunk=remaining.min(i32::MAX as u32);assert!(chunk>=number.min as u32);assert!(chunk<=number.max as u32);remaining-=chunk;
             let open=ManabrewOpenPrompt{prompt_id:prompts,deciding_player:PlayerId::from_index(0),decision_hash:1,source_card_id:None,source_card:None,input,binding};let action=game.manabrew_response_action(&open,PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision{chosen_number:Some(chunk as i32)})).unwrap();
-            match action {ManabrewResponseAction::Continue{input:next,binding:next_binding}=>{input=next;binding=next_binding;},ManabrewResponseAction::Dispatch(command)=>{assert_eq!(remaining,0,"unsigned residual cannot be discarded");let wire=serde_json::to_value(command).unwrap();assert_eq!(wire,serde_json::json!({"type":"number_choice","value":chosen}));let decoded:UiCommand=serde_json::from_value(wire).unwrap();let mut backend=WasmGame::new();let replay=backend.command_to_replay_answer(&context(min,max),decoded).unwrap();assert!(matches!(replay,ReplayDecisionAnswer::Number(value) if value==chosen));break;}}
+            match action {ManabrewResponseAction::Continue{input:next,binding:next_binding}=>{input=next;binding=next_binding;},ManabrewResponseAction::Dispatch(command)=>{assert_eq!(remaining,0,"unsigned residual cannot be discarded");let wire=serde_json::to_value(command).unwrap();assert_eq!(wire,serde_json::json!({"type":"number_choice","value":chosen}));let decoded:UiCommand=serde_json::from_value(wire).unwrap();let mut backend=WasmGame::new();let replay=backend.command_to_replay_answer(&context(min,max),decoded).unwrap();assert!(matches!(replay,ReplayDecisionAnswer::Number(value) if value==chosen));break;},ManabrewResponseAction::Cancel=>panic!("a number prompt is never cancelled")}
         }
     }
     #[test] fn bounded_number_control(){let _g=crate::test_id_counter_guard();exercise(2,9,7);}

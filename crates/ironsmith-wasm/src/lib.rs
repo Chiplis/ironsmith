@@ -260,6 +260,8 @@ enum ManabrewPromptBinding {
         request_hash: String,
         actions: HashMap<String, ManaPaymentCommand>,
         can_confirm_manually: bool,
+        /// Whether the engine found any way to pay under the current choices.
+        payable: bool,
     },
 }
 

@@ -512,7 +512,7 @@ fn blind_exile_manabrew_response_dispatches_the_captured_ref_and_rejects_stale_p
         let (mut wasm, _, card) = blind_exile_fixture(CardType::Sorcery, 100, false);
         let context = wasm.pending_decision.clone().unwrap();
         let (input, binding) = wasm.build_manabrew_prompt(&context).unwrap();
-        assert_eq!(manabrew_protocol::protocol::PROTOCOL_VERSION, 3);
+        assert_eq!(manabrew_protocol_major(), 6);
         let wire_input = serde_json::to_value(&input).unwrap();
         assert!(!wire_input.to_string().contains("action_ref"));
         assert!(!wire_input.to_string().contains("incarnation"));
