@@ -389,6 +389,10 @@ impl WasmGame {
                     loaded += 1;
                 }
                 self.registry.register(definition.clone());
+            } else {
+                // Still part of its card in every game this session starts,
+                // not only the one that was current at registration.
+                self.registry.register_linked_face_only(definition.clone());
             }
             self.game.register_linked_face_definition(&definition);
         }

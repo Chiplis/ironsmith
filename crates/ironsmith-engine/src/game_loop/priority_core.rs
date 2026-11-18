@@ -277,6 +277,113 @@ pub fn priority_analysis_bounded() -> bool {
     BOUND_PRIORITY_ANALYSIS.with(|value| value.get())
 }
 
+thread_local! {
+    static BOUNDED_PROOF_BUDGET: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Payment-search units a bounded menu may spend proving its offers.
+///
+/// Zero (the default) is the plain bound: no search at all. With a budget,
+/// every source the bound offers gets that many units of the resumable payment
+/// search the browser's deferred menu runs, and keeps an unproven offer only
+/// when its search does not finish. An interface then offers unaffordable
+/// casts only where proving them is the expensive case. Has no effect unless
+/// bounded menus are on.
+pub fn set_priority_analysis_bounded_proof_budget(units: usize) {
+    BOUNDED_PROOF_BUDGET.with(|value| value.set(units));
+}
+
+pub fn priority_analysis_bounded_proof_budget() -> usize {
+    BOUNDED_PROOF_BUDGET.with(|value| value.get())
+}
+
+/// Whether announcing `action` shows other players a card they could not see:
+/// an ability activated from hand (cycling), a face-down permanent turned up,
+/// a card opened from blind exile.
+fn announcement_reveals_hidden_information(game: &GameState, action: &LegalAction) -> bool {
+    match action {
+        LegalAction::ActivateAbility { source, .. }
+        | LegalAction::ActivateManaAbility { source, .. } => game
+            .object(*source)
+            .is_some_and(|object| object.zone == Zone::Hand),
+        LegalAction::TurnFaceUp { .. }
+        | LegalAction::OpenExiledCardForPlay { .. }
+        | LegalAction::SpecialAction(crate::special_actions::SpecialAction::TurnFaceUp {
+            ..
+        }) => true,
+        _ => false,
+    }
+}
+
+/// The bounded menu with its offers proven where that is cheap.
+///
+/// The bound gives every action that is not certainly unaffordable. Each
+/// source among them that asks for a payment then gets its own resumable
+/// search, as a candidate does in the browser's deferred menu, limited to
+/// `budget` units. A source whose search finishes keeps exactly the actions it
+/// proved. One whose search does not finish keeps its unproven offers: their
+/// payment prompt opens unfunded and can be cancelled. The exception is an
+/// offer that reveals hidden information as it is announced, which cannot be
+/// taken back and so is made only with its proof.
+fn proven_bounded_menu(
+    game: &GameState,
+    player: PlayerId,
+    budget: usize,
+) -> Result<Vec<LegalAction>, GameLoopError> {
+    use crate::decision::legal_action_source;
+    let mut actions = crate::decision::with_bounded_payment_recheck(true, || {
+        compute_legal_actions(game, player)
+    })?;
+    // Nothing to prove for an action that asks for no mana.
+    let needs_proof = |action: &LegalAction| match action {
+        LegalAction::PassPriority
+        | LegalAction::PlayLand { .. }
+        | LegalAction::PlayLandBackFace { .. } => false,
+        LegalAction::ActivateManaAbility {
+            source,
+            ability_index,
+        } => game
+            .current_ability(*source, *ability_index)
+            .is_none_or(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => activated.mana_cost.mana_cost().is_some(),
+                _ => true,
+            }),
+        _ => true,
+    };
+    let mut sources = Vec::new();
+    for action in actions.iter().filter(|action| needs_proof(action)) {
+        let source = legal_action_source(action);
+        if !sources.contains(&source) {
+            sources.push(source);
+        }
+    }
+    let mut proven = Vec::new();
+    let mut settled = Vec::new();
+    for source in sources {
+        let mut session = crate::decision::ManaAnalysisSession::menu_bound();
+        let (found, complete) = session.run_for_game(game, budget, || match source {
+            Some(source) => crate::decision::compute_actions_for_source(game, player, Some(source)),
+            None => crate::decision::compute_global_actions(game, player),
+        });
+        // A search that failed to calculate proved nothing about its source.
+        let Ok(found) = found else { continue };
+        if session.failure().is_some() {
+            continue;
+        }
+        proven.extend(found);
+        if complete {
+            settled.push(source);
+        }
+    }
+    actions.retain(|action| {
+        !needs_proof(action)
+            || proven.contains(action)
+            || (!settled.contains(&legal_action_source(action))
+                && !announcement_reveals_hidden_information(game, action))
+    });
+    Ok(actions)
+}
+
 /// Legal actions under this thread's menu policy.
 fn priority_menu_actions(
     game: &GameState,
@@ -284,6 +391,10 @@ fn priority_menu_actions(
 ) -> Result<Vec<LegalAction>, GameLoopError> {
     crate::perf::work(crate::perf::Work::Menu);
     if priority_analysis_bounded() {
+        let proof_budget = priority_analysis_bounded_proof_budget();
+        if proof_budget > 0 {
+            return proven_bounded_menu(game, player, proof_budget);
+        }
         // One menu asks about the same proposed spells and snapshot facts
         // through several payment routes. An analysis session bound to this
         // game keeps those for the length of the computation, as the

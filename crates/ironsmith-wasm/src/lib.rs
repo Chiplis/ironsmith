@@ -5068,7 +5068,7 @@ struct RegistryPreloadStatus {
     done: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ExternalCardSourceFile {
     #[serde(default)]
@@ -5083,14 +5083,14 @@ struct ExternalCardSourceFile {
     group: ExternalCardSourceGroup,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ExternalCardAliasSource {
     alias: String,
     canonical: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
     rename_all = "snake_case",
@@ -5130,7 +5130,7 @@ enum ExternalCardSourceGroup {
 
 /// One ticket row of a sticker sheet. Power/toughness rows carry their values;
 /// ability rows carry a compiler block whose abilities the sticker grants.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StickerRowSource {
     index: usize,
@@ -5144,7 +5144,7 @@ struct StickerRowSource {
     block: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ExternalCardFaceSource {
     name: String,

@@ -553,6 +553,49 @@ fn manabrew_match_setup(input: &ManabrewMatchConfigInput) -> MatchSetupInput {
     }
 }
 
+/// Priority menus for a Manabrew match are bounded for the length of an
+/// adapter call.
+///
+/// The adapter runs the engine synchronously on the host's main thread, and an
+/// exact menu proves a payment for every castable card by simulating mana
+/// abilities on copies of the game: seconds per priority pass on an ordinary
+/// board, and unbounded once sacrifice-for-mana tokens are involved. A bounded
+/// menu spends a fixed budget proving its offers and otherwise leaves out only
+/// what certainly cannot be paid, as Ironsmith's own deferred browser menu
+/// does; the payment prompt that follows stays exact.
+/// The policy is restored on drop, so it never leaks into other uses of the
+/// engine on the same thread.
+struct ManabrewMenuPolicy {
+    bounded: bool,
+    proof_budget: usize,
+}
+
+/// Payment-search units a menu may spend per card proving what it offers: the
+/// cap the browser's deferred menu gives a candidate. A card that needs more
+/// stays offered, and its payment prompt may then open unfunded.
+const MANABREW_MENU_PROOF_BUDGET: usize = 128;
+
+impl ManabrewMenuPolicy {
+    fn enter() -> Self {
+        let previous = Self {
+            bounded: ironsmith::game_loop::priority_analysis_bounded(),
+            proof_budget: ironsmith::game_loop::priority_analysis_bounded_proof_budget(),
+        };
+        ironsmith::game_loop::set_priority_analysis_bounded(true);
+        ironsmith::game_loop::set_priority_analysis_bounded_proof_budget(
+            MANABREW_MENU_PROOF_BUDGET,
+        );
+        previous
+    }
+}
+
+impl Drop for ManabrewMenuPolicy {
+    fn drop(&mut self) {
+        ironsmith::game_loop::set_priority_analysis_bounded(self.bounded);
+        ironsmith::game_loop::set_priority_analysis_bounded_proof_budget(self.proof_budget);
+    }
+}
+
 fn manabrew_to_js(value: &impl Serialize, label: &str) -> Result<JsValue, JsValue> {
     let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
     value
@@ -2155,6 +2198,7 @@ impl WasmGame {
 
         // Each probe is one planner run; a very wide board keeps its tail unprobed.
         const MAX_ACTIVATION_PROBES: usize = 24;
+        const ACTIVATION_PROBE_BUDGET: usize = 64;
         let mut activation_probes = 0usize;
         let activation_inventory = ironsmith::mana_payment::mana_payment_activation_inventory_checked(
             self.manabrew_game(),
@@ -2240,10 +2284,22 @@ impl WasmGame {
                     let mut probe = context.request.clone();
                     probe.preferences = preferences.clone();
                     probe.preferences.normalize();
-                    match ironsmith::mana_payment::plan_mana_payment(self.manabrew_game(), &probe) {
-                        Ok(plans) if plans.first().is_some_and(|plan| plan.payable) => {}
-                        Err(ironsmith::mana_payment::ManaPaymentFailure::EffectExecutionFailed(
-                            error,
+                    // One legal payment answers the question, and the search
+                    // for it is budgeted: proving that none exists is the
+                    // planner's exponential case, and this runs once per
+                    // source on the host's main thread. A probe that runs out
+                    // is treated like a dead end.
+                    match ironsmith::mana_payment::ManaPaymentAnalysis::new(
+                        self.manabrew_game(),
+                        probe,
+                    )
+                    .step(ACTIVATION_PROBE_BUDGET)
+                    {
+                        Some(Ok(plan)) if plan.payable => {}
+                        Some(Err(
+                            ironsmith::mana_payment::ManaPaymentFailure::EffectExecutionFailed(
+                                error,
+                            ),
                         )) => return Err(error),
                         _ => continue,
                     }
@@ -3901,6 +3957,20 @@ pub fn manabrew_printed_defense(name: &str) -> Option<String> {
     manabrew_printed_stat(name, ManabrewPrintedStat::Defense).map(str::to_string)
 }
 
+/// The card sources a list of Manabrew decks describes, in the shape
+/// `registerExternalCardSources` takes. A host that compiles card source
+/// outside the engine reads them here, so there is one reading of a deck card.
+#[wasm_bindgen(js_name = manabrewDeckSources)]
+pub fn manabrew_deck_sources_js(decks: JsValue) -> Result<JsValue, JsValue> {
+    let decks: Vec<Value> = if decks.is_undefined() || decks.is_null() {
+        Vec::new()
+    } else {
+        serde_wasm_bindgen::from_value(decks)
+            .map_err(|error| JsValue::from_str(&format!("invalid Manabrew decks: {error}")))?
+    };
+    manabrew_to_js(&manabrew_deck_sources(&decks), "Manabrew deck sources")
+}
+
 #[wasm_bindgen]
 impl WasmGame {
     #[wasm_bindgen(js_name = manabrewProtocolVersion)]
@@ -3941,6 +4011,7 @@ impl WasmGame {
 
     #[wasm_bindgen(js_name = startManabrewMatch)]
     pub fn start_manabrew_match(&mut self, config: JsValue) -> Result<JsValue, JsValue> {
+        let _menu_policy = ManabrewMenuPolicy::enter();
         let input: ManabrewMatchConfigInput =
             serde_wasm_bindgen::from_value(config).map_err(|error| {
                 JsValue::from_str(&format!("invalid Manabrew match config: {error}"))
@@ -3975,6 +4046,7 @@ impl WasmGame {
     /// Build a typed player-specific view. Passing no viewer produces a spectator-safe public view.
     #[wasm_bindgen(js_name = manabrewView)]
     pub fn manabrew_view(&mut self, viewer: Option<u8>) -> Result<JsValue, JsValue> {
+        let _menu_policy = ManabrewMenuPolicy::enter();
         let viewer = match viewer {
             Some(viewer) => match self.manabrew_player(viewer) {
                 Ok(player) => Some(player),
@@ -4009,6 +4081,7 @@ impl WasmGame {
         prompt_id: u32,
         output: JsValue,
     ) -> Result<JsValue, JsValue> {
+        let _menu_policy = ManabrewMenuPolicy::enter();
         let player = match self.manabrew_player(player) {
             Ok(player) => player,
             Err(error) => {
@@ -4105,6 +4178,7 @@ impl WasmGame {
         player: u8,
         directive: JsValue,
     ) -> Result<JsValue, JsValue> {
+        let _menu_policy = ManabrewMenuPolicy::enter();
         let player_id = match self.manabrew_player(player) {
             Ok(player) => player,
             Err(error) => {

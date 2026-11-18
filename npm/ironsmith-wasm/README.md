@@ -9,7 +9,7 @@ This is the lean Ironsmith build: engine code is included, but the global card r
 Pin an exact version while the public API is pre-1.0:
 
 ```sh
-npm install --save-exact ironsmith-wasm@0.9.1
+npm install --save-exact ironsmith-wasm@0.9.2
 ```
 
 ## Initialize
@@ -45,9 +45,11 @@ const validation = engine.validateManabrewMatchConfig(protocolConfig);
 const initialState = engine.startManabrewMatch(protocolConfig);
 ```
 
+Priority prompts are built within a fixed search budget, so a host can call the adapter on its main thread: each card gets a bounded search for a way to pay for it, and a card whose search does not finish is still offered. Its payment prompt may then open with nothing proposed, and can be cancelled.
+
 `validateManabrewMatchConfig` and `startManabrewMatch` also register the decks they receive, so calling `registerManabrewDeckSources` separately is optional. It is useful when an application wants to surface compilation failures before building the full match configuration.
 
-Current Manabrew rules summaries contain enough information for single-faced cards. For a split, transform, modal double-faced, or Adventure card, include both faces as `cardFaces` (camel case) or `card_faces` (Scryfall shape):
+Current Manabrew rules summaries contain enough information for single-faced cards. For a split, transform, modal double-faced, Adventure, prepare, or flip card, include both parts as `cardFaces` (camel case) or `card_faces` (Scryfall shape) and keep the card's Scryfall `layout`. A card that arrives without them is run as its front part alone: a card-level mana cost that joins both parts (`{1}{R} // {1}{U}`) is read as the front part's cost.
 
 ```ts
 const card = {
@@ -73,6 +75,8 @@ const card = {
 ```
 
 Face data accepts the existing Manabrew camel-case fields and Scryfall's `mana_cost`, `type_line`, and `oracle_text` fields. Printed `loyalty` and `defense` are retained in the parser input.
+
+`layout` selects how the two parts are linked: `split` (also aftermath and Room cards), `prepare`, `flip`, `transform`, and anything else as a modal pair, which covers Adventure cards. A split card whose parts carry the Fuse reminder line, or whose `keywords` include `Fuse`, can be cast fused. `manabrewDeckSources(decks)` returns the card sources the adapter reads from a list of decks.
 
 A deck card that carries the protocol's `backFace` summary (`name`, `manaCost`, `typeLine`, `oracleText`, `power`, `toughness`) is also registered as a linked two-face card, with the deck card itself as the front face.
 

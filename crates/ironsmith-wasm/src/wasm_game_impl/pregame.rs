@@ -1056,13 +1056,35 @@ impl WasmGame {
         Ok(prepared)
     }
 
+    /// The other face of a two-part card. The face linked to this exact
+    /// definition comes first: a prepare card's spell face is registered under
+    /// no name (it copies a card that may exist on its own), so looking it up
+    /// by name finds nothing, or finds that other card.
+    fn linked_other_face_definition(
+        &mut self,
+        definition: &CardDefinition,
+    ) -> Result<Option<CardDefinition>, String> {
+        let Some(other_face_name) = definition.card.other_face_name.as_deref() else {
+            return Ok(None);
+        };
+        if let Some(other_face_id) = definition.card.other_face
+            && let Some(linked) = self
+                .game
+                .linked_face_definition_by_name_or_id(Some(other_face_name), Some(other_face_id))
+            && linked.card.id == other_face_id
+        {
+            return Ok(Some(linked));
+        }
+        self.load_compilable_card_definition_result(other_face_name)
+            .map(Some)
+    }
+
     fn commander_definition_color_identity(
         &mut self,
         definition: &CardDefinition,
     ) -> Result<ColorSet, String> {
         let mut identity = definition.card.color_identity();
-        if let Some(other_face_name) = definition.card.other_face_name.as_deref() {
-            let other_face = self.load_compilable_card_definition_result(other_face_name)?;
+        if let Some(other_face) = self.linked_other_face_definition(definition)? {
             identity = identity.union(other_face.card.color_identity());
         }
         Ok(identity)
@@ -1115,8 +1137,8 @@ impl WasmGame {
         definition: &CardDefinition,
     ) -> Result<ConstructedCopyIdentity, String> {
         let mut family = vec![definition.clone()];
-        if let Some(other_face_name) = definition.card.other_face_name.as_deref() {
-            family.push(self.load_compilable_card_definition_result(other_face_name)?);
+        if let Some(other_face) = self.linked_other_face_definition(definition)? {
+            family.push(other_face);
         }
 
         let is_basic_land = family.iter().any(|face| {

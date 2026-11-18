@@ -318,6 +318,13 @@ impl CardRegistry {
         self.cards.insert(name, definition);
     }
 
+    /// Register a face that is reached only through the card it is linked to,
+    /// by id. It claims no name: a prepare card's spell face copies a card that
+    /// may exist on its own, and must not answer for that card's name.
+    pub fn register_linked_face_only(&mut self, def: CardDefinition) {
+        self.definitions_by_id.insert(def.card.id, Arc::new(def));
+    }
+
     /// Look up a card by name.
     pub fn get(&self, name: &str) -> Option<&CardDefinition> {
         if let Some(def) = self.cards.get(name) {
