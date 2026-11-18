@@ -24,39 +24,53 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Fire // Ice",
+          "name": "Fire // Ice@split",
           "count": 1
         },
         {
           "op": "activateAbility",
+          "source": "Soulfire Grand Master",
+          "ability": "The next time you cast",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Soulfire Grand Master",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{2}{U/R}{U/R}"
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Fire",
+          "player": 0,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Fire",
+          "objectAlias": "@split",
+          "castingMethod": "normal",
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"targetPlayer=PlayerB\", 2)"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Fire",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -71,8 +85,20 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
+          "name": "@split",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
           "name": "Fire // Ice",
           "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@split",
+          "count": 0
         }
       ]
     }

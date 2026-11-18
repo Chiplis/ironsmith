@@ -7,12 +7,45 @@ registerPortedMageTests({
       "name": "testSameTurnPre",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilEndCombatOfYourNextTurn ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until end of combat on your next turn.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}:"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",
@@ -26,8 +59,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -35,12 +68,45 @@ registerPortedMageTests({
       "name": "testSameTurnPost",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilEndCombatOfYourNextTurn ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until end of combat on your next turn.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}:"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",
@@ -54,8 +120,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -63,12 +129,45 @@ registerPortedMageTests({
       "name": "testOppTurnPre",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilEndCombatOfYourNextTurn ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until end of combat on your next turn.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}:"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",
@@ -82,8 +181,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -91,12 +190,45 @@ registerPortedMageTests({
       "name": "testOppTurnPost",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilEndCombatOfYourNextTurn ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until end of combat on your next turn.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}:"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",
@@ -110,8 +242,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -119,12 +251,45 @@ registerPortedMageTests({
       "name": "testTurnCyclePre",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilEndCombatOfYourNextTurn ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until end of combat on your next turn.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}:"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",
@@ -138,8 +303,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -147,12 +312,45 @@ registerPortedMageTests({
       "name": "testTurnCycleFalse",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilEndCombatOfYourNextTurn ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until end of combat on your next turn.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}:"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",
@@ -166,8 +364,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "false ? 2 : 1",
-          "toughness": "false ? 2 : 1"
+          "power": 1,
+          "toughness": 1
         }
       ]
     },
@@ -175,27 +373,80 @@ registerPortedMageTests({
       "name": "testTimeStopTurnCyclePre",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilEndCombatOfYourNextTurn ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until end of combat on your next turn.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Time Stop"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 6
         },
         {
           "op": "setStrictChooseMode",
           "value": true
         },
         {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN"
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}:"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Time Stop"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Time Stop",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -203,12 +454,80 @@ registerPortedMageTests({
       "name": "testTimeStopTurnCycleFalse",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilEndCombatOfYourNextTurn ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until end of combat on your next turn.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Time Stop"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 6
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}:"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Time Stop"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Time Stop",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -219,11 +538,17 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Time Stop",
+          "count": 1
+        },
+        {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -231,12 +556,80 @@ registerPortedMageTests({
       "name": "testTimeStop2TurnCyclePre",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilEndCombatOfYourNextTurn ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until end of combat on your next turn.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Time Stop"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 6
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}:"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Time Stop"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Time Stop",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -247,11 +640,17 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Time Stop",
+          "count": 1
+        },
+        {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -259,12 +658,80 @@ registerPortedMageTests({
       "name": "testTimeStop2TurnCycleFalse",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilEndCombatOfYourNextTurn ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until end of combat on your next turn.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Time Stop"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 6
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}:"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Time Stop"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Time Stop",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -275,11 +742,17 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Time Stop",
+          "count": 1
+        },
+        {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     }

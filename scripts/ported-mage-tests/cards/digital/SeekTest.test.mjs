@@ -18,7 +18,13 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "Skyshroud Lookout",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Creature — Elf Archer",
+          "oracleText": "Reach\nWhen this creature enters, seek an Elf card.",
+          "manaCost": "{1}{G}",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "addCard",

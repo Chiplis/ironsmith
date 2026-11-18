@@ -49,32 +49,46 @@ registerPortedMageTests({
           "name": "World at War"
         },
         {
-          "op": "attack",
+          "op": "waitStackResolved",
           "turn": 1,
-          "player": 0,
-          "attacker": "Elite Vanguard",
-          "defender": 1
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Elite Vanguard",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 1
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Warclamp Mastiff",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Elite Vanguard",
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Warclamp Mastiff",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
         },
         {
           "op": "setStopAt",
@@ -88,6 +102,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 14
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "tapped": true
         }
       ]
     },
@@ -137,60 +157,82 @@ registerPortedMageTests({
           "name": "World at War"
         },
         {
-          "op": "attack",
+          "op": "waitStackResolved",
           "turn": 1,
-          "player": 0,
-          "attacker": "Elite Vanguard",
-          "defender": 1
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Elite Vanguard",
-          "defender": 1
-        },
-        {
-          "op": "attack",
-          "turn": 1,
-          "player": 0,
-          "attacker": "Warclamp Mastiff",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 1
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Warclamp Mastiff",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Elite Vanguard",
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Warclamp Mastiff",
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
           "attacker": "Elite Vanguard",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 1
+        },
+        {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Warclamp Mastiff",
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 1
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
           "attacker": "Elite Vanguard",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
           "attacker": "Warclamp Mastiff",
-          "defender": 1
-        },
-        {
-          "op": "attack",
-          "turn": 3,
-          "player": 0,
-          "attacker": "Warclamp Mastiff",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
         },
         {
           "op": "setStopAt",
@@ -204,6 +246,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 8
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "tapped": true
         }
       ]
     },
@@ -260,46 +308,64 @@ registerPortedMageTests({
           "name": "World at War"
         },
         {
-          "op": "attack",
+          "op": "waitStackResolved",
           "turn": 1,
-          "player": 0,
-          "attacker": "Elite Vanguard",
-          "defender": 1
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Elite Vanguard",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Warclamp Mastiff",
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 1
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Elite Vanguard",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Warclamp Mastiff",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Elite Vanguard",
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 3
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Warclamp Mastiff",
-          "defender": 1
-        },
-        {
-          "op": "attack",
-          "turn": 1,
-          "player": 0,
-          "attacker": "Warclamp Mastiff",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 3
         },
         {
           "op": "setStopAt",
@@ -313,6 +379,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 11
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "tapped": true
         }
       ]
     }

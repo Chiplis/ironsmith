@@ -38,15 +38,23 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Wear // Tear",
+          "name": "Wear // Tear@split",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Mindclaw Shaman",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mindclaw Shaman",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Mindclaw Shaman"
+          "isSpell": true
         },
         {
           "op": "addTarget",
@@ -54,14 +62,34 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mindclaw Shaman",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Tear"
+          "kind": "options",
+          "description": "Choose which spell to cast",
+          "choices": [
+            "Tear"
+          ]
         },
         {
           "op": "addTarget",
@@ -69,16 +97,25 @@ registerPortedMageTests({
           "target": "Sanguine Bond"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Tear",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Sanguine Bond",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -89,7 +126,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 1,
-          "name": "Wear // Tear",
+          "name": "@split",
           "count": 1
         },
         {
@@ -103,6 +140,21 @@ registerPortedMageTests({
           "player": 1,
           "name": "Sanguine Bond",
           "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Icy Manipulator",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Sanguine Bond",
+          "count": 0
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -141,15 +193,23 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Wear // Tear",
+          "name": "Wear // Tear@split",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Mindclaw Shaman",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mindclaw Shaman",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Mindclaw Shaman"
+          "isSpell": true
         },
         {
           "op": "addTarget",
@@ -157,14 +217,34 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mindclaw Shaman",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Wear"
+          "kind": "options",
+          "description": "Choose which spell to cast",
+          "choices": [
+            "Wear"
+          ]
         },
         {
           "op": "addTarget",
@@ -172,16 +252,25 @@ registerPortedMageTests({
           "target": "Icy Manipulator"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Wear",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Icy Manipulator",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -192,7 +281,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 1,
-          "name": "Wear // Tear",
+          "name": "@split",
           "count": 1
         },
         {
@@ -206,6 +295,21 @@ registerPortedMageTests({
           "player": 1,
           "name": "Sanguine Bond",
           "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Icy Manipulator",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Sanguine Bond",
+          "count": 1
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -244,15 +348,23 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Wear // Tear",
+          "name": "Wear // Tear@split",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Mindclaw Shaman",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mindclaw Shaman",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Mindclaw Shaman"
+          "isSpell": true
         },
         {
           "op": "addTarget",
@@ -260,14 +372,34 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mindclaw Shaman",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast fused Wear // Tear"
+          "kind": "options",
+          "description": "Choose which spell to cast",
+          "choices": [
+            "Wear"
+          ]
         },
         {
           "op": "addTarget",
@@ -275,21 +407,35 @@ registerPortedMageTests({
           "target": "Icy Manipulator"
         },
         {
-          "op": "addTarget",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "target": "Sanguine Bond"
+          "kind": "select_options",
+          "description": "Choose which spell to cast",
+          "options": [
+            "Wear",
+            "Tear"
+          ]
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Wear",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Icy Manipulator",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -300,7 +446,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 1,
-          "name": "Wear // Tear",
+          "name": "@split",
           "count": 1
         },
         {
@@ -313,7 +459,22 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "player": 1,
           "name": "Sanguine Bond",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Icy Manipulator",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Sanguine Bond",
           "count": 1
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -349,7 +510,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Etali, Primal Storm",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",

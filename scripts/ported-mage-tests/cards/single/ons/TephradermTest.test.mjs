@@ -99,6 +99,44 @@ registerPortedMageTests({
           "attacker": "Tephraderm"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Tephraderm",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertDamageReceived",
+          "name": "Tephraderm",
+          "damage": 2,
+          "player": 0,
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Tephraderm",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertDamageReceived",
+          "name": "Tephraderm",
+          "damage": 2,
+          "player": 0,
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN"
@@ -107,12 +145,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, tephraderm, 2)"
+          "op": "assertDamageReceived",
+          "name": "Tephraderm",
+          "damage": 2,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, \"Indomitable Ancients\", 4 + 2)"
+          "op": "assertDamageReceived",
+          "name": "Indomitable Ancients",
+          "damage": 6,
+          "player": 1
         },
         {
           "op": "assertLife",
@@ -167,7 +209,69 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Bite Down",
-          "target": "Indomitable Ancients^Tephraderm"
+          "target": {
+            "groups": [
+              [
+                "Indomitable Ancients"
+              ],
+              [
+                "Tephraderm"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bite Down",
+          "count": 1,
+          "objectTarget": "Tephraderm",
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tephraderm",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertDamageReceived",
+          "name": "Tephraderm",
+          "damage": 2,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Tephraderm",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertDamageReceived",
+          "name": "Tephraderm",
+          "damage": 2,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -178,12 +282,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, tephraderm, 2)"
+          "op": "assertDamageReceived",
+          "name": "Tephraderm",
+          "damage": 2,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, \"Indomitable Ancients\", 2)"
+          "op": "assertDamageReceived",
+          "name": "Indomitable Ancients",
+          "damage": 2,
+          "player": 1
         },
         {
           "op": "assertLife",

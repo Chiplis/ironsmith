@@ -14,12 +14,48 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "setStopAt",
-          "turn": 2,
-          "phase": "UNTAP"
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Biovisionary",
+          "count": 4,
+          "seatIndependent": true
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 4,
+          "source": "Biovisionary",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Biovisionary",
+          "count": 4,
+          "seatIndependent": true,
+          "player": 0,
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
+        },
+        {
+          "op": "assertResult",
+          "player": 1,
+          "result": "LOST"
         },
         {
           "op": "assertLife",
@@ -30,20 +66,6 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Biovisionary",
-          "count": 4
-        },
-        {
-          "op": "unsupported",
-          "source": "assertLostTheGame(playerB)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertWonTheGame(playerA)"
         }
       ]
     },
@@ -72,6 +94,19 @@ registerPortedMageTests({
           "count": 3
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Biovisionary",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -79,9 +114,12 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "count": 1,
+          "text": "Cast Clone"
         },
         {
           "op": "setChoice",
@@ -92,7 +130,17 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Biovisionary",
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -102,9 +150,12 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "count": 1,
+          "text": "Cast Clone"
         },
         {
           "op": "setChoice",
@@ -115,7 +166,17 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Biovisionary",
+          "count": 3,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -125,9 +186,12 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "count": 1,
+          "text": "Cast Clone"
         },
         {
           "op": "setChoice",
@@ -135,12 +199,55 @@ registerPortedMageTests({
           "value": "Biovisionary"
         },
         {
-          "op": "setStopAt",
-          "turn": 2,
-          "phase": "UNTAP"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Biovisionary",
+          "count": 4,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 4,
+          "source": "Biovisionary",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Biovisionary",
+          "count": 4,
+          "seatIndependent": true,
+          "player": 0,
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
+        },
+        {
+          "op": "assertResult",
+          "player": 1,
+          "result": "LOST"
         },
         {
           "op": "assertLife",
@@ -151,20 +258,6 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Biovisionary",
-          "count": 4
-        },
-        {
-          "op": "unsupported",
-          "source": "assertLostTheGame(playerB)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertWonTheGame(playerA)"
         }
       ]
     }

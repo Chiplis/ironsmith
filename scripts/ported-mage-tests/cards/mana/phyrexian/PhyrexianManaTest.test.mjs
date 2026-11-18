@@ -28,9 +28,26 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Apostle's Blessing",
+          "expected": true
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": "Black"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 2 of Apostle's Blessing",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
         },
         {
           "op": "castSpell",
@@ -47,6 +64,17 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Apostle's Blessing",
+          "count": 1
         }
       ]
     },

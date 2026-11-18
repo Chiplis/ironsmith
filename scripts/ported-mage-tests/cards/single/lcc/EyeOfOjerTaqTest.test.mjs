@@ -66,6 +66,14 @@ registerPortedMageTests({
           "value": "Instant"
         },
         {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Ponder",
+          "expected": false
+        },
+        {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
@@ -97,14 +105,6 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Shock",
-          "expected": false
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Ponder",
           "expected": false
         },
         {

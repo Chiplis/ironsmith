@@ -61,8 +61,12 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after bolt\", 2, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever enchanted player casts a noncreature spell\", 1)"
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever enchanted player casts a noncreature spell",
+          "count": 1
         },
         {
           "op": "unsupported",

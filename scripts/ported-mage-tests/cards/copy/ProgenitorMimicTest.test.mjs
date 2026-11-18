@@ -24,7 +24,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Progenitor Mimic",
+          "name": "Progenitor Mimic@mimic",
           "count": 1
         },
         {
@@ -43,28 +43,63 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Progenitor Mimic",
+          "player": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Progenitor Mimic"
+          "objectAlias": "@mimic"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Progenitor Mimic",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Runeclaw Bear"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@mimic"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Runeclaw Bear",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "@mimic",
+          "count": 1,
           "turn": 4,
-          "phase": "END_TURN"
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered",
+          "controller": 1
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 20
-        },
-        {
-          "op": "assertLife",
-          "player": 1,
-          "life": 20
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "UPKEEP"
         },
         {
           "op": "assertPermanentCount",
@@ -77,6 +112,38 @@ registerPortedMageTests({
           "player": 1,
           "name": "Runeclaw Bear",
           "count": 2
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Runeclaw Bear",
+            "token": false
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Runeclaw Bear",
+            "token": true
+          },
+          "count": 1,
+          "checks": []
         }
       ]
     },
@@ -222,7 +289,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Progenitor Mimic",
+          "name": "Progenitor Mimic@mimic",
           "count": 1
         },
         {
@@ -248,56 +315,107 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Progenitor Mimic",
+          "player": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
+          "objectAlias": "@mimic"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Progenitor Mimic",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "setOptionChoices",
           "player": 1,
-          "name": "Progenitor Mimic"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Captivating Vampire"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@mimic"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Captivating Vampire",
+          "count": 1
         },
         {
           "op": "setChoice",
-          "player": 1,
+          "player": 0,
           "value": "Captivating Vampire"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Child of Night"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Child of Night"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Child of Night"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Child of Night"
         },
         {
           "op": "activateAbility",
+          "source": "Captivating Vampire",
+          "ability": "Gain control of target creature",
+          "player": 0,
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "Tap five untapped Vampire",
-          "target": "Captivating Vampire[only copy]"
+          "target": "@mimic"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Captivating Vampire"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Child of Night"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Child of Night"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Child of Night"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Child of Night"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Captivating Vampire",
+          "count": 1,
           "turn": 2,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Captivating Vampire"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@mimic"
+          },
+          "count": 1,
+          "checks": []
         },
         {
           "op": "assertPermanentCount",
@@ -313,18 +431,42 @@ registerPortedMageTests({
           "toughness": 1
         },
         {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Captivating Vampire",
-          "power": 3,
-          "toughness": 3
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Captivating Vampire"
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 3
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            }
+          ]
         },
         {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Child of Night",
-          "power": 4,
-          "toughness": 3
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Child of Night"
+          },
+          "count": 4,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            }
+          ]
         }
       ]
     },

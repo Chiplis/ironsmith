@@ -593,23 +593,6 @@ registerPortedMageTests({
       "name": "testWithXCost",
       "operations": [
         {
-          "op": "skipInitShuffling"
-        },
-        {
-          "op": "addCard",
-          "zone": "LIBRARY",
-          "player": 0,
-          "name": "Lotus Petal",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "LIBRARY",
-          "player": 0,
-          "name": "Dwarven Trader",
-          "count": 1
-        },
-        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -631,11 +614,23 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "clearZone",
           "player": 0,
-          "name": "Fireball"
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lotus Petal",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Dwarven Trader",
+          "count": 1
         },
         {
           "op": "setChoice",
@@ -643,14 +638,36 @@ registerPortedMageTests({
           "value": "X=4"
         },
         {
-          "op": "addTarget",
+          "op": "castSpell",
+          "name": "Fireball",
           "player": 0,
-          "target": 1
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "op": "assertStackObject",
+          "source": "Fireball",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1,
+          "xValue": 4,
+          "isSpell": true
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Fireball",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -658,16 +675,31 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Dwarven Trader",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Fireball",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "xValue": 4,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

@@ -30,11 +30,26 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "\"X=\" + 0"
+          "value": "X=0"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Nissa, Steward of Elements",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Tropical Island",
+          "count": 2,
+          "tapped": true
         },
         {
           "op": "setStopAt",
@@ -45,8 +60,15 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (0 == 0) { assertGraveyardCount(playerA, nissa, 1); } else { assertCounterCount(playerA, nissa, CounterType.LOYALTY, 0); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertGraveyardCount",
+              "player": 0,
+              "name": "Nissa, Steward of Elements",
+              "count": 1
+            }
+          ]
         }
       ]
     },
@@ -77,11 +99,26 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "\"X=\" + 1"
+          "value": "X=1"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Nissa, Steward of Elements",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Tropical Island",
+          "count": 3,
+          "tapped": true
         },
         {
           "op": "setStopAt",
@@ -92,8 +129,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (1 == 0) { assertGraveyardCount(playerA, nissa, 1); } else { assertCounterCount(playerA, nissa, CounterType.LOYALTY, 1); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertCounterCount",
+              "player": 0,
+              "name": "Nissa, Steward of Elements",
+              "counter": "LOYALTY",
+              "count": 1
+            }
+          ]
         }
       ]
     },
@@ -124,11 +169,26 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "\"X=\" + 2"
+          "value": "X=2"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Nissa, Steward of Elements",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Tropical Island",
+          "count": 4,
+          "tapped": true
         },
         {
           "op": "setStopAt",
@@ -139,8 +199,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (2 == 0) { assertGraveyardCount(playerA, nissa, 1); } else { assertCounterCount(playerA, nissa, CounterType.LOYALTY, 2); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertCounterCount",
+              "player": 0,
+              "name": "Nissa, Steward of Elements",
+              "counter": "LOYALTY",
+              "count": 2
+            }
+          ]
         }
       ]
     },
@@ -171,11 +239,26 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "\"X=\" + 10"
+          "value": "X=10"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Nissa, Steward of Elements",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Tropical Island",
+          "count": 12,
+          "tapped": true
         },
         {
           "op": "setStopAt",
@@ -186,8 +269,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (10 == 0) { assertGraveyardCount(playerA, nissa, 1); } else { assertCounterCount(playerA, nissa, CounterType.LOYALTY, 10); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertCounterCount",
+              "player": 0,
+              "name": "Nissa, Steward of Elements",
+              "counter": "LOYALTY",
+              "count": 10
+            }
+          ]
         }
       ]
     }

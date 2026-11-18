@@ -59,8 +59,12 @@ registerPortedMageTests({
           "value": "Whenever you investigate for the "
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"lost 1 life\", 1, PhaseStep.BEGIN_COMBAT, playerB, 19)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "life": "19",
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -68,7 +72,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Clue Token",
-          "count": 3
+          "count": 3,
+          "seatIndependent": true
         },
         {
           "op": "assertPlayableAbility",

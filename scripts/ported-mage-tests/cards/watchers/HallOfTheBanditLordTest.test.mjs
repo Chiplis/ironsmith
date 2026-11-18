@@ -28,30 +28,69 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "activateManaAbility",
+          "source": "Hall of the Bandit Lord",
+          "ability": "Add {C}",
+          "player": 0,
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 17
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "C",
+          "amount": 1
+        },
+        {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Goblin Roughrider"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
           "name": "Goblin Roughrider",
-          "ability": "Haste",
-          "expected": true
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Goblin Roughrider",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttackDefenders",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "attacker": "Goblin Roughrider",
+          "defenders": [
+            1
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Goblin Roughrider"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "haste"
+            }
+          ]
         }
       ]
     },
@@ -124,7 +163,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Hall of the Bandit Lord",
+          "name": "Hall of the Bandit Lord@hall",
           "count": 1
         },
         {
@@ -138,7 +177,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Vesuva",
+          "name": "Vesuva@vesuva",
           "count": 1
         },
         {
@@ -154,6 +193,18 @@ registerPortedMageTests({
           "player": 0,
           "name": "Feral Maaka",
           "count": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            {
+              "description": "Enter as a copy of Hall of the Bandit Lord",
+              "object": "@hall"
+            }
+          ]
         },
         {
           "op": "playLand",
@@ -163,21 +214,80 @@ registerPortedMageTests({
           "name": "Vesuva"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setChoice",
+          "op": "assertPermanentCount",
           "player": 0,
-          "value": "Hall of the Bandit Lord"
+          "name": "Hall of the Bandit Lord",
+          "count": 2
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "@vesuva",
+          "tapped": true
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "@hall",
+          "ability": "Add {C}",
+          "player": 0,
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 17
         },
         {
           "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Goblin Piker",
           "player": 0,
-          "name": "Goblin Piker"
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Goblin Piker",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttackDefenders",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "attacker": "Goblin Piker",
+          "defenders": [
+            1
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Goblin Piker"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "haste"
+            }
+          ]
         },
         {
           "op": "playLand",
@@ -187,37 +297,58 @@ registerPortedMageTests({
           "name": "Mountain"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "@vesuva",
+          "ability": "Add {C}",
+          "player": 0,
+          "count": 1,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 14
+        },
+        {
           "op": "castSpell",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Feral Maaka"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Goblin Piker",
-          "ability": "Haste",
-          "expected": true
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
           "name": "Feral Maaka",
-          "ability": "Haste",
-          "expected": true
+          "player": 0,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Feral Maaka",
+          "count": 1,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Feral Maaka"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "haste"
+            }
+          ]
         }
       ]
     }

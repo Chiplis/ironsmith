@@ -33,14 +33,39 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Curse of Opulence",
-          "target": "playerD"
+          "target": 3
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Curse of Opulence",
+          "attachedPlayer": 3,
+          "expected": true
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Banehound",
-          "defender": "playerD"
+          "defender": 3
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Curse of Opulence",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
           "op": "setStopAt",
@@ -52,7 +77,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertLife",
-          "player": "playerD",
+          "player": 3,
           "life": 19
         },
         {
@@ -64,12 +89,14 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Gold Token",
-          "count": 0
+          "count": 0,
+          "player": 3
         },
         {
           "op": "assertPermanentCount",
           "name": "Gold Token",
-          "count": 0
+          "count": 0,
+          "player": 2
         },
         {
           "op": "assertPermanentCount",
@@ -112,11 +139,36 @@ registerPortedMageTests({
           "target": 0
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Curse of Opulence",
+          "attachedPlayer": 0,
+          "expected": true
+        },
+        {
           "op": "attack",
           "turn": 4,
           "player": 1,
           "attacker": "Banehound",
           "defender": 0
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Curse of Opulence",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
           "op": "setStopAt",
@@ -135,12 +187,14 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Gold Token",
-          "count": 0
+          "count": 0,
+          "player": 3
         },
         {
           "op": "assertPermanentCount",
           "name": "Gold Token",
-          "count": 0
+          "count": 0,
+          "player": 2
         },
         {
           "op": "assertPermanentCount",
@@ -170,7 +224,7 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
+          "player": 2,
           "name": "Banehound",
           "count": 1
         },
@@ -183,11 +237,36 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Curse of Opulence",
+          "attachedPlayer": 1,
+          "expected": true
+        },
+        {
           "op": "attack",
           "turn": 3,
-          "player": "playerC",
+          "player": 2,
           "attacker": "Banehound",
           "defender": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Curse of Opulence",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
           "op": "setStopAt",
@@ -211,12 +290,14 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Gold Token",
-          "count": 0
+          "count": 0,
+          "player": 3
         },
         {
           "op": "assertPermanentCount",
           "name": "Gold Token",
-          "count": 0
+          "count": 0,
+          "player": 2
         },
         {
           "op": "assertPermanentCount",
@@ -256,21 +337,46 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Curse of Opulence",
-          "target": "playerD"
+          "target": 3
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Curse of Opulence",
+          "attachedPlayer": 3,
+          "expected": true
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Banehound",
-          "defender": "playerD"
+          "defender": 3
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Banehound",
-          "defender": "playerD"
+          "defender": 3
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Curse of Opulence",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
           "op": "setStopAt",
@@ -282,7 +388,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertLife",
-          "player": "playerD",
+          "player": 3,
           "life": 18
         },
         {
@@ -294,12 +400,14 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Gold Token",
-          "count": 0
+          "count": 0,
+          "player": 3
         },
         {
           "op": "assertPermanentCount",
           "name": "Gold Token",
-          "count": 0
+          "count": 0,
+          "player": 2
         },
         {
           "op": "assertPermanentCount",
@@ -309,5 +417,12 @@ registerPortedMageTests({
         }
       ]
     }
-  ]
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
+  ],
+  "rangeOfInfluence": 1
 });

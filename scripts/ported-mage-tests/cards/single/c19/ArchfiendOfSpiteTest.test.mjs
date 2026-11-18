@@ -55,6 +55,55 @@ registerPortedMageTests({
           "target": "Archfiend of Spite"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "objectTarget": "Archfiend of Spite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Archfiend of Spite",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Archfiend of Spite",
+          "damage": 3
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Mountain",
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "boolean",
+          "description": "Perform alternative action to prevent effect?",
+          "choices": [
+            "No"
+          ],
+          "optional": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN"
@@ -79,8 +128,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, \"Archfiend of Spite\", 3)"
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Archfiend of Spite",
+          "damage": 3
         },
         {
           "op": "assertLife",

@@ -11,8 +11,14 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"Untap creatures\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Untap Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Untap each creature you control."
         },
         {
           "op": "addCard",
@@ -54,7 +60,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "untap all"
+          "ability": "Untap all creatures you control"
         },
         {
           "op": "waitStackResolved",
@@ -79,8 +85,25 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertEquals(\"Kraj should have 5 activated abilities\", 5, getPermanent(experimentKraj).getAbilities(currentGame) .stream() .filter(Ability::isActivatedAbility) .count())"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Stoneforge Mystic",
+          "counter": "P1P1",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "Noble Hierarch",
+          "counter": "P1P1",
+          "count": 1
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Experiment Kraj",
+          "kind": "activated",
+          "count": 3
         }
       ]
     }

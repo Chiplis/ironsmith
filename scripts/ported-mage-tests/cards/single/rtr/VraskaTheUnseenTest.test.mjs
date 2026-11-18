@@ -28,8 +28,14 @@ registerPortedMageTests({
           "ability": "+1:"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 1\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Vraska the Unseen\", CounterType.LOYALTY, 5 + 1)"
+          "op": "assertCounterCount",
+          "name": "Vraska the Unseen",
+          "count": "5 + 1",
+          "player": 0,
+          "counter": "LOYALTY",
+          "seatIndependent": true,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -37,18 +43,59 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Balduvian Bears",
-          "count": 3
+          "count": 3,
+          "seatIndependent": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Balduvian Bears",
-          "defender": "Vraska the Unseen"
+          "defender": "Vraska the Unseen",
+          "expectedLegal": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 2\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Vraska the Unseen\", CounterType.LOYALTY, 5 + 1 - 2)"
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Vraska the Unseen",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Vraska the Unseen",
+          "count": 4,
+          "player": 0,
+          "counter": "LOYALTY",
+          "seatIndependent": true,
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Vraska the Unseen",
+          "count": 1,
+          "player": 0,
+          "seatIndependent": true,
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Vraska the Unseen",
+          "count": "5 + 1 - 2",
+          "player": 0,
+          "counter": "LOYALTY",
+          "seatIndependent": true,
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -56,11 +103,18 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Balduvian Bears",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 3\", 3, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Vraska the Unseen\", CounterType.LOYALTY, 5 + 1 - 2)"
+          "op": "assertCounterCount",
+          "name": "Vraska the Unseen",
+          "count": "5 + 1 - 2",
+          "player": 0,
+          "counter": "LOYALTY",
+          "seatIndependent": true,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -68,18 +122,26 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Balduvian Bears",
-          "count": 2
-        },
-        {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 4\", 4, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Vraska the Unseen\", CounterType.LOYALTY, 5 + 1 - 2 * 2)"
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
           "attacker": "Balduvian Bears",
-          "defender": "Vraska the Unseen"
+          "defender": "Vraska the Unseen",
+          "expectedLegal": true
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Vraska the Unseen",
+          "count": "5 + 1 - 2 * 2",
+          "player": 0,
+          "counter": "LOYALTY",
+          "seatIndependent": true,
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -87,7 +149,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Balduvian Bears",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",
@@ -135,8 +198,14 @@ registerPortedMageTests({
           "ability": "+1:"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 1\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Vraska the Unseen\", CounterType.LOYALTY, 5 + 1)"
+          "op": "assertCounterCount",
+          "name": "Vraska the Unseen",
+          "count": "5 + 1",
+          "player": 0,
+          "counter": "LOYALTY",
+          "seatIndependent": true,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -144,7 +213,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Balduvian Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -152,18 +222,59 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Cinder Pyromancer",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Balduvian Bears",
-          "defender": "Vraska the Unseen"
+          "defender": "Vraska the Unseen",
+          "expectedLegal": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 2\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Vraska the Unseen\", CounterType.LOYALTY, 5 + 1 - 2)"
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Vraska the Unseen",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Vraska the Unseen",
+          "count": 4,
+          "player": 0,
+          "counter": "LOYALTY",
+          "seatIndependent": true,
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Vraska the Unseen",
+          "count": 1,
+          "player": 0,
+          "seatIndependent": true,
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Vraska the Unseen",
+          "count": "5 + 1 - 2",
+          "player": 0,
+          "counter": "LOYALTY",
+          "seatIndependent": true,
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -171,7 +282,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Balduvian Bears",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -182,8 +294,14 @@ registerPortedMageTests({
           "target": "Vraska the Unseen"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 2\", 2, PhaseStep.END_TURN, playerA, \"Vraska the Unseen\", CounterType.LOYALTY, 5 + 1 - 2 - 1)"
+          "op": "assertCounterCount",
+          "name": "Vraska the Unseen",
+          "count": "5 + 1 - 2 - 1",
+          "player": 0,
+          "counter": "LOYALTY",
+          "seatIndependent": true,
+          "turn": 2,
+          "phase": "END_TURN"
         },
         {
           "op": "assertPermanentCount",
@@ -191,7 +309,8 @@ registerPortedMageTests({
           "phase": "END_TURN",
           "player": 1,
           "name": "Cinder Pyromancer",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",

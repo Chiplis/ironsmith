@@ -825,14 +825,10 @@ registerPortedMageTests({
       "name": "test_MultiModesDiesTrigger_ByDamage",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetBlink(playerA)"
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Junji, the Midnight Sky",
+          "name": "Junji, the Midnight Sky@junji",
           "count": 1
         },
         {
@@ -857,38 +853,86 @@ registerPortedMageTests({
           "count": 5
         },
         {
+          "op": "addCard",
+          "player": 0,
+          "zone": "battlefield",
+          "name": "Blink test fixture",
+          "custom": true,
+          "typeLine": "Artifact",
+          "manaCost": "{0}",
+          "oracleText": "{0}: Exile target creature, then return that card to the battlefield under its owner’s control."
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target blink",
-          "target": "Junji, the Midnight Sky"
+          "source": "Blink test fixture",
+          "ability": "Exile target creature",
+          "target": "@junji"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Blink test fixture",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Junji, the Midnight Sky"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@junji",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Junji, the Midnight Sky",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@junji",
+          "count": 0
         },
         {
           "op": "assertStackSize",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
           "count": 0
         },
         {
           "op": "castSpell",
+          "name": "Command the Storm",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Command the Storm",
           "target": "Junji, the Midnight Sky"
         },
         {
-          "op": "setModeChoice",
+          "op": "assertStackObject",
+          "source": "Command the Storm",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Junji, the Midnight Sky"
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Put target non-Dragon creature card from a graveyard onto the battlefield under your control. You lose 2 life."
+          ]
         },
         {
           "op": "addTarget",
@@ -896,16 +940,10 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -914,10 +952,36 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertStackObject",
+          "source": "Junji, the Midnight Sky",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "objectTarget": "Grizzly Bears",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 0
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
         }
       ]
     },
@@ -925,14 +989,10 @@ registerPortedMageTests({
       "name": "test_MultiModesDiesTrigger_BySacrificeCost",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetBlink(playerA)"
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Junji, the Midnight Sky",
+          "name": "Junji, the Midnight Sky@junji",
           "count": 1
         },
         {
@@ -957,35 +1017,95 @@ registerPortedMageTests({
           "count": 3
         },
         {
+          "op": "addCard",
+          "player": 0,
+          "zone": "battlefield",
+          "name": "Blink test fixture",
+          "custom": true,
+          "typeLine": "Artifact",
+          "manaCost": "{0}",
+          "oracleText": "{0}: Exile target creature, then return that card to the battlefield under its owner’s control."
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target blink",
-          "target": "Junji, the Midnight Sky"
+          "source": "Blink test fixture",
+          "ability": "Exile target creature",
+          "target": "@junji"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Blink test fixture",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Junji, the Midnight Sky"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@junji",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Junji, the Midnight Sky",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@junji",
+          "count": 0
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "count": 0
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Phyrexian Vault",
           "ability": "{2}, {T}, Sacrifice"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Junji, the Midnight Sky"
+          "kind": "options",
+          "description": "Choose the next cost to pay for Phyrexian Vault's ability",
+          "choices": [
+            "Sacrifice a creature"
+          ]
         },
         {
-          "op": "setModeChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "2"
+          "description": "Choose a creature to sacrifice: Sacrifice a creature",
+          "choices": [
+            "Junji, the Midnight Sky"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Put target non-Dragon creature card from a graveyard onto the battlefield under your control. You lose 2 life."
+          ]
         },
         {
           "op": "addTarget",
@@ -993,16 +1113,18 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 0
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Phyrexian Vault",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
         },
         {
           "op": "assertGraveyardCount",
@@ -1011,10 +1133,36 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertStackObject",
+          "source": "Junji, the Midnight Sky",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "objectTarget": "Grizzly Bears",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 0
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
         }
       ]
     },
@@ -1060,19 +1208,46 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Junji, the Midnight Sky"
+          "op": "assertStackObject",
+          "source": "Industrial Advancement",
+          "count": 1,
+          "turn": 1,
+          "phase": "END_TURN",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Silvercoat Lion"
+          "kind": "boolean",
+          "description": "Sacrifice a creature",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setModeChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "2"
+          "description": "Sacrifice exactly 1 creature",
+          "choices": [
+            "Junji, the Midnight Sky"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose up to 1 creature card",
+          "choices": [
+            "Silvercoat Lion"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Put target non-Dragon creature card from a graveyard onto the battlefield under your control. You lose 2 life."
+          ]
         },
         {
           "op": "addTarget",
@@ -1080,16 +1255,16 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "END_TURN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -1098,16 +1273,36 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertStackObject",
+          "source": "Junji, the Midnight Sky",
+          "count": 1,
+          "turn": 1,
+          "phase": "END_TURN",
+          "abilityKind": "Triggered",
+          "objectTarget": "Grizzly Bears",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertGraveyardCount",
           "player": 0,
-          "name": "Silvercoat Lion",
-          "count": 1
+          "name": "Grizzly Bears",
+          "count": 0
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
         }
       ]
     },

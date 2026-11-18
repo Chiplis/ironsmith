@@ -80,6 +80,33 @@ registerPortedMageTests({
           "count": 15
         },
         {
+          "op": "assertExileCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Fusion Elemental",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 2,
+          "name": "Chromanticore",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 3,
+          "name": "Garth One-Eye",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
           "op": "assertPlayableAbility",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
@@ -230,6 +257,33 @@ registerPortedMageTests({
           "player": 0,
           "name": "Plains",
           "count": 15
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Fusion Elemental",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 2,
+          "name": "Chromanticore",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 3,
+          "name": "Garth One-Eye",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPlayableAbility",

@@ -17,7 +17,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Treacherous Pit-Dweller",
+          "name": "Treacherous Pit-Dweller@dw",
           "count": 1
         },
         {
@@ -29,25 +29,93 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt",
-          "target": "Treacherous Pit-Dweller"
+          "target": "@dw"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Treacherous Pit-Dweller"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Treacherous Pit-Dweller",
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@dw",
           "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Treacherous Pit-Dweller",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@dw"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Treacherous Pit-Dweller",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@dw"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "@dw",
+          "count": 1,
+          "counter": "+1/+1"
         }
       ]
     },
@@ -72,7 +140,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Treacherous Pit-Dweller",
+          "name": "Treacherous Pit-Dweller@dw",
           "count": 1
         },
         {
@@ -91,43 +159,207 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 0,
           "turn": 1,
           "phase": "UPKEEP",
+          "target": "@dw"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "turn": 1,
+          "phase": "UPKEEP",
+          "isSpell": true,
+          "objectTarget": "Treacherous Pit-Dweller"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 0,
-          "name": "Lightning Bolt",
-          "target": "Treacherous Pit-Dweller"
+          "name": "@dw",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Treacherous Pit-Dweller",
+          "count": 1,
+          "turn": 1,
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@dw"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Treacherous Pit-Dweller",
+          "count": 1,
+          "turn": 1,
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@dw"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "@dw",
+          "count": 1,
+          "counter": "+1/+1"
         },
         {
           "op": "castSpell",
+          "name": "Unhallowed Pact",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "target": "@dw"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Unhallowed Pact",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Treacherous Pit-Dweller"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
           "player": 0,
-          "name": "Unhallowed Pact",
-          "target": "Treacherous Pit-Dweller"
+          "attachment": "\"Unhallowed Pact\"",
+          "target": "@dw",
+          "expected": true
         },
         {
           "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 0,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt",
-          "target": "Treacherous Pit-Dweller"
+          "target": "@dw"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Treacherous Pit-Dweller"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 0,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt",
-          "target": "Treacherous Pit-Dweller"
+          "target": "@dw"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Treacherous Pit-Dweller"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@dw",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Unhallowed Pact",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Treacherous Pit-Dweller",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -144,14 +376,25 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "name": "Treacherous Pit-Dweller",
+          "name": "@dw",
           "count": 0
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@dw"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertCounterCount",
           "player": 1,
-          "name": "Treacherous Pit-Dweller",
-          "count": 1
+          "name": "@dw",
+          "count": 0,
+          "counter": "+1/+1"
         }
       ]
     }

@@ -45,6 +45,17 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "options": [
+            "{W}{R}",
+            "{W}{U}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -83,6 +94,16 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "options": [
+            "{W}{W}{W}"
+          ],
+          "exact": true
         }
       ]
     }

@@ -64,12 +64,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 1
         }
       ]
@@ -128,7 +128,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 1
         }
       ]

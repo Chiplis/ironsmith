@@ -51,7 +51,41 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Elite Vanguard"
+          "target": {
+            "groups": [
+              [
+                "Elite Vanguard"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Summon: Ixion",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Summon: Ixion",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Elite Vanguard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertExileCount",
@@ -59,17 +93,53 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Elite Vanguard",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Memnite"
+          "target": {
+            "groups": [
+              [
+                "Memnite"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Summon: Ixion",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Memnite",
+          "count": 1,
           "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "counter": "P1P1",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Grizzly Bears",
+          "count": 0,
+          "player": 0,
+          "counter": "P1P1",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
@@ -77,17 +147,36 @@ registerPortedMageTests({
           "phase": "UPKEEP",
           "player": 1,
           "name": "Elite Vanguard",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Grizzly Bears"
+          "target": {
+            "groups": [
+              [
+                "Grizzly Bears",
+                "Memnite"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Memnite"
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Summon: Ixion",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 2,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",

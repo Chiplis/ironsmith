@@ -42,19 +42,40 @@ registerPortedMageTests({
           "name": "Tolarian Contempt"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Raging Goblin"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tolarian Contempt",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 3,
+          "name": "Raging Goblin",
+          "count": 1,
+          "counter": "REJECTION"
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Memnite"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "target": {
+            "groups": [
+              [],
+              [
+                "Memnite"
+              ],
+              [
+                "Raging Goblin"
+              ]
+            ]
+          }
         },
         {
           "op": "setChoice",
@@ -80,22 +101,23 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 0
         },
         {
           "op": "assertLibraryCount",
           "name": "Raging Goblin",
-          "count": 1
+          "count": 1,
+          "player": 3
         },
         {
           "op": "assertPermanentCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 1
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 2,
           "name": "Memnite",
           "counter": "REJECTION",
           "count": 1
@@ -103,7 +125,8 @@ registerPortedMageTests({
         {
           "op": "assertLibraryCount",
           "name": "Memnite",
-          "count": 1
+          "count": 1,
+          "player": 2
         }
       ]
     }

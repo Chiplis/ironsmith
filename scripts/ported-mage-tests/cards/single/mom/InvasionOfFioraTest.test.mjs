@@ -14,11 +14,6 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setLife",
-          "player": 0,
-          "life": 20
-        },
-        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -44,7 +39,8 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 1,
           "name": "Blood Researcher",
-          "count": 1
+          "count": 1,
+          "tapped": true
         },
         {
           "op": "addCard",
@@ -78,7 +74,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": null,
+          "resolutions": 1
         },
         {
           "op": "setModeChoice",
@@ -94,7 +91,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": null,
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
@@ -147,15 +145,21 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Researcher gained one counter\", 2, PhaseStep.BEGIN_COMBAT, playerB, researcher, CounterType.P1P1, 1)"
+          "op": "assertCounterCount",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "name": "Blood Researcher",
+          "counter": "P1P1",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Blood Researcher",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "unsupported",
@@ -163,15 +167,17 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": "PlayerA hand after turn 2",
-          "name": 2,
-          "count": "END_TURN"
+          "turn": 2,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 0
         },
         {
           "op": "assertHandCount",
-          "player": "PlayerA hand after turn 3 draw",
-          "name": 3,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "unsupported",
@@ -190,14 +196,21 @@ registerPortedMageTests({
           "target": "Blood Researcher"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Researcher lost its counter\", 3, PhaseStep.END_COMBAT, playerB, researcher, CounterType.P1P1, 0)"
+          "op": "assertCounterCount",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "player": 1,
+          "name": "Blood Researcher",
+          "counter": "P1P1",
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": "PlayerA hand in turn 5 precombat main",
-          "name": 5,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 3
         },
         {
           "op": "unsupported",
@@ -211,7 +224,8 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "startingLife": 20
     }
   ]
 });

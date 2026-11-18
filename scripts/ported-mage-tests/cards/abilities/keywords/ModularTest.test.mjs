@@ -234,7 +234,34 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}: {this} becomes"
+          "ability": "{1}: This land becomes",
+          "source": "Inkmoth Nexus"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Inkmoth Nexus"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "castSpell",

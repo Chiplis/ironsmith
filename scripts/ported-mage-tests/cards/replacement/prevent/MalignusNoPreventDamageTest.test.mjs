@@ -47,7 +47,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Malignus",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -117,7 +117,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Ogre Resister",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",

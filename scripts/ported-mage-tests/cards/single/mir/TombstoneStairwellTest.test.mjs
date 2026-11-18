@@ -7,8 +7,15 @@ registerPortedMageTests({
       "name": "test_LeavesTheBattlefield",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA)"
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Stairwell Removal Fixture",
+          "count": 1,
+          "fixtureSource": true,
+          "manaCost": "{0}",
+          "typeLine": "Instant",
+          "oracleText": "Destroy target enchantment."
         },
         {
           "op": "addCard",
@@ -49,8 +56,14 @@ registerPortedMageTests({
           "value": "Yes"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"turn 1 - pays done\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Swamp\", true, 2)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": true,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -58,7 +71,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Tombspawn",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -66,7 +80,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Tombspawn",
-          "count": 3
+          "count": 3,
+          "seatIndependent": true
         },
         {
           "op": "waitStackResolved",
@@ -80,7 +95,8 @@ registerPortedMageTests({
           "phase": "END_TURN",
           "player": 0,
           "name": "Tombspawn",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -88,7 +104,8 @@ registerPortedMageTests({
           "phase": "END_TURN",
           "player": 1,
           "name": "Tombspawn",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -96,7 +113,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Tombspawn",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -104,21 +122,52 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Tombspawn",
-          "count": 3
+          "count": 3,
+          "seatIndependent": true
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 2,
           "phase": "BEGIN_COMBAT",
           "player": 0,
-          "ability": "target destroy",
+          "name": "Stairwell Removal Fixture",
           "target": "Tombstone Stairwell"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT",
+          "source": "Stairwell Removal Fixture",
+          "onTop": true,
+          "count": 1,
+          "objectTarget": "Tombstone Stairwell"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "BEGIN_COMBAT",
-          "player": null
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Tombstone Stairwell",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT",
+          "source": "Tombstone Stairwell",
+          "onTop": true,
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
@@ -126,7 +175,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Tombspawn",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -134,7 +184,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Tombspawn",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

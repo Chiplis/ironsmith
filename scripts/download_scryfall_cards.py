@@ -29,7 +29,7 @@ DEFAULT_METADATA_SUFFIX = ".scryfall-bulk-data.json"
 BULK_DATA_URL = "https://api.scryfall.com/bulk-data/default-cards"
 USER_AGENT = "ironsmith/1.0 (https://github.com/chiplis/ironsmith)"
 ACCEPT = "application/json;q=0.9,*/*;q=0.8"
-FILTER_VERSION = 3
+FILTER_VERSION = 4
 
 
 def fetch_json(url: str) -> dict:

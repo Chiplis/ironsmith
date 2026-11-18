@@ -595,7 +595,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Glory-Bound Initiate",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",
@@ -850,19 +850,39 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1:"
+          "ability": "+1:",
+          "source": "Arlinn Kord",
+          "target": {
+            "groups": [
+              [
+                "Combat Celebrant"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Combat Celebrant"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Arlinn Kord",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Combat Celebrant"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Combat Celebrant",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 1
         },
         {
           "op": "setChoice",
@@ -874,7 +894,9 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Combat Celebrant",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
         },
         {
           "op": "setStopAt",
@@ -885,8 +907,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(cCelebrant, false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Combat Celebrant",
+          "tapped": false
         },
         {
           "op": "assertCounterCount",

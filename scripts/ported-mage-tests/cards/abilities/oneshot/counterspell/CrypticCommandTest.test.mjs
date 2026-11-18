@@ -57,22 +57,44 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thoughtseize",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Cryptic Command",
-          "target": "Thoughtseize"
+          "target": {
+            "groups": [
+              [
+                "Thoughtseize"
+              ]
+            ]
+          }
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "1"
+          "kind": "modes",
+          "description": "Choose mode for Cryptic Command",
+          "choices": [
+            "Counter target spell.",
+            "Draw a card."
+          ]
         },
         {
-          "op": "setModeChoice",
-          "player": 1,
-          "value": "4"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cryptic Command",
+          "count": 1,
+          "targetCount": 1
         },
         {
           "op": "castSpell",
@@ -81,6 +103,19 @@ registerPortedMageTests({
           "player": 0,
           "name": "Remand",
           "target": "Thoughtseize"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Remand",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -195,6 +230,14 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thoughtseize",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -203,22 +246,44 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Cryptic Command",
-          "target": "mode=1Thoughtseize"
+          "target": {
+            "groups": [
+              [
+                "Thoughtseize"
+              ]
+            ]
+          }
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "1"
+          "kind": "modes",
+          "description": "Choose mode for Cryptic Command",
+          "choices": [
+            "Counter target spell.",
+            "Draw a card."
+          ]
         },
         {
-          "op": "setModeChoice",
-          "player": 1,
-          "value": "4"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cryptic Command",
+          "count": 1,
+          "targetCount": 1
         },
         {
           "op": "castSpell",
@@ -229,9 +294,37 @@ registerPortedMageTests({
           "target": "Cryptic Command"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ricochet Trap",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": "Lightning Bolt"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cryptic Command",
+          "count": 1,
+          "objectTarget": "Lightning Bolt",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

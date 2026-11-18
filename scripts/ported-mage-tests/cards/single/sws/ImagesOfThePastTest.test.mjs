@@ -11,7 +11,11 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "Images of the Past",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Instant",
+          "oracleText": "Return up to two target creature cards from your graveyard to the battlefield, then exile those creatures.",
+          "manaCost": "{G}{W}"
         },
         {
           "op": "addCard",

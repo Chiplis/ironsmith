@@ -22,8 +22,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Grizzly Bears",
-          "count": 2
+          "name": "Grizzly Bears@regular",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Grizzly Bears@foretold",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -45,13 +52,11 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Foretell",
+          "label": "Foretell Grizzly Bears",
           "expected": true
         },
         {
           "op": "assertPowerToughness",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Dream Devourer",
           "power": 0,
@@ -62,34 +67,35 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "objectAlias": "@regular"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Grizzly Bears",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 0
         },
         {
           "op": "assertPowerToughness",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Dream Devourer",
           "power": 0,
@@ -100,43 +106,48 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Fore"
+          "ability": "Foretell Grizzly Bears"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 1
         },
         {
-          "op": "assertExileCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Grizzly Bears",
-          "count": 1
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "alias": "@foretold"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Dream Devourer",
           "power": 2,
           "toughness": 3
         },
         {
-          "op": "assertPowerToughness",
+          "op": "waitStackResolved",
           "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
           "player": 0,
           "name": "Dream Devourer",
           "power": 0,
@@ -147,75 +158,54 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Forest",
           "ability": "{T}: Add {G}",
           "count": 3
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "Foretell {G}"
+          "name": "Grizzly Bears (foretell)",
+          "objectAlias": "@foretold"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Grizzly Bears",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": null
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 2
         },
         {
           "op": "assertExileCount",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 0
         },
         {
           "op": "assertPowerToughness",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Dream Devourer",
           "power": 0,
           "toughness": 3
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Grizzly Bears",
-          "count": 2
         }
       ]
     },
     {
       "name": "testSplitCard",
       "operations": [
-        {
-          "op": "clearZone",
-          "player": 0,
-          "zone": "hand"
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -234,112 +224,206 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
+          "name": "Discovery // Dispersal@discovery",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Discovery // Dispersal@dispersal",
+          "count": 1
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Discovery // Dispersal",
+          "objectAlias": "@discovery",
+          "methods": [
+            "normal",
+            "split_other_half"
+          ]
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Discovery // Dispersal",
+          "objectAlias": "@dispersal",
+          "methods": [
+            "normal",
+            "split_other_half"
+          ]
+        },
+        {
+          "op": "activateAbility",
+          "source": null,
+          "ability": "Foretell Discovery",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@discovery",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "source": null,
+          "ability": "Foretell Discovery",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@dispersal",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
           "name": "Discovery // Dispersal",
           "count": 2
         },
         {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Underground Sea",
+          "count": 4,
+          "tapped": true
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Discovery"
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertPlayableAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Discovery",
           "expected": true
         },
         {
+          "op": "castSpell",
+          "name": "Discovery using foretell",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "objectAlias": "@discovery"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Discovery",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@discovery",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@discovery",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Underground Sea",
+          "count": 1,
+          "tapped": true
+        },
+        {
           "op": "assertPlayableAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Dispersal",
           "expected": true
         },
         {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "castSpell",
+          "name": "Dispersal using foretell",
           "player": 0,
-          "label": "Foretell",
-          "expected": true
-        },
-        {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Foretell"
-        },
-        {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Foretell"
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "assertExileCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Discovery // Dispersal",
-          "count": 2
-        },
-        {
-          "op": "assertPlayableAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Foretell {U/B}",
-          "expected": true
+          "objectAlias": "@dispersal"
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertStackObject",
+          "source": "Dispersal",
+          "count": 1,
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Foretell {1}{U}{B}",
-          "expected": true
-        },
-        {
-          "op": "activateAbility",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Foretell {U/B}"
-        },
-        {
-          "op": "activateAbility",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Foretell {1}{U}{B}"
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Discovery // Dispersal",
+          "name": "@dispersal",
           "count": 0
         },
         {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "END_TURN"
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@dispersal",
+          "count": 1
         },
         {
-          "op": "execute"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Underground Sea",
+          "count": 4,
+          "tapped": true
         }
       ]
     },
@@ -677,7 +761,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Lone",
+          "label": "Cast Lonesome Unicorn",
           "expected": true
         },
         {
@@ -745,15 +829,16 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Lone",
-          "expected": false
+          "label": "Cast Lonesome Unicorn",
+          "expected": false,
+          "castingMethod": "normal"
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Foretell {W}"
+          "name": "Rider in Need using foretell"
         },
         {
           "op": "waitStackResolved",
@@ -766,7 +851,7 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Lone",
+          "label": "Cast Lonesome Unicorn",
           "expected": true
         },
         {
@@ -778,11 +863,11 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "Foretell {2}{W}"
+          "name": "Lonesome Unicorn using foretell"
         },
         {
           "op": "waitStackResolved",
@@ -807,11 +892,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Cast Lonesome Unicorn"
+          "name": "Lonesome Unicorn"
         },
         {
           "op": "waitStackResolved",

@@ -63,7 +63,7 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Warrior Token",
-          "count": 500
+          "count": 512
         }
       ]
     },
@@ -141,7 +141,7 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Warrior Token",
-          "count": 500
+          "count": 512
         },
         {
           "op": "assertPermanentCount",

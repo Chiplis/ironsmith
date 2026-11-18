@@ -58,8 +58,12 @@ registerPortedMageTests({
           "value": "TestPlayer.CHOICE_SKIP"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 1\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, 20)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": "20",
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -67,7 +71,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Balduvian Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -75,7 +80,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Angelic Wall",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -83,11 +89,16 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Ashcoat Bear",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 2\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, 20 - 2)"
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": "20 - 2",
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -95,7 +106,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Balduvian Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -103,7 +115,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Angelic Wall",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -111,11 +124,37 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Ashcoat Bear",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_TURN",
+          "source": "Oracle en-Vec",
+          "onTop": true,
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_TURN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Angelic Wall",
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 3\", 3, PhaseStep.POSTCOMBAT_MAIN, playerA, 20 - 2)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": "20 - 2",
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -123,7 +162,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Balduvian Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -131,7 +171,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Angelic Wall",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -139,11 +180,16 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Ashcoat Bear",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 4\", 4, PhaseStep.POSTCOMBAT_MAIN, playerA, 20 - 2)"
+          "op": "assertLife",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": "20 - 2",
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -151,7 +197,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Balduvian Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -159,7 +206,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Angelic Wall",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -167,7 +215,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Ashcoat Bear",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",

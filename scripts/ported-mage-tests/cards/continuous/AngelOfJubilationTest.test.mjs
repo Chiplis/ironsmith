@@ -550,18 +550,32 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "source": "Wasteland",
+          "ability": "Destroy target nonbasic land",
+          "player": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "ability": "{T}, Sacrifice {this}: Destroy target nonbasic land."
+          "target": "Tundra"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Wasteland",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Tundra"
         },
         {
-          "op": "execute"
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Wasteland",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -574,6 +588,12 @@ registerPortedMageTests({
           "player": 1,
           "name": "Wasteland",
           "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Tundra",
+          "count": 1
         }
       ]
     },
@@ -858,8 +878,14 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"Token-maker\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Token Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Create two Food tokens."
         },
         {
           "op": "addCard",

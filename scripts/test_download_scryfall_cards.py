@@ -44,12 +44,15 @@ class DownloadTests(unittest.TestCase):
                 {**preview, "name": "Upcoming Token", "layout": "token"},
                 {**preview, "name": "Upcoming Playtest", "promo_types": ["playtest"]},
                 {**preview, "name": "Released Oddity", "released_at": "2026-10-19"},
+                # Scryfall's "future" pseudo-format already lists previews.
+                {**preview, "name": "Future Seal", "legalities": {**not_legal, "future": "legal"}},
             ]))
             today = datetime.date(2026, 10, 21)
-            self.assertEqual(download.write_filtered_cards(source, output, today), (6, 1))
-            [card] = json.loads(output.read_text())
-            self.assertEqual(card["name"], "Preview Dragon")
-            self.assertIs(card[download.UNRELEASED_MARKER], True)
+            self.assertEqual(download.write_filtered_cards(source, output, today), (7, 2))
+            cards = json.loads(output.read_text())
+            self.assertEqual([card["name"] for card in cards], ["Future Seal", "Preview Dragon"])
+            for card in cards:
+                self.assertIs(card[download.UNRELEASED_MARKER], True)
 
     def test_filter_change_invalidates_fresh_bulk_cache(self):
         metadata = {"type": "default_cards", "updated_at": "2026-10-07"}

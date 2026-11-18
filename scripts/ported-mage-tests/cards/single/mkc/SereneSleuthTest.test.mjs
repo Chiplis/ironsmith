@@ -39,6 +39,23 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Fugitive Wizard"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ],
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -57,11 +74,22 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Clue Token",
-          "count": 2
+          "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertTrue(\"fugitive wizard is not goaded\", getPermanent(fugitiveWizard).getGoadingPlayers().isEmpty())"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Fugitive Wizard"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -115,6 +143,23 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Fugitive Wizard"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ],
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -128,6 +173,29 @@ registerPortedMageTests({
           "player": 1,
           "name": "Cloudshift",
           "target": "Baeloth Barrityl, Entertainer"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Fugitive Wizard"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ],
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -144,8 +212,19 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertTrue(\"fugitive wizard is goaded\", getPermanent(fugitiveWizard).getGoadingPlayers().isEmpty())"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Fugitive Wizard"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
         }
       ]
     }

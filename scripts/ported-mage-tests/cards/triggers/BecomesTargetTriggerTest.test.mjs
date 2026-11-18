@@ -606,8 +606,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, dragon, 3)"
+          "op": "assertDamageReceived",
+          "name": "Thunderbreak Regent",
+          "damage": 3,
+          "player": 0
         },
         {
           "op": "assertLife",
@@ -894,8 +896,14 @@ registerPortedMageTests({
           "name": "Dormant Gomazoa"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"Enters tapped\", 1, PhaseStep.BEGIN_COMBAT, playerA, gomazoa, true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Dormant Gomazoa",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",

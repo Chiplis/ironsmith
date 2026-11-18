@@ -20,6 +20,20 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Sejiri Merfolk",
+          "ability": "First strike",
+          "expected": false
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Sejiri Merfolk",
+          "ability": "Lifelink",
+          "expected": false
         }
       ]
     },
@@ -47,6 +61,20 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Sejiri Merfolk",
+          "ability": "First strike",
+          "expected": true
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Sejiri Merfolk",
+          "ability": "Lifelink",
+          "expected": true
         }
       ]
     }

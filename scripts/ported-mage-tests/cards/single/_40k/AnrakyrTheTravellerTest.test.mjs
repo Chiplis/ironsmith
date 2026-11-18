@@ -30,17 +30,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Cryptek"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
         },
         {
           "op": "setStrictChooseMode",
@@ -99,17 +89,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Cryptek"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
         },
         {
           "op": "setStrictChooseMode",
@@ -133,6 +113,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Cryptek",
           "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Cryptek",
+          "count": 1
         }
       ]
     },
@@ -163,17 +149,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Cryptek"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
         },
         {
           "op": "setStrictChooseMode",
@@ -240,17 +216,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Lesser Masticore"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
         },
         {
           "op": "setChoice",
@@ -278,6 +244,12 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Lesser Masticore",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Cryptek",
           "count": 1
         }
       ]
@@ -309,17 +281,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Lesser Masticore"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
         },
         {
           "op": "setStrictChooseMode",
@@ -343,6 +305,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Lesser Masticore",
           "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Lesser Masticore",
+          "count": 1
         }
       ]
     },
@@ -387,17 +355,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Everflowing Chalice"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
         },
         {
           "op": "setChoice",
@@ -468,17 +426,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Everflowing Chalice"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
         },
         {
           "op": "setChoice",
@@ -544,22 +492,15 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Everflowing Chalice"
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "source": "Everflowing Chalice",
+          "description": "Choose optional costs for Everflowing Chalice",
+          "options": []
         },
         {
           "op": "setChoice",
@@ -587,6 +528,13 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Everflowing Chalice",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Everflowing Chalice",
+          "counter": "CHARGE",
           "count": 0
         }
       ]

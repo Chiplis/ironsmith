@@ -148,12 +148,27 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Memory Lapse",
           "target": "Lightning Bolt"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Memory Lapse",
+          "count": 1,
+          "objectTarget": "Lightning Bolt"
         },
         {
           "op": "castSpell",
@@ -164,14 +179,46 @@ registerPortedMageTests({
           "target": "Memory Lapse"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Twincast",
+          "count": 1,
+          "objectTarget": "Memory Lapse"
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Memory Lapse"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Memory Lapse",
+          "count": 1,
+          "objectTarget": "Memory Lapse",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -269,12 +316,27 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Counterspell",
           "target": "Lightning Bolt"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Counterspell",
+          "count": 1,
+          "objectTarget": "Lightning Bolt"
         },
         {
           "op": "castSpell",
@@ -285,14 +347,46 @@ registerPortedMageTests({
           "target": "Counterspell"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Twincast",
+          "count": 1,
+          "objectTarget": "Counterspell"
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Counterspell"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Counterspell",
+          "count": 1,
+          "objectTarget": "Counterspell",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -390,12 +484,27 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Dissipate",
           "target": "Lightning Bolt"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Dissipate",
+          "count": 1,
+          "objectTarget": "Lightning Bolt"
         },
         {
           "op": "castSpell",
@@ -406,14 +515,46 @@ registerPortedMageTests({
           "target": "Dissipate"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Twincast",
+          "count": 1,
+          "objectTarget": "Dissipate"
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Dissipate"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Dissipate",
+          "count": 1,
+          "objectTarget": "Dissipate",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",

@@ -63,11 +63,13 @@ registerPortedMageTests({
           "name": "Gisela, the Broken Blade"
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Silvercoat Lion"
+          "kind": "cast_spell",
+          "label": "Silvercoat Lion",
+          "sourceZone": "hand"
         },
         {
           "op": "setStopAt",
@@ -75,8 +77,13 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Silvercoat Lion\")) { Assert.fail(\"Should have thrown error about casting Silvercoat Lion, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerA, brisela, 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Brisela, Voice of Nightmares",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
@@ -178,12 +185,47 @@ registerPortedMageTests({
           "name": "Gisela, the Broken Blade"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Gisela, the Broken Blade",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Brisela, Voice of Nightmares",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Vanish into Memory",
           "target": "Brisela, Voice of Nightmares"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Vanish into Memory",
+          "count": 1,
+          "objectTarget": "Brisela, Voice of Nightmares"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -309,12 +351,42 @@ registerPortedMageTests({
           "name": "Gisela, the Broken Blade"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Gisela, the Broken Blade",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Brisela, Voice of Nightmares",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Vanish into Memory",
           "target": "Brisela, Voice of Nightmares"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Vanish into Memory",
+          "count": 1,
+          "objectTarget": "Brisela, Voice of Nightmares"
         },
         {
           "op": "waitStackResolved",
@@ -496,7 +568,29 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}{R}{R}"
+          "ability": "{3}{R}{R}",
+          "source": "Hanweir Battlements",
+          "resolve": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Hanweir, the Writhing Township",
+          "count": 1
+        },
+        {
+          "op": "saveRuntimeCheckpoint",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -507,12 +601,39 @@ registerPortedMageTests({
           "target": "Hanweir, the Writhing Township"
         },
         {
-          "op": "unsupported",
-          "source": "rollbackTurns(2, PhaseStep.BEGIN_COMBAT, playerB, 0)"
+          "op": "setStopAt",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "rollbackAfterActionsStart()"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Hanweir Battlements",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Hanweir Garrison",
+          "count": 1
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Hanweir, the Writhing Township",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Unsummon",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -521,10 +642,6 @@ registerPortedMageTests({
           "player": 1,
           "name": "Unsummon",
           "target": "Hanweir, the Writhing Township"
-        },
-        {
-          "op": "unsupported",
-          "source": "rollbackAfterActionsEnd()"
         },
         {
           "op": "setStopAt",
@@ -611,6 +728,17 @@ registerPortedMageTests({
           "name": "Gisela, the Broken Blade"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Gisela, the Broken Blade",
+          "count": 1
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": "Bruna, the Fading Light"
@@ -630,6 +758,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Brisela, Voice of Nightmares"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "manaValue",
+              "expected": 11
+            }
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
@@ -637,14 +780,18 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
+          "description": "Choose what to copy as this permanent enters",
+          "kind": "options",
+          "choices": [
+            "Enter as a copy of Brisela, Voice of Nightmares"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Brisela, Voice of Nightmares"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -659,6 +806,21 @@ registerPortedMageTests({
           "player": 1,
           "name": "Brisela, Voice of Nightmares",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Brisela, Voice of Nightmares"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "manaValue",
+              "expected": 0
+            }
+          ]
         }
       ]
     },
@@ -705,11 +867,28 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "The Mightstone and Weakstone",
+          "ability": "{T}: Add {C}{C}"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "C",
+          "amount": 2
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{7}: If you both own and control {this} and"
+          "ability": "{7}: If you both own and control",
+          "source": "Urza, Lord Protector"
         },
         {
           "op": "setChoice",
@@ -729,6 +908,21 @@ registerPortedMageTests({
           "player": 0,
           "name": "Urza, Planeswalker",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Urza, Planeswalker"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "manaValue",
+              "expected": 8
+            }
+          ]
         },
         {
           "op": "castSpell",
@@ -751,6 +945,21 @@ registerPortedMageTests({
           "player": 1,
           "name": "Urza, Planeswalker",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Urza, Planeswalker"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "manaValue",
+              "expected": 0
+            }
+          ]
         }
       ]
     },
@@ -801,7 +1010,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{7}: If you both own and control {this} and"
+          "ability": "{7}: If you both own and control {this} and",
+          "source": "Urza, Lord Protector",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -823,12 +1034,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 1,
           "name": "Eliminate",
-          "target": "Urza, Planeswalker"
+          "methods": []
         },
         {
           "op": "setStopAt",
@@ -836,8 +1047,13 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { Assert.assertEquals(\"Player PlayerB must have 0 actions but found 1\", e.getMessage()); }"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Eliminate",
+          "count": 1
         }
       ]
     },
@@ -881,7 +1097,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{7}: If you both own and control {this} and"
+          "ability": "{7}: If you both own and control {this} and",
+          "source": "Urza, Lord Protector",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -903,8 +1121,33 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "rollbackTurns(2, PhaseStep.POSTCOMBAT_MAIN, playerA, 0)"
+          "op": "saveRuntimeCheckpoint",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "seatIndependent": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 2,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Urza, Planeswalker",
+          "count": 1
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Urza, Planeswalker",
+          "count": 1
         },
         {
           "op": "setStopAt",

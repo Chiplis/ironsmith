@@ -97,7 +97,8 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Dungrove Elder",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -105,6 +106,33 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Permeating Mass",
           "attacker": "Dungrove Elder"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Permeating Mass",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Permeating Mass",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "name": "Dungrove Elder",
+          "player": 1,
+          "damage": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

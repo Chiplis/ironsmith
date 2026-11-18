@@ -404,8 +404,14 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"6 loyalty\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, comet, CounterType.LOYALTY, 6)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Comet, Stellar Pup",
+          "counter": "LOYALTY",
+          "count": 6,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",
@@ -433,8 +439,14 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"7 loyalty\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, comet, CounterType.LOYALTY, 7)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Comet, Stellar Pup",
+          "counter": "LOYALTY",
+          "count": 7,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",
@@ -462,8 +474,14 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"9 loyalty\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, comet, CounterType.LOYALTY, 9)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Comet, Stellar Pup",
+          "counter": "LOYALTY",
+          "count": 9,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",
@@ -491,8 +509,14 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"9 loyalty\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, comet, CounterType.LOYALTY, 11)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Comet, Stellar Pup",
+          "counter": "LOYALTY",
+          "count": 11,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",
@@ -598,8 +622,14 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"7 loyalty\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, comet, CounterType.LOYALTY, 7)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Comet, Stellar Pup",
+          "counter": "LOYALTY",
+          "count": 7,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",
@@ -627,8 +657,14 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"10 loyalty\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, comet, CounterType.LOYALTY, 10)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Comet, Stellar Pup",
+          "counter": "LOYALTY",
+          "count": 10,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",
@@ -732,8 +768,14 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"7 loyalty\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, comet, CounterType.LOYALTY, 6)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Comet, Stellar Pup",
+          "counter": "LOYALTY",
+          "count": 6,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",

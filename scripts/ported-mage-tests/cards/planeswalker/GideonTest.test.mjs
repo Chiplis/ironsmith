@@ -46,21 +46,21 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Kytheon, Hero of Akros",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Pillarfield Ox",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "activateAbility",
@@ -100,7 +100,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Gideon, Battle-Forged",
           "counter": "LOYALTY",
           "count": 4
@@ -157,11 +157,34 @@ registerPortedMageTests({
           "name": "Gideon, Champion of Justice"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gideon, Champion of Justice",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Gideon, Champion of Justice",
+          "count": 4,
+          "player": 0,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "0: Until end of turn"
+          "ability": "0: Until end of turn",
+          "source": "Gideon, Champion of Justice"
         },
         {
           "op": "activateAbility",
@@ -169,14 +192,39 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "+1: Put a loyalty counter on",
-          "target": 1
+          "target": 1,
+          "source": "Gideon, Champion of Justice"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gideon, Champion of Justice",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Gideon, Champion of Justice",
+          "count": 7,
+          "player": 0,
+          "counter": "LOYALTY",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "0: Until end of turn"
+          "ability": "0: Until end of turn",
+          "source": "Gideon, Champion of Justice"
         },
         {
           "op": "setStopAt",
@@ -257,21 +305,24 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Kytheon, Hero of Akros",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Pillarfield Ox",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "assertPermanentCount",
@@ -286,13 +337,33 @@ registerPortedMageTests({
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "0: Until "
+          "ability": "0: Until end of turn",
+          "source": "Gideon, Battle-Forged"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gideon, Battle-Forged",
+          "count": 1,
+          "abilityKind": "Activated",
+          "targetCount": 0
         },
         {
           "op": "waitStackResolved",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": null,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "name": "Gideon, Battle-Forged",
+          "player": 1,
+          "power": 4,
+          "toughness": 4,
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -300,14 +371,64 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip {2}",
-          "target": "Gideon, Battle-Forged"
+          "target": {
+            "groups": [
+              [
+                "Gideon, Battle-Forged"
+              ]
+            ]
+          },
+          "source": "Stitcher's Graft"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Stitcher's Graft",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Gideon, Battle-Forged"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "targetPlayer": 1,
+          "attachment": "Stitcher's Graft",
+          "target": "Gideon, Battle-Forged",
+          "expected": true,
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "name": "Gideon, Battle-Forged",
+          "player": 1,
+          "power": 7,
+          "toughness": 7,
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
           "attacker": "Gideon, Battle-Forged",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 7,
+          "seatIndependent": true,
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -343,6 +464,13 @@ registerPortedMageTests({
           "player": 1,
           "name": "Kytheon, Hero of Akros",
           "count": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Stitcher's Graft",
+          "target": null,
+          "expected": true
         }
       ]
     },

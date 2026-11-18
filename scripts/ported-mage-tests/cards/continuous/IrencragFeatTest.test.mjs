@@ -270,50 +270,115 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt",
           "target": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
           "name": "Lightning Bolt",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "target": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Irencrag Feat"
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 14
         },
         {
           "op": "castSpell",
+          "name": "Irencrag Feat",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Irencrag Feat",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt",
           "target": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
+          "targetCount": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Irencrag Feat",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
           "name": "Lightning Bolt",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "target": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 2,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Irencrag Feat",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertHandCount",
@@ -322,9 +387,15 @@ registerPortedMageTests({
           "count": 0
         },
         {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 4
+        },
+        {
           "op": "assertLife",
           "player": 1,
-          "life": "20 - 4 * 3"
+          "life": 8
         }
       ]
     },

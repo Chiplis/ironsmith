@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "test_ExileUntilLeaves",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA)"
-        },
-        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -39,6 +35,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Target Destroy Fixture",
+          "fixtureSource": true,
+          "manaCost": "{0}",
+          "typeLine": "Instant",
+          "oracleText": "Destroy target permanent."
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -46,22 +52,46 @@ registerPortedMageTests({
           "name": "Crack in Time"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Crack in Time",
+          "count": 1
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": "Balduvian Bears"
         },
         {
-          "op": "assertExileCount",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Crack in Time",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Balduvian Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
           "player": 1,
           "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Grizzly Bears",
           "count": 0
@@ -72,45 +102,55 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "assertExileCount",
+          "op": "assertStackObject",
           "turn": 3,
-          "phase": "BEGIN_COMBAT",
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Crack in Time",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Grizzly Bears",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
           "player": 1,
           "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "turn": 3,
-          "phase": "BEGIN_COMBAT",
           "player": 1,
           "name": "Grizzly Bears",
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "target destroy",
+          "name": "Target Destroy Fixture",
           "target": "Crack in Time"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 3,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
           "player": 1,
           "name": "Balduvian Bears",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Grizzly Bears",
           "count": 0
         },
         {
@@ -118,12 +158,6 @@ registerPortedMageTests({
           "player": 1,
           "name": "Balduvian Bears",
           "count": 1
-        },
-        {
-          "op": "assertExileCount",
-          "player": 1,
-          "name": "Grizzly Bears",
-          "count": 0
         },
         {
           "op": "assertPermanentCount",

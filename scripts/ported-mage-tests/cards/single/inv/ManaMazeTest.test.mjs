@@ -5,7 +5,7 @@ registerPortedMageTests({
   "tests": [
     {
       "name": "test_DeepCopy_WithSelfReference",
-      "operations": []
+      "skip": "Requires a Java StackOverflowError when CardUtil deep-copies a cyclic ArrayList"
     },
     {
       "name": "test_DeepCopy_WatcherWithSelfReference",
@@ -39,12 +39,12 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "label": "Cast Aven Reedstalker",
-          "expected": true
+          "name": "Aven Reedstalker",
+          "methods": ["normal"]
         },
         {
           "op": "castSpell",
@@ -54,28 +54,32 @@ registerPortedMageTests({
           "name": "Mana Maze"
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "END_TURN",
           "player": 1,
-          "label": "Cast Aven Reedstalker",
-          "expected": false
+          "name": "Aven Reedstalker",
+          "methods": []
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "saveRuntimeCheckpoint"
         },
         {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
+          "op": "assertCastMethods",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Aven Reedstalker",
+          "methods": ["normal"]
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "restoreRuntimeCheckpoint"
         },
         {
-          "op": "execute"
+          "op": "assertCastMethods",
+          "player": 1,
+          "name": "Aven Reedstalker",
+          "methods": []
         },
         {
           "op": "assertPermanentCount",

@@ -83,8 +83,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}{G}\" + \"{G}{G}\" + \"{G}{G}\" + \"{G}{G}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{G}{G}{G}{G}{G}{G}{G}{G}{G}"
+          ],
+          "exact": false
         }
       ]
     },
@@ -178,8 +182,12 @@ registerPortedMageTests({
           "source": "assertManaPool(playerA, ManaType.GREEN, 2)"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}{G}{G}{G}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{G}{G}{G}{G}{G}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -278,16 +286,14 @@ registerPortedMageTests({
           "life": 18
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}{W}{W}{W}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{C}{C}{C}{G}{G}",
+            "{G}{G}{G}{G}{G}",
+            "{G}{G}{W}{W}{W}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -393,20 +399,16 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}{R}{R}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}{R}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{R}{R}{R}{R}{G}{G}{G}{G}{G}",
+            "{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{R}{R}{G}{G}{G}{G}{G}{G}{G}",
+            "{R}{G}{G}{G}{G}{G}{G}{G}{G}"
+          ],
+          "exact": true,
+          "prefundManaCosts": true
         }
       ]
     }

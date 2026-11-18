@@ -8,23 +8,6 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "addCard",
-          "zone": "LIBRARY",
-          "player": 0,
-          "name": "Trostani Discordant",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "LIBRARY",
-          "player": 0,
-          "name": "Void Winnower",
-          "count": 1
-        },
-        {
-          "op": "skipInitShuffling"
-        },
-        {
-          "op": "addCard",
           "zone": "HAND",
           "player": 0,
           "name": "Dubious Challenge",
@@ -52,21 +35,77 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "LIBRARY",
+          "name": "Forest",
+          "count": 12
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Trostani Discordant",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Void Winnower",
+          "count": 1
+        },
+        {
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Void Winnower",
+            "Trostani Discordant",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest"
+          ]
+        },
+        {
           "op": "castSpell",
+          "name": "Dubious Challenge",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Dubious Challenge"
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dubious Challenge",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Trostani Discordant^Void Winnower"
+          "value": "Trostani Discordant"
         },
         {
-          "op": "addTarget",
+          "op": "setChoice",
           "player": 0,
-          "target": 1
+          "value": "Void Winnower"
         },
         {
           "op": "setChoice",
@@ -74,16 +113,9 @@ registerPortedMageTests({
           "value": "Trostani Discordant"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -98,17 +130,17 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Trostani Discordant",
+          "count": 1
+        },
+        {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "Void Winnower",
           "power": 11,
           "toughness": 9
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Trostani Discordant",
-          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -138,23 +170,6 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "addCard",
-          "zone": "LIBRARY",
-          "player": 0,
-          "name": "Trostani Discordant",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "LIBRARY",
-          "player": 0,
-          "name": "Void Winnower",
-          "count": 1
-        },
-        {
-          "op": "skipInitShuffling"
-        },
-        {
-          "op": "addCard",
           "zone": "HAND",
           "player": 0,
           "name": "Dubious Challenge",
@@ -182,21 +197,77 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "LIBRARY",
+          "name": "Forest",
+          "count": 12
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Trostani Discordant",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Void Winnower",
+          "count": 1
+        },
+        {
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Void Winnower",
+            "Trostani Discordant",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest",
+            "Forest"
+          ]
+        },
+        {
           "op": "castSpell",
+          "name": "Dubious Challenge",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Dubious Challenge"
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dubious Challenge",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Trostani Discordant^Void Winnower"
+          "value": "Trostani Discordant"
         },
         {
-          "op": "addTarget",
+          "op": "setChoice",
           "player": 0,
-          "target": 1
+          "value": "Void Winnower"
         },
         {
           "op": "setChoice",
@@ -204,16 +275,9 @@ registerPortedMageTests({
           "value": "Trostani Discordant"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 8,
+          "op": "waitStackResolved",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertGraveyardCount",
@@ -228,11 +292,52 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Trostani Discordant",
+          "count": 1
+        },
+        {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "Void Winnower",
-          "power": 12,
-          "toughness": 10
+          "power": 11,
+          "toughness": 9
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 1,
+          "name": "Trostani Discordant",
+          "power": 1,
+          "toughness": 4
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "power": 2,
+          "toughness": 2
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "power": 3,
+          "toughness": 3
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Trostani Discordant",
+          "count": 1,
+          "turn": 2,
+          "phase": "END_TURN",
+          "abilityKind": "Triggered",
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_TURN"
         },
         {
           "op": "assertPermanentCount",
@@ -241,11 +346,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Trostani Discordant",
+          "count": 0
+        },
+        {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "Trostani Discordant",
           "power": 1,
           "toughness": 4
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Void Winnower",
+          "power": 12,
+          "toughness": 10
         },
         {
           "op": "assertPowerToughness",

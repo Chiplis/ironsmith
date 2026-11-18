@@ -59,8 +59,14 @@ registerPortedMageTests({
           "source": "checkDamage(\"before mode 1\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Spectral Bears\", 2)"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"before mode 2\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Spectral Bears\", false, 1)"
+          "op": "assertTappedCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Spectral Bears",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -86,8 +92,14 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after mode 2\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Spectral Bears\", true, 1)"
+          "op": "assertTappedCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Spectral Bears",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -125,7 +137,7 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Forest",
-          "count": "2 * triggerCalls"
+          "count": 10
         },
         {
           "op": "addCard",
@@ -161,8 +173,14 @@ registerPortedMageTests({
           "source": "checkManaPool(\"after mode 1\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"G\", 3)"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"before mode 2\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Grizzly Bears\", CounterType.P1P1, 0)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "counter": "P1P1",
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -183,8 +201,14 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after mode 2\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Grizzly Bears\", CounterType.P1P1, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "counter": "P1P1",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",

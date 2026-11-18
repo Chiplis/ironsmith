@@ -36,28 +36,96 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Molten Sentry"
+          "name": "Molten Sentry",
+          "coinFaces": [
+            "heads"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Molten Sentry",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Molten Sentry",
+          "power": 5,
+          "toughness": 2
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": {
+            "groups": [
+              [
+                "Molten Sentry"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "boolean",
+          "description": "Exile another target nontoken creature",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Identity Thief",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
-          "op": "addTarget",
-          "player": 1,
-          "target": "Molten Sentry"
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Identity Thief",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Molten Sentry"
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Molten Sentry",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 1,
-          "value": true
+          "name": "Identity Thief",
+          "count": 0
+        },
+        {
+          "op": "assertPowerToughness",
+          "name": "Molten Sentry",
+          "player": 1,
+          "power": 5,
+          "toughness": 2,
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
           "op": "setStopAt",
@@ -89,7 +157,8 @@ registerPortedMageTests({
           "name": "Molten Sentry",
           "count": 1
         }
-      ]
+      ],
+      "seed": 3
     },
     {
       "name": "testCopyPrimalClay",
@@ -127,26 +196,90 @@ registerPortedMageTests({
           "name": "Primal Clay"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "a 3/3 artifact creature"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "3/3"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Primal Clay",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": {
+            "groups": [
+              [
+                "Primal Clay"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "boolean",
+          "description": "Exile another target nontoken creature",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Identity Thief",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Yes"
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Identity Thief",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Primal Clay"
         },
         {
-          "op": "addTarget",
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Primal Clay",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 1,
-          "target": "Primal Clay"
+          "name": "Identity Thief",
+          "count": 0
+        },
+        {
+          "op": "assertPowerToughness",
+          "name": "Primal Clay",
+          "player": 1,
+          "power": 3,
+          "toughness": 3,
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
           "op": "setStopAt",
@@ -231,7 +364,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Identity Thief",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "addTarget",

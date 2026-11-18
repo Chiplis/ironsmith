@@ -37,8 +37,12 @@ registerPortedMageTests({
           "phase": "COMBAT_DAMAGE"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"draw 1 each\", testTurn, PhaseStep.COMBAT_DAMAGE, playerA, \"Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents,\" + \" you and the controller of those creatures each draw a card.\", 1)"
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "text": "Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents",
+          "count": 1
         },
         {
           "op": "execute"
@@ -55,12 +59,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 1
         }
       ]
@@ -113,8 +117,12 @@ registerPortedMageTests({
           "phase": "COMBAT_DAMAGE"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"draw 1 each\", testTurn, PhaseStep.COMBAT_DAMAGE, playerA, \"Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents,\" + \" you and the controller of those creatures each draw a card.\", 1)"
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "text": "Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents",
+          "count": 1
         },
         {
           "op": "execute"
@@ -131,12 +139,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 1
         }
       ]
@@ -189,8 +197,12 @@ registerPortedMageTests({
           "phase": "COMBAT_DAMAGE"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"draw 1 each\", testTurn, PhaseStep.COMBAT_DAMAGE, playerA, \"Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents,\" + \" you and the controller of those creatures each draw a card.\", 1)"
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "text": "Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents",
+          "count": 1
         },
         {
           "op": "execute"
@@ -207,12 +219,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 1
         }
       ]
@@ -252,9 +264,9 @@ registerPortedMageTests({
         },
         {
           "op": "assertStackSize",
-          "turn": "Empty Stack",
-          "phase": 4,
-          "player": "COMBAT_DAMAGE",
+          "turn": 4,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
           "count": 0
         },
         {
@@ -272,12 +284,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 1
         }
       ]
@@ -330,8 +342,12 @@ registerPortedMageTests({
           "phase": "COMBAT_DAMAGE"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"draw 1 each\", testTurn, PhaseStep.COMBAT_DAMAGE, playerA, \"Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents,\" + \" you and the controller of those creatures each draw a card.\", 1)"
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "text": "Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents",
+          "count": 1
         },
         {
           "op": "execute"
@@ -348,12 +364,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 1
         }
       ]
@@ -397,8 +413,12 @@ registerPortedMageTests({
           "phase": "DECLARE_ATTACKERS"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"suspect creature\", 1, PhaseStep.DECLARE_ATTACKERS, playerA, \"Whenever {this} attacks, suspect target creature. Then goad all suspected creatures.\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "text": "Whenever Nelly Borca attacks, suspect target creature. Then goad all suspected creatures.",
+          "count": 1
         },
         {
           "op": "execute"
@@ -415,12 +435,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 0
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 0
         }
       ]
@@ -487,12 +507,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 0
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 0
         }
       ]
@@ -531,12 +551,20 @@ registerPortedMageTests({
           "phase": "COMBAT_DAMAGE"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"draw 1 each first strike\", testTurn, PhaseStep.FIRST_COMBAT_DAMAGE, playerA, \"Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents,\" + \" you and the controller of those creatures each draw a card.\", 1)"
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "player": 0,
+          "text": "Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"draw 1 each second strike\", testTurn, PhaseStep.COMBAT_DAMAGE, playerA, \"Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents,\" + \" you and the controller of those creatures each draw a card.\", 1)"
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "text": "Whenever one or more creatures an opponent controls deal combat damage to one or more of your opponents",
+          "count": 1
         },
         {
           "op": "execute"
@@ -553,15 +581,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 1
         }
       ]
     }
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
   ]
 });

@@ -63,6 +63,26 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Jace, Cunning Castaway",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Taiga"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN"

@@ -260,34 +260,78 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Island",
-          "count": 4
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "castSpell",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Snapping Drake"
-        },
-        {
-          "op": "activateManaAbility",
-          "turn": 2,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 1,
-          "ability": "{T}: Add {C}{C}{C}{C}",
+          "name": "Island@island1",
           "count": 1
         },
         {
-          "op": "activateAbility",
-          "turn": 2,
-          "phase": "POSTCOMBAT_MAIN",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 1,
-          "ability": "{X}, {T}: Untap"
+          "name": "Island@island2",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island@island3",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island@island4",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "name": "Snapping Drake",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Snapping Drake",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Island",
+          "count": 4,
+          "tapped": true
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Rosheen Meanderer",
+          "ability": "Add {C}{C}{C}{C}",
+          "player": 1,
+          "count": 1,
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 1,
+          "colors": "C",
+          "amount": 4
+        },
+        {
+          "op": "activateAbility",
+          "source": "Candelabra of Tawnos",
+          "ability": "{X}, {T}: Untap",
+          "player": 1,
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setChoice",
@@ -297,67 +341,89 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 1,
-          "target": "Island"
+          "target": "@island1"
         },
         {
           "op": "addTarget",
           "player": 1,
-          "target": "Island"
+          "target": "@island2"
         },
         {
           "op": "addTarget",
           "player": 1,
-          "target": "Island"
+          "target": "@island3"
         },
         {
           "op": "addTarget",
           "player": 1,
-          "target": "Island"
+          "target": "@island4"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Candelabra of Tawnos",
+          "count": 1,
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 4
         },
         {
           "op": "waitStackResolved",
           "turn": 2,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": null
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Island",
+          "count": 4,
+          "tapped": false
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Rosheen Meanderer",
+          "count": 1,
+          "tapped": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Candelabra of Tawnos",
+          "count": 1,
+          "tapped": true
         },
         {
           "op": "castSpell",
-          "turn": 2,
-          "phase": "POSTCOMBAT_MAIN",
+          "name": "Snapping Drake",
           "player": 1,
-          "name": "Snapping Drake"
-        },
-        {
-          "op": "setStopAt",
           "turn": 2,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Snapping Drake",
+          "count": 1,
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "assertTappedCount",
-          "name": "Island",
-          "tapped": true,
-          "count": 4
-        },
-        {
-          "op": "assertTappedCount",
-          "name": "Rosheen Meanderer",
-          "tapped": true,
-          "count": 1
-        },
-        {
-          "op": "assertTappedCount",
-          "name": "Candelabra of Tawnos",
-          "tapped": true,
-          "count": 1
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Snapping Drake",
           "count": 2
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Island",
+          "count": 4,
+          "tapped": true
         }
       ]
     },
@@ -591,44 +657,52 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateManaAbility",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Put a charge counter",
-          "count": 1
-        },
-        {
           "op": "setChoice",
           "player": 0,
           "value": "Red"
         },
         {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "activateManaAbility",
+          "source": "Empowered Autogenerator",
+          "ability": "Put a charge counter",
           "player": 0,
-          "name": "Lightning Bolt",
-          "target": 1
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "count": 1,
           "turn": 3,
-          "phase": "POSTCOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Empowered Autogenerator",
-          "counter": "CHARGE",
-          "count": 1
+          "count": 1,
+          "counter": "CHARGE"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "R",
+          "amount": 1
+        },
+        {
+          "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -662,44 +736,52 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateManaAbility",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Put a charge counter",
-          "count": 1
-        },
-        {
           "op": "setChoice",
           "player": 0,
           "value": "Red"
         },
         {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "activateManaAbility",
+          "source": "Empowered Autogenerator",
+          "ability": "Put a charge counter",
           "player": 0,
-          "name": "Lightning Bolt",
-          "target": 1
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "count": 1,
           "turn": 3,
-          "phase": "POSTCOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Empowered Autogenerator",
-          "counter": "CHARGE",
-          "count": 2
+          "count": 2,
+          "counter": "CHARGE"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "R",
+          "amount": 2
+        },
+        {
+          "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -872,8 +954,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{R}{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -993,20 +1079,37 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}\", manaOptions)"
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{R}[{TitansNestManaCondition}]\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{R}[{XCostManaCondition}]\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{C}{R}[{XCostManaCondition}{TitansNestManaCondition}]\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": 0,
+          "exact": true,
+          "options": [
+            "{R}",
+            {
+              "mana": "{C}{C}{C}{R}",
+              "restricted": {
+                "coloredSpellWithoutX": 3
+              }
+            },
+            {
+              "mana": "{C}{C}{C}{C}{R}",
+              "restricted": {
+                "costContainsX": 4
+              }
+            },
+            {
+              "mana": "{C}{C}{C}{C}{C}{C}{C}{R}",
+              "restricted": {
+                "coloredSpellWithoutX": 3,
+                "costContainsX": 4
+              }
+            }
+          ]
         }
       ]
     },
@@ -1195,7 +1298,59 @@ registerPortedMageTests({
     },
     {
       "name": "testConditionalManaDeduplication",
-      "operations": []
+      "operations": [
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Conditional Mana Fixture",
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{T}: Add {G}.\n{T}: Add {G}. Spend this mana only to cast creature spells.\n{T}: Add {G}. Spend this mana only to cast artifact spells.\n{T}: Add {G}{G}. Spend this mana only to cast artifact spells.\n{T}: Add {G}. Spend this mana only to cast enchantment spells.\n{T}: Add {G}. Spend this mana only to cast enchantment spells."
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Conditional Mana Fixture",
+          "kind": "activated",
+          "count": 6
+        },
+        {
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "exact": "all_reachable",
+          "options": [
+            "",
+            "{G}",
+            {
+              "mana": "{G}",
+              "restricted": {
+                "G:cast:Creature": 1
+              }
+            },
+            {
+              "mana": "{G}",
+              "restricted": {
+                "G:cast:Artifact": 1
+              }
+            },
+            {
+              "mana": "{G}{G}",
+              "restricted": {
+                "G:cast:Artifact": 2
+              }
+            },
+            {
+              "mana": "{G}",
+              "restricted": {
+                "G:cast:Enchantment": 1
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "testJeganthaYes",

@@ -88,6 +88,22 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "source": "Xanathar, Guild Kingpin",
+          "count": 1,
+          "turn": 1,
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "resolutions": 1,
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",

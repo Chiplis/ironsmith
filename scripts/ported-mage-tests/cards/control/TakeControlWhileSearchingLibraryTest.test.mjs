@@ -20,7 +20,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Balduvian Bears",
+          "name": "Balduvian Bears@found",
           "count": 1
         },
         {
@@ -46,16 +46,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
           "count": 0
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Kitesail Corsair",
           "count": 0
@@ -65,8 +61,17 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Swamp",
           "ability": "{T}: Add {B}",
           "count": 3
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 3
         },
         {
           "op": "castSpell",
@@ -76,9 +81,16 @@ registerPortedMageTests({
           "name": "Buried Alive"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Buried Alive",
+          "count": 1
+        },
+        {
           "op": "addTarget",
           "player": 0,
-          "target": "Balduvian Bears"
+          "target": "@found"
         },
         {
           "op": "addTarget",
@@ -89,35 +101,19 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Kitesail Corsair",
           "count": 0
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
         }
       ]
     },
@@ -163,8 +159,14 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"control\", playerB, new SimpleStaticAbility( new YouControlYourOpponentsWhileSearchingReplacementEffect()) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Search Custody Fixture",
+          "typeLine": "",
+          "custom": true,
+          "fixtureSource": true,
+          "oracleText": "You control your opponents while they're searching their libraries."
         },
         {
           "op": "addCard",
@@ -186,7 +188,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertGraveyardCount",
@@ -194,7 +197,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Kitesail Corsair",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "activateManaAbility",
@@ -238,7 +242,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertGraveyardCount",
@@ -246,7 +251,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Kitesail Corsair",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -271,6 +277,11 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 17
         }
       ]
     },
@@ -291,7 +302,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Balduvian Bears",
+          "name": "Balduvian Bears@found",
           "count": 1
         },
         {
@@ -338,16 +349,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
           "count": 0
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Kitesail Corsair",
           "count": 0
@@ -357,8 +364,17 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Swamp",
           "ability": "{T}: Add {B}",
           "count": 3
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 3
         },
         {
           "op": "castSpell",
@@ -366,6 +382,13 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Buried Alive"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Buried Alive",
+          "count": 1
         },
         {
           "op": "setChoice",
@@ -380,7 +403,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Balduvian Bears"
+          "target": "@found"
         },
         {
           "op": "addTarget",
@@ -391,43 +414,37 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Kitesail Corsair",
           "count": 0
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "source": "Panglacial Wurm",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
           "name": "Panglacial Wurm",
           "count": 2
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
         }
       ]
     },
@@ -692,7 +709,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Balduvian Bears",
+          "name": "Balduvian Bears@found",
           "count": 1
         },
         {
@@ -703,20 +720,33 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "assertGraveyardCount",
           "player": 0,
           "name": "Balduvian Bears",
           "count": 0
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Kitesail Corsair",
+          "count": 0
+        },
+        {
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Balduvian Bears",
-          "count": 0
+          "player": 0,
+          "source": "Swamp",
+          "ability": "{T}: Add {B}",
+          "count": 3
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 3
         },
         {
           "op": "castSpell",
@@ -726,6 +756,13 @@ registerPortedMageTests({
           "name": "Buried Alive"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Buried Alive",
+          "count": 1
+        },
+        {
           "op": "setChoice",
           "player": 1,
           "value": true
@@ -733,34 +770,33 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 1,
-          "target": "Balduvian Bears"
+          "target": "@found"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
           "count": 0
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Balduvian Bears",
+          "name": "Kitesail Corsair",
           "count": 0
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
           "count": 1
@@ -770,19 +806,22 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Balduvian Bears"
+          "name": "Balduvian Bears",
+          "objectAlias": "@found",
+          "permissionSource": "Opposition Agent"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 2,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Balduvian Bears",
+          "count": 1,
+          "controller": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

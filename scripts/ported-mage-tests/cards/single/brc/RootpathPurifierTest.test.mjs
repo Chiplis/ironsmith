@@ -39,8 +39,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_CONTROLLED_PERMANENT_LAND, playerA.getId(), currentGame )) { Assert.assertTrue(permanent.getName() + \" should be basic\", permanent.isBasic(currentGame)); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "cardType": "Land"
+          },
+          "checks": [
+            {
+              "property": "supertype",
+              "value": "Basic",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -112,8 +123,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_CONTROLLED_PERMANENT_LAND, playerA.getId(), currentGame )) { Assert.assertTrue(permanent.getName() + \" should be basic\", permanent.isBasic(currentGame)); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "cardType": "Land"
+          },
+          "checks": [
+            {
+              "property": "supertype",
+              "value": "Basic",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -185,8 +207,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_CONTROLLED_PERMANENT_LAND, playerA.getId(), currentGame )) { Assert.assertTrue(permanent.getName() + \" should be basic\", permanent.isBasic(currentGame)); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "cardType": "Land"
+          },
+          "checks": [
+            {
+              "property": "supertype",
+              "value": "Basic",
+              "expected": true
+            }
+          ]
         }
       ]
     },

@@ -22,19 +22,34 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "player": 0,
+          "source": "Behemoth Sledge",
+          "ability": "{0}: Attach objects.",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Equip Knight",
           "target": "Syr Gwyn, Hero of Ashvale"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Behemoth Sledge",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Syr Gwyn, Hero of Ashvale"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Behemoth Sledge",
+          "target": "Syr Gwyn, Hero of Ashvale",
+          "targetPlayer": 0,
+          "expected": true
         },
         {
           "op": "assertPowerToughness",
@@ -71,19 +86,34 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "player": 0,
+          "source": "Behemoth Sledge",
+          "ability": "{0}: Attach objects.",
           "turn": 1,
           "phase": "DECLARE_ATTACKERS",
-          "player": 0,
-          "ability": "Equip Knight",
           "target": "Syr Gwyn, Hero of Ashvale"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Behemoth Sledge",
+          "count": 1,
           "turn": 1,
-          "phase": "END_COMBAT"
+          "phase": "DECLARE_ATTACKERS",
+          "abilityKind": "Activated",
+          "objectTarget": "Syr Gwyn, Hero of Ashvale"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Behemoth Sledge",
+          "target": "Syr Gwyn, Hero of Ashvale",
+          "targetPlayer": 0,
+          "expected": true
         },
         {
           "op": "assertPowerToughness",

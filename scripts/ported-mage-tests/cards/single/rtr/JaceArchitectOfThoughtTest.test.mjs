@@ -36,7 +36,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",
@@ -112,14 +112,14 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Grizzly Bears",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",
@@ -193,14 +193,14 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",
@@ -298,7 +298,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",

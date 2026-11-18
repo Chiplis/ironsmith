@@ -72,8 +72,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{Any}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{Any}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -153,8 +157,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{Any}{Any}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{Any}{Any}"
+          ],
+          "exact": true
         }
       ]
     }

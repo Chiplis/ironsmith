@@ -107,7 +107,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Treacherous Pit-Dweller",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "castSpell",

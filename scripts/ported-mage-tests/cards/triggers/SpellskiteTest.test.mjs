@@ -266,22 +266,46 @@ registerPortedMageTests({
           "target": 0
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Cryptic Command",
-          "target": "mode=1Lightning Bolt^mode=2Silvercoat Lion"
+          "target": {
+            "groups": [
+              [
+                "Lightning Bolt"
+              ],
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          }
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "1"
+          "description": "Choose mode for Cryptic Command",
+          "kind": "modes",
+          "choices": [
+            "Counter target spell.",
+            "Return target permanent to its owner's hand."
+          ]
         },
         {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "2"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cryptic Command",
+          "count": 1,
+          "targetCount": 2
         },
         {
           "op": "activateAbility",
@@ -289,7 +313,46 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "{U/P}: Change a target of target spell or ability to {this}.",
-          "target": "Cryptic Command"
+          "target": "Cryptic Command",
+          "source": "Spellskite"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "description": "Choose how to pay pip 1 of Spellskite's ability",
+          "kind": "hybrid_payment",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Spellskite",
+          "count": 1,
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cryptic Command",
+          "count": 1,
+          "objectTarget": "Spellskite",
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -657,59 +720,116 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Scute Mob",
+          "amount": 1,
+          "selectTarget": false
+        },
+        {
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Spellskite",
+          "amount": 4,
+          "selectTarget": false
+        },
+        {
           "op": "castSpell",
+          "name": "Fiery Justice",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Fiery Justice"
+          "target": {
+            "groups": [
+              [
+                "Scute Mob",
+                "Spellskite"
+              ],
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"Scute Mob\", 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"Spellskite\", 4)"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "op": "assertStackObject",
+          "source": "Fiery Justice",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 3
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
+          "source": "Spellskite",
           "ability": "{U/P}: Change a target",
           "target": "Fiery Justice"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 1 of Spellskite's ability",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Spellskite",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Fiery Justice"
         },
         {
-          "op": "execute"
+          "op": "assertLife",
+          "player": 1,
+          "life": 18
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Fiery Justice",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 3
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fiery Justice",
+          "count": 1,
+          "objectTarget": "Scute Mob"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fiery Justice",
+          "count": 1,
+          "objectTarget": "Spellskite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
           "player": 1,
           "life": 23
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 1,
-          "count": 2
         },
         {
           "op": "assertGraveyardCount",
@@ -722,6 +842,11 @@ registerPortedMageTests({
           "player": 1,
           "name": "Spellskite",
           "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "count": 2
         }
       ]
     },
@@ -806,15 +931,38 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Scute Mob",
+          "amount": 5,
+          "selectTarget": false
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Fiery Justice"
+          "name": "Fiery Justice",
+          "target": {
+            "groups": [
+              [
+                "Scute Mob"
+              ],
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"Scute Mob\", 5)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fiery Justice",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 2,
+          "objectTarget": "Scute Mob"
         },
         {
           "op": "activateAbility",
@@ -822,7 +970,18 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "{U/P}: Change a target",
-          "target": "Fiery Justice"
+          "target": "Fiery Justice",
+          "source": "Spellskite"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Spellskite",
+          "count": 1,
+          "abilityKind": "Activated",
+          "onTop": true,
+          "objectTarget": "Fiery Justice"
         },
         {
           "op": "setChoice",
@@ -833,6 +992,27 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 1,
           "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fiery Justice",
+          "count": 1,
+          "targetCount": 2,
+          "objectTarget": "Spellskite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -856,6 +1036,12 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Scute Mob",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Spellskite",
           "count": 1
         }
       ]
@@ -934,59 +1120,136 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Royal Assassin",
+          "amount": 1,
+          "selectTarget": false
+        },
+        {
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Blinking Spirit",
+          "amount": 2,
+          "selectTarget": false
+        },
+        {
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Pearled Unicorn",
+          "amount": 2,
+          "selectTarget": false
+        },
+        {
           "op": "castSpell",
+          "name": "Fiery Justice",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Fiery Justice"
+          "target": {
+            "groups": [
+              [
+                "Royal Assassin",
+                "Blinking Spirit",
+                "Pearled Unicorn"
+              ],
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"Royal Assassin\", 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"Blinking Spirit\", 2)"
-        },
-        {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"Pearled Unicorn\", 2)"
+          "op": "assertStackObject",
+          "source": "Fiery Justice",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 4
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
+          "source": "Spellskite",
           "ability": "{U/P}: Change a target",
           "target": "Fiery Justice"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 1 of Spellskite's ability",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": false
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": false
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Spellskite",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Fiery Justice"
         },
         {
-          "op": "execute"
+          "op": "assertLife",
+          "player": 1,
+          "life": 18
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "options",
+          "description": "Choose target to change",
+          "choices": [
+            "target Pearled Unicorn"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Fiery Justice",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 4
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fiery Justice",
+          "count": 1,
+          "objectTarget": "Royal Assassin"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fiery Justice",
+          "count": 1,
+          "objectTarget": "Blinking Spirit"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fiery Justice",
+          "count": 1,
+          "objectTarget": "Spellskite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",

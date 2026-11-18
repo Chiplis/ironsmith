@@ -28,8 +28,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"all attacks\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "all attacks",
+          "typeLine": "",
+          "custom": true,
+          "fixtureSource": true,
+          "oracleText": "Creatures your opponents control attack each combat if able."
         },
         {
           "op": "assertPermanentCount",
@@ -48,8 +54,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 1\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, 20)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": 20,
+          "seatIndependent": true
         },
         {
           "op": "block",
@@ -75,8 +85,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 2\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, 20 - 2)"
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": 18,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -95,8 +109,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 3\", 3, PhaseStep.POSTCOMBAT_MAIN, playerA, 20 - 2)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": 18,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -115,8 +133,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 4\", 4, PhaseStep.POSTCOMBAT_MAIN, playerA, 20 - 2 * 2)"
+          "op": "assertLife",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": 16,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -135,8 +157,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 5\", 5, PhaseStep.POSTCOMBAT_MAIN, playerA, 20 - 2 * 2)"
+          "op": "assertLife",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": 16,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -155,8 +181,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 6\", 6, PhaseStep.POSTCOMBAT_MAIN, playerA, 20 - 2 * 2 - 2 * 2)"
+          "op": "assertLife",
+          "turn": 6,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": 12,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",

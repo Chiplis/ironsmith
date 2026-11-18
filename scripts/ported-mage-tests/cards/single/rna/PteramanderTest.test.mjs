@@ -22,18 +22,31 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "source": "Pteramander",
+          "ability": "Adapt 4",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Pteramander",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertTappedCount",
           "player": 0,
-          "ability": "{7}"
+          "name": "Island",
+          "count": 8,
+          "tapped": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPowerToughness",
@@ -41,6 +54,13 @@ registerPortedMageTests({
           "name": "Pteramander",
           "power": 5,
           "toughness": 5
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Pteramander",
+          "count": 4,
+          "counter": "+1/+1"
         }
       ]
     },
@@ -70,18 +90,31 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "source": "Pteramander",
+          "ability": "Adapt 4",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Pteramander",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertTappedCount",
           "player": 0,
-          "ability": "{7}"
+          "name": "Island",
+          "count": 1,
+          "tapped": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPowerToughness",
@@ -89,6 +122,13 @@ registerPortedMageTests({
           "name": "Pteramander",
           "power": 5,
           "toughness": 5
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Pteramander",
+          "count": 4,
+          "counter": "+1/+1"
         }
       ]
     }

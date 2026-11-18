@@ -32,22 +32,40 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}, Sacrifice a Forest: Add three mana in any combination of {R} and/or {G}."
+          "ability": "{T}, Sacrifice a Forest: Add three mana in any combination of {R} and/or {G}.",
+          "source": "Orcish Lumberjack"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Forest"
-        },
-        {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 2, 1)"
+          "kind": "colors",
+          "choices": [
+            "Red",
+            "Red",
+            "Green"
+          ]
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 2
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
         },
         {
           "op": "castSpell",

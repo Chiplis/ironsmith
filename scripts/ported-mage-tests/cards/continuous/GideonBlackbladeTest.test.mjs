@@ -54,8 +54,14 @@ registerPortedMageTests({
           "toughness": 4
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 1 after\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Gideon Blackblade\", CounterType.LOYALTY, 4)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Gideon Blackblade",
+          "counter": "LOYALTY",
+          "count": 4,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -84,8 +90,14 @@ registerPortedMageTests({
           "toughness": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 2 after\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Gideon Blackblade\", CounterType.LOYALTY, 4 - 3)"
+          "op": "assertCounterCount",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Gideon Blackblade",
+          "counter": "LOYALTY",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

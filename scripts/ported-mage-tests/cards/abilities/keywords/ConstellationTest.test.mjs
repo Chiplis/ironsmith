@@ -48,8 +48,34 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "if (true) { assertPowerToughness(playerA, daxosCard, 5, 5); assertType(daxosCard, CardType.CREATURE, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), true); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), true); } else { assertPowerToughness(playerA, daxosCard, 0, 0); assertNotSubtype(daxosCard, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), false); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), false); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Daxos's Torment",
+              "power": 5,
+              "toughness": 5
+            },
+            {
+              "op": "unsupported",
+              "source": "assertType(daxosCard, CardType.CREATURE, SubType.DEMON)"
+            },
+            {
+              "op": "assertAbility",
+              "player": 0,
+              "name": "Daxos's Torment",
+              "ability": "Flying",
+              "expected": true
+            },
+            {
+              "op": "assertAbility",
+              "player": 0,
+              "name": "Daxos's Torment",
+              "ability": "Haste",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -98,8 +124,34 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "if (false) { assertPowerToughness(playerA, daxosCard, 5, 5); assertType(daxosCard, CardType.CREATURE, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), true); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), true); } else { assertPowerToughness(playerA, daxosCard, 0, 0); assertNotSubtype(daxosCard, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), false); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), false); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Daxos's Torment",
+              "power": 0,
+              "toughness": 0
+            },
+            {
+              "op": "unsupported",
+              "source": "assertNotSubtype(daxosCard, SubType.DEMON)"
+            },
+            {
+              "op": "assertAbility",
+              "player": 0,
+              "name": "Daxos's Torment",
+              "ability": "Flying",
+              "expected": false
+            },
+            {
+              "op": "assertAbility",
+              "player": 0,
+              "name": "Daxos's Torment",
+              "ability": "Haste",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -181,8 +233,34 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "if (true) { assertPowerToughness(playerA, daxosCard, 5, 5); assertType(daxosCard, CardType.CREATURE, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), true); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), true); } else { assertPowerToughness(playerA, daxosCard, 0, 0); assertNotSubtype(daxosCard, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), false); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), false); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Daxos's Torment",
+              "power": 5,
+              "toughness": 5
+            },
+            {
+              "op": "unsupported",
+              "source": "assertType(daxosCard, CardType.CREATURE, SubType.DEMON)"
+            },
+            {
+              "op": "assertAbility",
+              "player": 0,
+              "name": "Daxos's Torment",
+              "ability": "Flying",
+              "expected": true
+            },
+            {
+              "op": "assertAbility",
+              "player": 0,
+              "name": "Daxos's Torment",
+              "ability": "Haste",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -333,10 +411,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Daxos's Torment"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "ability": "FlyingAbility.class",
+          "expected": true
         },
         {
           "op": "castSpell",
@@ -356,10 +436,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "END_TURN",
-          "ability": 0,
-          "expected": "Daxos's Torment"
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "ability": "FlyingAbility.class",
+          "expected": false
         },
         {
           "op": "setStopAt",
@@ -578,10 +660,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": "dax fly",
-          "name": 5,
-          "ability": "BEGIN_COMBAT",
-          "expected": 0
+          "turn": 5,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "ability": "FlyingAbility.class",
+          "expected": true
         },
         {
           "op": "unsupported",
@@ -643,6 +727,10 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -650,31 +738,255 @@ registerPortedMageTests({
           "name": "Daxos's Torment"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Daxos's Torment"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Daxos's Torment",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Daxos's Torment",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertType",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "cardType": "CREATURE",
+          "extra": "false",
+          "seatIndependent": true
         },
         {
           "op": "assertAbility",
-          "player": "dax fly",
-          "name": 3,
-          "ability": "BEGIN_COMBAT",
-          "expected": 0
-        },
-        {
-          "op": "unsupported",
-          "source": "checkSubType(\"dax is vampire\", 3, PhaseStep.BEGIN_COMBAT, playerA, daxosCard, SubType.VAMPIRE, true)"
-        },
-        {
-          "op": "setStopAt",
           "turn": 3,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "ability": "Flying",
+          "expected": false,
+          "seatIndependent": true
         },
         {
-          "op": "execute"
+          "op": "assertManaPool",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 0
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Swamp",
+          "ability": "{T}: Add {B}",
+          "count": 6
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 6
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mephidross Vampire"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Mephidross Vampire"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mephidross Vampire",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Plains",
+          "tapped": true,
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertType",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "cardType": "CREATURE",
+          "extra": "false",
+          "seatIndependent": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Archetype of Courage"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Archetype of Courage"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Daxos's Torment",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Archetype of Courage",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "power": 5,
+          "toughness": 5,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertType",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "cardType": "ENCHANTMENT",
+          "extra": "true",
+          "seatIndependent": true
+        },
+        {
+          "op": "assertType",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "cardType": "CREATURE",
+          "extra": "true",
+          "seatIndependent": true
+        },
+        {
+          "op": "assertSubtype",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "subtype": "DEMON",
+          "seatIndependent": true
+        },
+        {
+          "op": "assertAbility",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "ability": "Flying",
+          "expected": true,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertAbility",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "ability": "Haste",
+          "expected": true,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertSubtype",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "subtype": "VAMPIRE",
+          "seatIndependent": true
         }
       ]
     },
@@ -724,6 +1036,10 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -731,31 +1047,220 @@ registerPortedMageTests({
           "name": "Daxos's Torment"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Daxos's Torment"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Daxos's Torment",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Daxos's Torment",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertType",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "cardType": "CREATURE",
+          "extra": "false",
+          "seatIndependent": true
         },
         {
           "op": "assertAbility",
-          "player": "dax fly",
-          "name": 3,
-          "ability": "BEGIN_COMBAT",
-          "expected": 0
-        },
-        {
-          "op": "unsupported",
-          "source": "checkSubType(\"dax is vampire\", 3, PhaseStep.BEGIN_COMBAT, playerA, daxosCard, SubType.VAMPIRE, true)"
-        },
-        {
-          "op": "setStopAt",
           "turn": 3,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "ability": "Flying",
+          "expected": false,
+          "seatIndependent": true
         },
         {
-          "op": "execute"
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Archetype of Courage"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Archetype of Courage"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Daxos's Torment",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "power": 5,
+          "toughness": 5,
+          "seatIndependent": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mephidross Vampire"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Mephidross Vampire"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mephidross Vampire",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Archetype of Courage",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "power": 5,
+          "toughness": 5,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertType",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "cardType": "ENCHANTMENT",
+          "extra": "true",
+          "seatIndependent": true
+        },
+        {
+          "op": "assertType",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "cardType": "CREATURE",
+          "extra": "true",
+          "seatIndependent": true
+        },
+        {
+          "op": "assertSubtype",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "subtype": "DEMON",
+          "seatIndependent": true
+        },
+        {
+          "op": "assertAbility",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "ability": "Flying",
+          "expected": true,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertAbility",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "ability": "Haste",
+          "expected": true,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertSubtype",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "subtype": "VAMPIRE",
+          "seatIndependent": true
         }
       ]
     }

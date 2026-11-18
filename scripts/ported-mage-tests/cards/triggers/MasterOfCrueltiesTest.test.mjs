@@ -39,7 +39,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Alesha, Who Smiles at Death",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",

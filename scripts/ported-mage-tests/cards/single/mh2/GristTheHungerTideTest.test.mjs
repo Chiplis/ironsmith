@@ -47,8 +47,88 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : currentGame.getCards()) { if (!card.getName().equals(grist)) { continue; } Zone zone = currentGame.getState().getZone(card.getId()); if (zone == Zone.BATTLEFIELD) { Assert.assertFalse(\"Not a creature on the battlefield\", card.isCreature(currentGame)); } else { Assert.assertTrue(\"Should be a creature when zone is \" + zone, card.isCreature(currentGame)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "name": "Grist, the Hunger Tide"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Planeswalker"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Grist, the Hunger Tide"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": false,
+              "value": "Creature"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Planeswalker"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "name": "Grist, the Hunger Tide"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Planeswalker"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "name": "Grist, the Hunger Tide"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Planeswalker"
+            }
+          ],
+          "count": 1
         }
       ]
     },
@@ -101,8 +181,25 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : currentGame.getCards()) { if (!card.getName().equals(grist)) { continue; } Assert.assertEquals(\"\", Zone.EXILED, currentGame.getState().getZone(card.getId())); Assert.assertTrue(\"Should be a creature in exile\", card.isCreature(currentGame)); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Grist, the Hunger Tide"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Planeswalker"
+            }
+          ],
+          "count": 1
         }
       ]
     },

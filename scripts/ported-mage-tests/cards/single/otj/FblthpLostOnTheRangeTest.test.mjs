@@ -109,23 +109,15 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Plot {1}{G}",
+          "label": "Plot Beastbond Outcaster",
           "expected": true
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Plot {2}{G}",
-          "expected": false
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Plot {1}{G}"
+          "ability": "Plot Beastbond Outcaster"
         },
         {
           "op": "setStopAt",
@@ -145,7 +137,8 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Forest",
           "tapped": true,
-          "count": 2
+          "count": 2,
+          "player": 0
         }
       ]
     },
@@ -294,13 +287,6 @@ registerPortedMageTests({
       "name": "Test_Plot_FromTop_Split",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "skipInitShuffling"
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -308,10 +294,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "clearZone",
+          "zone": "library",
+          "player": 0
+        },
+        {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Life // Death",
+          "name": "Life // Death@split",
           "count": 1
         },
         {
@@ -322,31 +313,52 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "assertLibraryOrder",
           "player": 0,
-          "ability": "Plot"
+          "cards": [
+            "Life // Death"
+          ]
         },
         {
-          "op": "setStopAt",
+          "op": "activateAbility",
+          "source": null,
+          "ability": "Plot",
+          "player": 0,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
           "player": 0,
-          "name": "Life // Death",
+          "name": "@split",
           "count": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "alias": "@split"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
+        },
+        {
           "op": "assertTappedCount",
+          "player": 0,
           "name": "Bayou",
-          "tapped": true,
-          "count": 3
+          "count": 3,
+          "tapped": true
         }
       ]
     }

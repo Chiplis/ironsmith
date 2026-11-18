@@ -455,7 +455,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "name": "playerD",
+          "player": "playerD",
           "count": 2
         }
       ]
@@ -611,5 +611,11 @@ registerPortedMageTests({
         }
       ]
     }
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
   ]
 });

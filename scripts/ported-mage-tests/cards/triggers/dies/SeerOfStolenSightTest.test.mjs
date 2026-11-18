@@ -10,8 +10,15 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "target destroy",
+          "count": 1,
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Destroy target permanent."
         },
         {
           "op": "addCard",
@@ -80,8 +87,15 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA, 2)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "target destroy",
+          "count": 1,
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Destroy two target permanents."
         },
         {
           "op": "addCard",
@@ -150,8 +164,15 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "target destroy",
+          "count": 1,
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Destroy target permanent."
         },
         {
           "op": "addCard",

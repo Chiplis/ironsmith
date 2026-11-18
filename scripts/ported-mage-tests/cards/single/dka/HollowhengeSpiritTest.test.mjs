@@ -28,6 +28,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "attack",
+          "turn": 2,
+          "player": 1,
+          "attacker": "Craw Wurm",
+          "defender": 0
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "DECLARE_BLOCKERS",
@@ -35,11 +42,39 @@ registerPortedMageTests({
           "name": "Hollowhenge Spirit"
         },
         {
-          "op": "attack",
+          "op": "assertStackObject",
           "turn": 2,
-          "player": 1,
-          "attacker": "Craw Wurm",
-          "defender": 1
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Hollowhenge Spirit",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Craw Wurm"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Hollowhenge Spirit",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered",
+          "objectTarget": "Craw Wurm"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -72,12 +107,18 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Hollowhenge Spirit\", false)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Hollowhenge Spirit",
+          "tapped": false,
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Craw Wurm\", true)"
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Craw Wurm",
+          "tapped": true,
+          "count": 1
         }
       ]
     },
@@ -106,6 +147,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Craw Wurm",
+          "defender": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "DECLARE_BLOCKERS",
@@ -113,11 +161,39 @@ registerPortedMageTests({
           "name": "Hollowhenge Spirit"
         },
         {
-          "op": "attack",
+          "op": "assertStackObject",
           "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Hollowhenge Spirit",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "addTarget",
           "player": 0,
-          "attacker": "Craw Wurm",
-          "defender": 1
+          "target": "Craw Wurm"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Hollowhenge Spirit",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered",
+          "objectTarget": "Craw Wurm"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -150,12 +226,18 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Hollowhenge Spirit\", false)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Hollowhenge Spirit",
+          "tapped": false,
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Craw Wurm\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Craw Wurm",
+          "tapped": true,
+          "count": 1
         }
       ]
     },

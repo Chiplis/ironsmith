@@ -14,7 +14,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Aurora Shifter",
+          "name": "Aurora Shifter@shifter",
           "count": 1
         },
         {
@@ -25,28 +25,54 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Pay {E}{E}",
+          "choices": [
+            "No"
+          ]
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "Aurora Shifter",
+          "attacker": "Aurora Shifter@shifter",
           "defender": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertCounterCount",
+          "name": 0,
+          "count": 1,
+          "player": 0,
+          "counter": "ENERGY",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Pay {E}{E}",
+          "choices": [
+            "No"
+          ]
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
-          "attacker": "Aurora Shifter",
+          "attacker": "Aurora Shifter@shifter",
           "defender": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertCounterCount",
+          "name": 0,
+          "count": 2,
+          "player": 0,
+          "counter": "ENERGY",
           "turn": 3,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "addTarget",
@@ -54,16 +80,67 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Pay {E}{E}",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "BEGIN_COMBAT",
+          "source": "Aurora Shifter@shifter",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "BEGIN_COMBAT",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "BEGIN_COMBAT",
+          "source": "Aurora Shifter@shifter",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "BEGIN_COMBAT",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": 0,
+          "count": 0,
+          "player": 0,
+          "counter": "ENERGY",
+          "turn": 5,
+          "phase": "BEGIN_COMBAT"
         },
         {
           "op": "attack",
           "turn": 5,
           "player": 0,
-          "attacker": "Grizzly Bears",
+          "attacker": "Aurora Shifter@shifter",
           "defender": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": 0,
+          "count": 2,
+          "player": 0,
+          "counter": "ENERGY",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

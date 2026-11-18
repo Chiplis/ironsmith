@@ -25,7 +25,14 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Prized Unicorn",
-          "defender": 1
+          "defender": 0
+        },
+        {
+          "op": "block",
+          "turn": 2,
+          "player": 0,
+          "blocker": "Silvercoat Lion",
+          "attacker": "Prized Unicorn"
         },
         {
           "op": "setStopAt",
@@ -93,7 +100,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Prized Unicorn",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",
@@ -173,14 +180,14 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Pillarfield Ox",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -307,11 +314,23 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertBlockDeclarationRejected",
+          "turn": 1,
+          "player": 1,
+          "reason": "requires 1 blockers",
+          "declarations": [
+            {
+              "blocker": "Pillarfield Ox",
+              "attacker": "Silvercoat Lion"
+            }
+          ]
+        },
+        {
           "op": "block",
           "turn": 1,
           "player": 1,
           "blocker": "Pillarfield Ox",
-          "attacker": "Silvercoat Lion"
+          "attacker": "Mountain"
         },
         {
           "op": "setStopAt",
@@ -378,11 +397,16 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockDeclarationRejected",
           "turn": 1,
           "player": 1,
-          "blocker": "Okk",
-          "attacker": "Hill Giant"
+          "reason": "cannot block",
+          "declarations": [
+            {
+              "blocker": "Okk",
+              "attacker": "Hill Giant"
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -452,13 +476,28 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "block",
+          "turn": 1,
+          "player": 1,
+          "blocker": "Hill Giant",
+          "attacker": "Breaker of Armies",
+          "expectedRejection": {
+            "rule": "minimum",
+            "count": 2
+          }
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); fail(\"Expected exception not thrown\"); } catch (UnsupportedOperationException e) { assertEquals(\"Breaker of Armies is blocked by 1 creature(s). It has to be blocked by 2 or more.\", e.getMessage()); }"
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 8
         }
       ]
     },
@@ -516,10 +555,39 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertBlockDeclarationRejected",
+          "turn": 1,
+          "player": 1,
+          "reason": "requires 1 blockers",
+          "declarations": [
+            {
+              "blocker": "Llanowar Elves",
+              "attacker": "Memnite"
+            }
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": 2
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": 2
+        },
+        {
           "op": "block",
           "turn": 1,
           "player": 1,
           "blocker": "Llanowar Elves",
+          "attacker": "Memnite"
+        },
+        {
+          "op": "block",
+          "turn": 1,
+          "player": 1,
+          "blocker": "Dimensional Infiltrator",
           "attacker": "Memnite"
         },
         {
@@ -597,7 +665,11 @@ registerPortedMageTests({
           "turn": 1,
           "player": 1,
           "blocker": "Bronze Sable",
-          "attacker": "Challenger Troll"
+          "attacker": "Challenger Troll",
+          "expectedRejection": {
+            "rule": "maximum",
+            "count": 1
+          }
         },
         {
           "op": "block",
@@ -612,8 +684,7 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); fail(\"Expected exception not thrown\"); } catch (UnsupportedOperationException e) { assertEquals(\"Challenger Troll is blocked by 2 creature(s). It can only be blocked by 1 or less.\", e.getMessage()); }"
+          "op": "execute"
         }
       ]
     },
@@ -667,7 +738,11 @@ registerPortedMageTests({
           "turn": 1,
           "player": 1,
           "blocker": "Bronze Sable",
-          "attacker": "Bloom Hulk"
+          "attacker": "Bloom Hulk",
+          "expectedRejection": {
+            "rule": "maximum",
+            "count": 1
+          }
         },
         {
           "op": "block",
@@ -682,8 +757,7 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); fail(\"Expected exception not thrown\"); } catch (UnsupportedOperationException e) { assertEquals(\"Bloom Hulk is blocked by 2 creature(s). It can only be blocked by 1 or less.\", e.getMessage()); }"
+          "op": "execute"
         }
       ]
     }

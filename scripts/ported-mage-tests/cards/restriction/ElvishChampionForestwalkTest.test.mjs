@@ -63,18 +63,20 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 3,
           "player": 1,
           "blocker": "Silvercoat Lion",
-          "attacker": "Arbor Elf"
+          "attacker": "Arbor Elf",
+          "expected": false
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 3,
           "player": 1,
           "blocker": "Canyon Minotaur",
-          "attacker": "Defiant Elf"
+          "attacker": "Defiant Elf",
+          "expected": false
         },
         {
           "op": "setStopAt",

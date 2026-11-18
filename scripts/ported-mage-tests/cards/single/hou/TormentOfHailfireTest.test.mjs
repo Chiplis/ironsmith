@@ -72,14 +72,27 @@ registerPortedMageTests({
           "value": "X=10"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Torment of Hailfire",
+          "count": 1,
+          "xValue": 10
+        },
+        {
           "op": "setChoice",
-          "player": "playerD",
+          "player": 3,
           "value": true
         },
         {
           "op": "setChoice",
-          "player": "playerD",
-          "value": "Silvercoat Lion"
+          "player": 3,
+          "value": "Sacrifice a nonland permanent"
+        },
+        {
+          "op": "addTarget",
+          "player": 3,
+          "target": "Silvercoat Lion"
         },
         {
           "op": "setChoice",
@@ -89,17 +102,27 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 1,
-          "value": "Silvercoat Lion"
+          "value": "Sacrifice a nonland permanent"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": "Silvercoat Lion"
         },
         {
           "op": "setChoice",
-          "player": "playerD",
+          "player": 3,
           "value": true
         },
         {
           "op": "setChoice",
-          "player": "playerD",
-          "value": "Silvercoat Lion"
+          "player": 3,
+          "value": "Sacrifice a nonland permanent"
+        },
+        {
+          "op": "addTarget",
+          "player": 3,
+          "target": "Silvercoat Lion"
         },
         {
           "op": "setChoice",
@@ -109,17 +132,27 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 1,
-          "value": "Silvercoat Lion"
+          "value": "Sacrifice a nonland permanent"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": "Silvercoat Lion"
         },
         {
           "op": "setChoice",
-          "player": "playerD",
-          "value": false
-        },
-        {
-          "op": "setChoice",
-          "player": "playerD",
+          "player": 3,
           "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 3,
+          "value": "Discard a card"
+        },
+        {
+          "op": "addTarget",
+          "player": 3,
+          "target": "Plains"
         },
         {
           "op": "setChoice",
@@ -127,14 +160,25 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setChoice",
-          "player": "playerD",
-          "value": true
+          "op": "addTarget",
+          "player": 1,
+          "target": "Plains"
         },
         {
           "op": "setChoice",
-          "player": "playerD",
-          "value": "Silvercoat Lion"
+          "player": 3,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 3,
+          "target": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -169,8 +213,33 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": -1
+        },
+        {
+          "op": "assertPlayerState",
+          "player": 1,
+          "expected": true,
+          "property": "hasLost"
+        },
+        {
+          "op": "assertPlayerState",
+          "player": 3,
+          "expected": false,
+          "property": "hasLost"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 2,
+          "name": "Silvercoat Lion",
+          "count": 3
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "rangeOfInfluence": 1
     }
   ]
 });

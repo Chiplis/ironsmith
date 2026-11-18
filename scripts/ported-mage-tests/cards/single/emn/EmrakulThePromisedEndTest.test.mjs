@@ -35,6 +35,51 @@ registerPortedMageTests({
           "name": "Teferi, Mage of Zhalfir"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Teferi, Mage of Zhalfir",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Teferi, Mage of Zhalfir",
+          "count": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "source": "Island",
+          "ability": "{T}: Add {U}",
+          "count": 13
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "colors": "U",
+          "amount": 13
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "label": "Cast Emrakul, the Promised End",
+          "expected": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -45,6 +90,33 @@ registerPortedMageTests({
           "op": "addTarget",
           "player": 1,
           "target": 0
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Emrakul, the Promised End",
+          "count": 1,
+          "controller": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Emrakul, the Promised End",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -59,8 +131,8 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertActivePlayer(playerB)"
+          "op": "assertActivePlayer",
+          "player": 1
         }
       ]
     },
@@ -96,6 +168,51 @@ registerPortedMageTests({
           "name": "Teferi, Mage of Zhalfir"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Teferi, Mage of Zhalfir",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Teferi, Mage of Zhalfir",
+          "count": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "source": "Island",
+          "ability": "{T}: Add {U}",
+          "count": 13
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "colors": "U",
+          "amount": 13
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "label": "Cast Emrakul, the Promised End",
+          "expected": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -106,6 +223,33 @@ registerPortedMageTests({
           "op": "addTarget",
           "player": 1,
           "target": 0
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Emrakul, the Promised End",
+          "count": 1,
+          "controller": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Emrakul, the Promised End",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -120,8 +264,8 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertActivePlayer(playerA)"
+          "op": "assertActivePlayer",
+          "player": 0
         }
       ]
     },
@@ -157,6 +301,51 @@ registerPortedMageTests({
           "name": "Teferi, Mage of Zhalfir"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Teferi, Mage of Zhalfir",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Teferi, Mage of Zhalfir",
+          "count": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "source": "Island",
+          "ability": "{T}: Add {U}",
+          "count": 13
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "colors": "U",
+          "amount": 13
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "label": "Cast Emrakul, the Promised End",
+          "expected": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -167,6 +356,33 @@ registerPortedMageTests({
           "op": "addTarget",
           "player": 1,
           "target": 0
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Emrakul, the Promised End",
+          "count": 1,
+          "controller": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Emrakul, the Promised End",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -181,8 +397,8 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertActivePlayer(playerA)"
+          "op": "assertActivePlayer",
+          "player": 0
         }
       ]
     },

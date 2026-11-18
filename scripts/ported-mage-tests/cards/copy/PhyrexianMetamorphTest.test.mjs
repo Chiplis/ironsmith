@@ -24,7 +24,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Phyrexian Metamorph",
+          "name": "Phyrexian Metamorph@meta",
           "count": 1
         },
         {
@@ -49,42 +49,106 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 2 of Phyrexian Metamorph",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
+        },
+        {
           "op": "castSpell",
+          "name": "Phyrexian Metamorph",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Phyrexian Metamorph"
+          "objectAlias": "@meta"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Aven Riftwatcher"
-        },
-        {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Phyrexian Metamorph",
+          "count": 1,
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Cloudshift",
-          "target": "Aven Riftwatcher"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Ponyback Brigade"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
         },
         {
           "op": "assertLife",
           "player": 0,
-          "life": 22
+          "life": 18
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Aven Riftwatcher"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@meta"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Aven Riftwatcher",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "castSpell",
+          "name": "Cloudshift",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "target": "@meta"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Cloudshift",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Aven Riftwatcher"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Ponyback Brigade"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Cloudshift",
+          "count": 1
         },
         {
           "op": "assertLife",
@@ -92,10 +156,19 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "assertGraveyardCount",
+          "op": "assertLife",
           "player": 0,
-          "name": "Cloudshift",
-          "count": 1
+          "life": 22
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@meta"
+          },
+          "count": 1,
+          "checks": []
         },
         {
           "op": "assertPermanentCount",
@@ -108,6 +181,22 @@ registerPortedMageTests({
           "player": 0,
           "name": "Goblin Token",
           "count": 3
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@meta"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "artifact",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -125,7 +214,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Phyrexian Metamorph",
+          "name": "Phyrexian Metamorph@meta",
           "count": 1
         },
         {
@@ -150,51 +239,126 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "setOptionChoices",
           "player": 0,
-          "name": "Phyrexian Metamorph"
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 2 of Phyrexian Metamorph",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "castSpell",
+          "name": "Phyrexian Metamorph",
           "player": 0,
-          "value": "Maelstrom Wanderer"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectAlias": "@meta"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Phyrexian Metamorph",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Maelstrom Wanderer"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@meta"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Maelstrom Wanderer",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
           "attacker": "Brago, King Eternal",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Maelstrom Wanderer"
+          "target": "@meta"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Ponyback Brigade"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Brago, King Eternal",
+          "count": 1,
           "turn": 3,
-          "phase": "END_COMBAT"
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "objectTarget": "Maelstrom Wanderer"
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertLife",
+          "op": "setOptionChoices",
           "player": 0,
-          "life": 18
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Ponyback Brigade"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "assertLife",
           "player": 1,
           "life": 18
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@meta"
+          },
+          "count": 1,
+          "checks": []
         },
         {
           "op": "assertPermanentCount",
@@ -207,6 +371,22 @@ registerPortedMageTests({
           "player": 0,
           "name": "Goblin Token",
           "count": 3
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@meta"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "artifact",
+              "expected": true
+            }
+          ]
         }
       ]
     },

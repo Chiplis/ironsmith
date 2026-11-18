@@ -35,6 +35,15 @@ registerPortedMageTests({
           "count": 4
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose casting method for Mizzix's Mastery",
+          "choices": [
+            "Normal: {3}{R}"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -43,17 +52,45 @@ registerPortedMageTests({
           "target": "Lightning Bolt"
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Cast the copy without paying its mana cost",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": 1
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Prosper, Tome-Bound",
+          "count": 0,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -67,8 +104,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTokenCount(playerA, \"Treasure Token\", 0)"
+          "op": "assertTokenCount",
+          "player": 0,
+          "name": "Treasure Token",
+          "count": 0
         }
       ]
     }

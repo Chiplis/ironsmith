@@ -460,24 +460,76 @@ registerPortedMageTests({
           "target": "Ojer Axonil, Deepest Might"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"temple in play\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, temple, true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Temple of Power",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPlayableAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "{2}{R}, {T}: Transform {this}. Activate only if red sources you controlled dealt 4 or more noncombat damage this turn and only as a sorcery.",
+          "label": "Activate Temple of Power: {2}{R}, {T}: Transform this land",
           "expected": false
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color: {R} or {W}",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color: {R} or {W}",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color: {R} or {W}",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color: {R} or {W}",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color: {R} or {W}",
+          "choices": [
+            "Red"
+          ]
         },
         {
           "op": "activateManaAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {R}. {this} deals 1 damage to you.",
-          "count": 5
+          "ability": "{T}: Add {R} or {W}",
+          "count": 5,
+          "source": "Battlefield Forge"
         },
         {
           "op": "castSpell",
@@ -494,19 +546,47 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color: {R} or {W}",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color: {R} or {W}",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color: {R} or {W}",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {R}. {this} deals 1 damage to you.",
-          "count": 3
+          "ability": "{T}: Add {R} or {W}",
+          "count": 3,
+          "source": "Battlefield Forge"
         },
         {
           "op": "assertPlayableAbility",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "label": "{2}{R}, {T}: Transform {this}. Activate only if red sources you controlled dealt 4 or more noncombat damage this turn and only as a sorcery.",
+          "label": "Activate Temple of Power: {2}{R}, {T}: Transform this land",
           "expected": true
         },
         {
@@ -514,7 +594,8 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}{R}, {T}: Transform {this}. Activate only if red sources you controlled dealt 4 or more noncombat damage this turn and only as a sorcery."
+          "ability": "{2}{R}, {T}: Transform this land",
+          "source": "Temple of Power"
         },
         {
           "op": "setStopAt",
@@ -536,8 +617,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(ojer, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Ojer Axonil, Deepest Might",
+          "tapped": true
         }
       ]
     },
@@ -676,8 +759,10 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "addEmblem(playerA, new ChandraTorchOfDefianceEmblem())"
+          "op": "addEmblem",
+          "player": 0,
+          "name": "Chandra, Torch of Defiance Emblem",
+          "oracleText": "Whenever you cast a spell, this emblem deals 5 damage to any target."
         },
         {
           "op": "castSpell",
@@ -723,6 +808,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 7
+        },
+        {
+          "op": "assertEmblemCount",
+          "player": 0,
+          "name": "Chandra, Torch of Defiance Emblem",
+          "count": 1
         }
       ]
     }

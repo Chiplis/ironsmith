@@ -8,13 +8,32 @@ from pathlib import Path
 import re
 
 
-def review_family(classification, error):
-    if classification != "unclassified_failure":
-        return classification
+def review_family(classification, error, operation=None):
+    operation = operation or {}
+    error = error.removeprefix("`")
+    if error.startswith("unsupported Java test body:"):
+        return "untranslated_java_test_body"
+    if error.startswith(("unsupported Java statement:", "unknown generated operation:")):
+        return "untranslated_java_operation"
+    if error.startswith("unsupported decision kind"):
+        return "decision_adapter_candidate"
+    if error.startswith(("unsupported library fixture:", "unsupported color assertion", "unsupported numeric",
+                         "unsupported attacking assertion", "unsupported ability assertion",
+                         "unsupported player counter assertion", "unsupported blitz assertion")):
+        return "fixture_or_assertion_adapter_candidate"
+    if error.startswith(("expected assertion checkpoint", "could not advance to turn", "could not inspect player",
+                         "could not advance to priority", "stack did not settle", "one stack object did not resolve")):
+        return "turn_priority_or_stack_scheduling_candidate"
     if error.startswith("unknown card name:"):
         return "fixture_or_catalog_lookup_candidate"
     if error.startswith("Missing CHOICE def"):
         return "missing_scripted_decision_candidate"
+    if error.startswith("invalid priority action index:"):
+        return "priority_action_selector_candidate"
+    if error.startswith(("could not find cast action", "could not find activated ability",
+                         "could not find playable ability", "could not find play land action",
+                         "could not find mana ability", "expected playable ability", "expected payable action")):
+        return "action_legality_or_label_candidate"
     if error.startswith("permanent not found:"):
         return "missing_result_or_fixture_candidate"
     if any(s in error for s in ["target decision has no legal targets", "select_objects decision has no legal candidates",
@@ -22,6 +41,21 @@ def review_family(classification, error):
         return "decision_or_legality_candidate"
     if error.startswith("invalid blocker") or "Invalid blockers:" in error:
         return "combat_setup_or_legality_candidate"
+    if re.search(r"recursive use of an object|memory access out of bounds|unreachable|Maximum call stack", error, re.I):
+        return "wasm_execution_trap_candidate"
+    if classification == "outcome_or_fixture_mismatch_candidate":
+        op = operation.get("op", "")
+        if op in {"assertPermanentCount", "assertGraveyardCount", "assertHandCount", "assertExileCount",
+                  "assertLibraryCount", "assertLibraryOrder"}:
+            return "zone_or_controller_outcome_candidate"
+        if op in {"assertAbility", "assertAbilities", "assertSubtype", "assertPowerToughness"}:
+            return "calculated_characteristics_candidate"
+        if op == "assertCounterCount":
+            return "counter_outcome_candidate"
+        if op == "assertLife":
+            return "life_or_damage_outcome_candidate"
+    if classification != "unclassified_failure":
+        return classification
     if any(s in error for s in ["missing damage amount (clause:", "triggered CST reached lowering",
                                 "in attach object clause without prior tagged object",
                                 "spell text effects references PlayerFilter::", "unsupported ",
@@ -46,13 +80,15 @@ def main():
         latest = scenario["observations"][-1]
         error = latest["row"].get("error") or ""
         classification = scenario["classification"]
-        family = review_family(classification, error)
+        operation = latest["row"].get("operation")
+        family = review_family(classification, error, operation)
         # Keep exact errors per observation; this normalization groups only
         # diagnostic templates, not cards or reviewed correctness verdicts.
-        template = re.sub(r"\b\d+\b", "<number>", error.splitlines()[0] if error else "")
+        template = re.sub(r"\b\d+\b", "<number>", error.splitlines()[0].strip("`") if error else "")
         row = {"scenario_id": scenario["scenario_id"], "test": scenario["test"], "file": scenario["file"],
                "original_classification": classification, "review_family": family, "status": "unreviewed_candidate",
-               "error": error, "source_report": latest["report"], "source_report_sha256": latest["report_sha256"]}
+               "error": error, "operation": operation, "source_report": latest["report"],
+               "source_report_sha256": latest["report_sha256"]}
         rows.append(row)
         grouped[(family, template)].append(scenario["scenario_id"])
     groups = [{"family": family, "diagnostic_template": template, "scenario_count": len(ids), "scenario_ids": ids}

@@ -294,20 +294,39 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, sorinPW, CounterType.LOYALTY, 4)"
+          "op": "addObjectCounters",
+          "player": 0,
+          "name": "Sorin, Ravenous Neonate",
+          "counter": "LOYALTY",
+          "count": 4,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Sorin, Ravenous Neonate",
+          "count": 7,
+          "player": 0,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-6"
+          "ability": "-6",
+          "source": "Sorin, Ravenous Neonate",
+          "target": "Elite Vanguard"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Elite Vanguard"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Sorin, Ravenous Neonate",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setStopAt",
@@ -376,20 +395,39 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, sorinPW, CounterType.LOYALTY, 4)"
+          "op": "addObjectCounters",
+          "player": 0,
+          "name": "Sorin, Ravenous Neonate",
+          "counter": "LOYALTY",
+          "count": 4,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Sorin, Ravenous Neonate",
+          "count": 7,
+          "player": 0,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-6"
+          "ability": "-6",
+          "source": "Sorin, Ravenous Neonate",
+          "target": "Elite Vanguard"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Elite Vanguard"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Sorin, Ravenous Neonate",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setStopAt",

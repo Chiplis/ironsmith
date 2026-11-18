@@ -101,19 +101,62 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "assertLibraryCount",
+          "name": "Curious Pair",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertPlayableAbility",
           "player": 0,
-          "name": "Treats to Share"
-        },
-        {
-          "op": "setStopAt",
+          "label": "Cast Curious Pair",
+          "expected": true,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "label": "Cast Treats to Share",
+          "expected": true,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "name": "Treats to Share",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Treats to Share",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Curious Pair",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 19
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Food Token",
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertHandCount",
@@ -121,26 +164,9 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Food Token",
-          "count": 1
-        },
-        {
-          "op": "assertExileCount",
-          "player": 0,
-          "name": "Curious Pair",
-          "count": 1
-        },
-        {
           "op": "assertGraveyardCount",
           "player": 0,
           "count": 0
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 19
         }
       ]
     },
@@ -289,65 +315,105 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Chop Down",
-          "target": "Ferocious Zheng"
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Ferocious Zheng",
-          "count": 0
-        },
-        {
-          "op": "assertExileCount",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Giant Killer",
-          "count": 1
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Giant Killer"
-        },
-        {
           "op": "setStrictChooseMode",
           "value": true
         },
         {
-          "op": "setStopAt",
+          "op": "assertLibraryCount",
+          "name": "Giant Killer",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "label": "Cast Giant Killer",
+          "expected": true,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "label": "Cast Chop Down",
+          "expected": true,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "name": "Chop Down",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": "Ferocious Zheng"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Chop Down",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Ferocious Zheng"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Giant Killer",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 17
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Ferocious Zheng",
+          "count": 0,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Ferocious Zheng",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "castSpell",
+          "name": "Giant Killer",
+          "player": 0,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Giant Killer",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Giant Killer",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Ferocious Zheng",
-          "count": 1
+          "op": "assertExileCount",
+          "name": "Giant Killer",
+          "count": 0,
+          "player": 0
         },
         {
           "op": "assertLife",
@@ -424,7 +490,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Balduvian Bears",
@@ -432,7 +498,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "label": "Cast Grizzly Bears",

@@ -21,12 +21,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 3,
-          "phase": "BEGIN_COMBAT"
+          "phase": "DRAW",
+          "source": "Sylvan Library",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_options",
+          "description": "Draw two additional cards",
+          "absent": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DRAW"
         },
         {
           "op": "assertGraveyardCount",
@@ -41,7 +53,8 @@ registerPortedMageTests({
         {
           "op": "assertLife",
           "player": 0,
-          "life": 16
+          "life": 20,
+          "rulesReference": "CR 121.2b prevents choosing the additional draws after the normal draw."
         }
       ]
     },

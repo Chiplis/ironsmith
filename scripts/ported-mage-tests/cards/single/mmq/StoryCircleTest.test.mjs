@@ -42,21 +42,45 @@ registerPortedMageTests({
           "name": "Story Circle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Red"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}"
+          "ability": "The next time",
+          "source": "Story Circle"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Goblin Piker"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Story Circle",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
@@ -133,21 +157,45 @@ registerPortedMageTests({
           "name": "Story Circle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Red"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}"
+          "ability": "The next time",
+          "source": "Story Circle"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Goblin Piker"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Story Circle",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
@@ -213,21 +261,45 @@ registerPortedMageTests({
           "name": "Story Circle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Red"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}"
+          "ability": "The next time",
+          "source": "Story Circle"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Blade Historian"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Story Circle",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
@@ -293,16 +365,40 @@ registerPortedMageTests({
           "name": "Story Circle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Green"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}"
+          "ability": "The next time",
+          "source": "Story Circle"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Story Circle",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
@@ -375,9 +471,18 @@ registerPortedMageTests({
           "name": "Story Circle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Red"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -388,17 +493,39 @@ registerPortedMageTests({
           "target": 0
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}",
-          "target": "Lightning Bolt"
+          "ability": "The next time",
+          "target": "Lightning Bolt",
+          "source": "Story Circle"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Lightning Bolt"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Story Circle",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -470,9 +597,18 @@ registerPortedMageTests({
           "name": "Story Circle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Green"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -483,12 +619,34 @@ registerPortedMageTests({
           "target": 0
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}",
-          "target": "Lightning Bolt"
+          "ability": "The next time",
+          "target": "Lightning Bolt",
+          "source": "Story Circle"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Story Circle",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -560,9 +718,18 @@ registerPortedMageTests({
           "name": "Story Circle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Red"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -577,17 +744,47 @@ registerPortedMageTests({
           "target": 0
         },
         {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Blisterstick Shaman",
+          "count": 1,
+          "completeTargets": true,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}",
-          "target": "stack ability (When"
+          "ability": "The next time",
+          "target": "stack ability (When",
+          "source": "Story Circle"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Blisterstick Shaman"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Story Circle",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -659,9 +856,18 @@ registerPortedMageTests({
           "name": "Story Circle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Green"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -676,12 +882,42 @@ registerPortedMageTests({
           "target": 0
         },
         {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Blisterstick Shaman",
+          "count": 1,
+          "completeTargets": true,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}",
-          "target": "stack ability (When"
+          "ability": "The next time",
+          "target": "stack ability (When",
+          "source": "Story Circle"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Story Circle",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -753,9 +989,18 @@ registerPortedMageTests({
           "name": "Story Circle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Red"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Red"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -763,20 +1008,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "{R},",
-          "target": 0
+          "target": 0,
+          "source": "Anaba Shaman"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Anaba Shaman",
+          "count": 1,
+          "completeTargets": true,
+          "abilityKind": "Activated"
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}",
-          "target": "stack ability ({R}"
+          "ability": "The next time",
+          "target": "stack ability ({R}",
+          "source": "Story Circle"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Anaba Shaman"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Story Circle",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -848,9 +1118,18 @@ registerPortedMageTests({
           "name": "Story Circle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Green"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -858,15 +1137,40 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "{R},",
-          "target": 0
+          "target": 0,
+          "source": "Anaba Shaman"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Anaba Shaman",
+          "count": 1,
+          "completeTargets": true,
+          "abilityKind": "Activated"
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}",
-          "target": "stack ability ({R}"
+          "ability": "The next time",
+          "target": "stack ability ({R}",
+          "source": "Story Circle"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Story Circle",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",

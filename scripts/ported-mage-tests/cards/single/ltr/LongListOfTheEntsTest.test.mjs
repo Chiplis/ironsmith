@@ -84,9 +84,40 @@ registerPortedMageTests({
           "name": "Long List of the Ents"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Construct"
+          "kind": "options",
+          "description": "choose a creature type",
+          "choices": [
+            "Construct"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Long List of the Ents",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Long List of the Ents",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "castSpell",
@@ -103,9 +134,27 @@ registerPortedMageTests({
           "name": "Augmenting Automaton"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Bear"
+          "kind": "options",
+          "description": "choose a creature type",
+          "choices": [
+            "Bear"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Long List of the Ents",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "castSpell",
@@ -115,9 +164,27 @@ registerPortedMageTests({
           "name": "Grizzly Bears"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Warrior"
+          "kind": "options",
+          "description": "choose a creature type",
+          "choices": [
+            "Warrior"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Long List of the Ents",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "castSpell",
@@ -127,9 +194,27 @@ registerPortedMageTests({
           "name": "Bear Cub"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Centaur"
+          "kind": "options",
+          "description": "choose a creature type",
+          "choices": [
+            "Centaur"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Long List of the Ents",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "castSpell",
@@ -139,9 +224,27 @@ registerPortedMageTests({
           "name": "Centaur Courser"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Druid"
+          "kind": "options",
+          "description": "choose a creature type",
+          "choices": [
+            "Druid"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 9,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Long List of the Ents",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 9,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "castSpell",
@@ -158,9 +261,27 @@ registerPortedMageTests({
           "name": "Llanowar Elves"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Elf"
+          "kind": "options",
+          "description": "choose a creature type",
+          "choices": [
+            "Elf"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 11,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Long List of the Ents",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 11,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "castSpell",

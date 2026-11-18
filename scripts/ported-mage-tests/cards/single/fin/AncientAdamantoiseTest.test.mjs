@@ -46,6 +46,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Ancient Adamantoise",
+          "damage": 3
         }
       ]
     }

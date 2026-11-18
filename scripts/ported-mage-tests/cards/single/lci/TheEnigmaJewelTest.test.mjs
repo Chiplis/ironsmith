@@ -80,12 +80,17 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertNotNull(permanent)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Locus of Enlightenment",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertEquals(4, permanent.getAbilities(currentGame).getActivatedAbilities(Zone.BATTLEFIELD).size())"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Locus of Enlightenment",
+          "kind": "activated",
+          "count": 4
         }
       ]
     }

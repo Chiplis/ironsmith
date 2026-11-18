@@ -771,12 +771,18 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Goblin Piker"
+          "name": "Goblin Piker",
+          "actionLabel": "Cast Goblin Piker (cast without paying mana cost, from hand)"
         },
         {
-          "op": "setChoice",
+          "op": "assertTappedCount",
           "player": 0,
-          "value": "Without paying manacost"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true,
+          "name": "Volcanic Island",
+          "tapped": true,
+          "count": 8
         },
         {
           "op": "assertPlayableAbility",
@@ -799,7 +805,18 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Gray Ogre"
+          "name": "Gray Ogre",
+          "actionLabel": "Cast Gray Ogre (from library)"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true,
+          "name": "Volcanic Island",
+          "tapped": true,
+          "count": 11
         },
         {
           "op": "assertPlayableAbility",
@@ -923,12 +940,18 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Gray Ogre"
+          "name": "Gray Ogre",
+          "actionLabel": "Cast Gray Ogre (from library)"
         },
         {
-          "op": "setChoice",
+          "op": "assertTappedCount",
           "player": 0,
-          "value": "One with the Multiverse"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true,
+          "name": "Volcanic Island",
+          "tapped": true,
+          "count": 11
         },
         {
           "op": "assertPlayableAbility",
@@ -951,12 +974,18 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Goblin Piker"
+          "name": "Goblin Piker",
+          "actionLabel": "Cast Goblin Piker (cast without paying mana cost, from hand)"
         },
         {
-          "op": "setChoice",
+          "op": "assertTappedCount",
           "player": 0,
-          "value": "Without paying manacost"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true,
+          "name": "Volcanic Island",
+          "tapped": true,
+          "count": 11
         },
         {
           "op": "assertPlayableAbility",

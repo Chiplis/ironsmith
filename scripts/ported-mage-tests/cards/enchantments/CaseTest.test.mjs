@@ -116,8 +116,12 @@ registerPortedMageTests({
           "value": "Whenever"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"case is solved\", 3, PhaseStep.END_TURN, playerA, \"<i>To solve\", 1)"
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 0,
+          "text": "<i>To solve",
+          "count": 1
         },
         {
           "op": "activateAbility",
@@ -261,8 +265,12 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"case is solved\", 3, PhaseStep.END_TURN, playerA, \"<i>To solve\", 1)"
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 0,
+          "text": "<i>To solve",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -379,8 +387,12 @@ registerPortedMageTests({
           "ability": "Cycling"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"case is solved\", 1, PhaseStep.END_TURN, playerA, \"<i>To solve\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "text": "<i>To solve",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -409,8 +421,11 @@ registerPortedMageTests({
           "source": "assertSubtype(\"Case of the Gorgon's Kiss\", SubType.GORGON)"
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, \"Case of the Gorgon's Kiss\", 4, 4)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Case of the Gorgon's Kiss",
+          "power": 4,
+          "toughness": 4
         }
       ]
     },
@@ -481,8 +496,12 @@ registerPortedMageTests({
           "name": "Island"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"case is solved\", 3, PhaseStep.END_TURN, playerA, \"<i>To solve\", 1)"
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 0,
+          "text": "<i>To solve",
+          "count": 1
         },
         {
           "op": "castSpell",

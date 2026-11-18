@@ -28,29 +28,49 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "activateManaAbility",
+          "player": 0,
+          "source": "Karfell Harbinger",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
+          "ability": "Add {U}"
+        },
+        {
+          "op": "activateAbility",
+          "source": null,
+          "ability": "Foretell Augury Raven",
           "player": 0,
-          "ability": "Fore"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertHandCount",
           "player": 0,
           "name": "Augury Raven",
           "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Augury Raven",
+          "count": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Karfell Harbinger",
+          "tapped": true
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Island",
+          "tapped": true
         }
       ]
     },

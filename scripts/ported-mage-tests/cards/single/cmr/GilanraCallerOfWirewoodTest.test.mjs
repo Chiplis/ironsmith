@@ -176,18 +176,44 @@ registerPortedMageTests({
           "count": 7
         },
         {
-          "op": "activateAbility",
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {G}. When"
+          "ability": "{T}: Add {G}",
+          "source": "Gilanra, Caller of Wirewood"
         },
         {
-          "op": "activateAbility",
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 0
+        },
+        {
+          "op": "activateManaAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {G}. When"
+          "ability": "{T}: Add {G}",
+          "source": "Gilanra, Caller of Wirewood"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
         },
         {
           "op": "castSpell",
@@ -198,10 +224,25 @@ registerPortedMageTests({
         },
         {
           "op": "assertStackSize",
-          "turn": "must have one trigger",
-          "phase": 3,
-          "player": "PRECOMBAT_MAIN",
-          "count": 0
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gilanra, Caller of Wirewood",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
         },
         {
           "op": "setStrictChooseMode",

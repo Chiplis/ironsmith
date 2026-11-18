@@ -7,6 +7,13 @@ registerPortedMageTests({
       "name": "narcomoebaBaseCase",
       "operations": [
         {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "name": "Forest",
+          "player": 0,
+          "count": 2
+        },
+        {
           "op": "skipInitShuffling"
         },
         {
@@ -35,21 +42,59 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "name": "Narcomoeba"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Thought Scour"
+          "name": "Thought Scour",
+          "target": 0
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thought Scour",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 0,
-          "target": 0
+          "name": "Narcomoeba",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Narcomoeba",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -83,6 +128,13 @@ registerPortedMageTests({
       "name": "emrakulBaseCase",
       "operations": [
         {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "name": "Forest",
+          "player": 0,
+          "count": 2
+        },
+        {
           "op": "skipInitShuffling"
         },
         {
@@ -111,16 +163,54 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "name": "Emrakul, the Aeons Torn"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Thought Scour"
+          "name": "Thought Scour",
+          "target": 0
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thought Scour",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 0,
-          "target": 0
+          "name": "Emrakul, the Aeons Torn",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Emrakul, the Aeons Torn",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -134,6 +224,12 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "player": 0,
           "count": 0
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "Emrakul, the Aeons Torn",
+          "count": 1
         }
       ]
     },
@@ -176,6 +272,38 @@ registerPortedMageTests({
           "name": "Wrath of God"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Wrath of God",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Emrakul, the Aeons Torn",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Emrakul, the Aeons Torn",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN"
@@ -193,6 +321,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Emrakul, the Aeons Torn",
           "count": 0
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "Emrakul, the Aeons Torn",
+          "count": 1
         }
       ]
     },

@@ -98,6 +98,25 @@ registerPortedMageTests({
           "name": "Memnite"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Shanid, Sleepers' Scourge",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
           "op": "playLand",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -172,21 +191,21 @@ registerPortedMageTests({
           "op": "assertAbility",
           "player": 0,
           "name": "Gaddock Teeg",
-          "ability": false,
+          "ability": "MenaceAbility.class",
           "expected": true
         },
         {
           "op": "assertAbility",
           "player": 0,
           "name": "Memnite",
-          "ability": false,
+          "ability": "MenaceAbility.class",
           "expected": false
         },
         {
           "op": "assertAbility",
           "player": 1,
           "name": "Gaddock Teeg",
-          "ability": false,
+          "ability": "MenaceAbility.class",
           "expected": false
         }
       ]

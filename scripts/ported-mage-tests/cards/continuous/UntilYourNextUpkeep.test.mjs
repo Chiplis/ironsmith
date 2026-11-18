@@ -11,8 +11,29 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextUpkeepStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: Until your next upkeep, this creature gets +1/+1.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "activateAbility",
+              "turn": 1,
+              "phase": "UPKEEP",
+              "player": 0,
+              "ability": "{0}"
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -26,8 +47,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -39,8 +60,29 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextUpkeepStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: Until your next upkeep, this creature gets +1/+1.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "activateAbility",
+              "turn": 1,
+              "phase": "UPKEEP",
+              "player": 0,
+              "ability": "{0}"
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -54,8 +96,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -67,8 +109,29 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextUpkeepStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: Until your next upkeep, this creature gets +1/+1.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "activateAbility",
+              "turn": 1,
+              "phase": "UPKEEP",
+              "player": 0,
+              "ability": "{0}"
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -82,8 +145,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "false ? 2 : 1",
-          "toughness": "false ? 2 : 1"
+          "power": 1,
+          "toughness": 1
         }
       ]
     },
@@ -95,8 +158,73 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextUpkeepStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: Until your next upkeep, this creature gets +1/+1.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Paradox Haze"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Paradox Haze",
+          "target": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Paradox Haze",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",
@@ -110,8 +238,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -123,8 +251,73 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextUpkeepStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: Until your next upkeep, this creature gets +1/+1.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Paradox Haze"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Paradox Haze",
+          "target": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Paradox Haze",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",
@@ -138,8 +331,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "false ? 2 : 1",
-          "toughness": "false ? 2 : 1"
+          "power": 1,
+          "toughness": 1
         }
       ]
     },
@@ -151,8 +344,45 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextUpkeepStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: Until your next upkeep, this creature gets +1/+1.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Eon Hub"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",
@@ -166,8 +396,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -179,8 +409,45 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextUpkeepStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: Until your next upkeep, this creature gets +1/+1.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Eon Hub"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "tester",
+          "ability": "{0}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "setStopAt",
@@ -194,8 +461,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     }

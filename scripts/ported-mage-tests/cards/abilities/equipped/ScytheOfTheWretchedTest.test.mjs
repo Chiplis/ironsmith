@@ -47,7 +47,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -139,14 +139,56 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip {4}",
-          "target": "Silvercoat Lion"
+          "target": {
+            "groups": [
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          },
+          "source": "Scythe of the Wretched"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Scythe of the Wretched",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "targetPlayer": 1,
+          "attachment": "Scythe of the Wretched",
+          "target": "Silvercoat Lion",
+          "expected": true,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "name": "Silvercoat Lion",
+          "player": 1,
+          "power": 4,
+          "toughness": 4,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -154,6 +196,29 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Oreskos Swiftclaw",
           "attacker": "Silvercoat Lion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Scythe of the Wretched",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "targetPlayer": 1,
+          "attachment": "Scythe of the Wretched",
+          "target": "Oreskos Swiftclaw",
+          "expected": true
         },
         {
           "op": "setStopAt",
@@ -237,14 +302,56 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip {4}",
-          "target": "Silvercoat Lion"
+          "target": {
+            "groups": [
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          },
+          "source": "Scythe of the Wretched"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Scythe of the Wretched",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "targetPlayer": 1,
+          "attachment": "Scythe of the Wretched",
+          "target": "Silvercoat Lion",
+          "expected": true,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "name": "Silvercoat Lion",
+          "player": 1,
+          "power": 4,
+          "toughness": 4,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -252,6 +359,47 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Serra Angel",
           "attacker": "Silvercoat Lion"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "name": "Serra Angel",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Scythe of the Wretched",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "targetPlayer": 1,
+          "attachment": "Scythe of the Wretched",
+          "target": "Serra Angel",
+          "expected": true
         },
         {
           "op": "setStopAt",
@@ -349,14 +497,56 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip {4}",
-          "target": "Silvercoat Lion"
+          "target": {
+            "groups": [
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          },
+          "source": "Scythe of the Wretched"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Scythe of the Wretched",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "targetPlayer": 1,
+          "attachment": "Scythe of the Wretched",
+          "target": "Silvercoat Lion",
+          "expected": true,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "name": "Silvercoat Lion",
+          "player": 1,
+          "power": 4,
+          "toughness": 4,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -366,12 +556,66 @@ registerPortedMageTests({
           "attacker": "Silvercoat Lion"
         },
         {
+          "op": "assertGraveyardCount",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "name": "Serra Angel",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Scythe of the Wretched",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "COMBAT_DAMAGE",
           "player": 0,
           "name": "Disenchant",
           "target": "Scythe of the Wretched"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Disenchant",
+          "count": 1,
+          "objectTarget": "Scythe of the Wretched",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Scythe of the Wretched",
+          "player": 1,
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

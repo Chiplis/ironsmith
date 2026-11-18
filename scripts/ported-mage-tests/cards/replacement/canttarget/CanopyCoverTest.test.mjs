@@ -54,15 +54,12 @@ registerPortedMageTests({
           "target": "Silvercoat Lion"
         },
         {
-          "op": "castSpell",
+          "op": "assertNoSpellObjectTarget",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "name": "Lightning Bolt"
-        },
-        {
-          "op": "addTarget",
-          "player": 1,
+          "name": "Lightning Bolt",
+          "controller": 0,
           "target": "Silvercoat Lion"
         },
         {
@@ -71,8 +68,13 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"setup good targets\")) { Assert.fail(\"must throw error about bad targets, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerA, \"Canopy Cover\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Canopy Cover",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",

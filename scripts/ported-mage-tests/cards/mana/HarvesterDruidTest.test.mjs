@@ -36,12 +36,13 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{R}{R}\", options)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{R}\", options)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{U}{R}{R}",
+            "{U}{U}{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -78,16 +79,14 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{R}{R}{R}\", options)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{R}{R}\", options)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{U}{R}\", options)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{U}{R}{R}{R}",
+            "{U}{U}{R}{R}",
+            "{U}{U}{U}{R}"
+          ],
+          "exact": true
         }
       ]
     }

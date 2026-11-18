@@ -134,25 +134,30 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Woodland Wanderer",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Woodland Wanderer",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Woodland Wanderer"
+          "isSpell": true
         },
         {
-          "op": "castSpell",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
           "player": 0,
-          "name": "Fairgrounds Trumpeter"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "name": "Woodland Wanderer",
+          "count": 1,
+          "counter": "+1/+1"
         },
         {
           "op": "assertPowerToughness",
@@ -160,6 +165,53 @@ registerPortedMageTests({
           "name": "Woodland Wanderer",
           "power": 3,
           "toughness": 3
+        },
+        {
+          "op": "castSpell",
+          "name": "Fairgrounds Trumpeter",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Fairgrounds Trumpeter",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Fairgrounds Trumpeter",
+          "power": 2,
+          "toughness": 2
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Fairgrounds Trumpeter",
+          "count": 1,
+          "turn": 1,
+          "phase": "END_TURN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Fairgrounds Trumpeter",
+          "count": 1,
+          "counter": "+1/+1"
         },
         {
           "op": "assertPowerToughness",

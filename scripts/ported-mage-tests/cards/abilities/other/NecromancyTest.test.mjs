@@ -147,18 +147,72 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Necromancy",
+          "player": 0,
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Necromancy",
+          "count": 1,
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Craw Wurm"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "UPKEEP",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Necromancy",
+          "count": 1,
+          "turn": 1,
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered",
+          "objectTarget": "Craw Wurm",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertAttachedTo",
           "player": 0,
-          "name": "Necromancy"
+          "attachment": "\"Necromancy\"",
+          "target": "Craw Wurm",
+          "expected": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Craw Wurm",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Necromancy",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 2,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "UPKEEP"
         },
         {
           "op": "assertPermanentCount",
@@ -286,7 +340,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Silvercoat Lion",
+          "name": "Silvercoat Lion@attacking",
           "count": 1
         },
         {
@@ -307,15 +361,16 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Silvercoat Lion",
+          "name": "Silvercoat Lion@blocking",
           "count": 1
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
-          "attacker": "Silvercoat Lion",
-          "defender": 1
+          "attacker": "Silvercoat Lion@attacking.1",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "castSpell",
@@ -325,11 +380,60 @@ registerPortedMageTests({
           "name": "Necromancy"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                "Silvercoat Lion@blocking"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Necromancy",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Necromancy",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "targetPlayer": 0,
+          "attachment": "Necromancy",
+          "target": "Silvercoat Lion@blocking",
+          "expected": true
+        },
+        {
           "op": "block",
           "turn": 2,
           "player": 0,
-          "blocker": "Silvercoat Lion",
-          "attacker": "Silvercoat Lion"
+          "blocker": "Silvercoat Lion@blocking",
+          "attacker": "Silvercoat Lion@attacking.1"
         },
         {
           "op": "setStopAt",

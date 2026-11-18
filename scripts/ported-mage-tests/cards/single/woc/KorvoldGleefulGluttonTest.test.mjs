@@ -60,7 +60,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}, Sacrifice"
+          "ability": "{T}, Sacrifice",
+          "source": "Witch's Oven"
         },
         {
           "op": "setChoice",
@@ -74,11 +75,28 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertGraveyardCount",
+          "name": "Spirited Companion",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Food Token",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Sacrifice a Food"
+          "ability": "Sacrifice a Food",
+          "source": "Cauldron Familiar"
         },
         {
           "op": "setChoice",
@@ -89,7 +107,32 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": null,
+          "resolutions": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Cauldron Familiar",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Food Token",
+          "count": 0,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 19,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -99,11 +142,46 @@ registerPortedMageTests({
           "name": "Korvold, Gleeful Glutton"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Korvold, Gleeful Glutton",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Korvold, Gleeful Glutton",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Korvold, Gleeful Glutton",
           "defender": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Korvold, Gleeful Glutton",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

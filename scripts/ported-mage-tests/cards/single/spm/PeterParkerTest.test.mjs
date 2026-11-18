@@ -11,8 +11,16 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"tap all creatures\", playerA, new SimpleActivatedAbility( new TapAllEffect(new FilterCreaturePermanent(SubType.BEAR, \"bears\")), new ManaCostsImpl<>(\"\") ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tap all creatures",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Tap all Bears."
         },
         {
           "op": "addCard",
@@ -71,17 +79,73 @@ registerPortedMageTests({
           "name": "Amazing Spider-Man"
         },
         {
-          "op": "activateAbility",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "tap all"
+          "count": 1,
+          "source": "Amazing Spider-Man"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Amazing Spider-Man",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "tap all creatures",
+          "ability": "Tap all Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "tap all creatures",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "tapped": true,
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Adelbert Steiner",
+          "methods": [
+            "normal",
+            "play_from"
+          ]
         },
         {
           "op": "castSpell",
@@ -96,10 +160,53 @@ registerPortedMageTests({
           "value": "Balduvian Bears"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Adelbert Steiner"
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Adelbert Steiner",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Chainer, Nightmare Adept",
           "ability": "Discard a card"
         },
         {
@@ -108,18 +215,71 @@ registerPortedMageTests({
           "value": "Adelbert Steiner"
         },
         {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "assertPlayableAbility",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Balduvian Bears with Web-slinging",
-          "expected": false
+          "count": 1,
+          "source": "Chainer, Nightmare Adept",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Adelbert Steiner",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "methods": [
+            "normal"
+          ]
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "tapped": true,
+          "count": 1
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Absolute Virtue",
+          "zone": "graveyard",
+          "methods": [
+            "play_from"
+          ]
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Absolute Virtue",
+          "zone": "graveyard",
+          "filterMethod": "Web-slinging",
+          "methods": [
+            "play_from"
+          ]
         },
         {
           "op": "castSpell",
@@ -134,12 +294,64 @@ registerPortedMageTests({
           "value": "Balduvian Bears"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Absolute Virtue"
         },
         {
-          "op": "execute"
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Absolute Virtue",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Absolute Virtue",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Spider Token",
+          "count": 0,
+          "seatIndependent": true
         }
       ]
     },
@@ -151,8 +363,16 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"tap all creatures\", playerA, new SimpleActivatedAbility( new TapAllEffect(new FilterCreaturePermanent(SubType.BEAR, \"bears\")), new ManaCostsImpl<>(\"\") ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tap all creatures",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Tap all Bears."
         },
         {
           "op": "addCard",
@@ -270,12 +490,16 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"tap all creatures\", playerA, new SimpleActivatedAbility( new TapAllEffect(new FilterCreaturePermanent(SubType.BEAR, \"bears\")), new ManaCostsImpl<>(\"\") ))"
-        },
-        {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetTransform(playerA)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tap all creatures",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Tap all Bears."
         },
         {
           "op": "addCard",
@@ -313,17 +537,47 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Face Switch Fixture",
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Transform target permanent."
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "tap all"
+          "source": "tap all creatures",
+          "ability": "Tap all Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "tap all creatures",
+          "abilityKind": "Activated"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -333,79 +587,170 @@ registerPortedMageTests({
           "name": "Peter Parker"
         },
         {
-          "op": "activateAbility",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{G}{W}{U}: Transform"
+          "count": 1,
+          "source": "Peter Parker"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Adelbert Steiner with Web-slinging",
-          "expected": true
+          "count": 1,
+          "source": "Peter Parker",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Spider Token",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target transform",
+          "source": "Peter Parker",
+          "ability": "Transform Peter Parker"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Peter Parker",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Amazing Spider-Man",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Adelbert Steiner",
+          "methods": [
+            "normal",
+            "play_from"
+          ]
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Face Switch Fixture",
+          "ability": "Transform target permanent",
           "target": "Amazing Spider-Man"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Face Switch Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Amazing Spider-Man"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Adelbert Steiner with Web-slinging",
-          "expected": false
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "name": "Peter Parker",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Amazing Spider-Man",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Peter Parker",
-          "count": 1
+          "name": "Adelbert Steiner",
+          "methods": [
+            "normal"
+          ]
         },
         {
           "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Adelbert Steiner",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Balduvian Bears",
-          "count": 1
+          "name": "Spider Token",
+          "count": 1,
+          "seatIndependent": true
         }
       ]
     },
@@ -417,12 +762,16 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"tap all creatures\", playerA, new SimpleActivatedAbility( new TapAllEffect(new FilterCreaturePermanent(SubType.BEAR, \"bears\")), new ManaCostsImpl<>(\"\") ))"
-        },
-        {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetTransform(playerA)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tap all creatures",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Tap all Bears."
         },
         {
           "op": "addCard",
@@ -467,17 +816,47 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Face Switch Fixture",
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Transform target permanent."
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "tap all"
+          "source": "tap all creatures",
+          "ability": "Tap all Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "tap all creatures",
+          "abilityKind": "Activated"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -487,34 +866,102 @@ registerPortedMageTests({
           "name": "Amazing Spider-Man"
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Adelbert Steiner with Web-slinging",
-          "expected": true
+          "count": 1,
+          "source": "Amazing Spider-Man"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Amazing Spider-Man",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Spider Token",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Adelbert Steiner",
+          "methods": [
+            "normal",
+            "play_from"
+          ]
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target transform",
+          "source": "Face Switch Fixture",
+          "ability": "Transform target permanent",
           "target": "Amazing Spider-Man"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Face Switch Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Amazing Spider-Man"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Adelbert Steiner with Web-slinging",
-          "expected": false
+          "name": "Peter Parker",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Amazing Spider-Man",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Adelbert Steiner",
+          "methods": [
+            "normal"
+          ]
         },
         {
           "op": "castSpell",
@@ -525,6 +972,31 @@ registerPortedMageTests({
           "target": "Peter Parker"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Unsummon",
+          "objectTarget": "Peter Parker"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Peter Parker",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -532,42 +1004,65 @@ registerPortedMageTests({
           "name": "Amazing Spider-Man"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Amazing Spider-Man"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Amazing Spider-Man",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Peter Parker",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Adelbert Steiner",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Balduvian Bears",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Spider Token",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         }
       ]
     }

@@ -136,17 +136,43 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "source": "Demonmail Hauberk"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Choose a creature to sacrifice: Sacrifice a creature",
+          "options": [],
+          "absent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Demonmail Hauberk",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Demonmail Hauberk",
+          "target": "Silvercoat Lion",
+          "expected": true
         },
         {
           "op": "setStrictChooseMode",

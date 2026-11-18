@@ -123,7 +123,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Lightning Bolt",
+          "name": "Lightning Bolt@bolt",
           "count": 1
         },
         {
@@ -148,20 +148,30 @@ registerPortedMageTests({
           "count": 3
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 3,
+          "source": "Island",
+          "ability": "{T}: Add {U}"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Lightning Bolt",
-          "target": 0
+          "target": 0,
+          "objectAlias": "@bolt"
         },
         {
-          "op": "activateManaAbility",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {U}",
-          "count": 3
+          "source": "Lightning Bolt",
+          "count": 1,
+          "controller": 1
         },
         {
           "op": "castSpell",
@@ -172,25 +182,55 @@ registerPortedMageTests({
           "target": "Lightning Bolt"
         },
         {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "source": "Cancel",
+          "count": 1,
+          "objectTarget": "Lightning Bolt"
         },
         {
-          "op": "assertExileCount",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Lightning Bolt",
-          "count": 1
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertEachObject",
+          "seatIndependent": true,
+          "selector": {
+            "zone": "exile",
+            "player": 1,
+            "alias": "@bolt"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "VOID",
+              "expected": 1
+            }
+          ]
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
+          "source": "Dauthi Voidwalker",
           "ability": "{T}, Sacrifice"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Dauthi Voidwalker",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
@@ -200,8 +240,13 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": null
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Dauthi Voidwalker",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -209,19 +254,22 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": 1
+          "target": 1,
+          "objectAlias": "@bolt",
+          "castingMethod": "play_from"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "controller": 0
         },
         {
-          "op": "setStopAt",
-          "turn": 2,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertLife",

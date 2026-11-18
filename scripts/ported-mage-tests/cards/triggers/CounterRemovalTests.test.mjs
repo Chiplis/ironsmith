@@ -35,29 +35,205 @@ registerPortedMageTests({
           "count": 5
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"multicountertrigdcard\", playerA, ability, null, CardType.CREATURE, \"\", Zone.BATTLEFIELD)"
-        },
-        {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"singlecountertrigdcard\", playerA, ability, null, CardType.CREATURE, \"\", Zone.BATTLEFIELD)"
-        },
-        {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"multicounterreplcard\", playerA, ability, null, CardType.CREATURE, \"\", Zone.BATTLEFIELD)"
-        },
-        {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"singlecounterreplcard\", playerA, ability, null, CardType.CREATURE, \"\", Zone.BATTLEFIELD)"
-        },
-        {
-          "op": "setChoice",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "value": "When a counter"
+          "name": "multicountertrigdcard",
+          "fixtureSource": true,
+          "typeLine": "Creature",
+          "power": 1,
+          "toughness": 1,
+          "oracleText": "Whenever one or more counters are removed from this permanent, you lose 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "singlecountertrigdcard",
+          "fixtureSource": true,
+          "typeLine": "Creature",
+          "power": 1,
+          "toughness": 1,
+          "oracleText": "Whenever a counter is removed from this permanent, you get {E}."
+        },
+        {
+          "op": "addXmageFixture",
+          "player": 0,
+          "name": "multicounterreplcard",
+          "ability": "removeOneFewerCounter"
+        },
+        {
+          "op": "addXmageFixture",
+          "player": 0,
+          "name": "singlecounterreplcard",
+          "ability": "retainTwoCounters"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Basri's Solidarity"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Basri's Solidarity"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Basri's Solidarity"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "multicountertrigdcard",
+          "counter": "P1P1",
+          "count": 3
+        },
+        {
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "singlecountertrigdcard",
+          "counter": "P1P1",
+          "count": 3
+        },
+        {
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "multicounterreplcard",
+          "counter": "P1P1",
+          "count": 3
+        },
+        {
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "singlecounterreplcard",
+          "counter": "P1P1",
+          "count": 3
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Aether Snap"
+        },
+        {
+          "op": "setCounterChoice",
+          "mandatory": true,
+          "player": 0,
+          "counts": {
+            "P1P1": 3
+          }
+        },
+        {
+          "op": "setCounterChoice",
+          "mandatory": true,
+          "player": 0,
+          "counts": {
+            "P1P1": 3
+          }
+        },
+        {
+          "op": "setCounterChoice",
+          "mandatory": true,
+          "player": 0,
+          "counts": {
+            "P1P1": 3
+          }
+        },
+        {
+          "op": "setCounterChoice",
+          "mandatory": true,
+          "player": 0,
+          "counts": {
+            "P1P1": 3
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "singlecountertrigdcard"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "singlecountertrigdcard"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "singlecountertrigdcard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "multicountertrigdcard",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "singlecountertrigdcard",
+          "count": 3
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 4
         },
         {
           "op": "execute"
@@ -88,7 +264,14 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 2
         }
-      ]
+      ],
+      "startingLife": 20
     }
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
   ]
 });

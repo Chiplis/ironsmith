@@ -10,15 +10,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Goblin Piker",
-          "count": 1
+          "name": "Swamp",
+          "count": 10
         },
         {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Swamp",
-          "count": 10
+          "name": "Goblin Piker",
+          "count": 1
         },
         {
           "op": "skipInitShuffling"
@@ -49,7 +49,22 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Cycling"
+          "ability": "Cycling",
+          "source": "Desert Cerodon"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Desert Cerodon",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Desert Cerodon",
+          "count": 1
         },
         {
           "op": "setChoice",
@@ -57,16 +72,22 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Goblin Piker",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -144,15 +165,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Goblin Piker",
-          "count": 2
+          "name": "Swamp",
+          "count": 10
         },
         {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Swamp",
-          "count": 10
+          "name": "Goblin Piker",
+          "count": 2
         },
         {
           "op": "skipInitShuffling"
@@ -190,7 +211,22 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Cycling"
+          "ability": "Cycling",
+          "source": "Desert Cerodon"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Desert Cerodon",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Desert Cerodon",
+          "count": 1
         },
         {
           "op": "setChoice",
@@ -203,16 +239,22 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Goblin Piker",
+          "count": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -229,15 +271,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Goblin Piker",
-          "count": 4
+          "name": "Swamp",
+          "count": 10
         },
         {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Swamp",
-          "count": 10
+          "name": "Goblin Piker",
+          "count": 4
         },
         {
           "op": "skipInitShuffling"
@@ -275,39 +317,60 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Cycling"
+          "ability": "Cycling",
+          "source": "Desert Cerodon"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Thought Reflection"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Thought Reflection"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Desert Cerodon",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
-          "op": "execute"
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Desert Cerodon",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Thought Reflection"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Thought Reflection"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Goblin Piker",
+          "count": 4
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -324,15 +387,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Goblin Piker",
-          "count": 1
+          "name": "Swamp",
+          "count": 10
         },
         {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Swamp",
-          "count": 10
+          "name": "Goblin Piker",
+          "count": 1
         },
         {
           "op": "skipInitShuffling"
@@ -381,11 +444,44 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Plagiarize",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Plagiarize",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "ability": "Cycling"
+          "ability": "Cycling",
+          "source": "Desert Cerodon"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Desert Cerodon",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Desert Cerodon",
+          "count": 1
         },
         {
           "op": "setChoice",
@@ -393,16 +489,22 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Goblin Piker",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

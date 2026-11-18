@@ -127,14 +127,29 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "-2:",
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          },
+          "source": "Chandra, Novice Pyromancer"
         },
         {
-          "op": "attack",
-          "turn": 2,
-          "player": 1,
-          "attacker": "Barbarian Horde",
-          "defender": 1
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chandra, Novice Pyromancer",
+          "count": 1,
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "activateAbility",
@@ -142,7 +157,36 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "-2:",
-          "target": 0
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          },
+          "source": "Chandra, Novice Pyromancer"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chandra, Novice Pyromancer",
+          "count": 1,
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "attack",
+          "turn": 2,
+          "player": 1,
+          "attacker": "Barbarian Horde",
+          "defender": 0
         },
         {
           "op": "activateAbility",
@@ -150,7 +194,29 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "-2:",
-          "target": "Barbarian Horde"
+          "target": {
+            "groups": [
+              [
+                "Barbarian Horde"
+              ]
+            ]
+          },
+          "source": "Chandra, Novice Pyromancer"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chandra, Novice Pyromancer",
+          "count": 1,
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

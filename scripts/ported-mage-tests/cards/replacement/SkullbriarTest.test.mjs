@@ -50,6 +50,16 @@ registerPortedMageTests({
           "target": "Skullbriar, the Walking Grave"
         },
         {
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Skullbriar, the Walking Grave",
+          "counter": "P1P1",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -67,7 +77,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Skullbriar, the Walking Grave",
           "counter": "P1P1",
           "count": 1

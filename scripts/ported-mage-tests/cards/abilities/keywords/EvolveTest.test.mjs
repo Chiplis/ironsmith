@@ -255,7 +255,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Experiment One",
+          "name": "Experiment One@existing",
           "count": 1
         },
         {
@@ -269,33 +269,70 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Experiment One",
+          "name": "Experiment One@newcomer",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Experiment One",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Experiment One"
+          "objectAlias": "@newcomer"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Experiment One",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "assertLife",
+          "op": "assertCounterCount",
           "player": 0,
-          "life": 20
+          "name": "@newcomer",
+          "counter": "+1/+1",
+          "count": 2
         },
         {
-          "op": "assertLife",
-          "player": 1,
-          "life": 20
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@existing",
+          "counter": "+1/+1",
+          "count": 0
+        },
+        {
+          "op": "assertStackObject",
+          "source": "@existing",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@existing",
+          "power": 2,
+          "toughness": 2
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@newcomer",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "assertPermanentCount",
@@ -310,18 +347,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPowerToughness",
+          "op": "assertLife",
           "player": 0,
-          "name": "Experiment One",
-          "power": 2,
-          "toughness": 2
+          "life": 20
         },
         {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Experiment One",
-          "power": 3,
-          "toughness": 3
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
         }
       ]
     },

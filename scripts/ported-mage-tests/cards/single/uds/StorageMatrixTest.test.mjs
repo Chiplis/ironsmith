@@ -43,95 +43,141 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Storage Matrix"
         },
         {
           "op": "waitStackResolved",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": null
         },
         {
           "op": "activateAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: You gain 1 life"
+          "ability": "{T}: You gain 1 life",
+          "source": "Marble Chalice"
         },
         {
           "op": "activateAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "BEGIN_COMBAT",
           "player": 1,
-          "ability": "{T}: You gain 1 life"
+          "ability": "{T}: You gain 1 life",
+          "source": "Mine Worker"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"gain 1st turn\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, 21)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": "21",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"gain 1st turn\", 1, PhaseStep.POSTCOMBAT_MAIN, playerB, 21)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "life": "21",
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
           "player": 1,
-          "value": "CardType.LAND.toString()"
+          "value": "Land"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"worker not land doesn't untap\", 2, PhaseStep.UPKEEP, playerB, worker, true, 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"chalice untaps\", 2, PhaseStep.UPKEEP, playerA, chalice, false, 1)"
-        },
-        {
-          "op": "activateAbility",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: You gain 1 life"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkLife(\"gain 2nd turn\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, 22)"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "CardType.CREATURE.toString()"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"Wastes didn't untap\", 3, PhaseStep.UPKEEP, playerA, \"Wastes\", true, 3)"
-        },
-        {
-          "op": "setChoice",
+          "op": "assertTappedCount",
+          "turn": 4,
+          "phase": "UPKEEP",
           "player": 1,
-          "value": "CardType.ARTIFACT.toString()"
+          "name": "Mine Worker",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"worker artifact does untap\", 4, PhaseStep.UPKEEP, playerB, worker, false, 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"chalice untaps\", 4, PhaseStep.UPKEEP, playerA, chalice, false, 1)"
+          "op": "assertTappedCount",
+          "turn": 4,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Marble Chalice",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: You gain 1 life"
+          "ability": "{T}: You gain 1 life",
+          "source": "Marble Chalice"
+        },
+        {
+          "op": "assertLife",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": "22",
+          "seatIndependent": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Creature"
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Wastes",
+          "tapped": true,
+          "count": 3,
+          "seatIndependent": true
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Artifact"
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 6,
+          "phase": "UPKEEP",
+          "player": 1,
+          "name": "Mine Worker",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 6,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Marble Chalice",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 6,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}: You gain 1 life",
+          "source": "Marble Chalice"
         },
         {
           "op": "setStopAt",
-          "turn": 4,
+          "turn": 6,
           "phase": "POSTCOMBAT_MAIN"
         },
         {

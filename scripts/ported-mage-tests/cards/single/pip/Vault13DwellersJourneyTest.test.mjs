@@ -310,7 +310,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Memnite",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -318,7 +319,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Ornithopter",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -326,7 +328,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Squire",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -334,7 +337,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Watchwolf",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "addTarget",
@@ -345,9 +349,10 @@ registerPortedMageTests({
           "op": "assertExileCount",
           "turn": 7,
           "phase": "UPKEEP",
-          "player": 1,
+          "player": 0,
           "name": "Memnite",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -355,15 +360,17 @@ registerPortedMageTests({
           "phase": "UPKEEP",
           "player": 1,
           "name": "Ornithopter",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
           "turn": 7,
           "phase": "UPKEEP",
-          "player": 1,
+          "player": 0,
           "name": "Squire",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -371,7 +378,8 @@ registerPortedMageTests({
           "phase": "UPKEEP",
           "player": 1,
           "name": "Watchwolf",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",

@@ -65,8 +65,16 @@ registerPortedMageTests({
       "name": "test_ModificationNormal",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"mod\", playerA, new SimpleStaticAbility(new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\")))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "mod",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Equip abilities you activate cost {1} less to activate."
         },
         {
           "op": "addCard",
@@ -127,8 +135,16 @@ registerPortedMageTests({
       "name": "test_ModificationConditionalActive",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"mod\", playerA, new SimpleStaticAbility( new ConditionalCostModificationEffect( new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\"), MyTurnCondition.instance, \"\" ) ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "mod",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "During your turn, equip abilities you activate cost {1} less to activate."
         },
         {
           "op": "addCard",
@@ -189,8 +205,16 @@ registerPortedMageTests({
       "name": "test_ModificationConditionalNotActive",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"mod\", playerA, new SimpleStaticAbility( new ConditionalCostModificationEffect( new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\"), NotMyTurnCondition.instance, \"\" ) ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "mod",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "During turns other than yours, equip abilities you activate cost {1} less to activate."
         },
         {
           "op": "addCard",
@@ -251,8 +275,16 @@ registerPortedMageTests({
       "name": "test_ModificationConditionalNotActiveWithOtherEffect",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"mod\", playerA, new SimpleStaticAbility( new ConditionalCostModificationEffect( new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\"), NotMyTurnCondition.instance, new SpellsCostIncreasingAllEffect(1, new FilterCard(), TargetController.ANY), \"\" ) ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "mod",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "During turns other than yours, equip abilities you activate cost {1} less to activate.\nDuring your turn, spells cost {1} more to cast."
         },
         {
           "op": "addCard",

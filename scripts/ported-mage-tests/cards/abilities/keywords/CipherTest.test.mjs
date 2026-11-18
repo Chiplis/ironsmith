@@ -72,7 +72,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Roil Elemental",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -80,7 +81,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Roil Elemental",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -88,7 +90,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Stolen Identity",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "playLand",
@@ -113,7 +116,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -121,7 +125,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Silvercoat Lion",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "attack",
@@ -146,7 +151,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Roil Elemental",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -154,7 +160,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Roil Elemental",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",

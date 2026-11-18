@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "test_FracturedPowerstone_Single",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addPlane(playerA, Planes.PLANE_HEDRON_FIELDS_OF_AGADEEM)"
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -18,15 +14,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertPlanechase",
+          "plane": "Hedron Fields of Agadeem",
+          "rollCost": 0
+        },
+        {
+          "op": "rollPlanarDie",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{0}: Roll the planar"
-        },
-        {
-          "op": "unsupported",
-          "source": "setDieRollResult(playerA, 1)"
+          "planarFace": "chaos"
         },
         {
           "op": "waitStackResolved",
@@ -35,15 +32,32 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertPlanechase",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "plane": "Hedron Fields of Agadeem",
+          "rollCost": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Roll the planar"
+          "ability": "{T}: Roll the planar",
+          "planarFace": "chaos"
         },
         {
-          "op": "unsupported",
-          "source": "setDieRollResult(playerA, 1)"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "assertPlanechase",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "plane": "Hedron Fields of Agadeem",
+          "rollCost": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -69,15 +83,12 @@ registerPortedMageTests({
           "tapped": true,
           "count": 1
         }
-      ]
+      ],
+      "seed": 137
     },
     {
       "name": "test_FracturedPowerstone_NoCost",
       "operations": [
-        {
-          "op": "unsupported",
-          "source": "addPlane(playerA, Planes.PLANE_HEDRON_FIELDS_OF_AGADEEM)"
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -93,15 +104,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertPlanechase",
+          "plane": "Hedron Fields of Agadeem",
+          "rollCost": 0
+        },
+        {
+          "op": "rollPlanarDie",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{0}: Roll the planar"
-        },
-        {
-          "op": "unsupported",
-          "source": "setDieRollResult(playerA, 1)"
+          "planarFace": "chaos"
         },
         {
           "op": "waitStackResolved",
@@ -110,15 +122,19 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertPlanechase",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "plane": "Hedron Fields of Agadeem",
+          "rollCost": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Roll the planar"
-        },
-        {
-          "op": "unsupported",
-          "source": "setDieRollResult(playerA, 1)"
+          "ability": "{T}: Roll the planar",
+          "planarFace": "chaos"
         },
         {
           "op": "waitStackResolved",
@@ -127,15 +143,31 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "activateAbility",
+          "op": "assertPlanechase",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "plane": "Hedron Fields of Agadeem",
+          "rollCost": 1
+        },
+        {
+          "op": "rollPlanarDie",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{0}: Roll the planar"
+          "planarFace": "chaos"
         },
         {
-          "op": "unsupported",
-          "source": "setDieRollResult(playerA, 1)"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "assertPlanechase",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "plane": "Hedron Fields of Agadeem",
+          "rollCost": 2
         },
         {
           "op": "setStrictChooseMode",
@@ -161,7 +193,34 @@ registerPortedMageTests({
           "tapped": true,
           "count": 1
         }
-      ]
+      ],
+      "seed": 137
     }
+  ],
+  "planarDecks": [
+    [
+      "Llanowar",
+      "Undercity Reaches",
+      "Panopticon",
+      "Tazeem",
+      "Gavony",
+      "Krosa",
+      "Naya",
+      "Hedron Fields of Agadeem",
+      "Goldmeadow",
+      "Turri Island"
+    ],
+    [
+      "Undercity Reaches",
+      "Hedron Fields of Agadeem",
+      "Panopticon",
+      "Tazeem",
+      "Gavony",
+      "Krosa",
+      "Naya",
+      "Llanowar",
+      "Goldmeadow",
+      "Turri Island"
+    ]
   ]
 });

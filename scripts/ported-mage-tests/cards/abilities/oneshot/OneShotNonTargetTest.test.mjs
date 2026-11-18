@@ -38,16 +38,15 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "resolutions": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Yorion, Sky Nomad",
-          "count": 1
+          "source": "Yorion, Sky Nomad",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "castSpell",
@@ -57,14 +56,51 @@ registerPortedMageTests({
           "name": "Resolute Reinforcements"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Resolute Reinforcements"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Resolute Reinforcements",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
+        },
+        {
+          "op": "assertTokenCount",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "name": "Soldier Token",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Yorion, Sky Nomad",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose another nonland permanent you both own and control",
+          "choices": [
+            "Resolute Reinforcements"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Resolute Reinforcements",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -72,15 +108,17 @@ registerPortedMageTests({
         },
         {
           "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
+          "turn": 2,
+          "phase": "UPKEEP"
         },
         {
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTokenCount(playerA, \"Soldier Token\", 2)"
+          "op": "assertTokenCount",
+          "player": 0,
+          "name": "Soldier Token",
+          "count": 2
         },
         {
           "op": "assertPermanentCount",
@@ -234,15 +272,41 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "SOLDIER Military Program",
           "player": 0,
-          "name": "SOLDIER Military Program"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setModeChoice",
+          "op": "assertStackObject",
+          "source": "SOLDIER Military Program",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Put a +1/+1 counter on each of up to two Soldiers you control."
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "source": "SOLDIER Military Program",
+          "count": 1,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "abilityKind": "Triggered",
+          "targetCount": 0,
+          "completeChoices": true
         },
         {
           "op": "setChoice",
@@ -250,14 +314,110 @@ registerPortedMageTests({
           "value": "Squire"
         },
         {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "1"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "setModeChoice",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Squire"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            }
+          ]
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Create a 1/1 white Soldier creature token."
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "source": "SOLDIER Military Program",
+          "count": 1,
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "abilityKind": "Triggered",
+          "targetCount": 0,
+          "completeChoices": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Squire"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Soldier Token",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Put a +1/+1 counter on each of up to two Soldiers you control."
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "source": "SOLDIER Military Program",
+          "count": 1,
+          "turn": 5,
+          "phase": "BEGIN_COMBAT",
+          "abilityKind": "Triggered",
+          "targetCount": 0,
+          "completeChoices": true
         },
         {
           "op": "setChoice",
@@ -270,30 +430,48 @@ registerPortedMageTests({
           "value": "Soldier Token"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 5,
-          "phase": "END_TURN"
+          "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "execute"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Squire"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 3
+            },
+            {
+              "property": "toughness",
+              "expected": 4
+            }
+          ]
         },
         {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Squire",
-          "power": 3,
-          "toughness": 4
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Soldier Token",
-          "power": 2,
-          "toughness": 2
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Soldier Token",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            }
+          ]
         }
       ]
     },
@@ -304,7 +482,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Muse Vessel",
+          "name": "Muse Vessel@vessel",
           "count": 1
         },
         {
@@ -325,14 +503,14 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Squire",
+          "name": "Squire@squire",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Alpha Myr",
+          "name": "Alpha Myr@myr",
           "count": 1
         },
         {
@@ -346,30 +524,54 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Island",
+          "name": "Island@island",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Corridor Monitor",
+          "name": "Corridor Monitor@monitor",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Muse Vessel",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Muse Vessel"
+          "objectAlias": "@vessel"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
+          "source": "Muse Vessel",
+          "ability": "Target player exiles a card",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{3}, {T}: Target player",
           "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
@@ -377,26 +579,62 @@ registerPortedMageTests({
           "value": "Island"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Island",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
+          "source": "Vizier of Tumbling Sands",
+          "ability": "Untap another target permanent",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Untap",
           "target": "Muse Vessel"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Vizier of Tumbling Sands",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Muse Vessel",
+          "abilityKind": "Activated"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "@vessel",
+          "tapped": false
         },
         {
           "op": "activateAbility",
+          "source": "Muse Vessel",
+          "ability": "Target player exiles a card",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{3}, {T}: Target player",
           "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
@@ -404,26 +642,62 @@ registerPortedMageTests({
           "value": "Corridor Monitor"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Corridor Monitor",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
+          "source": "Vizier of Tumbling Sands",
+          "ability": "Untap another target permanent",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Untap",
           "target": "Muse Vessel"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Vizier of Tumbling Sands",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Muse Vessel",
+          "abilityKind": "Activated"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "@vessel",
+          "tapped": false
         },
         {
           "op": "activateAbility",
+          "source": "Muse Vessel",
+          "ability": "Target player exiles a card",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{3}, {T}: Target player",
           "target": 0
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
@@ -433,15 +707,29 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Squire",
+          "count": 1
         },
         {
           "op": "activateAbility",
+          "source": "Muse Vessel",
+          "ability": "Choose a card exiled with",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{1}: Choose"
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
@@ -449,11 +737,25 @@ registerPortedMageTests({
           "value": "Island"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "activateAbility",
+          "source": "Muse Vessel",
+          "ability": "Choose a card exiled with",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{1}: Choose"
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
@@ -463,60 +765,166 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Squire",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Squire"
+          "objectAlias": "@squire"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Squire",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "playLand",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "@island",
           "player": 0,
-          "name": "Island"
-        },
-        {
-          "op": "castSpell",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Void Snare",
-          "target": "Muse Vessel"
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Muse Vessel"
-        },
-        {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "{1}: Choose"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@island"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@squire"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "castSpell",
+          "name": "Void Snare",
+          "player": 0,
+          "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": null
+          "target": "@vessel"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Void Snare",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "objectTarget": "Muse Vessel"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Void Snare",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "name": "Muse Vessel",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "objectAlias": "@vessel"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
+          "source": "Muse Vessel",
+          "ability": "Choose a card exiled with",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "@monitor",
+          "count": 1
+        },
+        {
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}, {T}: Target player",
+          "owner": 1,
+          "name": "Corridor Monitor",
+          "objectAlias": "@monitor",
+          "zone": "exile",
+          "methods": []
+        },
+        {
+          "op": "activateAbility",
+          "source": "Muse Vessel",
+          "ability": "Target player exiles a card",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "target": 0
         },
         {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "targetCount": 1,
+          "abilityKind": "Activated"
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": "Alpha Myr"
@@ -524,105 +932,142 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "{1}: Choose"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Alpha Myr"
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Alpha Myr",
-          "expected": true
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Alpha Myr",
-          "expected": false
-        },
-        {
-          "op": "activateAbility",
-          "turn": 3,
-          "phase": "BEGIN_COMBAT",
-          "player": 0,
-          "ability": "{1}: Choose"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Alpha Myr"
-        },
-        {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Alpha Myr"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "count": 1
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 1,
-          "count": 0
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
-          "player": 0,
-          "count": 0
-        },
-        {
-          "op": "assertExileCount",
-          "player": 1,
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Island",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Squire",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
           "player": 0,
           "name": "Alpha Myr",
           "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "source": "Muse Vessel",
+          "ability": "Choose a card exiled with",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Alpha Myr"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Alpha Myr",
+          "objectAlias": "@myr",
+          "zone": "exile",
+          "methods": [
+            "play_from"
+          ]
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Alpha Myr",
+          "objectAlias": "@myr",
+          "zone": "exile",
+          "methods": []
+        },
+        {
+          "op": "activateAbility",
+          "source": "Muse Vessel",
+          "ability": "Choose a card exiled with",
+          "player": 0,
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Muse Vessel",
+          "count": 1,
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Alpha Myr"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "castSpell",
+          "name": "Alpha Myr",
+          "player": 0,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "objectAlias": "@myr"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Alpha Myr",
+          "count": 1,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@myr"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "@monitor",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "@island",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@squire",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@myr",
+          "count": 0
         }
       ]
     }

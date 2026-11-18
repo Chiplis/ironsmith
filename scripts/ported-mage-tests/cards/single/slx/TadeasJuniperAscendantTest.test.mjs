@@ -14,6 +14,14 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertBlockerLegality",
+          "turn": 1,
+          "player": 1,
+          "attacker": "Canopy Spider",
+          "blocker": "Dryad Arbor",
+          "expected": true
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -36,6 +44,14 @@ registerPortedMageTests({
           "player": 0,
           "attacker": "Sweet-Gum Recluse",
           "defender": 1
+        },
+        {
+          "op": "assertBlockerLegality",
+          "turn": 1,
+          "player": 1,
+          "attacker": "Sweet-Gum Recluse",
+          "blocker": "Southern Elephant",
+          "expected": false
         },
         {
           "op": "setStrictChooseMode",
@@ -69,6 +85,14 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertBlockerLegality",
+          "turn": 1,
+          "player": 1,
+          "attacker": "Acolyte of Xathrid",
+          "blocker": "Runeclaw Bear",
+          "expected": true
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -91,6 +115,14 @@ registerPortedMageTests({
           "player": 0,
           "attacker": "Canopy Spider",
           "defender": 1
+        },
+        {
+          "op": "assertBlockerLegality",
+          "turn": 1,
+          "player": 1,
+          "attacker": "Canopy Spider",
+          "blocker": "Phyrexian Walker",
+          "expected": true
         },
         {
           "op": "setStrictChooseMode",
@@ -117,6 +149,14 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertBlockerLegality",
+          "turn": 1,
+          "player": 1,
+          "attacker": "Canopy Spider",
+          "blocker": "Dryad Arbor",
+          "expected": true
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -139,6 +179,14 @@ registerPortedMageTests({
           "player": 0,
           "attacker": "Canopy Spider",
           "defender": 1
+        },
+        {
+          "op": "assertBlockerLegality",
+          "turn": 1,
+          "player": 1,
+          "attacker": "Canopy Spider",
+          "blocker": "Southern Elephant",
+          "expected": false
         },
         {
           "op": "setStrictChooseMode",
@@ -165,6 +213,14 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertBlockerLegality",
+          "turn": 1,
+          "player": 1,
+          "attacker": "Brood Weaver",
+          "blocker": "Dryad Arbor",
+          "expected": true
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -187,6 +243,14 @@ registerPortedMageTests({
           "player": 0,
           "attacker": "Brood Weaver",
           "defender": 1
+        },
+        {
+          "op": "assertBlockerLegality",
+          "turn": 1,
+          "player": 1,
+          "attacker": "Brood Weaver",
+          "blocker": "Runeclaw Bear",
+          "expected": true
         },
         {
           "op": "setStrictChooseMode",
@@ -213,6 +277,14 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertBlockerLegality",
+          "turn": 1,
+          "player": 1,
+          "attacker": "Brood Weaver",
+          "blocker": "Southern Elephant",
+          "expected": false
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -225,6 +297,71 @@ registerPortedMageTests({
           "op": "execute"
         }
       ]
+    }
+  ],
+  "setupOperations": [
+    {
+      "op": "addCard",
+      "zone": "BATTLEFIELD",
+      "player": 0,
+      "name": "Tadeas, Juniper Ascendant",
+      "count": 1
+    },
+    {
+      "op": "addCard",
+      "zone": "BATTLEFIELD",
+      "player": 0,
+      "name": "Sweet-Gum Recluse",
+      "count": 1
+    },
+    {
+      "op": "addCard",
+      "zone": "BATTLEFIELD",
+      "player": 0,
+      "name": "Canopy Spider",
+      "count": 1
+    },
+    {
+      "op": "addCard",
+      "zone": "BATTLEFIELD",
+      "player": 0,
+      "name": "Brood Weaver",
+      "count": 1
+    },
+    {
+      "op": "addCard",
+      "zone": "BATTLEFIELD",
+      "player": 0,
+      "name": "Acolyte of Xathrid",
+      "count": 1
+    },
+    {
+      "op": "addCard",
+      "zone": "BATTLEFIELD",
+      "player": 1,
+      "name": "Phyrexian Walker",
+      "count": 1
+    },
+    {
+      "op": "addCard",
+      "zone": "BATTLEFIELD",
+      "player": 1,
+      "name": "Dryad Arbor",
+      "count": 1
+    },
+    {
+      "op": "addCard",
+      "zone": "BATTLEFIELD",
+      "player": 1,
+      "name": "Runeclaw Bear",
+      "count": 1
+    },
+    {
+      "op": "addCard",
+      "zone": "BATTLEFIELD",
+      "player": 1,
+      "name": "Southern Elephant",
+      "count": 1
     }
   ]
 });

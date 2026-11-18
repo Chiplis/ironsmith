@@ -84,7 +84,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Edric, Spymaster of Trest",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",

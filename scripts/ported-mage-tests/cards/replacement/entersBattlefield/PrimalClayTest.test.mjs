@@ -78,9 +78,13 @@ registerPortedMageTests({
           "name": "Primal Clay"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "a 2/2 artifact creature with flying"
+          "description": "Choose one",
+          "kind": "options",
+          "choices": [
+            "2/2"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -439,9 +443,25 @@ registerPortedMageTests({
           "name": "Primal Plasma"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "a 1/6 creature with defender"
+          "description": "Choose one",
+          "kind": "options",
+          "choices": [
+            "1/6"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Primal Plasma",
+          "power": 1,
+          "toughness": 6
         },
         {
           "op": "castSpell",
@@ -451,19 +471,27 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
+          "description": "Choose what to copy as this permanent enters",
+          "kind": "options",
+          "choices": [
+            "Enter as a copy of Primal Plasma"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "Primal Plasma"
+          "description": "Choose one",
+          "kind": "options",
+          "choices": [
+            "2/2"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": "a 2/2 creature with flying"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -532,10 +560,6 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
-        },
-        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -552,16 +576,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
           "value": "Molten Sentry"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerB, false)"
         },
         {
           "op": "setStrictChooseMode",
@@ -583,11 +598,20 @@ registerPortedMageTests({
           "toughness": 2
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Molten Sentry",
-          "ability": "Haste",
-          "expected": true
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Molten Sentry"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Haste",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
@@ -597,13 +621,23 @@ registerPortedMageTests({
           "toughness": 5
         },
         {
-          "op": "assertAbility",
-          "player": 1,
-          "name": "Molten Sentry",
-          "ability": "Defender",
-          "expected": true
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Molten Sentry"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Defender",
+              "expected": true
+            }
+          ]
         }
-      ]
+      ],
+      "seed": 3
     },
     {
       "name": "testAquamorphEntityETB",
@@ -711,17 +745,17 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Savage Swipe"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Siege Mastodon"
+          "name": "Savage Swipe",
+          "target": {
+            "groups": [
+              [
+                "Siege Mastodon"
+              ],
+              [
+                "Face-down creature"
+              ]
+            ]
+          }
         },
         {
           "op": "waitStackResolved",
@@ -744,9 +778,13 @@ registerPortedMageTests({
           "ability": "{2}{U}: Turn"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "a 1/5 creature"
+          "description": "Choose one",
+          "kind": "options",
+          "choices": [
+            "1/5"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -816,9 +854,13 @@ registerPortedMageTests({
           "name": "Primal Clay"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "a 2/2 artifact creature with flying"
+          "description": "Choose one",
+          "kind": "options",
+          "choices": [
+            "2/2"
+          ]
         },
         {
           "op": "waitStackResolved",
@@ -835,9 +877,13 @@ registerPortedMageTests({
           "target": "Primal Clay"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "a 3/3 artifact creature"
+          "description": "Choose one",
+          "kind": "options",
+          "choices": [
+            "3/3"
+          ]
         },
         {
           "op": "setStrictChooseMode",

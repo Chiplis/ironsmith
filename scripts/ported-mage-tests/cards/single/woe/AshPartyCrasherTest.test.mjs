@@ -114,10 +114,6 @@ registerPortedMageTests({
       "name": "noCelebrationOnLand",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -140,17 +136,41 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Ash, Party Crasher",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Ash, Party Crasher",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Ash, Party Crasher"
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "playLand",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Forest",
           "player": 0,
-          "name": "Forest"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 1
         },
         {
           "op": "attack",
@@ -160,12 +180,24 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Ash, Party Crasher",
+          "count": 0,
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "END_COMBAT"
         },
         {
-          "op": "execute"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ash, Party Crasher",
+          "count": 0,
+          "counter": "+1/+1"
         },
         {
           "op": "assertLife",

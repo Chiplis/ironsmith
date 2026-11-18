@@ -35,6 +35,22 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPermanentCount",
+          "name": "Hinterland Logger",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Timber Shredder",
+          "count": 0,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,

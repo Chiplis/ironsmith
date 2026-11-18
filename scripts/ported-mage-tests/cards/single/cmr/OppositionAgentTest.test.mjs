@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "test_ReplacementEffect",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -21,7 +17,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Lightning Bolt",
+          "name": "Lightning Bolt@bolt",
           "count": 1
         },
         {
@@ -53,6 +49,14 @@ registerPortedMageTests({
           "name": "Mystical Tutor"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "source": "Mystical Tutor",
+          "count": 1,
+          "controller": 1
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
@@ -60,13 +64,16 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Lightning Bolt"
+          "target": "@bolt"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
+          "player": 1,
           "name": "Lightning Bolt",
           "count": 1
         },
@@ -76,15 +83,22 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": 1
+          "target": 1,
+          "objectAlias": "@bolt",
+          "castingMethod": "play_from"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "controller": 0
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -92,14 +106,14 @@ registerPortedMageTests({
           "life": 17
         },
         {
-          "op": "assertTappedCount",
-          "name": "Island",
-          "tapped": true,
+          "op": "assertGraveyardCount",
+          "player": 1,
           "count": 2
         },
         {
-          "op": "assertGraveyardCount",
-          "player": 1,
+          "op": "assertTappedCount",
+          "name": "Island",
+          "tapped": true,
           "count": 2
         }
       ]
@@ -107,10 +121,6 @@ registerPortedMageTests({
     {
       "name": "test_DonateAgentAfter",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -129,7 +139,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Lightning Bolt",
+          "name": "Lightning Bolt@bolt",
           "count": 1
         },
         {
@@ -161,6 +171,14 @@ registerPortedMageTests({
           "name": "Mystical Tutor"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "source": "Mystical Tutor",
+          "count": 1,
+          "controller": 1
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
@@ -168,13 +186,16 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Lightning Bolt"
+          "target": "@bolt"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
+          "player": 1,
           "name": "Lightning Bolt",
           "count": 1
         },
@@ -184,17 +205,32 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Donate",
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ],
+              [
+                "Opposition Agent"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Opposition Agent"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Donate",
+          "count": 1,
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Opposition Agent",
           "count": 1
@@ -203,6 +239,7 @@ registerPortedMageTests({
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
+          "seatIndependent": true,
           "player": 0,
           "label": "Cast Lightning Bolt",
           "expected": true
@@ -211,6 +248,7 @@ registerPortedMageTests({
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
+          "seatIndependent": true,
           "player": 1,
           "label": "Cast Lightning Bolt",
           "expected": false
@@ -221,20 +259,32 @@ registerPortedMageTests({
           "phase": "END_TURN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": 1
+          "target": 1,
+          "objectAlias": "@bolt",
+          "castingMethod": "play_from"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "CLEANUP"
+          "phase": "END_TURN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "controller": 0
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
         },
         {
           "op": "assertLife",
           "player": 1,
           "life": 17
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "count": 2
         },
         {
           "op": "assertTappedCount",
@@ -247,11 +297,6 @@ registerPortedMageTests({
           "name": "Tropical Island",
           "tapped": true,
           "count": 4
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 1,
-          "count": 2
         }
       ]
     }

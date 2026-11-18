@@ -118,15 +118,27 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": "playerC",
           "ability": "{2}{U}",
-          "target": "Eager Cadet"
+          "target": "Eager Cadet",
+          "source": "Proteus Staff"
         },
         {
-          "op": "activateAbility",
+          "op": "assertPermanentCount",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Pithing Needle",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertNoAction",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "{2}{U}",
-          "target": "Wall of Air"
+          "kind": "activate_ability",
+          "source": "Proteus Staff",
+          "label": "{2}{U},",
+          "checkPayment": true
         },
         {
           "op": "setStopAt",
@@ -134,25 +146,40 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Can't find ability to activate command: {2}{U}$target=Wall of Air\")) { Assert.fail(\"Should have thrown an error about PlayerB not being able to use the staff to target Wall of Air, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerD, \"Eager Cadet\", 0)"
+          "op": "execute"
         },
         {
           "op": "assertPermanentCount",
+          "player": 3,
+          "name": "Eager Cadet",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 3,
           "name": "Storm Crow",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
+          "player": 2,
           "name": "Wall of Air",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
+          "player": 2,
           "name": "Wind Drake",
           "count": 0
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "rangeOfInfluence": 1
     }
   ]
 });

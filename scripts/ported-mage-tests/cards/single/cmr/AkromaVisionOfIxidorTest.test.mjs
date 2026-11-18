@@ -34,7 +34,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Akroma, Vision of Ixidor",
           "power": 6,
-          "toughness": 6
+          "toughness": 6,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -43,7 +44,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Shalai, Voice of Plenty",
           "power": 3,
-          "toughness": 4
+          "toughness": 4,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -52,7 +54,8 @@ registerPortedMageTests({
           "player": 1,
           "name": "Balduvian Bears",
           "power": 2,
-          "toughness": 2
+          "toughness": 2,
+          "seatIndependent": true
         },
         {
           "op": "waitStackResolved",
@@ -63,11 +66,12 @@ registerPortedMageTests({
         {
           "op": "assertPowerToughness",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Akroma, Vision of Ixidor",
           "power": 6,
-          "toughness": 6
+          "toughness": 6,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -76,16 +80,18 @@ registerPortedMageTests({
           "player": 0,
           "name": "Shalai, Voice of Plenty",
           "power": 4,
-          "toughness": 5
+          "toughness": 5,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "phase": "BEGIN_COMBAT",
           "player": 1,
           "name": "Balduvian Bears",
           "power": 2,
-          "toughness": 2
+          "toughness": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -94,7 +100,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Shalai, Voice of Plenty",
           "power": 3,
-          "toughness": 4
+          "toughness": 4,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

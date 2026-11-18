@@ -116,6 +116,16 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "options": [
+            "{R}{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -150,6 +160,16 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "options": [
+            "{R}{R}{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -184,6 +204,16 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "options": [
+            "{R}{R}{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -218,6 +248,16 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "options": [
+            "{G}{G}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -275,24 +315,27 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}{G}\", options)"
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "exact": true,
+          "options": [
+            "{G}{G}{G}",
+            "{G}{G}{W}",
+            "{G}{W}{W}"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}{W}\", options)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{W}{W}\", options)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{W}\", options)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{W}{W}\", options)"
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "exact": true,
+          "options": [
+            "{G}{W}",
+            "{W}{W}"
+          ]
         }
       ]
     },
@@ -303,7 +346,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "bear1",
+          "name": "Augmenting Automaton",
           "count": 1
         },
         {
@@ -314,12 +357,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Castbear1G",
-          "expected": false
+          "label": "Cast Augmenting Automaton",
+          "kind": "cast_spell",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStopAt",
@@ -328,6 +373,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "WUBRGC",
+          "amount": 0
         }
       ]
     },
@@ -338,7 +389,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "bear1",
+          "name": "Augmenting Automaton",
           "count": 1
         },
         {
@@ -349,12 +400,14 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Castbear1G",
-          "expected": false
+          "label": "Cast Augmenting Automaton",
+          "kind": "cast_spell",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStopAt",
@@ -380,7 +433,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "bear1G",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
@@ -395,7 +448,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bear1G"
+          "name": "Balduvian Bears"
         },
         {
           "op": "setStopAt",
@@ -408,8 +461,22 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "bear1G",
+          "name": "Balduvian Bears",
           "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 1,
+          "tapped": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Reflecting Pool",
+          "count": 1,
+          "tapped": true
         }
       ]
     },
@@ -427,7 +494,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "bear1G",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
@@ -438,12 +505,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Castbear1G",
-          "expected": false
+          "label": "Cast Balduvian Bears",
+          "kind": "cast_spell",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStopAt",
@@ -520,17 +589,16 @@ registerPortedMageTests({
       "name": "testReflectingPoolAnyManaNeedWithCondition",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
+          "op": "addCardWithEntryChoice",
           "player": 0,
           "name": "Cavern of Souls",
-          "count": 1
+          "choice": "Goblin"
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "bear1G",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
@@ -548,11 +616,43 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setChoice",
+          "value": "{G}"
+        },
+        {
+          "op": "activateManaAbility",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Reflecting Pool",
+          "ability": "Add one mana of any type"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cavern of Souls",
+          "ability": "{T}: Add {C}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "GC",
+          "amount": 2
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bear1G"
+          "name": "Balduvian Bears"
         },
         {
           "op": "setStopAt",
@@ -565,8 +665,22 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "bear1G",
+          "name": "Balduvian Bears",
           "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Cavern of Souls",
+          "count": 1,
+          "tapped": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Reflecting Pool",
+          "count": 1,
+          "tapped": true
         }
       ]
     },
@@ -602,12 +716,18 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Black"
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add one mana of any",
-          "count": 1
+          "count": 1,
+          "source": "City of Brass"
         },
         {
           "op": "activateManaAbility",
@@ -615,12 +735,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {W}",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Black"
+          "count": 1,
+          "source": "Plains"
         },
         {
           "op": "setStopAt",
@@ -641,6 +757,22 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Reflecting Pool\", false)"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "W",
+          "amount": 1
         }
       ]
     },
@@ -677,12 +809,13 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{Any}\", options)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{Any}{Any}\", options)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{C}{C}{Any}",
+            "{C}{Any}{Any}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -712,16 +845,15 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}\", options)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{W}\", options)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{U}\", options)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{C}{C}",
+            "{C}{W}",
+            "{C}{U}"
+          ],
+          "exact": true,
+          "prefundManaCosts": true
         }
       ]
     }

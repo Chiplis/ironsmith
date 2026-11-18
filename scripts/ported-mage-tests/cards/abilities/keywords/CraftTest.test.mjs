@@ -781,8 +781,14 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after beetle\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Llanowar Elves\", CounterType.P1P1, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Llanowar Elves",
+          "counter": "P1P1",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

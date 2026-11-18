@@ -11,8 +11,14 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"add counter\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Counter Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Put a +1/+1 counter on target permanent or player."
         },
         {
           "op": "addCard",
@@ -91,8 +97,14 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"add counter\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Counter Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Put an energy counter on target permanent or player."
         },
         {
           "op": "addCard",

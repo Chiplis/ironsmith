@@ -57,7 +57,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ornithopter"
+          "name": "Ornithopter",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -68,8 +69,23 @@ registerPortedMageTests({
           "target": "Aegis Turtle"
         },
         {
-          "op": "unsupported",
-          "source": "checkCardCounters(\"time counters\", 1, PhaseStep.BEGIN_COMBAT, playerA, TWINMAW, CounterType.TIME, 4)"
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "selector": {
+            "zone": "exile",
+            "name": "Twinmaw Stormbrood",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 4
+            }
+          ]
         },
         {
           "op": "setChoice",
@@ -95,7 +111,7 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertLibraryCount",
+          "op": "assertExileCount",
           "player": 0,
           "name": "Twinmaw Stormbrood",
           "count": 1

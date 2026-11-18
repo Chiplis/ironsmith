@@ -127,25 +127,76 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Corpsejack Menace",
           "player": 0,
-          "name": "Corpsejack Menace"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Corpsejack Menace",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Corpsejack Menace",
+          "counter": "+1/+1",
+          "count": 2
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Corpsejack Menace",
+          "power": 6,
+          "toughness": 6
         },
         {
           "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Mindeye Drake",
           "player": 0,
-          "name": "Mindeye Drake"
-        },
-        {
-          "op": "setStopAt",
           "turn": 3,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Mindeye Drake",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Mindeye Drake",
+          "counter": "+1/+1",
+          "count": 4
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Mindeye Drake",
+          "power": 6,
+          "toughness": 9
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Master Biomancer",
+          "power": 2,
+          "toughness": 4
         },
         {
           "op": "assertLife",
@@ -156,45 +207,6 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Master Biomancer",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Corpsejack Menace",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Mindeye Drake",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Master Biomancer",
-          "power": 2,
-          "toughness": 4
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Corpsejack Menace",
-          "power": 6,
-          "toughness": 6
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Mindeye Drake",
-          "power": 6,
-          "toughness": 9
         }
       ]
     },
@@ -219,44 +231,106 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Master Biomancer",
+          "name": "Master Biomancer@original",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Progenitor Mimic",
+          "name": "Progenitor Mimic@mimic",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Progenitor Mimic",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Progenitor Mimic"
+          "objectAlias": "@mimic"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Master Biomancer"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": false
-        },
-        {
-          "op": "setStopAt",
-          "turn": 3,
+          "op": "assertStackObject",
+          "source": "Progenitor Mimic",
+          "count": 1,
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "setOptionChoices",
+          "player": 0,
+          "description": "Choose what to copy as this permanent enters",
+          "kind": "options",
+          "choices": [
+            {
+              "description": "Enter as a copy of Master Biomancer",
+              "object": "@original"
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Master Biomancer",
+          "count": 2
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@original",
+          "power": 2,
+          "toughness": 4
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@mimic",
+          "power": 4,
+          "toughness": 6
+        },
+        {
+          "op": "assertStackObject",
+          "source": "@mimic",
+          "count": 1,
+          "turn": 3,
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Master Biomancer",
+          "count": 3
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Master Biomancer",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 8
+            },
+            {
+              "property": "toughness",
+              "expected": 10
+            }
+          ]
         },
         {
           "op": "assertLife",
@@ -267,33 +341,6 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Master Biomancer",
-          "count": 3
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Master Biomancer",
-          "power": 2,
-          "toughness": 4
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Master Biomancer",
-          "power": 4,
-          "toughness": 6
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Master Biomancer",
-          "power": 8,
-          "toughness": 10
         }
       ]
     }

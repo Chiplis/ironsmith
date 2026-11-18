@@ -95,11 +95,13 @@ registerPortedMageTests({
           "name": "Swamp"
         },
         {
-          "op": "playLand",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Swamp"
+          "kind": "play_land",
+          "label": "Swamp",
+          "sourceZone": "graveyard"
         },
         {
           "op": "setStopAt",
@@ -107,8 +109,7 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"Two lands were played\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Can't find ability to activate command: Play Swamp\")) { Assert.fail(\"Should have had error about not being able to play land, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
         }
       ]
     },
@@ -210,11 +211,13 @@ registerPortedMageTests({
           "name": "Mox Pearl"
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Mox Pearl"
+          "kind": "cast_spell",
+          "label": "Mox Pearl",
+          "sourceZone": "graveyard"
         },
         {
           "op": "setStopAt",
@@ -222,8 +225,7 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"Two spells were cast from graveyard\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Can't find ability to activate command: Cast Mox Pearl\")) { Assert.fail(\"Should have had error about not being able to cast spell, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
         }
       ]
     },

@@ -25,7 +25,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Isao, Enlightened Bushi",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -83,7 +83,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Elite Vanguard",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -148,7 +148,8 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Isao, Enlightened Bushi",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -165,13 +166,43 @@ registerPortedMageTests({
           "attacker": "Isao, Enlightened Bushi"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Isao, Enlightened Bushi",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "name": "Isao, Enlightened Bushi",
           "player": 1,
-          "value": "CHOICE_SKIP"
+          "power": 4,
+          "toughness": 3,
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "distribution",
+          "description": "Assign 4 combat damage from Isao, Enlightened Bushi (assign exactly 4 total)",
+          "choices": [
+            "Llanowar Elves",
+            "Llanowar Elves",
+            "Elvish Mystic",
+            "Elvish Mystic"
+          ]
         },
         {
           "op": "setStopAt",

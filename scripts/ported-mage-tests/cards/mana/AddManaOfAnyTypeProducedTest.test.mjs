@@ -457,13 +457,50 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}, {T}: Add {R}{G}",
-          "count": 1
+          "source": "Wastes",
+          "ability": "{T}: Add {C}"
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": "Green"
+          "colors": "C",
+          "amount": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Choose one",
+          "choices": [
+            "{G}"
+          ],
+          "kind": "options",
+          "player": 0
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{1}, {T}: Add {R}{G}",
+          "count": 1,
+          "source": "Gruul Signet"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 2
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 1
         },
         {
           "op": "waitStackResolved",
@@ -479,6 +516,27 @@ registerPortedMageTests({
           "name": "Hail Storm"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Hail Storm",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Kinnan, Bonder Prodigy",
+          "damage": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -491,16 +549,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(signet, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Gruul Signet",
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Wastes\", true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Wastes",
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, kinnan, 1)"
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Kinnan, Bonder Prodigy",
+          "damage": 1
         },
         {
           "op": "assertLife",

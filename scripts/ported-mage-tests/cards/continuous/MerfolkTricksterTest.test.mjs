@@ -28,6 +28,22 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Flying Men"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "flying"
+            }
+          ]
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
@@ -36,18 +52,94 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Merfolk Trickster",
+          "player": 1,
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Merfolk Trickster",
+          "count": 1,
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": "Flying Men"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "DECLARE_BLOCKERS",
-          "player": 1,
-          "name": "Merfolk Trickster"
+          "resolutions": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Merfolk Trickster",
+          "count": 1,
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "abilityKind": "Triggered",
+          "objectTarget": "Flying Men",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Flying Men",
+          "count": 1,
+          "tapped": true
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Flying Men"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": false,
+              "value": "flying"
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Merfolk Trickster"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "flash"
+            }
+          ]
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Island",
+          "count": 2,
+          "tapped": true
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "END_COMBAT"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertLife",
@@ -60,27 +152,24 @@ registerPortedMageTests({
           "life": 19
         },
         {
-          "op": "assertTappedCount",
-          "name": "Island",
-          "tapped": true,
-          "count": 2
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "UPKEEP"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Flying Men\", true)"
-        },
-        {
-          "op": "assertAbilities",
-          "player": 0,
-          "name": "Flying Men",
-          "abilities": []
-        },
-        {
-          "op": "assertAbilities",
-          "player": 1,
-          "name": "Merfolk Trickster",
-          "abilities": [
-            "Flash"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Flying Men"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "flying"
+            }
           ]
         }
       ]
@@ -167,8 +256,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, mTrickster, 1)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Merfolk Trickster",
+          "damage": 1
         }
       ]
     },
@@ -257,8 +348,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, mTrickster, 1)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Merfolk Trickster",
+          "damage": 1
         }
       ]
     },
@@ -361,8 +454,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, mTrickster, 1)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Merfolk Trickster",
+          "damage": 1
         }
       ]
     }

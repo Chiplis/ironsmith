@@ -438,7 +438,8 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "War Falcon",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": false
         },
         {
           "op": "setStopAt",
@@ -446,8 +447,13 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerB must have 0 actions but found 1\")) { Assert.fail(\"Needed error about PlayerB having too many actions, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerA, \"Llanowar Elves\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Llanowar Elves",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
@@ -634,9 +640,34 @@ registerPortedMageTests({
           "name": "Gilded Drake"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gilded Drake",
+          "count": 1,
+          "onTop": true
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gilded Drake",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "objectTarget": "Silvercoat Lion",
+          "onTop": true
         },
         {
           "op": "castSpell",
@@ -645,6 +676,41 @@ registerPortedMageTests({
           "player": 1,
           "name": "Lightning Bolt",
           "target": "Silvercoat Lion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "objectTarget": "Silvercoat Lion",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gilded Drake",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

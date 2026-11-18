@@ -40,12 +40,24 @@ registerPortedMageTests({
           "target": "White Ward"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Auratouched Mage"
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "BEGIN_COMBAT"
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "White Ward",
+          "target": "Auratouched Mage",
+          "expected": true
         }
       ]
     }

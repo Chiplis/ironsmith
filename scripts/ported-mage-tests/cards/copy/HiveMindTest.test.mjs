@@ -90,8 +90,7 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 1,
+          "op": "setStrictChooseMode",
           "value": true
         },
         {
@@ -102,6 +101,116 @@ registerPortedMageTests({
           "name": "Pact of the Titan"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "text": "Cast Pact of the Titan"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Hive Mind",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Chalice of the Void",
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Pact of the Titan",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 0,
+          "text": "Cast Pact of the Titan"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Hive Mind",
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "text": "Cast Pact of the Titan",
+          "controller": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 0,
+          "source": "Chalice of the Void",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Giant Token",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Giant Token",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
           "op": "setStopAt",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN"
@@ -110,39 +219,23 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertGraveyardCount",
+          "op": "assertResult",
           "player": 0,
-          "name": "Pact of the Titan",
-          "count": 1
+          "result": "WON"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Giant Token",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
+          "op": "assertResult",
           "player": 1,
-          "name": "Giant Token",
-          "count": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertWonTheGame(playerA)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertLostTheGame(playerB)"
+          "result": "LOST"
         },
         {
           "op": "assertLife",
-          "player": 1,
+          "player": 0,
           "life": 20
         },
         {
           "op": "assertLife",
-          "player": 0,
+          "player": 1,
           "life": 20
         }
       ]

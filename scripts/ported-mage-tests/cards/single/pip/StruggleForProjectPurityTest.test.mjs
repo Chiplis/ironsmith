@@ -22,9 +22,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "count": 0
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -42,49 +44,78 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": null,
+          "resolutions": 1
         },
         {
           "op": "assertHandCount",
-          "player": "no draws on turn 2",
-          "name": 2,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": "no draws on turn 3",
-          "name": 3,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": "no draws on turn 4",
-          "name": 4,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "source": "Struggle for Project Purity",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "resolutions": 1
         },
         {
           "op": "assertHandCount",
-          "player": "draws trigger",
-          "name": 5,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 5,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": "draws trigger",
-          "name": 5,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": "draws trigger",
-          "name": 5,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 2,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": "draws trigger",
-          "name": 5,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 3,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -104,6 +135,12 @@ registerPortedMageTests({
           "name": "Struggle for Project Purity",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -283,6 +320,12 @@ registerPortedMageTests({
           "player": "playerD",
           "life": "20 - 2 * 2 - 2 * 2"
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

@@ -400,76 +400,86 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose optional costs for Inscription of Abundance",
+          "choices": [
+            "Kicker: 3"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "modes",
+          "description": "Choose mode for Inscription of Abundance",
+          "choices": [
+            "Put two +1/+1 counters on target creature.",
+            "Target player gains X life, where X is the greatest power among creatures they control."
+          ]
+        },
+        {
           "op": "castSpell",
+          "name": "Inscription of Abundance",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Inscription of Abundance"
+          "castingMethod": "play_from",
+          "target": {
+            "groups": [
+              [
+                "Balduvian Bears"
+              ],
+              [
+                0
+              ]
+            ]
+          }
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast without paying its mana cost (source: Omniscience"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "2"
-        },
-        {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "1"
-        },
-        {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "TestPlayer.MODE_SKIP"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 0
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Balduvian Bears"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Inscription of Abundance",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Balduvian Bears",
+          "targetCount": 2
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertPowerToughness",
+          "op": "assertTappedCount",
           "player": 0,
-          "name": "Balduvian Bears",
-          "power": 4,
-          "toughness": 4
+          "name": "Forest",
+          "count": 3,
+          "tapped": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "expected": 4
+            }
+          ]
         },
         {
           "op": "assertLife",
           "player": 0,
           "life": 24
-        },
-        {
-          "op": "assertTappedCount",
-          "name": "Forest",
-          "tapped": true,
-          "count": 3
         }
       ]
     }

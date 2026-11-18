@@ -82,12 +82,190 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(balduvianBears, CardType.ARTIFACT, true)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ],
+          "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : cards) { if (!card.isLand(currentGame)) { assertTrue(card.getCardType(currentGame).contains(CardType.ARTIFACT)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "excludeCardType": "Land"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "excludeCardType": "Land"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "excludeCardType": "Land"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "command",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "command",
+            "player": 0,
+            "excludeCardType": "Land"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "excludeCardType": "Land"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "excludeCardType": "Land"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            }
+          ]
         }
       ]
     }

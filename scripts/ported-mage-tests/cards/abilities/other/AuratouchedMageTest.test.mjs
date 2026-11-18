@@ -65,8 +65,12 @@ registerPortedMageTests({
           "player": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"prepare etb\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"When {this} enters\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "When {this} enters",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -77,17 +81,46 @@ registerPortedMageTests({
           "target": "Auratouched Mage"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"prepare artifact\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"When {this} enters\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "When {this} enters",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"prepare artifact\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Argent Mutation\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Argent Mutation",
+          "count": 1
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Relic Ward"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Auratouched Mage"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertType",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Auratouched Mage",
+          "cardType": "ARTIFACT",
+          "extra": "true"
         },
         {
           "op": "setStrictChooseMode",
@@ -112,6 +145,13 @@ registerPortedMageTests({
           "player": 0,
           "name": "Relic Ward",
           "count": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Relic Ward",
+          "target": "Auratouched Mage",
+          "expected": true
         }
       ]
     },
@@ -156,6 +196,11 @@ registerPortedMageTests({
           "target": "Brainwash"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Auratouched Mage"
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "BEGIN_COMBAT"
@@ -174,6 +219,13 @@ registerPortedMageTests({
           "player": 0,
           "name": "Brainwash",
           "count": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Brainwash",
+          "target": "Auratouched Mage",
+          "expected": true
         }
       ]
     },

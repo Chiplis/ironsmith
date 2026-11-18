@@ -110,49 +110,108 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Snapcaster Mage"
+          "source": "Island",
+          "ability": "{T}: Add {U}.",
+          "count": 2
         },
         {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
+          "op": "castSpell",
+          "name": "Snapcaster Mage",
           "player": 0,
-          "ability": "Flashback {2}{G/W}{G/W}{G/W}"
-        },
-        {
-          "op": "setStopAt",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Snapcaster Mage",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Fracturing Gust"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Snapcaster Mage",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "objectTarget": "Fracturing Gust"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "label": "Cast Fracturing Gust using Flashback",
+          "expected": true,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "name": "Fracturing Gust using Flashback",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Fracturing Gust",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Snapcaster Mage",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Berserkers' Onslaught",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertPermanentCount",
-          "player": 1,
           "name": "Darksteel Citadel",
-          "count": 1
+          "count": 1,
+          "player": 1
         },
         {
           "op": "assertExileCount",
           "name": "Fracturing Gust",
-          "count": 1
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 22
         }
       ]
     },
@@ -577,10 +636,11 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Conflagrate",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Conflagrate"
+          "target": 1
         },
         {
           "op": "setChoice",
@@ -588,11 +648,37 @@ registerPortedMageTests({
           "value": "X=2"
         },
         {
-          "op": "activateAbility",
+          "op": "assertStackObject",
+          "source": "Conflagrate",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "xValue": 2,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 18
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Conflagrate",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "castSpell",
+          "name": "Conflagrate using Flashback",
+          "player": 0,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "Flashback"
+          "target": 1
         },
         {
           "op": "setChoice",
@@ -600,12 +686,24 @@ registerPortedMageTests({
           "value": "X=4"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Conflagrate",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "xValue": 4,
+          "targetCount": 1
         },
         {
-          "op": "execute"
+          "op": "assertGraveyardCount",
+          "name": "Forest",
+          "count": 4,
+          "player": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -620,7 +718,8 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "name": "Conflagrate",
-          "count": 1
+          "count": 1,
+          "player": 0
         }
       ]
     },
@@ -1415,17 +1514,14 @@ registerPortedMageTests({
           "target": "Snapcaster Mage"
         },
         {
-          "op": "activateAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "Flashback",
-          "target": "Lightning Bolt"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Lightning Bolt"
+          "onStack": "Lightning Bolt",
+          "name": "Force of Will",
+          "zone": "graveyard",
+          "methods": []
         },
         {
           "op": "setStopAt",
@@ -1433,8 +1529,25 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Flashback$spellOnStack=Lightning Bolt\")) { Assert.fail(\"Should have thrown error about not being able to play Force of Will, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Force of Will",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Snapcaster Mage",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Lightning Bolt",
+          "count": 1
         }
       ]
     },
@@ -1464,37 +1577,102 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Deep Analysis",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Deep Analysis"
+          "target": 0
         },
         {
-          "op": "activateAbility",
+          "op": "assertStackObject",
+          "source": "Deep Analysis",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Flashback"
+          "targetCount": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Mizzix of the Izmagnus",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 2
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": 0,
+          "counter": "EXPERIENCE",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "castSpell",
+          "name": "Deep Analysis using Flashback",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 0
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Deep Analysis",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mizzix of the Izmagnus",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 17
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Island",
+          "tapped": true,
+          "count": 5
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Deep Analysis",
-          "count": 0
+          "count": 0,
+          "player": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Deep Analysis",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertHandCount",
@@ -1559,7 +1737,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Fire",
-          "expected": false
+          "expected": false,
+          "castingMethod": "normal"
         },
         {
           "op": "assertPlayableAbility",
@@ -1567,6 +1746,15 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Ice",
+          "expected": false,
+          "castingMethod": "normal"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast fused Fire // Ice",
           "expected": false
         },
         {
@@ -1574,7 +1762,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Flashback {1}{R}{1}{U}",
+          "label": "Cast Fire using Flashback",
           "expected": false
         },
         {
@@ -1582,15 +1770,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Flashback {1}{R}",
-          "expected": false
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Flashback {1}{U}",
+          "label": "Cast Ice using Flashback",
           "expected": false
         },
         {
@@ -1625,7 +1805,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Fire",
-          "expected": false
+          "expected": false,
+          "castingMethod": "normal"
         },
         {
           "op": "assertPlayableAbility",
@@ -1633,6 +1814,15 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Ice",
+          "expected": false,
+          "castingMethod": "normal"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast fused Fire // Ice",
           "expected": false
         },
         {
@@ -1640,15 +1830,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Flashback {1}{R}{1}{U}",
-          "expected": false
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Flashback {1}{R}",
+          "label": "Cast Fire using Flashback",
           "expected": true
         },
         {
@@ -1656,7 +1838,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Flashback {1}{U}",
+          "label": "Cast Ice using Flashback",
           "expected": true
         },
         {

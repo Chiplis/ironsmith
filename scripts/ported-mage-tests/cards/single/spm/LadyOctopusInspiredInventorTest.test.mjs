@@ -11,12 +11,28 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"untap all creatures\", playerA, new SimpleActivatedAbility( new UntapAllControllerEffect(new FilterCreaturePermanent()), new ManaCostsImpl<>(\"\") ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "untap all creatures",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Untap each creature you control."
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"draw a card\", playerA, new SimpleActivatedAbility( new DrawCardSourceControllerEffect(1), new ManaCostsImpl<>(\"\") ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Draw Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Draw a card."
         },
         {
           "op": "addCard",
@@ -208,8 +224,16 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"draw a card\", playerA, new SimpleActivatedAbility( new DrawCardSourceControllerEffect(3), new ManaCostsImpl<>(\"\") ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "draw a card",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Draw 3 cards."
         },
         {
           "op": "addCard",

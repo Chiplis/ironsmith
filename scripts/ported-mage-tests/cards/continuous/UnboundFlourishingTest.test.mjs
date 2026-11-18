@@ -40,8 +40,14 @@ registerPortedMageTests({
           "value": "X=3"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after\", 1, PhaseStep.BEGIN_COMBAT, playerA, \"Endless One\", CounterType.P1P1, 3 * 2)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Endless One",
+          "counter": "P1P1",
+          "count": 6,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -99,8 +105,14 @@ registerPortedMageTests({
           "value": "Whenever you cast a permanent spell"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after\", 1, PhaseStep.BEGIN_COMBAT, playerA, \"Endless One\", CounterType.P1P1, 3 * 2 * 2)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Endless One",
+          "counter": "P1P1",
+          "count": 12,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -272,8 +284,14 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"before\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Helix Pinnacle\", CounterType.TOWER, 0)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Helix Pinnacle",
+          "counter": "TOWER",
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -288,8 +306,14 @@ registerPortedMageTests({
           "value": "X=3"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after\", 1, PhaseStep.BEGIN_COMBAT, playerA, \"Helix Pinnacle\", CounterType.TOWER, 3 + 3)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Helix Pinnacle",
+          "counter": "TOWER",
+          "count": 6,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -330,8 +354,14 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"before\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Helix Pinnacle\", CounterType.TOWER, 0)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Helix Pinnacle",
+          "counter": "TOWER",
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -351,8 +381,14 @@ registerPortedMageTests({
           "value": "Whenever you cast an instant or sorcery spell"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after\", 1, PhaseStep.BEGIN_COMBAT, playerA, \"Helix Pinnacle\", CounterType.TOWER, 3 + 3 * 2)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Helix Pinnacle",
+          "counter": "TOWER",
+          "count": 9,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -480,8 +516,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"before\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, 20)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": "20",
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -497,16 +537,55 @@ registerPortedMageTests({
           "value": "X=3"
         },
         {
+          "op": "assertStackObject",
+          "source": "Cinder Elemental",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Unbound Flourishing",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Stifle"
+          "name": "Stifle",
+          "target": "Cinder Elemental ability"
         },
         {
-          "op": "addTarget",
-          "player": 1,
-          "target": "stack ability ({X}{R}, {T}, Sacrifice"
+          "op": "assertStackObject",
+          "source": "Stifle",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1,
+          "objectTarget": "Cinder Elemental ability",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Unbound Flourishing",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "onTop": true
         },
         {
           "op": "setChoice",
@@ -519,12 +598,20 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.BEGIN_COMBAT, playerA, 20)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "life": "20",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.BEGIN_COMBAT, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "life": "20 - 3",
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -542,7 +629,77 @@ registerPortedMageTests({
     },
     {
       "name": "test_VariableManaCost",
-      "operations": []
+      "operations": [
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Unbound Flourishing"
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Chalice of the Void"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Swamp",
+          "count": 6
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Chalice of the Void"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=3"
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Swamp",
+          "count": 6,
+          "tapped": true,
+          "onStack": "Chalice of the Void"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Unbound Flourishing",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 2
+        },
+        {
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Chalice of the Void",
+          "counter": "CHARGE",
+          "count": 6
+        }
+      ]
     },
     {
       "name": "test_MultipleXInstances",
@@ -574,8 +731,14 @@ registerPortedMageTests({
           "value": "X=1"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after\", 1, PhaseStep.BEGIN_COMBAT, playerA, \"Chalice of the Void\", CounterType.CHARGE, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Chalice of the Void",
+          "counter": "CHARGE",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

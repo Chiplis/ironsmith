@@ -36,22 +36,22 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Chromatic Lantern",
           "player": 1,
-          "name": "Chromatic Lantern"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
           "turn": 2,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Chromatic Lantern",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -60,15 +60,67 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Canopy Vista\", CardType.LAND, SubType.MOUNTAIN)"
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertAbility",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Canopy Vista"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Land"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Mountain"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Forest"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Plains"
+            }
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Blue"
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Canopy Vista",
+          "ability": "Add one mana of any color",
+          "player": 1,
+          "count": 1,
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 1,
+          "colors": "U",
+          "amount": 1
+        },
+        {
+          "op": "assertTappedCount",
           "player": 1,
           "name": "Canopy Vista",
-          "ability": "new AnyColorManaAbility()",
-          "expected": true
+          "count": 1,
+          "tapped": true
         }
       ]
     },
@@ -112,29 +164,22 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Chromatic Lantern",
           "player": 1,
-          "name": "Chromatic Lantern"
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Magus of the Moon"
+          "op": "assertStackObject",
+          "source": "Chromatic Lantern",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -143,21 +188,92 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "castSpell",
+          "name": "Magus of the Moon",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Magus of the Moon",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Magus of the Moon",
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Canopy Vista\", CardType.LAND, SubType.MOUNTAIN)"
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertAbility",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Canopy Vista"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Land"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Mountain"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Forest"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Plains"
+            }
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Blue"
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Canopy Vista",
+          "ability": "Add one mana of any color",
+          "player": 1,
+          "count": 1,
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 1,
+          "colors": "U",
+          "amount": 1
+        },
+        {
+          "op": "assertTappedCount",
           "player": 1,
           "name": "Canopy Vista",
-          "ability": "new AnyColorManaAbility()",
-          "expected": true
+          "count": 1,
+          "tapped": true
         }
       ]
     },
@@ -201,11 +317,35 @@ registerPortedMageTests({
           "target": "Forbidding Watchtower"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Aquitect's Will",
+          "count": 1,
+          "objectTarget": "Forbidding Watchtower"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Forbidding Watchtower",
+          "count": 1,
+          "player": 1,
+          "counter": "FLOOD",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "{1}{W}:"
+          "ability": "{1}{W}:",
+          "source": "Forbidding Watchtower"
         },
         {
           "op": "setStrictChooseMode",
@@ -233,7 +373,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Forbidding Watchtower",
           "counter": "FLOOD",
           "count": 1
@@ -586,20 +726,63 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(urborgtoy, CardType.LAND, SubType.SWAMP)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Urborg, Tomb of Yawgmoth"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Island",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Mountain\", CardType.LAND, SubType.SWAMP)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Mountain"
+          },
+          "count": 4,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Island",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(urborgtoy, CardType.LAND, SubType.ISLAND)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(\"Mountain\", CardType.LAND, SubType.ISLAND)"
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Darksteel Citadel",
+          "ability": "Indestructible",
+          "expected": false
         }
       ]
     },
@@ -644,28 +827,64 @@ registerPortedMageTests({
           "target": "Reliquary Tower"
         },
         {
-          "op": "unsupported",
-          "source": "checkSubType(\"Plains is Swamp on same turn\", 1, PhaseStep.END_TURN, playerA, \"Plains\", SubType.SWAMP, true)"
+          "op": "assertSubtype",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Plains",
+          "subtype": "SWAMP",
+          "extra": "true",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkSubType(\"Plains is no longer Plains on same turn\", 1, PhaseStep.END_TURN, playerA, \"Plains\", SubType.PLAINS, false)"
+          "op": "assertSubtype",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Plains",
+          "subtype": "PLAINS",
+          "extra": "false",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkSubType(\"Reliquary Tower is Swamp on same turn\", 1, PhaseStep.END_TURN, playerB, \"Reliquary Tower\", SubType.SWAMP, true)"
+          "op": "assertSubtype",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 1,
+          "name": "Reliquary Tower",
+          "subtype": "SWAMP",
+          "extra": "true",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkSubType(\"Plains is Swamp on next turn\", 2, PhaseStep.UPKEEP, playerA, \"Plains\", SubType.SWAMP, true)"
+          "op": "assertSubtype",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Plains",
+          "subtype": "SWAMP",
+          "extra": "true",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkSubType(\"Plains is no longer Plains on next turn\", 2, PhaseStep.UPKEEP, playerA, \"Plains\", SubType.PLAINS, false)"
+          "op": "assertSubtype",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Plains",
+          "subtype": "PLAINS",
+          "extra": "false",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkSubType(\"Reliquary Tower no longer Swamp on next turn\", 2, PhaseStep.UPKEEP, playerB, \"Reliquary Tower\", SubType.SWAMP, false)"
+          "op": "assertSubtype",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "player": 1,
+          "name": "Reliquary Tower",
+          "subtype": "SWAMP",
+          "extra": "false",
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

@@ -71,6 +71,102 @@ registerPortedMageTests({
           "count": 10
         },
         {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Raging Goblin",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Raging Goblin",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Raging Goblin",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Raging Goblin",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Raging Goblin",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Raging Goblin",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Raging Goblin",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Raging Goblin",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Raging Goblin",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Raging Goblin",
+          "defender": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 10,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "source": "The Millennium Calendar",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "DRAW"
+        },
+        {
           "op": "execute"
         },
         {

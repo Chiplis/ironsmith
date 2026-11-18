@@ -63,16 +63,34 @@ registerPortedMageTests({
           "name": "Cathedral Membrane"
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": true
+          "op": "setOptionChoices",
+          "description": "Choose how to pay pip 2 of Cathedral Membrane",
+          "choices": [
+            "2 life (Phyrexian)"
+          ],
+          "kind": "hybrid_payment",
+          "player": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cathedral Membrane",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
           "attacker": "Autochthon Wurm",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -88,6 +106,35 @@ registerPortedMageTests({
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Cathedral Membrane",
+          "count": 1,
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Cathedral Membrane",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Autochthon Wurm",
+          "damage": 6
         },
         {
           "op": "setStopAt",
@@ -126,8 +173,10 @@ registerPortedMageTests({
           "life": 14
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, wurm, 6)"
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Autochthon Wurm",
+          "damage": 6
         },
         {
           "op": "unsupported",
@@ -199,16 +248,35 @@ registerPortedMageTests({
           "name": "Cathedral Membrane"
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": true
+          "op": "setOptionChoices",
+          "description": "Choose how to pay pip 2 of Cathedral Membrane",
+          "choices": [
+            "2 life (Phyrexian)"
+          ],
+          "kind": "hybrid_payment",
+          "player": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cathedral Membrane",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
           "attacker": "Autochthon Wurm",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 1
         },
         {
           "op": "block",
@@ -224,6 +292,35 @@ registerPortedMageTests({
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Cathedral Membrane",
+          "count": 1,
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Cathedral Membrane",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Autochthon Wurm",
+          "damage": 6
         },
         {
           "op": "setStopAt",
@@ -253,14 +350,18 @@ registerPortedMageTests({
           "turn": 3,
           "player": 0,
           "attacker": "Autochthon Wurm",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
           "attacker": "Gigantosaurus",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true,
+          "combat": 2
         },
         {
           "op": "block",
@@ -306,8 +407,10 @@ registerPortedMageTests({
           "life": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, wurm, 6)"
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Autochthon Wurm",
+          "damage": 6
         },
         {
           "op": "unsupported",

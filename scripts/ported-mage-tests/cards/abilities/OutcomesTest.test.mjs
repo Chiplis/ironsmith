@@ -5,31 +5,31 @@ registerPortedMageTests({
   "tests": [
     {
       "name": "test_FromEffects_Single",
-      "operations": []
+      "skip": "Checks XMage AI outcome scores of Java effect classes"
     },
     {
       "name": "test_FromEffects_Multi",
-      "operations": []
+      "skip": "Checks XMage AI score aggregation over Java effect classes"
     },
     {
       "name": "test_FromEffects_MultiCombine",
-      "operations": []
+      "skip": "Checks XMage AI score aggregation over mixed Java effect classes"
     },
     {
       "name": "test_FromEffects_Default",
-      "operations": []
+      "skip": "Checks XMage AI default outcome and fallback enum values"
     },
     {
       "name": "test_FromAbility_Single",
-      "operations": []
+      "skip": "Checks XMage AI outcome overrides on Java ability classes"
     },
     {
       "name": "test_FromAbility_Multi",
-      "operations": []
+      "skip": "Checks XMage AI outcome overrides over multiple Java effects"
     },
     {
       "name": "test_FromAbility_MultiCombine",
-      "operations": []
+      "skip": "Checks XMage AI outcome override of mixed Java effects"
     }
   ]
 });

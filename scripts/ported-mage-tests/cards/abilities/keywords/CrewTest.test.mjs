@@ -195,11 +195,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Activate Irontread Crusher: Tap any number of untapped creatures you control with total power 2 or more: Continuous.",
+          "expected": true
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Crew 2"
+          "ability": "Tap any number of untapped creatures you control with total power 2 or more: Continuous.",
+          "source": "Irontread Crusher"
         },
         {
           "op": "setChoice",
@@ -239,14 +248,14 @@ registerPortedMageTests({
           "op": "assertAbility",
           "player": 0,
           "name": "Irontread Crusher",
-          "ability": "Lifelink",
+          "ability": "LifelinkAbility.class",
           "expected": true
         },
         {
           "op": "assertAbility",
           "player": 0,
           "name": "Irontread Crusher",
-          "ability": "Vigilance",
+          "ability": "VigilanceAbility.class",
           "expected": true
         }
       ]

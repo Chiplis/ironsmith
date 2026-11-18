@@ -176,7 +176,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Abbey Griffin",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "castSpell",

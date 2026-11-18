@@ -331,7 +331,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Arco-Flagellant",
+          "name": "Arco-Flagellant@squad",
           "count": 1
         },
         {
@@ -353,61 +353,122 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Swamp",
           "ability": "{T}: Add {B}",
           "count": 5
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose optional costs for Arco-Flagellant",
+          "choices": [
+            "Squad: 2"
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Arco-Flagellant"
+          "name": "Arco-Flagellant",
+          "objectAlias": "@squad"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Arco-Flagellant",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Arco-Flagellant",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "addTarget",
-          "player": 1,
-          "target": "Arco-Flagellant[no copy]"
+          "name": "Arco-Flagellant",
+          "count": 2
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 1,
-          "name": "Boomerang"
+          "name": "Boomerang",
+          "target": "@squad"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "source": "Boomerang",
+          "count": 1,
+          "objectTarget": "Arco-Flagellant"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Arco-Flagellant",
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose optional costs for Arco-Flagellant",
+          "choices": []
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Arco-Flagellant"
+          "name": "Arco-Flagellant",
+          "objectAlias": "@squad"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Arco-Flagellant",
+          "count": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Arco-Flagellant",
+          "count": 0,
+          "abilityKind": "Triggered"
         },
         {
           "op": "assertGraveyardCount",
@@ -780,7 +841,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Arco-Flagellant@flaggy",
+          "name": "Arco-Flagellant@squad",
           "count": 1
         },
         {
@@ -795,25 +856,68 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Swamp",
           "ability": "{T}: Add {B}",
           "count": 5
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose optional costs for Arco-Flagellant",
+          "choices": [
+            "Squad: 2"
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Arco-Flagellant"
+          "name": "Arco-Flagellant",
+          "objectAlias": "@squad"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Arco-Flagellant",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Arco-Flagellant",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "value": false
+          "name": "Arco-Flagellant",
+          "count": 2
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Arco-Flagellant"
+          ]
         },
         {
           "op": "castSpell",
@@ -823,26 +927,25 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "@flaggy"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": false
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Clone",
+          "count": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Arco-Flagellant",
+          "count": 0,
+          "abilityKind": "Triggered"
         },
         {
           "op": "assertPermanentCount",
@@ -931,7 +1034,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Arco-Flagellant",
+          "name": "Arco-Flagellant@squad",
           "count": 1
         },
         {
@@ -953,7 +1056,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Arco-Flagellant",
+          "label": "Cast Arco-Flagellant",
           "expected": false
         },
         {
@@ -964,27 +1067,18 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose optional costs for Arco-Flagellant",
+          "choices": [
+            "Squad: 2",
+            "Squad: 2"
+          ]
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setStrictChooseMode",
           "value": true
         },
         {

@@ -539,7 +539,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Far // Away",
+          "name": "Far // Away@split.original",
           "count": 1
         },
         {
@@ -551,21 +551,36 @@ registerPortedMageTests({
           "target": "Cyclops of One-Eyed Pass"
         },
         {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Far // Away",
+          "objectAlias": "@split.original",
+          "methods": [
+            "normal",
+            "split_other_half",
+            "fuse"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "name": "fused Far // Away"
-        },
-        {
-          "op": "addTarget",
-          "player": 1,
-          "target": "Cyclops of One-Eyed Pass"
-        },
-        {
-          "op": "addTarget",
-          "player": 1,
-          "target": 0
+          "name": "fused Far // Away",
+          "objectAlias": "@split.original",
+          "castingMethod": "fuse",
+          "target": {
+            "groups": [
+              [
+                "Cyclops of One-Eyed Pass"
+              ],
+              [
+                0
+              ]
+            ]
+          }
         },
         {
           "op": "setChoice",
@@ -881,7 +896,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Alesha, Who Smiles at Death",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",
@@ -1741,12 +1756,49 @@ registerPortedMageTests({
           "count": 6
         },
         {
-          "op": "unsupported",
-          "source": "assertTokenCount(playerA, \"Hopeful Eidolon\", 2)"
+          "op": "assertTokenCount",
+          "player": 0,
+          "name": "Hopeful Eidolon",
+          "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent p : eidolons){ Assert.assertTrue(\"Is Enchantment\", p.getCardType(currentGame).contains(CardType.ENCHANTMENT)); Assert.assertFalse(\"Is not Aura\", p.getSubtype(currentGame).contains(SubType.AURA)); Assert.assertTrue(\"Is Creature\", p.getCardType(currentGame).contains(CardType.CREATURE)); Assert.assertTrue(\"Is Spirit\", p.getSubtype(currentGame).contains(SubType.SPIRIT)); Assert.assertEquals(\"Is 1 power\", 1, p.getPower().getValue()); Assert.assertEquals(\"Is 1 toughness\", 1, p.getToughness().getValue()); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Hopeful Eidolon",
+            "player": 0
+          },
+          "count": 6,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Enchantment",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Aura",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Spirit",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            }
+          ]
         }
       ]
     },
@@ -1790,8 +1842,14 @@ registerPortedMageTests({
           "target": "Waxmane Baku"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Not a Spirit, no KI counters\", 1, PhaseStep.BEGIN_COMBAT, playerA, \"Waxmane Baku\", CounterType.KI, 0)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Waxmane Baku",
+          "counter": "KI",
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",

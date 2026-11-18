@@ -35,6 +35,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -42,38 +46,64 @@ registerPortedMageTests({
           "name": "Forge Anew"
         },
         {
+          "op": "assertStackObject",
+          "source": "Forge Anew",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": "Bronze Sword"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Bronze Sword",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Bronze Sword",
+          "count": 0,
+          "player": 0
+        },
+        {
           "op": "activateAbility",
+          "player": 0,
+          "source": "Bronze Sword",
+          "ability": "Equip {0}",
           "turn": 1,
           "phase": "END_COMBAT",
-          "player": 0,
-          "ability": "Equip {3}",
           "target": "Silvercoat Lion"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Bronze Sword",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "END_COMBAT",
+          "abilityKind": "Activated",
+          "objectTarget": "Silvercoat Lion"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, EQUIPMENT, CREATURE, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Bronze Sword",
+          "target": "Silvercoat Lion",
+          "targetPlayer": 0,
+          "expected": true
         }
       ]
     }

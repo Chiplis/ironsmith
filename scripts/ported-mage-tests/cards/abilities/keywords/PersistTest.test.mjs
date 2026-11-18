@@ -119,27 +119,81 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Lightning Bolt",
           "target": "Safehold Elite"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Safehold Elite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Safehold Elite",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Safehold Elite",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
           "op": "castSpell",
+          "name": "Shadowfeed",
+          "player": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Shadowfeed",
-          "target": "Safehold Elite"
+          "target": "Safehold Elite",
+          "holdStack": true
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Shadowfeed",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Safehold Elite"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Safehold Elite",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Safehold Elite",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -182,7 +236,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Wurmcoil Engine",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -259,7 +313,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Wurmcoil Engine",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",

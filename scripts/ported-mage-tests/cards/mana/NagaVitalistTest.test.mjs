@@ -75,8 +75,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{Any}{Any}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{W}{W}",
+            "{U}{U}",
+            "{B}{B}",
+            "{R}{R}",
+            "{G}{G}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -124,7 +132,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "activateManaAbility",
@@ -132,7 +141,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "activateManaAbility",
@@ -140,7 +150,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "castSpell",
@@ -151,17 +162,73 @@ registerPortedMageTests({
           "target": "Swamp"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gift of Paradise",
+          "count": 1,
+          "objectTarget": "Swamp"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gift of Paradise",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Gift of Paradise",
+          "target": "Swamp",
+          "expected": true
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "{R}"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add one mana of any",
-          "count": 1
+          "ability": "Add one mana of any type",
+          "count": 1,
+          "source": "Naga Vitalist"
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Red"
+          "colors": "R",
+          "amount": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Naga Vitalist",
+          "tapped": true,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -172,20 +239,29 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Forest\", true)"
+          "op": "assertTappedCount",
+          "name": "Forest",
+          "player": 0,
+          "tapped": true,
+          "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(giftParadise, false)"
+          "op": "assertTapped",
+          "name": "Gift of Paradise",
+          "tapped": false,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Swamp\", false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": false
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(nagaVitalist, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Naga Vitalist",
+          "tapped": true
         }
       ]
     },
@@ -233,7 +309,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "activateManaAbility",
@@ -241,7 +318,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "activateManaAbility",
@@ -249,7 +327,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "castSpell",
@@ -260,17 +339,73 @@ registerPortedMageTests({
           "target": "Swamp"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gift of Paradise",
+          "count": 1,
+          "objectTarget": "Swamp"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gift of Paradise",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Gift of Paradise",
+          "target": "Swamp",
+          "expected": true
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "{R}"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add one mana of any",
-          "count": 1
+          "ability": "Add one mana of any type",
+          "count": 1,
+          "source": "Naga Vitalist"
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Red"
+          "colors": "R",
+          "amount": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Naga Vitalist",
+          "tapped": true,
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -281,20 +416,29 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Forest\", true)"
+          "op": "assertTappedCount",
+          "name": "Forest",
+          "player": 0,
+          "tapped": true,
+          "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(giftParadise, false)"
+          "op": "assertTapped",
+          "name": "Gift of Paradise",
+          "tapped": false,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Swamp\", false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": false
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(nagaVitalist, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Naga Vitalist",
+          "tapped": true
         }
       ]
     },
@@ -342,7 +486,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "activateManaAbility",
@@ -350,7 +495,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "activateManaAbility",
@@ -358,7 +504,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "castSpell",
@@ -369,17 +516,73 @@ registerPortedMageTests({
           "target": "Swamp"
         },
         {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gift of Paradise",
+          "count": 1,
+          "objectTarget": "Swamp"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gift of Paradise",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Gift of Paradise",
+          "target": "Swamp",
+          "expected": true
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "{R}"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add one mana of any",
-          "count": 1
+          "ability": "Add one mana of any type",
+          "count": 1,
+          "source": "Naga Vitalist"
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Red"
+          "colors": "R",
+          "amount": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Naga Vitalist",
+          "tapped": true,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -390,20 +593,29 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Forest\", true)"
+          "op": "assertTappedCount",
+          "name": "Forest",
+          "player": 0,
+          "tapped": true,
+          "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(giftParadise, false)"
+          "op": "assertTapped",
+          "name": "Gift of Paradise",
+          "tapped": false,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Swamp\", false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": false
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(nagaVitalist, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Naga Vitalist",
+          "tapped": true
         }
       ]
     },
@@ -451,7 +663,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "activateManaAbility",
@@ -459,7 +672,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "activateManaAbility",
@@ -467,7 +681,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {G}",
-          "count": 1
+          "count": 1,
+          "source": "Forest"
         },
         {
           "op": "castSpell",
@@ -478,17 +693,73 @@ registerPortedMageTests({
           "target": "Swamp"
         },
         {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gift of Paradise",
+          "count": 1,
+          "objectTarget": "Swamp"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gift of Paradise",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Gift of Paradise",
+          "target": "Swamp",
+          "expected": true
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "{R}"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 4,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add one mana of any",
-          "count": 1
+          "ability": "Add one mana of any type",
+          "count": 1,
+          "source": "Naga Vitalist"
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Red"
+          "colors": "R",
+          "amount": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Naga Vitalist",
+          "tapped": true,
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -499,20 +770,29 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Forest\", true)"
+          "op": "assertTappedCount",
+          "name": "Forest",
+          "player": 0,
+          "tapped": true,
+          "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(giftParadise, false)"
+          "op": "assertTapped",
+          "name": "Gift of Paradise",
+          "tapped": false,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Swamp\", false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": false
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(nagaVitalist, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Naga Vitalist",
+          "tapped": true
         }
       ]
     },
@@ -556,17 +836,73 @@ registerPortedMageTests({
           "target": "Forest"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gift of Paradise",
+          "count": 1,
+          "objectTarget": "Forest"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gift of Paradise",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Gift of Paradise",
+          "target": "Forest",
+          "expected": true
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "{R}"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add one mana of any",
-          "count": 1
+          "ability": "Add one mana of any type",
+          "count": 1,
+          "source": "Naga Vitalist"
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": "Red"
+          "colors": "R",
+          "amount": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Naga Vitalist",
+          "tapped": true,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -582,16 +918,23 @@ registerPortedMageTests({
           "life": 23
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(nagaVitalist, true)"
+          "op": "assertTapped",
+          "name": "Naga Vitalist",
+          "tapped": true,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(giftParadise, false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Gift of Paradise",
+          "tapped": false
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Forest\", false)"
+          "op": "assertTappedCount",
+          "name": "Forest",
+          "player": 0,
+          "tapped": false,
+          "count": 3
         }
       ]
     }

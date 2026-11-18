@@ -222,11 +222,12 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 1,
           "player": 1,
           "blocker": "Grizzly Bears",
-          "attacker": "Memnite"
+          "attacker": "Memnite",
+          "expected": false
         },
         {
           "op": "setStopAt",

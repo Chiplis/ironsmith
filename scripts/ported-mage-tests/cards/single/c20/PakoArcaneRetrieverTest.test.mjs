@@ -86,8 +86,18 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for(Card card :currentGame.getExile().getAllCards(currentGame)) { Assert.assertTrue(card.getName() + \" has a fetch counter\",card.getCounters(currentGame).getCount(CounterType.FETCH) == 1); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile"
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "fetch",
+              "expected": 1
+            }
+          ]
         }
       ]
     },

@@ -17,6 +17,16 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 0
+        },
+        {
+          "op": "assertSpeed",
+          "player": 1,
+          "speed": 0
         }
       ]
     },
@@ -62,6 +72,16 @@ registerPortedMageTests({
           "name": "Walking Sarcophagus",
           "power": 2,
           "toughness": 1
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 1
+        },
+        {
+          "op": "assertSpeed",
+          "player": 1,
+          "speed": 0
         }
       ]
     },
@@ -122,6 +142,16 @@ registerPortedMageTests({
           "name": "Walking Sarcophagus",
           "power": 2,
           "toughness": 1
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 2
+        },
+        {
+          "op": "assertSpeed",
+          "player": 1,
+          "speed": 0
         }
       ]
     },
@@ -182,6 +212,16 @@ registerPortedMageTests({
           "name": "Walking Sarcophagus",
           "power": 2,
           "toughness": 1
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 1
+        },
+        {
+          "op": "assertSpeed",
+          "player": 1,
+          "speed": 0
         }
       ]
     },
@@ -250,6 +290,16 @@ registerPortedMageTests({
           "name": "Walking Sarcophagus",
           "power": 2,
           "toughness": 1
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 3
+        },
+        {
+          "op": "assertSpeed",
+          "player": 1,
+          "speed": 0
         }
       ]
     },
@@ -326,6 +376,16 @@ registerPortedMageTests({
           "name": "Walking Sarcophagus",
           "power": 3,
           "toughness": 3
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 4
+        },
+        {
+          "op": "assertSpeed",
+          "player": 1,
+          "speed": 0
         }
       ]
     },
@@ -410,6 +470,16 @@ registerPortedMageTests({
           "name": "Walking Sarcophagus",
           "power": 3,
           "toughness": 3
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 4
+        },
+        {
+          "op": "assertSpeed",
+          "player": 1,
+          "speed": 0
         }
       ]
     },
@@ -431,23 +501,154 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "ability": "{3}"
+          "name": "Onyx Goblet",
+          "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Walking Sarcophagus",
+          "count": 1
         },
         {
-          "op": "setStopAt",
+          "op": "castSpell",
+          "name": "Walking Sarcophagus",
+          "player": 0,
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Walking Sarcophagus",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 1
+        },
+        {
+          "op": "activateAbility",
+          "source": "Onyx Goblet",
+          "ability": "Target player loses 1 life",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Onyx Goblet",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 2
+        },
+        {
+          "op": "activateAbility",
+          "source": "Onyx Goblet",
+          "ability": "Target player loses 1 life",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Onyx Goblet",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 3
+        },
+        {
+          "op": "activateAbility",
+          "source": "Onyx Goblet",
+          "ability": "Target player loses 1 life",
+          "player": 0,
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Onyx Goblet",
+          "count": 1,
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 4
+        },
+        {
+          "op": "activateAbility",
+          "source": "Loxodon Surveyor",
+          "ability": "Draw a card",
+          "player": 0,
+          "turn": 5,
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Loxodon Surveyor",
+          "count": 1,
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Loxodon Surveyor",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -456,10 +657,19 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "assertExileCount",
+          "op": "assertLife",
+          "player": 1,
+          "life": 17
+        },
+        {
+          "op": "assertSpeed",
           "player": 0,
-          "name": "Loxodon Surveyor",
-          "count": 1
+          "speed": 4
+        },
+        {
+          "op": "assertSpeed",
+          "player": 1,
+          "speed": 0
         }
       ]
     },
@@ -527,6 +737,16 @@ registerPortedMageTests({
           "name": "Walking Sarcophagus",
           "power": 2,
           "toughness": 1
+        },
+        {
+          "op": "assertSpeed",
+          "player": 0,
+          "speed": 1
+        },
+        {
+          "op": "assertSpeed",
+          "player": 1,
+          "speed": 1
         }
       ]
     }

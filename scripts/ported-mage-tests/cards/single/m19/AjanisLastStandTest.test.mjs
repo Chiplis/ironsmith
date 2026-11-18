@@ -75,8 +75,14 @@ registerPortedMageTests({
       "name": "test_NoTriggerOnSelfDies",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_AllDestroy(playerA)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "all destroy",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Destroy all permanents."
         },
         {
           "op": "addCard",

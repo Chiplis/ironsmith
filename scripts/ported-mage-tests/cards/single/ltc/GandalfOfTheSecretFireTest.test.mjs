@@ -101,16 +101,61 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkCardCounters(\"1: bolt has 3 time counters\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Lightning Bolt\", CounterType.TIME, 3)"
+          "op": "assertEachObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "selector": {
+            "zone": "exile",
+            "name": "Lightning Bolt",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 3
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkCardCounters(\"2: bolt has 2 time counters\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Lightning Bolt\", CounterType.TIME, 2)"
+          "op": "assertEachObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "selector": {
+            "zone": "exile",
+            "name": "Lightning Bolt",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 2
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkCardCounters(\"3: bolt has 1 time counters\", 5, PhaseStep.PRECOMBAT_MAIN, playerA, \"Lightning Bolt\", CounterType.TIME, 1)"
+          "op": "assertEachObject",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "selector": {
+            "zone": "exile",
+            "name": "Lightning Bolt",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 1
+            }
+          ]
         },
         {
           "op": "setChoice",
@@ -161,7 +206,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Fire // Ice",
+          "name": "Fire // Ice@split",
           "count": 1
         },
         {
@@ -172,36 +217,99 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": 1,
+          "amount": 2,
+          "selectTarget": false
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Fire",
-          "target": 1
+          "target": 1,
+          "objectAlias": "@split"
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, playerB, 2)"
-        },
-        {
-          "op": "assertExileCount",
+          "op": "assertStackObject",
           "turn": 2,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Fire // Ice",
-          "count": 1
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gandalf of the Secret Fire",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
-          "op": "unsupported",
-          "source": "checkCardCounters(\"1: fire//ice has 3 time counters\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Fire // Ice\", CounterType.TIME, 3)"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "checkCardCounters(\"2: fire//ice has 2 time counters\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Fire // Ice\", CounterType.TIME, 2)"
+          "op": "assertLife",
+          "player": 1,
+          "life": 18
         },
         {
-          "op": "unsupported",
-          "source": "checkCardCounters(\"3: fire//ice has 1 time counters\", 5, PhaseStep.PRECOMBAT_MAIN, playerA, \"Fire // Ice\", CounterType.TIME, 1)"
+          "op": "assertEachObject",
+          "seatIndependent": true,
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "alias": "@split"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 3
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "seatIndependent": true,
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "alias": "@split"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 2
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "seatIndependent": true,
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "alias": "@split"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 1
+            }
+          ]
         },
         {
           "op": "setChoice",
@@ -209,25 +317,25 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Fire"
+          "kind": "options",
+          "description": "Choose which spell to cast",
+          "choices": [
+            "Fire"
+          ],
+          "optional": true
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, playerB, 2)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": 1,
+          "amount": 2
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 7,
           "phase": "POSTCOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertLife",

@@ -31,7 +31,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Invasion of Amonkhet",
+          "name": "Invasion of Amonkhet@siege",
           "count": 1
         },
         {
@@ -43,38 +43,111 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Invasion of Amonkhet",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "objectAlias": "@siege"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Invasion of Amonkhet",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertBattleProtector",
           "player": 0,
+          "protector": 1,
           "name": "Invasion of Amonkhet"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@siege",
+          "count": 4,
+          "counter": "defense"
+        },
+        {
+          "op": "castSpell",
+          "name": "Char",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": "@siege"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Char",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Invasion of Amonkhet"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Invasion of Amonkhet",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Char",
-          "target": "Invasion of Amonkhet"
+          "abilityKind": "Triggered"
         },
         {
-          "op": "setStopAt",
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Lazotep Convert",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
         },
         {
-          "op": "assertPermanentCount",
+          "op": "setOptionChoices",
           "player": 0,
-          "name": "Mutagen Connoisseur",
-          "count": 1
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Mutagen Connoisseur"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@siege"
+          },
+          "count": 1,
+          "checks": []
         },
         {
           "op": "assertGraveyardCount",
@@ -83,23 +156,71 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Mutagen Connoisseur\", SubType.ZOMBIE)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Mutagen Connoisseur",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Mutagen Connoisseur\", SubType.VEDALKEN)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertColor(playerA,\"Mutagen Connoisseur\",\"BGU\",true)"
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Mutagen Connoisseur",
+          "name": "@siege",
           "power": 5,
           "toughness": 4
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@siege"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Vedalken",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Mutant",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Zombie",
+              "expected": true
+            },
+            {
+              "property": "transformed",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "black",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "green",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": true
+            },
+            {
+              "property": "colorCount",
+              "expected": 3
+            }
+          ]
         }
       ]
     }

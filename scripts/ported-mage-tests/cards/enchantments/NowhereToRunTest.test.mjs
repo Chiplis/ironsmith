@@ -214,16 +214,10 @@ registerPortedMageTests({
       "name": "testHexproofOnOtherPermanents",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
+          "op": "addCardWithEntryChoice",
           "player": 1,
           "name": "Valgavoth's Lair",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Red"
+          "choice": "Red"
         },
         {
           "op": "addCard",
@@ -251,15 +245,12 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "castSpell",
+          "op": "assertNoSpellObjectTarget",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Stone Rain"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
+          "name": "Stone Rain",
+          "controller": 1,
           "target": "Valgavoth's Lair"
         },
         {
@@ -268,8 +259,19 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { if (!e.getMessage().contains(\"Targets list was setup by addTarget with [Valgavoth's Lair], but not used\")) { Assert.fail(\"must throw error about bad targets, but got:\\n\" + e.getMessage()); } return; } Assert.fail(\"must throw exception on execute\")"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Stone Rain",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Valgavoth's Lair",
+          "count": 1
         }
       ]
     }

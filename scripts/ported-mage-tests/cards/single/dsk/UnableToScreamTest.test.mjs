@@ -7,14 +7,10 @@ registerPortedMageTests({
       "name": "preventFromTurningFaceUpTest",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Akroma, Angel of Fury",
+          "name": "Akroma, Angel of Fury@akroma",
           "count": 1
         },
         {
@@ -71,7 +67,28 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Akroma, Angel of Fury using Morph"
+          "name": "Akroma, Angel of Fury using Morph",
+          "objectAlias": "@akroma"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@akroma"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "castSpell",
@@ -79,7 +96,28 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Unable to Scream",
-          "target": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()"
+          "target": "@akroma"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Unable to Scream",
+          "count": 1,
+          "objectTarget": "Face-down creature"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "targetPlayer": 1,
+          "attachment": "Unable to Scream",
+          "target": "@akroma",
+          "expected": true
         },
         {
           "op": "castSpell",
@@ -87,20 +125,38 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Break Open",
-          "target": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()"
+          "target": "@akroma"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Break Open",
+          "count": 1,
+          "objectTarget": "Face-down creature"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@akroma"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPermanentCount",
-          "turn": 3,
-          "phase": "BEGIN_COMBAT",
-          "player": 1,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 3,
-          "phase": "BEGIN_COMBAT",
           "player": 1,
           "name": "Akroma, Angel of Fury",
           "count": 0
@@ -114,36 +170,57 @@ registerPortedMageTests({
           "target": "Unable to Scream"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Unable to Scream",
+          "count": 0
+        },
+        {
           "op": "castSpell",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Break Open",
-          "target": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()"
+          "target": "@akroma"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Break Open",
+          "count": 1,
+          "objectTarget": "Face-down creature"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@akroma"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
         },
         {
           "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "BEGIN_COMBAT",
-          "player": 1,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "BEGIN_COMBAT",
           "player": 1,
           "name": "Akroma, Angel of Fury",
           "count": 1
-        },
-        {
-          "op": "setStopAt",
-          "turn": 5,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
         }
       ]
     },

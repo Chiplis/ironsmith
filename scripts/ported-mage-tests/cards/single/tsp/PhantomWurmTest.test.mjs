@@ -32,6 +32,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Phantom Wurm",
+          "counter": "+1/+1",
+          "count": 4
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
@@ -55,12 +62,17 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "CHOICE_SKIP"
+          "value": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": 5
         },
         {
           "op": "setStopAt",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "END_COMBAT"
         },
         {
           "op": "execute"
@@ -78,8 +90,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, wurm, 0)"
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Phantom Wurm",
+          "damage": 0
         },
         {
           "op": "assertCounterCount",
@@ -134,8 +148,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, wurm, 0)"
+          "op": "assertDamageReceived",
+          "name": "Phantom Wurm",
+          "damage": 0,
+          "player": 0
         },
         {
           "op": "assertCounterCount",
@@ -145,12 +161,14 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, \"Phantom Nomad\", 0)"
+          "op": "assertDamageReceived",
+          "name": "Phantom Nomad",
+          "damage": 0,
+          "player": 1
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Phantom Nomad",
           "counter": "P1P1",
           "count": 1
@@ -223,8 +241,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, wurm, 0)"
+          "op": "assertDamageReceived",
+          "name": "Phantom Wurm",
+          "damage": 0,
+          "player": 0
         },
         {
           "op": "assertCounterCount",
@@ -234,12 +254,14 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, \"Phantom Nomad\", 0)"
+          "op": "assertDamageReceived",
+          "name": "Phantom Nomad",
+          "damage": 0,
+          "player": 1
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Phantom Nomad",
           "counter": "P1P1",
           "count": 1
@@ -337,6 +359,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Phantom Wurm",
+          "counter": "+1/+1",
+          "count": 4
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
@@ -360,12 +389,17 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "CHOICE_SKIP"
+          "value": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": 4
         },
         {
           "op": "setStopAt",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "END_COMBAT"
         },
         {
           "op": "execute"
@@ -383,8 +417,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, wurm, 0)"
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Phantom Wurm",
+          "damage": 0
         },
         {
           "op": "assertCounterCount",
@@ -424,6 +460,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Phantom Wurm",
+          "counter": "+1/+1",
+          "count": 4
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
@@ -447,12 +490,27 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "CHOICE_SKIP"
+          "value": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": 4
+        },
+        {
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "seatIndependent": true,
+          "player": 0,
+          "name": "Phantom Wurm",
+          "counter": "+1/+1",
+          "count": 3
         },
         {
           "op": "setStopAt",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "END_COMBAT"
         },
         {
           "op": "execute"
@@ -470,8 +528,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, wurm, 0)"
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Phantom Wurm",
+          "damage": 0
         },
         {
           "op": "assertCounterCount",
@@ -697,17 +757,32 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Band Together"
+          "name": "Band Together",
+          "target": {
+            "groups": [
+              [
+                "Memnite",
+                "Boros Recruit"
+              ],
+              [
+                "Phantom Wurm"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Memnite^Boros Recruit"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Band Together",
+          "count": 1,
+          "targetCount": 3
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Phantom Wurm"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -718,8 +793,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, wurm, 0)"
+          "op": "assertDamageReceived",
+          "name": "Phantom Wurm",
+          "damage": 0,
+          "player": 0
         },
         {
           "op": "assertCounterCount",

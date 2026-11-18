@@ -17,20 +17,20 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "belenon",
+          "name": "Invasion of Belenon",
           "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "playerC.getName()"
+          "value": "Charlie"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "belenon"
+          "name": "Invasion of Belenon"
         },
         {
           "op": "setStopAt",
@@ -45,8 +45,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBattle(playerA, playerC, belenon)"
+          "op": "assertBattleProtector",
+          "player": 0,
+          "protector": 2,
+          "name": "Invasion of Belenon"
         },
         {
           "op": "assertPermanentCount",
@@ -70,34 +72,34 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "bear",
+          "name": "Grizzly Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "belenon",
+          "name": "Invasion of Belenon",
           "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "playerC.getName()"
+          "value": "Charlie"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "belenon"
+          "name": "Invasion of Belenon"
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "bear",
-          "defender": "belenon"
+          "attacker": "Grizzly Bears",
+          "defender": "Invasion of Belenon"
         },
         {
           "op": "setStopAt",
@@ -112,8 +114,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBattle(playerA, playerC, belenon)"
+          "op": "assertBattleProtector",
+          "player": 0,
+          "protector": 2,
+          "name": "Invasion of Belenon"
         },
         {
           "op": "assertPermanentCount",
@@ -122,18 +126,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(bear, true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "assertLife",
-          "player": "playerC",
+          "player": 2,
           "life": 20
         },
         {
           "op": "assertCounterCount",
           "player": 0,
-          "name": "belenon",
+          "name": "Invasion of Belenon",
           "counter": "DEFENSE",
           "count": 3
         }
@@ -153,48 +160,48 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "bear",
+          "name": "Grizzly Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
-          "name": "bear",
+          "player": 2,
+          "name": "Grizzly Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "belenon",
+          "name": "Invasion of Belenon",
           "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "playerC.getName()"
+          "value": "Charlie"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "belenon"
+          "name": "Invasion of Belenon"
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "bear",
-          "defender": "belenon"
+          "attacker": "Grizzly Bears",
+          "defender": "Invasion of Belenon"
         },
         {
           "op": "block",
           "turn": 1,
-          "player": "playerC",
-          "blocker": "bear",
-          "attacker": "bear"
+          "player": 2,
+          "blocker": "Grizzly Bears",
+          "attacker": "Grizzly Bears"
         },
         {
           "op": "setStopAt",
@@ -209,8 +216,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBattle(playerA, playerC, belenon)"
+          "op": "assertBattleProtector",
+          "player": 0,
+          "protector": 2,
+          "name": "Invasion of Belenon"
         },
         {
           "op": "assertPermanentCount",
@@ -221,38 +230,46 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "bear",
+          "name": "Grizzly Bears",
           "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "name": "bear",
+          "name": "Grizzly Bears",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "name": "bear",
-          "count": 0
+          "name": "Grizzly Bears",
+          "count": 0,
+          "player": 2
         },
         {
           "op": "assertGraveyardCount",
-          "name": "bear",
-          "count": 1
+          "name": "Grizzly Bears",
+          "count": 1,
+          "player": 2
         },
         {
           "op": "assertLife",
-          "player": "playerC",
+          "player": 2,
           "life": 20
         },
         {
           "op": "assertCounterCount",
           "player": 0,
-          "name": "belenon",
+          "name": "Invasion of Belenon",
           "counter": "DEFENSE",
           "count": 5
         }
       ]
     }
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
   ]
 });

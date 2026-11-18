@@ -31,21 +31,44 @@ registerPortedMageTests({
           "life": 16
         },
         {
-          "op": "addTarget",
+          "op": "assertSpellTargetRequirements",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "target": 0
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "name": "Profane Transfusion",
+          "count": 1,
+          "targetsPerRequirement": [
+            2
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Profane Transfusion"
+          "name": "Profane Transfusion",
+          "target": {
+            "groups": [
+              [
+                0,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Profane Transfusion",
+          "count": 1,
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -125,21 +148,44 @@ registerPortedMageTests({
           "life": 16
         },
         {
-          "op": "addTarget",
+          "op": "assertSpellTargetRequirements",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "target": 0
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "name": "Profane Transfusion",
+          "count": 1,
+          "targetsPerRequirement": [
+            2
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Profane Transfusion"
+          "name": "Profane Transfusion",
+          "target": {
+            "groups": [
+              [
+                0,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Profane Transfusion",
+          "count": 1,
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -219,21 +265,44 @@ registerPortedMageTests({
           "life": 16
         },
         {
-          "op": "addTarget",
+          "op": "assertSpellTargetRequirements",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "target": 0
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "name": "Profane Transfusion",
+          "count": 1,
+          "targetsPerRequirement": [
+            2
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Profane Transfusion"
+          "name": "Profane Transfusion",
+          "target": {
+            "groups": [
+              [
+                0,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Profane Transfusion",
+          "count": 1,
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -311,27 +380,50 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 0
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
         },
         {
+          "op": "assertSpellTargetRequirements",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Profane Transfusion",
+          "count": 1,
+          "targetsPerRequirement": [
+            2
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Profane Transfusion"
+          "name": "Profane Transfusion",
+          "target": {
+            "groups": [
+              [
+                0,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Profane Transfusion",
+          "count": 1,
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",

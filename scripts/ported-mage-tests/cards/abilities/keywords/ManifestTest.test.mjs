@@ -107,6 +107,16 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "addCard",
+          "zone": "LIBRARY",
+          "name": "Forest@manifested.fixture",
+          "player": 1,
+          "count": 1
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "addCard",
           "zone": "HAND",
           "player": 0,
           "name": "Reality Shift",
@@ -131,7 +141,27 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Reality Shift"
+          "name": "Reality Shift",
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Reality Shift",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Grizzly Bears",
+          "count": 1
         },
         {
           "op": "addTarget",
@@ -157,16 +187,41 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 0
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@manifested.fixture"
+          },
+          "count": 0,
+          "checks": []
         },
         {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 1
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@manifested.fixture"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "colorCount",
+              "expected": 0
+            }
+          ]
         }
       ]
     },
@@ -186,7 +241,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -194,7 +250,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -202,7 +259,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -210,7 +268,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -218,7 +277,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -226,7 +286,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -234,7 +295,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -242,7 +304,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -250,7 +313,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -258,7 +322,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -1332,8 +1397,9 @@ registerPortedMageTests({
           "toughness": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(EmptyNames.FACE_DOWN_CREATURE.getTestCommand(), false)"
+          "op": "assertTapped",
+          "name": "Face-down Creature",
+          "tapped": false
         }
       ]
     },
@@ -1445,7 +1511,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Doomwake Giant",
+          "name": "Doomwake Giant@manifested.fixture",
           "count": 1
         },
         {
@@ -1472,6 +1538,25 @@ registerPortedMageTests({
           "player": 1,
           "name": "Reality Shift",
           "target": "Silvercoat Lion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Reality Shift",
+          "count": 1,
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -1503,17 +1588,31 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "power": 2,
-          "toughness": 2
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@manifested.fixture"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "colorCount",
+              "expected": 0
+            }
+          ]
         },
         {
           "op": "assertPermanentCount",
@@ -1555,7 +1654,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Nylea, God of the Hunt",
+          "name": "Nylea, God of the Hunt@manifested.fixture",
           "count": 1
         },
         {
@@ -1575,6 +1674,25 @@ registerPortedMageTests({
           "player": 1,
           "name": "Reality Shift",
           "target": "Silvercoat Lion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Reality Shift",
+          "count": 1,
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -1606,17 +1724,31 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "power": 2,
-          "toughness": 2
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@manifested.fixture"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "colorCount",
+              "expected": 0
+            }
+          ]
         }
       ]
     },
@@ -1641,7 +1773,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Gore Swine",
+          "name": "Gore Swine@manifested.fixture",
           "count": 1
         },
         {
@@ -1670,6 +1802,25 @@ registerPortedMageTests({
           "target": "Silvercoat Lion"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Reality Shift",
+          "count": 1,
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "BEGIN_COMBAT"
@@ -1699,17 +1850,31 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "power": 2,
-          "toughness": 2
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@manifested.fixture"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "colorCount",
+              "expected": 0
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
@@ -1825,8 +1990,17 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : currentGame.getExile().getAllCards(currentGame)) { if (card.getName().equals(\"Gore Swine\")) { Assert.assertTrue(\"Gore Swine may not be face down in exile\", !card.isFaceDown(currentGame)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "name": "Gore Swine"
+          },
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -2718,6 +2892,20 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertFaceDownPermanentView",
+          "player": 1,
+          "viewer": 0,
+          "visible": false,
+          "originalName": "Mountain"
+        },
+        {
+          "op": "assertFaceDownPermanentView",
+          "player": 1,
+          "viewer": 1,
+          "visible": true,
+          "originalName": "Mountain"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -2730,12 +2918,32 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (true) { Assert.assertNotNull(info + \" - miss original card data\", permanent.getOriginal()); Assert.assertEquals(info + \" - wrong original card name\", \"Mountain\", permanent.getOriginal().getName()); } else { Assert.assertNull(info + \" - original data must be hidden\", permanent.getOriginal()); }"
+          "op": "concede",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "if (true) { Assert.assertNotNull(info + \" - miss original card data\", permanent.getOriginal()); Assert.assertEquals(info + \" - wrong original card name\", \"Mountain\", permanent.getOriginal().getName()); } else { Assert.assertNull(info + \" - original data must be hidden\", permanent.getOriginal()); }"
+          "op": "execute"
+        },
+        {
+          "op": "assertResult",
+          "player": 1,
+          "result": "WON"
+        },
+        {
+          "op": "assertFaceDownPermanentView",
+          "player": 1,
+          "viewer": 1,
+          "visible": true,
+          "originalName": "Mountain"
+        },
+        {
+          "op": "assertFaceDownPermanentView",
+          "player": 1,
+          "viewer": 0,
+          "visible": true,
+          "originalName": "Mountain"
         }
       ]
     },

@@ -105,19 +105,57 @@ registerPortedMageTests({
           "target": "Fire // Ice"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Diluvian Primordial",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Fire"
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Ice"
+          "kind": "boolean",
+          "description": "Cast up to one target instant or sorcery card in that player's graveyard without paying its mana cost",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose which spell to cast",
+          "choices": [
+            "Ice"
+          ]
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Diluvian Primordial"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ice",
+          "count": 1,
+          "targetCount": 1,
+          "objectTarget": "Diluvian Primordial"
         },
         {
           "op": "setStopAt",
@@ -134,8 +172,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(primordial, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Diluvian Primordial",
+          "tapped": true
         }
       ]
     },

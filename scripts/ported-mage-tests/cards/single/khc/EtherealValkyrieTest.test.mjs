@@ -456,24 +456,52 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Foretell {1}"
+          "name": "Alrund, God of the Cosmos using foretell"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alrund, God of the Cosmos",
+          "count": 1,
+          "onTop": true
         },
         {
           "op": "waitStackResolved",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Alrund, God of the Cosmos",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Foretell {U}"
+          "name": "Hakka, Whispering Raven using foretell"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Hakka, Whispering Raven",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

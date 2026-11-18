@@ -29,14 +29,17 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Dwarven Trader"
+          "name": "Dwarven Trader",
+          "resolve": true
         },
         {
           "op": "assertAbility",
-          "player": "Dwarven Trader doesn't have haste",
-          "name": 3,
-          "ability": "PRECOMBAT_MAIN",
-          "expected": 0
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Dwarven Trader",
+          "ability": "HasteAbility.class",
+          "expected": false
         },
         {
           "op": "setStopAt",
@@ -105,36 +108,46 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{R}",
+          "ability": "{R}, {T}, exert",
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Dwarven Trader"
+          "op": "unsupported",
+          "source": "assertManaPool(playerA, ManaType.RED, 2)"
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Mons's Goblin Raiders"
+          "name": "Dwarven Trader",
+          "resolve": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mons's Goblin Raiders",
+          "resolve": true
         },
         {
           "op": "assertAbility",
-          "player": "Dwarven Trader has haste",
-          "name": 3,
-          "ability": "PRECOMBAT_MAIN",
-          "expected": 0
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Dwarven Trader",
+          "ability": "HasteAbility.class",
+          "expected": true
         },
         {
           "op": "assertAbility",
-          "player": "Mons's Goblin Raiders has haste",
-          "name": 3,
-          "ability": "PRECOMBAT_MAIN",
-          "expected": 0
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mons's Goblin Raiders",
+          "ability": "HasteAbility.class",
+          "expected": true
         },
         {
           "op": "attack",

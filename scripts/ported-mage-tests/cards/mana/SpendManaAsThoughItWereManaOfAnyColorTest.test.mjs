@@ -35,7 +35,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Daxos of Meletis",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "castSpell",

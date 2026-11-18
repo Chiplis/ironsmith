@@ -58,12 +58,14 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "this.assertTapped(thopter, true)"
+          "op": "assertTapped",
+          "name": "Ornithopter",
+          "tapped": true,
+          "player": 1
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Ornithopter",
           "counter": "ICE",
           "count": 1
@@ -125,12 +127,14 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "this.assertTapped(thopter, true)"
+          "op": "assertTapped",
+          "name": "Ornithopter",
+          "tapped": true,
+          "player": 1
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Ornithopter",
           "counter": "ICE",
           "count": 1
@@ -200,12 +204,14 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "this.assertTapped(thopter, false)"
+          "op": "assertTapped",
+          "name": "Ornithopter",
+          "tapped": false,
+          "player": 1
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Ornithopter",
           "counter": "ICE",
           "count": 1

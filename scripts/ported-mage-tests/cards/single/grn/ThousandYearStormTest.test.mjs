@@ -64,8 +64,12 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"before\", 1, PhaseStep.PRECOMBAT_MAIN, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "life": "20 - 3",
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -88,8 +92,12 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"copy\", 1, PhaseStep.END_COMBAT, playerB, 20 - 3 - 3 * 2)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "END_COMBAT",
+          "player": 1,
+          "life": "20 - 3 - 3 * 2",
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -574,8 +582,12 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"0x copy\", 1, PhaseStep.PRECOMBAT_MAIN, playerB, startLife - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "seatIndependent": true,
+          "life": 97
         },
         {
           "op": "castSpell",
@@ -599,13 +611,17 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"1x copy\", 1, PhaseStep.BEGIN_COMBAT, playerB, startLife - 3 - 3 * 2)"
-        },
-        {
           "op": "setChoice",
           "player": 0,
           "value": false
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "seatIndependent": true,
+          "life": 91
         },
         {
           "op": "castSpell",
@@ -626,8 +642,12 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"2x copy\", 1, PhaseStep.END_COMBAT, playerB, startLife - 3 - 3 * 2 - 3 * 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "END_COMBAT",
+          "player": 1,
+          "seatIndependent": true,
+          "life": 82
         },
         {
           "op": "castSpell",
@@ -653,8 +673,12 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"3x copy\", 1, PhaseStep.END_TURN, playerB, startLife - 3 - 3 * 2 - 3 * 3 - 3 * 4)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 1,
+          "seatIndependent": true,
+          "life": 70
         },
         {
           "op": "castSpell",
@@ -665,8 +689,12 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"3. no copy\", 3, PhaseStep.BEGIN_COMBAT, playerB, startLife - 3)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "seatIndependent": true,
+          "life": 67
         },
         {
           "op": "castSpell",
@@ -682,8 +710,12 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"3. 1x copy\", 3, PhaseStep.END_COMBAT, playerB, startLife - 3 - 3 * 2)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "player": 1,
+          "seatIndependent": true,
+          "life": 61
         },
         {
           "op": "castSpell",
@@ -704,8 +736,12 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"3. 2x copy\", 3, PhaseStep.END_TURN, playerB, startLife - 3 - 3 * 2 - 3 * 3)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 1,
+          "seatIndependent": true,
+          "life": 52
         },
         {
           "op": "setStrictChooseMode",
@@ -895,12 +931,20 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"A must get damage\", 2, PhaseStep.END_TURN, playerA, 20 - 3 - 3)"
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "END_TURN",
+          "player": 0,
+          "life": "20 - 3 - 3",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"B must get damage\", 2, PhaseStep.END_TURN, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "END_TURN",
+          "player": 1,
+          "life": "20 - 3",
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

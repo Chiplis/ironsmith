@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "test_Creature_PutIntoPlay",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -32,6 +28,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -39,14 +39,89 @@ registerPortedMageTests({
           "name": "The Creation of Avacyn"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Avacyn, Angel of Hope"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Avacyn, Angel of Hope"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Avacyn, Angel of Hope"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Avacyn, Angel of Hope"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 12
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -55,11 +130,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 12
         },
         {
           "op": "assertPermanentCount",
@@ -73,10 +143,6 @@ registerPortedMageTests({
       "name": "test_Creature_DontPutIntoPlay",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -98,6 +164,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -105,14 +175,89 @@ registerPortedMageTests({
           "name": "The Creation of Avacyn"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Avacyn, Angel of Hope"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Avacyn, Angel of Hope"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Avacyn, Angel of Hope"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Avacyn, Angel of Hope"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 12
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": false
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -121,11 +266,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 12
         },
         {
           "op": "assertPermanentCount",
@@ -145,10 +285,6 @@ registerPortedMageTests({
       "name": "test_NotCreature",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -170,6 +306,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -177,9 +317,84 @@ registerPortedMageTests({
           "name": "The Creation of Avacyn"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Helvault"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Helvault"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Helvault"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Helvault"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -188,11 +403,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 20
         },
         {
           "op": "assertHandCount",
@@ -205,10 +415,6 @@ registerPortedMageTests({
     {
       "name": "test_StrionicResonator_DoubleCreature",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": false
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -245,6 +451,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -252,32 +462,178 @@ registerPortedMageTests({
           "name": "The Creation of Avacyn"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}"
+          "source": "Strionic Resonator",
+          "ability": "{2}",
+          "target": {
+            "groups": [
+              [
+                "The Creation of Avacyn ability"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 0,
-          "target": "Avacyn, Angel of Hope"
+          "kind": "boolean",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "No"
+          ],
+          "optional": true
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Strionic Resonator",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 2
+        },
+        {
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Griselbrand"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Avacyn, Angel of Hope"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Avacyn, Angel of Hope"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Griselbrand"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Griselbrand"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Avacyn, Angel of Hope"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Griselbrand"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 4
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -286,11 +642,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 4
         },
         {
           "op": "assertPermanentCount",
@@ -310,10 +661,6 @@ registerPortedMageTests({
       "name": "test_StrionicResonator_CreatureAndPermanent",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": false
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -349,6 +696,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -356,32 +707,178 @@ registerPortedMageTests({
           "name": "The Creation of Avacyn"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}"
+          "source": "Strionic Resonator",
+          "ability": "{2}",
+          "target": {
+            "groups": [
+              [
+                "The Creation of Avacyn ability"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 0,
-          "target": "Avacyn, Angel of Hope"
+          "kind": "boolean",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "No"
+          ],
+          "optional": true
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Strionic Resonator",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 2
+        },
+        {
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Helvault"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Avacyn, Angel of Hope"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Avacyn, Angel of Hope"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Helvault"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Helvault"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Avacyn, Angel of Hope"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Helvault"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 9
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -390,11 +887,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 9
         },
         {
           "op": "assertPermanentCount",
@@ -413,10 +905,6 @@ registerPortedMageTests({
     {
       "name": "test_StrionicResonator_CreatureAndSpell",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": false
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -453,6 +941,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -460,32 +952,178 @@ registerPortedMageTests({
           "name": "The Creation of Avacyn"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Creation of Avacyn",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}"
+          "source": "Strionic Resonator",
+          "ability": "{2}",
+          "target": {
+            "groups": [
+              [
+                "The Creation of Avacyn ability"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 0,
-          "target": "Avacyn, Angel of Hope"
+          "kind": "boolean",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "No"
+          ],
+          "optional": true
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Strionic Resonator",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 2
+        },
+        {
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Lightning Bolt"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Avacyn, Angel of Hope"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Avacyn, Angel of Hope"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Lightning Bolt"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Lightning Bolt"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Avacyn, Angel of Hope"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Lightning Bolt"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 11
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -494,11 +1132,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 11
         },
         {
           "op": "assertPermanentCount",

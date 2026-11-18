@@ -100,7 +100,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Turn // Burn",
+          "name": "Turn // Burn@split",
           "count": 1
         },
         {
@@ -111,19 +111,41 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "alias": "@split"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
           "op": "castSpell",
+          "name": "Embodiment of Agonies",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Embodiment of Agonies",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Embodiment of Agonies"
+          "isSpell": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Embodiment of Agonies",
+          "count": 1,
+          "counter": "+1/+1"
         },
         {
           "op": "assertPowerToughness",
@@ -155,7 +177,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Turn // Burn",
+          "name": "Turn // Burn@split",
           "count": 1
         },
         {
@@ -173,19 +195,41 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "alias": "@split"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
           "op": "castSpell",
+          "name": "Embodiment of Agonies",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Embodiment of Agonies",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Embodiment of Agonies"
+          "isSpell": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Embodiment of Agonies",
+          "count": 3,
+          "counter": "+1/+1"
         },
         {
           "op": "assertPowerToughness",

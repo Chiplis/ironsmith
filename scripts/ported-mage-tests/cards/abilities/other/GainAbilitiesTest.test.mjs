@@ -10,8 +10,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Abzan Runemark@attach",
-          "count": 2
+          "name": "Abzan Runemark@first",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Abzan Runemark@second",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -29,50 +36,109 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Abzan Runemark",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "@attach.1",
+          "objectAlias": "@first",
           "target": "@bear"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Abzan Runemark",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Balduvian Bears"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "@first",
+          "target": "@bear",
+          "expected": true
         },
         {
           "op": "castSpell",
+          "name": "Abzan Runemark",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "@attach.2",
+          "objectAlias": "@second",
           "target": "@bear"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Abzan Runemark",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Balduvian Bears"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "@bear"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "@second",
+          "target": "@bear",
+          "expected": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "power": 6,
+          "toughness": 6
         },
         {
-          "op": "setStopAt",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@bear"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Vigilance",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "attack",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "attacker": "@bear",
+          "player": 0,
+          "defender": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_COMBAT"
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "@bear",
+          "tapped": false
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 14
         }
       ]
     },
@@ -83,8 +149,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Epiphany Storm@attach",
-          "count": 2
+          "name": "Epiphany Storm@first",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Epiphany Storm@second",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -102,37 +175,71 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Epiphany Storm",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "@attach.1",
+          "objectAlias": "@first",
           "target": "@bear"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Epiphany Storm",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Balduvian Bears"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "@first",
+          "target": "@bear",
+          "expected": true
         },
         {
           "op": "castSpell",
+          "name": "Epiphany Storm",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "@attach.2",
+          "objectAlias": "@second",
           "target": "@bear"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Epiphany Storm",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Balduvian Bears"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "@second",
+          "target": "@bear",
+          "expected": true
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "@bear",
+          "kind": "activated",
+          "textPattern": "Draw a card",
+          "count": 2
         }
       ]
     },

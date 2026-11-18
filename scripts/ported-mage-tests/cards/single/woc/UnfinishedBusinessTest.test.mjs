@@ -42,30 +42,36 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "castSpell",
+          "name": "Unfinished Business",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Unfinished Business",
-          "target": "Deadly Insect"
+          "target": {
+            "groups": [
+              [
+                "Deadly Insect"
+              ],
+              [
+                "Blanchwood Armor",
+                "Shuko"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Blanchwood Armor^Shuko"
+          "op": "assertStackObject",
+          "source": "Unfinished Business",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 3,
+          "objectTarget": "Deadly Insect"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -86,12 +92,30 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, AURA, SHROUDCREATURE, true)"
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Blanchwood Armor",
+          "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, EQUIPMENT, SHROUDCREATURE, true)"
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Shuko",
+          "count": 0
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Blanchwood Armor\"",
+          "target": "\"Deadly Insect\"",
+          "expected": true
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Shuko\"",
+          "target": "\"Deadly Insect\"",
+          "expected": true
         }
       ]
     },
@@ -141,30 +165,36 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "castSpell",
+          "name": "Unfinished Business",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Unfinished Business",
-          "target": "Apostle of Purifying Light"
+          "target": {
+            "groups": [
+              [
+                "Apostle of Purifying Light"
+              ],
+              [
+                "Ghoulflesh",
+                "Enormous Energy Blade"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Ghoulflesh^Enormous Energy Blade"
+          "op": "assertStackObject",
+          "source": "Unfinished Business",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 3,
+          "objectTarget": "Apostle of Purifying Light"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN",
-          "player": null
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -185,29 +215,35 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(APOSTLE,false)"
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Ghoulflesh",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, EEB, APOSTLE,false)"
-        },
-        {
-          "op": "assertPermanentCount",
+          "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enormous Energy Blade",
-          "count": 1
+          "count": 0
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Enormous Energy Blade\"",
+          "target": null,
+          "expected": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Apostle of Purifying Light",
+          "count": 1,
+          "tapped": false
         },
         {
           "op": "assertLife",
           "player": 0,
           "life": 20
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Ghoulflesh",
-          "count": 1
         }
       ]
     },

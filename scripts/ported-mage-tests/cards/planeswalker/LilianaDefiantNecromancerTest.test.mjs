@@ -57,17 +57,14 @@ registerPortedMageTests({
           "target": "Hill Giant"
         },
         {
-          "op": "activateAbility",
+          "op": "assertRejectedProposal",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
+          "name": "Liliana, Defiant Necromancer",
           "ability": "-X:",
-          "target": "Hill Giant"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "X=1"
+          "x": 1,
+          "silentRejection": true
         },
         {
           "op": "setStopAt",
@@ -75,8 +72,13 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"-X:$target=Hill Giant\")) { Assert.fail(\"Should have thrown error about cannot attack, but got:\\n\" + e.getMessage()); } } assertGraveyardCount(playerB, \"Lightning Bolt\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Lightning Bolt",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",

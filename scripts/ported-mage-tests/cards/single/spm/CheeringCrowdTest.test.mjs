@@ -41,41 +41,61 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"PlayerA should have 1 Mana\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"C\", 1)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "C",
+          "amount": "1"
         },
         {
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerD"
+          "player": "playerD",
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"PlayerD should have 2 Mana\", 2, PhaseStep.PRECOMBAT_MAIN, playerD, \"C\", 2)"
+          "op": "assertManaPool",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 3,
+          "colors": "C",
+          "amount": "2"
         },
         {
           "op": "waitStackResolved",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerC"
+          "player": "playerC",
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"PlayerC should have 3 Mana\", 3, PhaseStep.PRECOMBAT_MAIN, playerC, \"C\", 3)"
+          "op": "assertManaPool",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 2,
+          "colors": "C",
+          "amount": "3"
         },
         {
           "op": "waitStackResolved",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": 1,
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"PlayerB should have 4 Mana\", 4, PhaseStep.PRECOMBAT_MAIN, playerB, \"C\", 4)"
+          "op": "assertManaPool",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "colors": "C",
+          "amount": "4"
         },
         {
           "op": "setStopAt",
@@ -92,6 +112,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 4
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

@@ -35,14 +35,13 @@ registerPortedMageTests({
           "name": "Bloodfell Caves"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Whenever a land you control enters"
-        },
-        {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "1"
+          "kind": "options",
+          "choices": [
+            "Untap that land."
+          ],
+          "description": "Choose a mode"
         },
         {
           "op": "setStrictChooseMode",
@@ -67,12 +66,16 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(land, false)"
+          "op": "assertTapped",
+          "name": "Bloodfell Caves",
+          "tapped": false,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(centaur, false)"
+          "op": "assertTapped",
+          "name": "Centaur Courser",
+          "tapped": false,
+          "player": 1
         }
       ]
     },
@@ -108,14 +111,13 @@ registerPortedMageTests({
           "name": "Bloodfell Caves"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Whenever a land you control enters"
-        },
-        {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "2"
+          "kind": "options",
+          "choices": [
+            "Tap target nonland permanent an opponent controls."
+          ],
+          "description": "Choose a mode"
         },
         {
           "op": "addTarget",
@@ -145,12 +147,16 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(land, true)"
+          "op": "assertTapped",
+          "name": "Bloodfell Caves",
+          "tapped": true,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(centaur, true)"
+          "op": "assertTapped",
+          "name": "Centaur Courser",
+          "tapped": true,
+          "player": 1
         }
       ]
     }

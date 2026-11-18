@@ -167,12 +167,25 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "castSpell",
+          "op": "setChoice",
+          "player": 0,
+          "value": "Fireball"
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Fireball"
+        },
+        {
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Force of Will",
-          "target": "Thoughtseize"
+          "kind": "cast_spell",
+          "label": "Force of Will",
+          "sourceZone": "hand",
+          "onStack": "Thoughtseize",
+          "checkPayment": true
         },
         {
           "op": "setStopAt",
@@ -180,8 +193,19 @@ registerPortedMageTests({
           "phase": "CLEANUP"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Force of Will$target=Thoughtseize\")) { Assert.fail(\"must throw error about not being able to cast Force of Will, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Fireball",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Force of Will",
+          "count": 1
         }
       ]
     },

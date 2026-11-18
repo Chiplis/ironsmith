@@ -550,7 +550,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Zoetic Cavern",
+          "name": "Zoetic Cavern@gonti-cavern",
           "count": 1
         },
         {
@@ -558,10 +558,17 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Gonti, Lord of Luxury",
           "player": 0,
-          "name": "Gonti, Lord of Luxury"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Gonti, Lord of Luxury",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "addTarget",
@@ -569,9 +576,38 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Gonti, Lord of Luxury",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "targetCount": 1
+        },
+        {
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Zoetic Cavern"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Zoetic Cavern"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "name": "@gonti-cavern",
+          "count": 1,
+          "player": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -590,25 +626,38 @@ registerPortedMageTests({
           "expected": false
         },
         {
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "label": "Cast Zoetic Cavern using Morph",
+          "expected": true,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
+          "name": "Zoetic Cavern using Morph",
+          "player": 0,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Zoetic Cavern using Morph"
+          "objectAlias": "@gonti-cavern"
         },
         {
-          "op": "setStopAt",
-          "turn": 4,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
+          "name": "@gonti-cavern",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertFaceDownPermanentView",
           "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 1
+          "viewer": 0,
+          "visible": true,
+          "originalName": "Zoetic Cavern"
         }
       ]
     }

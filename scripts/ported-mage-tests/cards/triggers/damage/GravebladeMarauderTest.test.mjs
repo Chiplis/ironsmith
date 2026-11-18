@@ -25,14 +25,14 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Graveblade Marauder",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Graveblade Marauder",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",

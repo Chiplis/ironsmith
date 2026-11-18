@@ -32,18 +32,43 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Goblin Traprunner",
-          "defender": 1
+          "defender": 1,
+          "coinFaces": [
+            "tails",
+            "tails",
+            "tails"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}"
+          "ability": "{T}",
+          "coinFaces": [
+            "tails"
+          ],
+          "source": "Tavern Swindler"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
         },
         {
           "op": "setStrictChooseMode",
@@ -104,26 +129,43 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}"
+          "ability": "{T}",
+          "coinFaces": [
+            "tails"
+          ],
+          "source": "Tavern Swindler"
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Goblin Traprunner",
-          "defender": 1
+          "defender": 1,
+          "coinFaces": [
+            "tails",
+            "tails",
+            "tails"
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
         },
         {
           "op": "setStrictChooseMode",

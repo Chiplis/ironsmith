@@ -47,7 +47,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Blur Sliver",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -132,11 +132,26 @@ registerPortedMageTests({
           "target": "Soulmender"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Test of Faith",
+          "count": 1,
+          "objectTarget": "Soulmender"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Kalonian Tusker",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -151,6 +166,17 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Soulmender",
           "attacker": "Kalonian Tusker"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "distribution",
+          "description": "Assign 3 combat damage from Kalonian Tusker (assign exactly 3 total)",
+          "choices": [
+            "Elvish Mystic",
+            "Elvish Mystic",
+            "Soulmender"
+          ]
         },
         {
           "op": "setStopAt",
@@ -234,6 +260,20 @@ registerPortedMageTests({
           "target": "Soulmender"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Test of Faith",
+          "count": 1,
+          "objectTarget": "Soulmender"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
@@ -242,11 +282,26 @@ registerPortedMageTests({
           "target": "Elvish Mystic"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Test of Faith",
+          "count": 1,
+          "objectTarget": "Elvish Mystic"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Kalonian Tusker",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -261,6 +316,17 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Soulmender",
           "attacker": "Kalonian Tusker"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "distribution",
+          "description": "Assign 3 combat damage from Kalonian Tusker (assign exactly 3 total)",
+          "choices": [
+            "Elvish Mystic",
+            "Elvish Mystic",
+            "Soulmender"
+          ]
         },
         {
           "op": "setStopAt",

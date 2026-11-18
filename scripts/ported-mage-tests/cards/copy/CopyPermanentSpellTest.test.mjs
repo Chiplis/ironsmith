@@ -7,8 +7,16 @@ registerPortedMageTests({
       "name": "testSimpleToken",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",
@@ -51,8 +59,16 @@ registerPortedMageTests({
       "name": "testAuraToken",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",
@@ -114,8 +130,16 @@ registerPortedMageTests({
       "name": "testAuraTokenRedirect",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",
@@ -146,8 +170,7 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
+          "op": "setStrictChooseMode",
           "value": true
         },
         {
@@ -159,48 +182,138 @@ registerPortedMageTests({
           "target": "Centaur Courser"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": false
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "text": "Cast Dead Weight",
+          "objectTarget": "Centaur Courser"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Forker",
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Serra Angel"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 2,
+          "text": "Cast Dead Weight"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "text": "Cast Dead Weight",
+          "objectTarget": "Serra Angel",
+          "onTop": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "text": "Cast Dead Weight",
+          "objectTarget": "Centaur Courser"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "attachment": "Dead Weight",
+          "targetPlayer": 1,
+          "target": "Serra Angel",
+          "expected": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Dead Weight",
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Centaur Courser",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Serra Angel",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Centaur Courser",
           "power": 1,
-          "toughness": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Serra Angel",
-          "count": 1
+          "toughness": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Serra Angel",
           "power": 2,
-          "toughness": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dead Weight",
-          "count": 2
+          "toughness": 2,
+          "seatIndependent": true
         }
       ]
     },
@@ -208,8 +321,16 @@ registerPortedMageTests({
       "name": "testKickerTrigger",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",
@@ -271,8 +392,16 @@ registerPortedMageTests({
       "name": "testKickerReplacement",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",
@@ -327,8 +456,16 @@ registerPortedMageTests({
       "name": "testSurgeTrigger",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",
@@ -392,8 +529,16 @@ registerPortedMageTests({
       "name": "testBestow",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",
@@ -462,8 +607,16 @@ registerPortedMageTests({
       "name": "testBestowRedirect",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",
@@ -570,8 +723,16 @@ registerPortedMageTests({
       "name": "testBestowFallOff",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",
@@ -660,8 +821,16 @@ registerPortedMageTests({
       "name": "testBestowRedirectFallOff",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",
@@ -769,8 +938,16 @@ registerPortedMageTests({
       "name": "testBestowIllegalTarget",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Forker",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Whenever you cast a spell, copy it. You may choose new targets for the copy."
         },
         {
           "op": "addCard",

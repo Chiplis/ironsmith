@@ -336,16 +336,24 @@ registerPortedMageTests({
           "name": "Primal Prayers"
         },
         {
-          "op": "castSpell",
+          "op": "assertCounterCount",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 0,
-          "name": "Grizzly Bears"
+          "name": 0,
+          "counter": "ENERGY",
+          "count": 2
         },
         {
-          "op": "setChoice",
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
           "player": 0,
-          "value": "TestPlayer.CHOICE_NORMAL_COST"
+          "name": "Grizzly Bears",
+          "methods": [
+            "alternative_price"
+          ],
+          "priceSource": "Primal Prayers"
         },
         {
           "op": "setStopAt",
@@ -353,8 +361,13 @@ registerPortedMageTests({
           "phase": "END_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); throw new IllegalStateException(\"Execute went without error\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Choose an alternative cost\")) { Assert.fail(\"Should have thrown error about missing the choice for the alternative cost, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
         }
       ]
     },
@@ -406,11 +419,24 @@ registerPortedMageTests({
           "value": "Cast without paying its mana cost (source: Omniscience"
         },
         {
-          "op": "castSpell",
+          "op": "assertCounterCount",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 0,
-          "name": "Grizzly Bears"
+          "name": 0,
+          "counter": "ENERGY",
+          "count": 2
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "methods": [
+            "alternative_price"
+          ],
+          "priceSource": "Primal Prayers"
         },
         {
           "op": "setStopAt",
@@ -418,8 +444,13 @@ registerPortedMageTests({
           "phase": "END_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); throw new IllegalStateException(\"Execute went without error\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Choose an alternative cost\")) { Assert.fail(\"Should have thrown error about missing the choice for the alternative cost, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
         }
       ]
     }

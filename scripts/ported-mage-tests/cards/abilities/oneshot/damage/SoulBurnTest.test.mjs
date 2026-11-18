@@ -54,7 +54,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Soul Burn",
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=2"
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Soul Burn",
+          "xAllocation": [
+            0,
+            0,
+            2,
+            0,
+            0
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Burn",
+          "count": 1,
+          "xValue": 2,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -73,6 +111,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 18
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Soul Burn",
+          "count": 1
         }
       ]
     },
@@ -127,7 +171,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Soul Burn",
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=2"
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Soul Burn",
+          "xAllocation": [
+            0,
+            0,
+            0,
+            2,
+            0
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Burn",
+          "count": 1,
+          "xValue": 2,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -146,6 +228,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 18
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Soul Burn",
+          "count": 1
         }
       ]
     },
@@ -207,7 +295,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Soul Burn",
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=3"
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Soul Burn",
+          "xAllocation": [
+            0,
+            0,
+            1,
+            2,
+            0
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Burn",
+          "count": 1,
+          "xValue": 3,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -226,6 +352,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 17
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Soul Burn",
+          "count": 1
         }
       ]
     },
@@ -273,7 +405,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Soul Burn",
-          "target": 0
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=1"
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Soul Burn",
+          "xAllocation": [
+            0,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Burn",
+          "count": 1,
+          "xValue": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -292,6 +462,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Soul Burn",
+          "count": 1
         }
       ]
     },
@@ -346,7 +522,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Soul Burn",
-          "target": 0
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=2"
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Soul Burn",
+          "xAllocation": [
+            0,
+            0,
+            0,
+            2,
+            0
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Burn",
+          "count": 1,
+          "xValue": 2,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -365,6 +579,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Soul Burn",
+          "count": 1
         }
       ]
     },
@@ -426,7 +646,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Soul Burn",
-          "target": "Bog Imp"
+          "target": {
+            "groups": [
+              [
+                "Bog Imp"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=2"
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Soul Burn",
+          "xAllocation": [
+            0,
+            0,
+            2,
+            0,
+            0
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Burn",
+          "count": 1,
+          "xValue": 2,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -451,6 +709,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Soul Burn",
+          "count": 1
         }
       ]
     },
@@ -512,7 +776,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Soul Burn",
-          "target": "Bog Imp"
+          "target": {
+            "groups": [
+              [
+                "Bog Imp"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=2"
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Soul Burn",
+          "xAllocation": [
+            0,
+            0,
+            0,
+            2,
+            0
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Burn",
+          "count": 1,
+          "xValue": 2,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -537,6 +839,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Soul Burn",
+          "count": 1
         }
       ]
     },
@@ -598,7 +906,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Soul Burn",
-          "target": "Craw Wurm"
+          "target": {
+            "groups": [
+              [
+                "Craw Wurm"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=2"
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Soul Burn",
+          "xAllocation": [
+            0,
+            0,
+            2,
+            0,
+            0
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Burn",
+          "count": 1,
+          "xValue": 2,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -623,6 +969,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Soul Burn",
+          "count": 1
         }
       ]
     },
@@ -691,7 +1043,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Soul Burn",
-          "target": "Craw Wurm"
+          "target": {
+            "groups": [
+              [
+                "Craw Wurm"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=3"
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Soul Burn",
+          "xAllocation": [
+            0,
+            0,
+            1,
+            2,
+            0
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Burn",
+          "count": 1,
+          "xValue": 3,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -720,6 +1110,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Soul Burn",
+          "count": 1
         }
       ]
     }

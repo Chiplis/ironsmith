@@ -51,8 +51,14 @@ registerPortedMageTests({
           "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"Used \" + islandsUsed + \" Islands\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Island\", true, islandsUsed)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "tapped": true,
+          "count": 5,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -78,8 +84,14 @@ registerPortedMageTests({
           "name": "Aetherize"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"Used \" + islandsUsed + \" Islands\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Island\", true, islandsUsed)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "tapped": true,
+          "count": 9,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -118,8 +130,14 @@ registerPortedMageTests({
           "name": "Aetherize"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"Used \" + islandsUsed + \" Islands\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Island\", true, islandsUsed)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "tapped": true,
+          "count": 14,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

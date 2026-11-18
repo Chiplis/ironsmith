@@ -164,69 +164,82 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "+2:",
-          "target": "Defiant Bloodlord"
+          "target": "Defiant Bloodlord",
+          "source": "Ajani, Inspiring Leader"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ajani, Inspiring Leader",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Defiant Bloodlord"
         },
         {
-          "op": "execute"
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Defiant Bloodlord",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
         },
         {
           "op": "assertPowerToughness",
@@ -243,6 +256,18 @@ registerPortedMageTests({
           "count": 7
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
           "op": "assertLife",
           "player": 1,
           "life": 0
@@ -251,6 +276,11 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 0,
           "life": 40
+        },
+        {
+          "op": "assertResult",
+          "player": 1,
+          "result": "LOST"
         }
       ]
     },
@@ -295,69 +325,82 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "-3:",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "source": "Ajani, Inspiring Leader"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ajani, Inspiring Leader",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Silvercoat Lion"
         },
         {
-          "op": "execute"
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Defiant Bloodlord",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
         },
         {
           "op": "assertExileCount",
@@ -380,6 +423,18 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
           "op": "assertLife",
           "player": 1,
           "life": 0
@@ -388,6 +443,11 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 0,
           "life": 40
+        },
+        {
+          "op": "assertResult",
+          "player": 1,
+          "result": "LOST"
         }
       ]
     },

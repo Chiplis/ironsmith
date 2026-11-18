@@ -39,7 +39,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Goblin Cohort",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",
@@ -84,7 +84,8 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Goblin Cohort",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": false
         },
         {
           "op": "setStopAt",
@@ -92,8 +93,13 @@ registerPortedMageTests({
           "phase": "DECLARE_BLOCKERS"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerB must have 0 actions but found 1\")) { Assert.fail(\"must not have throw error about cannot have action, but got:\\n\" + e.getMessage()); } } assertAttacking(\"Goblin Cohort\", false)"
+          "op": "execute"
+        },
+        {
+          "op": "assertAttacking",
+          "player": 1,
+          "name": "Goblin Cohort",
+          "expected": false
         }
       ]
     }

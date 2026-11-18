@@ -128,12 +128,19 @@ registerPortedMageTests({
           "ability": "{2}, {T}, Discard your hand: Transform {this}."
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tarrian's Journal",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
@@ -141,7 +148,16 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "The Tomb of Aclazotz",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
         }
       ]
     }

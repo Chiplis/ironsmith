@@ -52,8 +52,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, darkImposter, SimpleActivatedAbility.class, 4)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Dark Impostor",
+          "kind": "activated",
+          "count": 4
         }
       ]
     }

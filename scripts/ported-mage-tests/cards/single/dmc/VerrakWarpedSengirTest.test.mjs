@@ -73,8 +73,16 @@ registerPortedMageTests({
       "name": "test_CopyOnPayLife_VariableCost",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"test\", playerA, new SimpleActivatedAbility( new GainLifeEffect(10), new PayVariableLifeCost() ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "test",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Pay X life: You gain 10 life."
         },
         {
           "op": "addCard",
@@ -115,7 +123,7 @@ registerPortedMageTests({
         {
           "op": "assertLife",
           "player": 0,
-          "life": "20 - 2 * 32 * 10"
+          "life": 34
         }
       ]
     },
@@ -138,10 +146,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Pestilent Souleater"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Pestilent Souleater",
+          "ability": "InfectAbility.class",
+          "expected": false
         },
         {
           "op": "activateAbility",
@@ -168,10 +178,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Pestilent Souleater"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Pestilent Souleater",
+          "ability": "InfectAbility.class",
+          "expected": true
         },
         {
           "op": "setStopAt",
@@ -188,7 +200,7 @@ registerPortedMageTests({
         {
           "op": "assertLife",
           "player": 0,
-          "life": "20 - 2 * 2"
+          "life": 16
         }
       ]
     },

@@ -94,7 +94,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Wurmcoil Engine",
+          "name": "Wurmcoil Engine@original",
           "count": 1
         },
         {
@@ -113,10 +113,33 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Wurmcoil Engine",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Wurmcoil Engine"
+          "objectAlias": "@original"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Wurmcoil Engine",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Flameshadow Conjuring",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -124,27 +147,97 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Wurmcoil Engine",
+          "count": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Wurmcoil Engine",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "haste",
+              "expected": true
+            }
+          ]
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Wurmcoil Engine",
-          "defender": 1
+          "defender": 1,
+          "token": true,
+          "expectedLegal": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 26
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 14
         },
         {
           "op": "castSpell",
+          "name": "Kill Shot",
+          "player": 1,
           "turn": 1,
           "phase": "END_COMBAT",
-          "player": 1,
-          "name": "Kill Shot",
           "target": "Wurmcoil Engine"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Kill Shot",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "END_COMBAT",
+          "isSpell": true,
+          "objectTarget": "Wurmcoil Engine"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_COMBAT",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Wurmcoil Engine",
+          "count": 1,
+          "turn": 1,
+          "phase": "END_COMBAT",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_COMBAT"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
         },
         {
           "op": "assertGraveyardCount",
@@ -153,15 +246,26 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@original"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Wurmcoil Engine",
           "count": 1
         },
         {
-          "op": "assertLife",
-          "player": 1,
-          "life": 14
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Phyrexian Wurm Token",
+          "count": 2
         },
         {
           "op": "assertLife",
@@ -169,10 +273,9 @@ registerPortedMageTests({
           "life": 26
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Phyrexian Wurm Token",
-          "count": 2
+          "op": "assertLife",
+          "player": 1,
+          "life": 14
         }
       ]
     }

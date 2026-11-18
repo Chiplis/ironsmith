@@ -35,8 +35,11 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "checkMonarch(\"no monarch before\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, null)"
+          "op": "assertMonarch",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "monarch": null
         },
         {
           "op": "castSpell",
@@ -52,8 +55,11 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkMonarch(\"monarch 1\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, playerA)"
+          "op": "assertMonarch",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "monarch": 0
         },
         {
           "op": "castSpell",
@@ -69,8 +75,11 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkMonarch(\"monarch 2\", 2, PhaseStep.PRECOMBAT_MAIN, playerD, playerD)"
+          "op": "assertMonarch",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "monarch": "playerD"
         },
         {
           "op": "setStrictChooseMode",
@@ -131,8 +140,11 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkMonarch(\"monarch to A\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, playerA)"
+          "op": "assertMonarch",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "monarch": 0
         },
         {
           "op": "attack",
@@ -142,8 +154,11 @@ registerPortedMageTests({
           "defender": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkMonarch(\"monarch to D\", 2, PhaseStep.POSTCOMBAT_MAIN, playerD, playerD)"
+          "op": "assertMonarch",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": "playerD",
+          "monarch": "playerD"
         },
         {
           "op": "attack",
@@ -153,8 +168,11 @@ registerPortedMageTests({
           "defender": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkMonarch(\"nothing to steal (keep on D)\", 3, PhaseStep.POSTCOMBAT_MAIN, playerC, playerD)"
+          "op": "assertMonarch",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": "playerC",
+          "monarch": "playerD"
         },
         {
           "op": "attack",
@@ -164,8 +182,11 @@ registerPortedMageTests({
           "defender": "playerD"
         },
         {
-          "op": "unsupported",
-          "source": "checkMonarch(\"monarch to C\", 3 + 4, PhaseStep.POSTCOMBAT_MAIN, playerC, playerC)"
+          "op": "assertMonarch",
+          "turn": 7,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": "playerC",
+          "monarch": "playerC"
         },
         {
           "op": "setStrictChooseMode",
@@ -185,8 +206,14 @@ registerPortedMageTests({
       "name": "test_MonarchByDies",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDamage(playerA, 100)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "target damage 100 for playerA",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: target damage 100 for playerA deals 100 damage to any target."
         },
         {
           "op": "addCard",
@@ -216,8 +243,11 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkMonarch(\"monarch to A\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, playerA)"
+          "op": "assertMonarch",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "monarch": 0
         },
         {
           "op": "activateAbility",
@@ -234,8 +264,11 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkMonarch(\"monarch to D\", 2, PhaseStep.POSTCOMBAT_MAIN, playerD, playerD)"
+          "op": "assertMonarch",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": "playerD",
+          "monarch": "playerD"
         },
         {
           "op": "setStrictChooseMode",
@@ -250,10 +283,18 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertLostTheGame(playerA)"
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "hasLost",
+          "expected": true
         }
       ]
     }
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
   ]
 });

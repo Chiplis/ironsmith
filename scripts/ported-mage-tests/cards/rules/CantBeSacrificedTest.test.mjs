@@ -7,6 +7,10 @@ registerPortedMageTests({
       "name": "testAssaultSuitWithSacEffect",
       "operations": [
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -47,7 +51,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Walking Corpse"
+          "target": "Walking Corpse",
+          "source": "Assault Suit"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Assault Suit",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Assault Suit",
+          "target": "Walking Corpse",
+          "expected": true
         },
         {
           "op": "castSpell",
@@ -57,13 +84,33 @@ registerPortedMageTests({
           "name": "Innocent Blood"
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Barony Vampire"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Innocent Blood",
+          "count": 1,
+          "onTop": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Sacrifice exactly 1 creature",
+          "excludes": [
+            "Walking Corpse"
+          ],
+          "optional": true
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": "Barony Vampire"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -221,8 +268,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, assaultSuit, zombie, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "targetPlayer": 0,
+          "attachment": "Assault Suit",
+          "target": "Walking Corpse",
+          "expected": true
         },
         {
           "op": "assertPowerToughness",
@@ -312,7 +363,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Bile Urchin",
           "counter": "P1P1",
           "count": 2

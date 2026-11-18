@@ -327,17 +327,64 @@ registerPortedMageTests({
           "target": 0
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "onTop": true,
+          "controller": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Shadowbane",
-          "target": "Lightning Bolt"
+          "name": "Shadowbane"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Shadowbane",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Choose a source",
+          "includes": [
+            "Lightning Bolt"
+          ]
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Lightning Bolt"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "onTop": true,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -398,17 +445,64 @@ registerPortedMageTests({
           "target": 0
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Agonizing Syphon",
+          "count": 1,
+          "onTop": true,
+          "controller": 1
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Shadowbane",
-          "target": "Agonizing Syphon"
+          "name": "Shadowbane"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Shadowbane",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Choose a source",
+          "includes": [
+            "Agonizing Syphon"
+          ]
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Agonizing Syphon"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Agonizing Syphon",
+          "count": 1,
+          "onTop": true,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -487,17 +581,64 @@ registerPortedMageTests({
           "name": "Famine"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Famine",
+          "count": 1,
+          "onTop": true,
+          "controller": 1
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Shadowbane",
-          "target": "Famine"
+          "name": "Shadowbane"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Shadowbane",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Choose a source",
+          "includes": [
+            "Famine"
+          ]
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Famine"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Famine",
+          "count": 1,
+          "onTop": true,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -585,17 +726,64 @@ registerPortedMageTests({
           "value": "2"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fiery Confluence",
+          "count": 1,
+          "onTop": true,
+          "controller": 1
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Shadowbane",
-          "target": "Fiery Confluence"
+          "name": "Shadowbane"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Shadowbane",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Choose a source",
+          "includes": [
+            "Fiery Confluence"
+          ]
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Fiery Confluence"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fiery Confluence",
+          "count": 1,
+          "onTop": true,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",

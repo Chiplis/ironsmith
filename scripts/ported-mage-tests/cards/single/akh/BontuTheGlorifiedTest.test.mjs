@@ -32,7 +32,8 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Bontu the Glorified",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": false
         },
         {
           "op": "setStopAt",
@@ -40,8 +41,12 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerA must have 0 actions but found 1\")) { Assert.fail(\"must throw error about having 0 actions, but got:\\n\" + e.getMessage()); } } assertLife(playerB, 20)"
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
         }
       ]
     },

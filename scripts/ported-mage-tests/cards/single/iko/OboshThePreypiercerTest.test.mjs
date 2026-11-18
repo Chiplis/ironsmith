@@ -25,8 +25,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
+          "op": "forceCoinFaces",
+          "faces": [
+            "tails"
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
         },
         {
           "op": "setStopAt",

@@ -32,8 +32,9 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Lander Token"
+          "targetPlayer": 0,
+          "name": "Lander Token",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -91,15 +92,30 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Lander Token"
+          "targetPlayer": 0,
+          "name": "Lander Token",
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Time Stop"
+          "name": "Time Stop",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Time Stop",
+          "isSpell": true,
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

@@ -18,7 +18,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Geist of Saint Traft",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",
@@ -81,7 +81,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Geist of Saint Traft",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",

@@ -45,6 +45,16 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "END_COMBAT",
+          "player": 1,
+          "options": [
+            ""
+          ],
+          "exact": true
         }
       ]
     },

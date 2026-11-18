@@ -28,9 +28,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "1"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Create a tapped and attacking X/X green Dinosaur creature token with trample, where X is the greatest power among other attacking creatures."
+          ]
         },
         {
           "op": "addTarget",
@@ -50,16 +54,14 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Vampire Token",
-          "count": 0
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "token": true
+          },
+          "count": 0,
+          "checks": []
         },
         {
           "op": "assertLife",
@@ -98,9 +100,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Create X 1/1 white Vampire creature tokens with lifelink, where X is the number of other attacking creatures."
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -115,16 +121,14 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Vampire Token",
-          "count": 0
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "token": true
+          },
+          "count": 0,
+          "checks": []
         },
         {
           "op": "assertLife",
@@ -163,9 +167,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "1"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Create a tapped and attacking X/X green Dinosaur creature token with trample, where X is the greatest power among other attacking creatures."
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -180,23 +188,33 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "power": 2,
-          "toughness": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Vampire Token",
-          "count": 0
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Dinosaur",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "keyword",
+              "value": "Trample",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertLife",
@@ -230,9 +248,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Create X 1/1 white Vampire creature tokens with lifelink, where X is the number of other attacking creatures."
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -247,16 +269,33 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Vampire Token",
-          "count": 1
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Vampire",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "keyword",
+              "value": "Lifelink",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertLife",
@@ -297,9 +336,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "1"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Create a tapped and attacking X/X green Dinosaur creature token with trample, where X is the greatest power among other attacking creatures."
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -314,23 +357,33 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "power": 2,
-          "toughness": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Vampire Token",
-          "count": 0
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Dinosaur",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "keyword",
+              "value": "Trample",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertLife",
@@ -371,9 +424,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Create X 1/1 white Vampire creature tokens with lifelink, where X is the number of other attacking creatures."
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -388,16 +445,33 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Vampire Token",
-          "count": 1
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Vampire",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "keyword",
+              "value": "Lifelink",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertLife",
@@ -459,9 +533,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "1"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Create a tapped and attacking X/X green Dinosaur creature token with trample, where X is the greatest power among other attacking creatures."
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -476,23 +554,33 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "power": 4,
-          "toughness": 4
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Vampire Token",
-          "count": 0
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Dinosaur",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "expected": 4
+            },
+            {
+              "property": "keyword",
+              "value": "Trample",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertLife",
@@ -554,9 +642,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Create X 1/1 white Vampire creature tokens with lifelink, where X is the number of other attacking creatures."
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -571,16 +663,33 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dinosaur Token",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Vampire Token",
-          "count": 5
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "token": true
+          },
+          "count": 5,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Vampire",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "keyword",
+              "value": "Lifelink",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertLife",

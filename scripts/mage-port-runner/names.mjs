@@ -34,7 +34,7 @@ export const DAY_NIGHT_TRANSFORMS = new Map([
 
 export const PHASE_NAMES = new Set([
   "UNTAP", "UPKEEP", "DRAW", "PRECOMBAT_MAIN", "BEGIN_COMBAT", "DECLARE_ATTACKERS",
-  "DECLARE_BLOCKERS", "COMBAT_DAMAGE", "END_COMBAT", "POSTCOMBAT_MAIN", "END_TURN", "CLEANUP",
+  "DECLARE_BLOCKERS", "FIRST_COMBAT_DAMAGE", "COMBAT_DAMAGE", "END_COMBAT", "POSTCOMBAT_MAIN", "END_TURN", "CLEANUP",
 ]);
 
 export function playerIndex(player) {
@@ -54,12 +54,16 @@ export function cardName(raw) {
   const aliasIndex = unquoted.indexOf("@");
   return (aliasIndex > 0 ? unquoted.slice(0, aliasIndex) : unquoted)
     .replace(/\s+using\s+.+$/i, "")
-    .replace(/\s+with\s+(?:alternative cost.*|awaken|blitz|emerge|escape|freerunning.*|jump-start|kicker|mayhem|no alternative cost|overload|prowl.*|prototype|retrace|spectacle|surge|warp|web-slinging)$/i, "")
-    .replace(/^Cast\s+/i, "");
+    .replace(/\s+with\s+(?:alternative cost.*|awaken|blitz|emerge|escape|freerunning.*|jump-start|kicker|mayhem|no alternative cost|overload|prowl.*|prototype|retrace|spectacle|surge|warp|web-slinging)$/i, "");
+}
+
+export function actionCardName(label) {
+  return cardName(label).replace(/^Cast\s+/i, "");
 }
 
 export function zoneName(zone) {
   const raw = String(zone).replace(/^Zone\./, "").toLowerCase();
+  if (raw === "sideboard") return "outside_game";
   if (["outside_game", "battlefield", "graveyard", "library", "command"].includes(raw)) return raw;
   if (raw === "exile" || raw === "exiled") return "exile";
   return "hand";
@@ -73,7 +77,7 @@ export function magePlayerName(player) {
   return `Player${String.fromCharCode("A".charCodeAt(0) + playerIndex(player))}`;
 }
 
-export function normalizePhase(phase, step) {
+export function normalizePhase(phase, step, combatDamageStep) {
   const combined = `${phase || ""} ${step || ""}`.toLowerCase();
   if (combined.includes("upkeep")) return "UPKEEP";
   if (combined.includes("draw")) return "DRAW";
@@ -81,7 +85,7 @@ export function normalizePhase(phase, step) {
   if (combined.includes("begin combat")) return "BEGIN_COMBAT";
   if (combined.includes("declare attackers")) return "DECLARE_ATTACKERS";
   if (combined.includes("declare blockers")) return "DECLARE_BLOCKERS";
-  if (combined.includes("combat damage")) return "COMBAT_DAMAGE";
+  if (combined.includes("combat damage")) return combatDamageStep === "first_strike" ? "FIRST_COMBAT_DAMAGE" : "COMBAT_DAMAGE";
   if (combined.includes("end combat")) return "END_COMBAT";
   if (combined.includes("second main") || combined.includes("postcombat")) return "POSTCOMBAT_MAIN";
   if (combined.includes("end step")) return "END_TURN";
@@ -97,5 +101,5 @@ export function currentPositionIsAfter(state, turn, phase) {
   const currentTurn = Number(state.turn_number || 1);
   const targetTurn = Number(turn || 1);
   if (currentTurn !== targetTurn) return currentTurn > targetTurn;
-  return phaseOrder(normalizePhase(state.phase, state.step)) > phaseOrder(phase);
+  return phaseOrder(normalizePhase(state.phase, state.step, state.combat_damage_step)) > phaseOrder(phase);
 }

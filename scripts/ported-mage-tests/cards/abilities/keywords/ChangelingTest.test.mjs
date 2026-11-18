@@ -234,31 +234,65 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Game-Trail Changeling"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "changeling",
+              "expected": true
+            }
+          ]
+        },
+        {
           "op": "castSpell",
+          "name": "Nameless Inversion",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Nameless Inversion",
           "target": "Game-Trail Changeling"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Nameless Inversion",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Game-Trail Changeling"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Game-Trail Changeling",
-          "power": 7,
-          "toughness": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNotSubtype(\"Game-Trail Changeling\", SubType.SHAPESHIFTER)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Game-Trail Changeling"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 7
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Shapeshifter"
+            }
+          ]
         },
         {
           "op": "assertAbility",
@@ -268,11 +302,46 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Game-Trail Changeling",
-          "ability": "new ChangelingAbility()",
-          "expected": true
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Game-Trail Changeling"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "changeling",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Game-Trail Changeling"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Shapeshifter"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Goblin"
+            }
+          ]
         }
       ]
     },

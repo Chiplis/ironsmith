@@ -35,14 +35,13 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Craw Wurm"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Craw Wurm"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -112,14 +111,13 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Howling Banshee"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Howling Banshee"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -189,18 +187,185 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Transcendent Master"
-        },
-        {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Transcendent Master",
+          "ability": "Level up {1}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Phantasmal Image"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Transcendent Master"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -217,42 +382,66 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Transcendent Master",
+          "power": 9,
+          "toughness": 9
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Transcendent Master",
+          "counter": "LEVEL",
+          "count": 12
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Transcendent Master",
+          "ability": "Lifelink",
+          "expected": true
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Transcendent Master",
+          "ability": "Indestructible",
+          "expected": true
+        },
+        {
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Transcendent Master",
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertEquals(\"Power different\", 9, master.getPower().getValue())"
+          "op": "assertPowerToughness",
+          "player": 1,
+          "name": "Transcendent Master",
+          "power": 3,
+          "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertEquals(\"Toughness different\", 9, master.getToughness().getValue())"
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "Transcendent Master",
+          "counter": "LEVEL",
+          "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTrue(master.getAbilities().contains(LifelinkAbility.getInstance()))"
+          "op": "assertAbility",
+          "player": 1,
+          "name": "Transcendent Master",
+          "ability": "Lifelink",
+          "expected": false
         },
         {
-          "op": "unsupported",
-          "source": "assertTrue(master.getAbilities().containsRule(IndestructibleAbility.getInstance()))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertEquals(\"Power different\", 3, masterCopied.getPower().getValue())"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertEquals(\"Toughness different\", 3, masterCopied.getToughness().getValue())"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertFalse(masterCopied.getAbilities().contains(LifelinkAbility.getInstance()))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertFalse(masterCopied.getAbilities().containsRule(IndestructibleAbility.getInstance()))"
+          "op": "assertAbility",
+          "player": 1,
+          "name": "Transcendent Master",
+          "ability": "Indestructible",
+          "expected": false
         }
       ]
     },
@@ -288,14 +477,18 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Illusionary Servant"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Illusionary Servant"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -305,14 +498,18 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Illusionary Servant"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Illusionary Servant-M10"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -419,14 +616,13 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Ravager of the Fells"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Ravager of the Fells"
+          ]
         },
         {
           "op": "castSpell",
@@ -434,6 +630,14 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Asceticism"
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Ravager of the Fells",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -519,14 +723,13 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Geralf's Messenger"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Geralf's Messenger"
+          ]
         },
         {
           "op": "addTarget",
@@ -544,6 +747,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Geralf's Messenger",
+          "tapped": true
         },
         {
           "op": "assertLife",
@@ -603,14 +812,13 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Lurebound Scarecrow"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Lurebound Scarecrow"
+          ]
         },
         {
           "op": "setChoice",
@@ -695,14 +903,13 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Lurebound Scarecrow"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Lurebound Scarecrow"
+          ]
         },
         {
           "op": "setChoice",
@@ -782,14 +989,39 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Phantasmal Image",
+          "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Azure Drake"
+          "value": "Enter as a copy of Azure Drake"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Azure Drake",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Azure Drake",
+          "ability": "Flying",
+          "expected": true
         },
         {
           "op": "attack",
@@ -799,25 +1031,27 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 1,
           "player": 1,
+          "attacker": "Azure Drake",
           "blocker": "Llanowar Elves",
-          "attacker": "Azure Drake"
+          "expected": false
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Azure Drake",
-          "defender": 1
+          "defender": 0
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 2,
           "player": 0,
+          "attacker": "Azure Drake",
           "blocker": "Elite Vanguard",
-          "attacker": "Azure Drake"
+          "expected": false
         },
         {
           "op": "setStrictChooseMode",
@@ -887,6 +1121,19 @@ registerPortedMageTests({
           "value": "X=0"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chalice of the Void",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
@@ -896,31 +1143,62 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 1,
-          "value": true
+          "value": "Enter as a copy of Steel Hellkite"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Phantasmal Image",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Steel Hellkite",
           "player": 1,
-          "value": "Steel Hellkite"
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
           "attacker": "Steel Hellkite",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "activateAbility",
           "turn": 4,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "ability": "{X}:"
+          "ability": "{X}:",
+          "source": "Steel Hellkite"
         },
         {
           "op": "setChoice",
           "player": 1,
           "value": "X=0"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Steel Hellkite",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -977,7 +1255,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Frost Titan",
+          "name": "Frost Titan@original",
           "count": 1
         },
         {
@@ -991,7 +1269,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Island",
+          "name": "Island@imageMana",
           "count": 2
         },
         {
@@ -1026,7 +1304,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Phantasmal Image",
+          "name": "Phantasmal Image@image",
           "count": 1
         },
         {
@@ -1035,6 +1313,24 @@ registerPortedMageTests({
           "player": 1,
           "name": "Island",
           "count": 2
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "source": "@imageMana.1",
+          "ability": "{T}: Add {U}",
+          "count": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "source": "@imageMana.2",
+          "ability": "{T}: Add {U}",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -1044,9 +1340,12 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "value": true
+          "count": 1,
+          "text": "Cast Phantasmal Image"
         },
         {
           "op": "setChoice",
@@ -1056,41 +1355,77 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 1,
-          "target": "Island"
+          "target": "@imageMana.1"
         },
         {
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 1,
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": 0,
-          "count": "Frost Titan"
+          "name": "Frost Titan",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Frost Titan",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": 1,
-          "count": "Frost Titan"
+          "count": 1,
+          "source": "Frost Titan",
+          "abilityKind": "Triggered",
+          "objectTarget": "Island"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "resolutions": 1
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "name": "Veil of Secrecy"
+          "name": "Veil of Secrecy",
+          "target": "@original"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "target": "Frost Titan[no copy]"
+          "count": 1,
+          "text": "Cast Veil of Secrecy",
+          "objectTarget": "Frost Titan"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "count": 1,
+          "source": "Frost Titan",
+          "abilityKind": "Triggered",
+          "controller": 0,
+          "onTop": true
         },
         {
           "op": "setChoice",
@@ -1101,75 +1436,169 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
-          "player": null
+          "player": 1,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "count": 1,
+          "text": "Cast Veil of Secrecy"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "resolutions": 1
+        },
+        {
+          "op": "assertAbility",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "name": "@original",
+          "ability": "Shroud",
+          "expected": true
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Island",
+          "tapped": true,
+          "count": 6
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Veil of Secrecy"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Frost Titan[only copy]"
+          "name": "Veil of Secrecy",
+          "target": "@image"
         },
         {
           "op": "setChoice",
           "player": 1,
-          "value": "When {this} becomes the target of a spell or ability, sacrifice it."
+          "value": "When this creature becomes the target of a spell or ability, sacrifice it."
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 2,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 1,
-          "life": 20
-        },
-        {
-          "op": "assertLife",
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "life": 20
+          "count": 1,
+          "text": "Cast Veil of Secrecy",
+          "objectTarget": "Frost Titan"
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Frost Titan",
-          "count": 1
+          "count": 2,
+          "source": "Frost Titan",
+          "abilityKind": "Triggered",
+          "controller": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Frost Titan",
+          "abilityKind": "Triggered",
+          "text": "sacrifice",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "name": "Frost Titan",
-          "count": 0
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Phantasmal Image",
           "count": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "count": 1,
+          "source": "@image",
+          "abilityKind": "Triggered",
+          "controller": 1,
+          "text": "counter it unless"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "resolutions": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Frost Titan",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Frost Titan",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
           "op": "assertTappedCount",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
           "name": "Island",
           "tapped": true,
-          "count": "2 + 2 * 2 + 2 * 2"
+          "count": 6
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "tapped": true,
+          "count": 4
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
         }
       ]
     },
@@ -1219,14 +1648,13 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Wurmcoil Engine"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Wurmcoil Engine"
+          ]
         },
         {
           "op": "castSpell",
@@ -1334,14 +1762,13 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Thalakos Seer"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Thalakos Seer"
+          ]
         },
         {
           "op": "castSpell",
@@ -1462,14 +1889,13 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Kitchen Finks"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Kitchen Finks"
+          ]
         },
         {
           "op": "castSpell",
@@ -1484,14 +1910,13 @@ registerPortedMageTests({
           "target": "Kitchen Finks[only copy]"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Kitchen Finks"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Kitchen Finks"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -1614,14 +2039,13 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Butcher Ghoul"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Butcher Ghoul"
+          ]
         },
         {
           "op": "castSpell",
@@ -1636,14 +2060,13 @@ registerPortedMageTests({
           "target": "Butcher Ghoul[only copy]"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Butcher Ghoul"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Butcher Ghoul"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -1740,19 +2163,35 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Enter as a copy of Wurmcoil Engine"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Phantasmal Image",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Wurmcoil Engine",
           "player": 0,
-          "value": "Wurmcoil Engine"
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Wurmcoil Engine",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -1843,19 +2282,35 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Enter as a copy of Voice of Resurgence"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Phantasmal Image",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Voice of Resurgence",
           "player": 0,
-          "value": "Voice of Resurgence"
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Voice of Resurgence",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -1965,11 +2420,6 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Chimeric Staff"
         },
         {
@@ -1985,36 +2435,67 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should be an artifact\", staffA.isArtifact(currentGame))"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Chimeric Staff"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Construct"
+            }
+          ],
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should not be a creature\", !staffA.isCreature(currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should not be an Illusion\", !staffA.hasSubtype(SubType.ILLUSION, currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should not be a Construct\", !staffA.hasSubtype(SubType.CONSTRUCT, currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should have the sacrifice trigger\", staffA.getAbilities(currentGame).containsClass(BecomesTargetSourceTriggeredAbility.class))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Chimeric Staff should be an artifact\", staffB.isArtifact(currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Chimeric Staff should be a creature\", staffB.isCreature(currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Chimeric Staff should be a Construct\", staffB.hasSubtype(SubType.CONSTRUCT, currentGame))"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Chimeric Staff"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            },
+            {
+              "property": "cardType",
+              "expected": false,
+              "value": "Creature"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Illusion"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Construct"
+            },
+            {
+              "property": "ability",
+              "expected": true,
+              "value": "becomes the target of a spell or ability",
+              "kind": "triggered"
+            }
+          ],
+          "count": 1
         }
       ]
     },
@@ -2067,11 +2548,6 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Cloak and Dagger"
         },
         {
@@ -2087,52 +2563,87 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should be an artifact\", cloakA.isArtifact(currentGame))"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Cloak and Dagger"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Kindred"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Rogue"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Equipment"
+            }
+          ],
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should be kindred\", cloakA.isKindred(currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should not be a creature\", !cloakA.isCreature(currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should be a Rogue\", cloakA.hasSubtype(SubType.ROGUE, currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should be an Illusion\", cloakA.hasSubtype(SubType.ILLUSION, currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should be an Equipment\", cloakA.hasSubtype(SubType.EQUIPMENT, currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Phantasmal Image should have the sacrifice trigger\", cloakA.getAbilities(currentGame).containsClass(BecomesTargetSourceTriggeredAbility.class))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Cloak and Dagger should be an artifact\", cloakB.isArtifact(currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Cloak and Dagger should be a creature\", cloakB.isCreature(currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Cloak and Dagger should be kindred\", cloakB.isKindred(currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Cloak and Dagger should be a Rogue\", cloakB.hasSubtype(SubType.ROGUE, currentGame))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTrue(\"Cloak and Dagger should be an Equipment\", cloakB.hasSubtype(SubType.EQUIPMENT, currentGame))"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Cloak and Dagger"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            },
+            {
+              "property": "cardType",
+              "expected": false,
+              "value": "Creature"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Illusion"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Kindred"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Rogue"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Equipment"
+            },
+            {
+              "property": "ability",
+              "expected": true,
+              "value": "becomes the target of a spell or ability",
+              "kind": "triggered"
+            }
+          ],
+          "count": 1
         }
       ]
     },
@@ -2143,7 +2654,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Phantasmal Image",
+          "name": "Phantasmal Image@sidisi-replica",
           "count": 1
         },
         {
@@ -2168,34 +2679,32 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Sidisi, Undead Vizier"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "addTarget",
           "player": 0,
-          "value": "Sidisi, Undead Vizier"
+          "target": "Phantasmal Image@sidisi-replica"
         },
         {
-          "op": "setChoice",
+          "op": "addTarget",
           "player": 0,
-          "value": "Sidisi, Undead Vizier[only copy]"
+          "target": "Phantasmal Image@sidisi-replica"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Sidisi, Undead Vizier[only copy]"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Search your library for a card, put it into your hand, then shuffle",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "addTarget",
@@ -2219,6 +2728,18 @@ registerPortedMageTests({
           "player": 0,
           "name": "Mountain",
           "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Phantasmal Image",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Sidisi, Undead Vizier",
+          "count": 1
         }
       ]
     },
@@ -2229,7 +2750,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Phantasmal Image",
+          "name": "Phantasmal Image@sidisi-replica",
           "count": 1
         },
         {
@@ -2261,34 +2782,32 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Sidisi, Undead Vizier"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "addTarget",
           "player": 0,
-          "value": "Sidisi, Undead Vizier"
+          "target": "Phantasmal Image@sidisi-replica"
         },
         {
-          "op": "setChoice",
+          "op": "addTarget",
           "player": 0,
-          "value": "Sidisi, Undead Vizier[only copy]"
+          "target": "Phantasmal Image@sidisi-replica"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Sidisi, Undead Vizier[only copy]"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Search your library for a card, put it into your hand, then shuffle",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "addTarget",
@@ -2311,6 +2830,18 @@ registerPortedMageTests({
           "op": "assertHandCount",
           "player": 0,
           "name": "Mountain",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Phantasmal Image",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Sidisi, Undead Vizier",
           "count": 1
         }
       ]

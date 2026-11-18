@@ -36,8 +36,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertWonTheGame(playerA)"
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "hasWon",
+          "expected": true
         },
         {
           "op": "assertLife",
@@ -119,8 +121,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertHasNotLostTheGame(playerA)"
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "hasLost",
+          "expected": false
         }
       ]
     },
@@ -156,7 +160,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "skipInitShuffling"
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -166,33 +184,79 @@ registerPortedMageTests({
           "name": "Angel's Grace"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Angel's Grace"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Angel's Grace",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "ONGOING"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Bandage"
+          "name": "Bandage",
+          "target": "Laboratory Maniac"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertWonTheGame(playerA)"
-        },
-        {
-          "op": "assertLife",
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "life": 20
+          "count": 1,
+          "source": "Bandage",
+          "objectTarget": "Laboratory Maniac"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
+        },
+        {
+          "op": "assertResult",
+          "player": 1,
+          "result": "LOST"
         },
         {
           "op": "assertLife",
+          "life": 20,
+          "player": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLife",
+          "life": 20,
           "player": 1,
-          "life": 20
+          "seatIndependent": true
         }
       ]
     },
@@ -242,7 +306,9 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "skipInitShuffling"
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
         },
         {
           "op": "addCard",
@@ -259,6 +325,18 @@ registerPortedMageTests({
           "count": 3
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 4,
+          "seatIndependent": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -266,10 +344,33 @@ registerPortedMageTests({
           "name": "Angel's Grace"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Angel's Grace"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Angel's Grace",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "ONGOING"
         },
         {
           "op": "castSpell",
@@ -279,9 +380,12 @@ registerPortedMageTests({
           "name": "Ad Nauseam"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "count": 1,
+          "source": "Ad Nauseam"
         },
         {
           "op": "setChoice",
@@ -297,6 +401,66 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": -5,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "ONGOING"
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Serum Visions",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Bogardan Hellkite",
+          "count": 3,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ad Nauseam",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -306,44 +470,41 @@ registerPortedMageTests({
           "name": "Serum Visions"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertGraveyardCount",
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Angel's Grace",
-          "count": 1
+          "count": 1,
+          "source": "Serum Visions"
         },
         {
-          "op": "assertGraveyardCount",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Ad Nauseam",
-          "count": 1
+          "resolutions": 1
         },
         {
-          "op": "assertGraveyardCount",
+          "op": "assertResult",
           "player": 0,
-          "name": "Serum Visions",
-          "count": 1
+          "result": "WON"
         },
         {
-          "op": "assertLife",
-          "player": 0,
-          "life": -5
-        },
-        {
-          "op": "assertLife",
+          "op": "assertResult",
           "player": 1,
-          "life": 20
+          "result": "LOST"
         },
         {
-          "op": "unsupported",
-          "source": "assertWonTheGame(playerA)"
+          "op": "assertLife",
+          "life": -5,
+          "player": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLife",
+          "life": 20,
+          "player": 1,
+          "seatIndependent": true
         }
       ]
     }

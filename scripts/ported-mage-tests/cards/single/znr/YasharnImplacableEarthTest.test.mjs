@@ -114,11 +114,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}"
+          "kind": "activate_ability",
+          "label": "{T}",
+          "source": "Flooded Strand"
         },
         {
           "op": "setStopAt",
@@ -126,8 +128,7 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Can't find ability to activate command: {T}\")) { Assert.fail(\"must throw error about having 0 actions, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
         }
       ]
     },
@@ -209,11 +210,13 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "activateAbility",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}"
+          "kind": "activate_ability",
+          "label": "{2}",
+          "source": "Armillary Sphere"
         },
         {
           "op": "setStopAt",
@@ -221,8 +224,12 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Can't find ability to activate command: {2}\")) { Assert.fail(\"must throw error about having 0 actions, but got:\\n\" + e.getMessage()); } } assertHandCount(playerA, 0)"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
         }
       ]
     },
@@ -372,8 +379,14 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"Token-maker\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Token Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Create two Treasure tokens. Create two Food tokens."
         },
         {
           "op": "addCard",

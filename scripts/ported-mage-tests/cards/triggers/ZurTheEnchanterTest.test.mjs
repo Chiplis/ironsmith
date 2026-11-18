@@ -47,7 +47,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Zur the Enchanter",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",

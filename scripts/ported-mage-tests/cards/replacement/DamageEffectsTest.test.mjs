@@ -56,7 +56,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Ob Nixilis, the Fallen",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",

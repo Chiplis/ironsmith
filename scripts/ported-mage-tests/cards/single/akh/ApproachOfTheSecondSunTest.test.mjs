@@ -72,8 +72,9 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertResult(playerA, GameResult.WON)"
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
         }
       ]
     },
@@ -135,8 +136,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertResult(playerA, GameResult.DRAW)"
+          "op": "assertResult",
+          "player": 0,
+          "result": "ONGOING"
         },
         {
           "op": "assertLife",
@@ -194,8 +196,12 @@ registerPortedMageTests({
           "name": "Approach of the Second Sun"
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Approach of the Second Sun went to library\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Approach of the Second Sun\", 1)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -212,12 +218,20 @@ registerPortedMageTests({
           "name": "Concentrate"
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Approach of the Second Sun is not in top 6 cards\", 3, PhaseStep.UPKEEP, playerA, \"Approach of the Second Sun\", 1)"
+          "op": "assertLibraryCount",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Approach of the Second Sun is 7th card\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Approach of the Second Sun\", 0)"
+          "op": "assertLibraryCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 0
         },
         {
           "op": "assertHandCount",
@@ -250,8 +264,9 @@ registerPortedMageTests({
           "count": 9
         },
         {
-          "op": "unsupported",
-          "source": "assertResult(playerA, GameResult.DRAW)"
+          "op": "assertResult",
+          "player": 0,
+          "result": "ONGOING"
         }
       ]
     },
@@ -306,11 +321,25 @@ registerPortedMageTests({
           "name": "Approach of the Second Sun"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Concentrate"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertStackSize",
@@ -325,6 +354,13 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Concentrate"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertStackSize",
@@ -341,11 +377,26 @@ registerPortedMageTests({
           "name": "Equal Treatment"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
           "op": "assertStackSize",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -377,8 +428,9 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertResult(playerA, GameResult.WON)"
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
         }
       ]
     },
@@ -433,12 +485,20 @@ registerPortedMageTests({
           "name": "Concentrate"
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Approach of the Second Sun is not in top 3 cards\", 3, PhaseStep.UPKEEP, playerA, \"Approach of the Second Sun\", 1)"
+          "op": "assertLibraryCount",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Approach of the Second Sun is 4th card\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Approach of the Second Sun\", 0)"
+          "op": "assertLibraryCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 0
         },
         {
           "op": "assertHandCount",
@@ -471,8 +531,9 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertResult(playerA, GameResult.DRAW)"
+          "op": "assertResult",
+          "player": 0,
+          "result": "ONGOING"
         }
       ]
     },
@@ -524,7 +585,11 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Finale of Promise"
+          "name": "Finale of Promise",
+          "target": [
+            "TestPlayer.TARGET_SKIP",
+            "Approach of the Second Sun"
+          ]
         },
         {
           "op": "setChoice",
@@ -532,34 +597,66 @@ registerPortedMageTests({
           "value": "X=7"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "target": "TARGET_SKIP"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Approach of the Second Sun"
+          "text": "Finale of Promise",
+          "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Yes"
+          "value": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Approach of the Second Sun cast from graveyard gains life\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, 27)"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Approach of the Second Sun cast from graveyard goes to library\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Approach of the Second Sun\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Approach of the Second Sun",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 27,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Finale of Promise"
+          "name": "Finale of Promise",
+          "target": [
+            "TestPlayer.TARGET_SKIP",
+            "Approach of the Second Sun"
+          ]
         },
         {
           "op": "setChoice",
@@ -567,27 +664,55 @@ registerPortedMageTests({
           "value": "X=7"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "target": "TARGET_SKIP"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Approach of the Second Sun"
+          "text": "Finale of Promise",
+          "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Yes"
+          "value": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Approach of the Second Sun cast from graveyard gains life\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, 34)"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Approach of the Second Sun cast from graveyard goes to library\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Approach of the Second Sun\", 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Approach of the Second Sun",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 34,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 2
         },
         {
           "op": "castSpell",
@@ -609,8 +734,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertResult(playerA, GameResult.WON)"
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
         },
         {
           "op": "assertLife",
@@ -686,12 +812,25 @@ registerPortedMageTests({
           "value": "Yes"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Approach of the Second Sun cast from graveyard gains life\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, 27)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": 27
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Copied Card Approach of the Second Sun cast from graveyard does not go to library\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Approach of the Second Sun\", 0)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 1
         },
         {
           "op": "attack",
@@ -711,12 +850,25 @@ registerPortedMageTests({
           "value": "Yes"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Approach of the Second Sun cast from graveyard gains life\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, 27)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": 34
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Copied Card Approach of the Second Sun cast from graveyard does not go to library\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Approach of the Second Sun\", 0)"
+          "op": "assertLibraryCount",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 2
         },
         {
           "op": "castSpell",
@@ -738,8 +890,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertResult(playerA, GameResult.WON)"
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
         },
         {
           "op": "assertLife",
@@ -809,7 +962,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 2
+          "player": 0,
+          "resolutions": 2
         },
         {
           "op": "assertStackSize",
@@ -819,26 +973,43 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Copy of Approach of the Second Sun gains life\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, 27)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 27,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Copy of Approach of the Second Sun does not put a card in library\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Approach of the Second Sun\", 0)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 0
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Approach of the Second Sun gains life\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, 34)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 34,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Approach of the Second Sun goes to library\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Approach of the Second Sun\", 1)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -859,15 +1030,24 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 2
+          "player": 0,
+          "resolutions": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Copy of 2nd Approach of the Second Sun gains life\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, 41)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": 41,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"Copy of 2nd Approach of the Second Sun does not put a card in library\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Approach of the Second Sun\", 1)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Approach of the Second Sun",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -882,8 +1062,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertResult(playerA, GameResult.WON)"
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
         },
         {
           "op": "assertLife",
@@ -990,8 +1171,9 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertResult(playerA, GameResult.WON)"
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
         }
       ]
     },
@@ -1081,8 +1263,9 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertResult(playerA, GameResult.DRAW)"
+          "op": "assertResult",
+          "player": 0,
+          "result": "ONGOING"
         }
       ]
     }

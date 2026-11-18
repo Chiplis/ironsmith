@@ -261,9 +261,11 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "value": "X=3"
+          "kind": "number",
+          "descriptionPrefix": "Choose value for X",
+          "value": 3
         },
         {
           "op": "addTarget",
@@ -271,8 +273,12 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.POSTCOMBAT_MAIN, playerB, 20 - 5 - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "life": "20 - 5 - 3",
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",
@@ -313,17 +319,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "DECLARE_ATTACKERS",
-          "player": 0,
-          "ability": "{T}: Add {C}"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana\", 1, PhaseStep.DECLARE_ATTACKERS, playerA, \"C\", 4)"
-        },
-        {
           "op": "attack",
           "turn": 1,
           "player": 0,
@@ -331,23 +326,71 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "X=3"
-        },
-        {
           "op": "addTarget",
           "player": 0,
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.POSTCOMBAT_MAIN, playerB, 20 - 5 - 3)"
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "ability": "{T}: Add {C}",
+          "source": "Rosheen Meanderer"
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "source": "Mountain",
+          "ability": "{T}: Add {R}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "C",
+          "amount": 4,
+          "holdStack": true,
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Flameblast Dragon",
+          "onTop": true,
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "number",
+          "player": 0,
+          "value": 3,
+          "descriptionPrefix": "Choose value for X"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "life": "20 - 5 - 3",
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",
@@ -434,9 +477,11 @@ registerPortedMageTests({
           "name": "Condescend"
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 1,
-          "value": "X=2"
+          "kind": "number",
+          "descriptionPrefix": "Choose value for X",
+          "value": 2
         },
         {
           "op": "addTarget",
@@ -451,8 +496,12 @@ registerPortedMageTests({
           "ability": "{T}: Add {C}"
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"C\", 4)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "C",
+          "amount": "4"
         },
         {
           "op": "setChoice",
@@ -465,8 +514,12 @@ registerPortedMageTests({
           "target": "Abandon Hope"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.POSTCOMBAT_MAIN, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "life": "20 - 3",
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",

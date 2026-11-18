@@ -7,6 +7,10 @@ registerPortedMageTests({
       "name": "castBasrisAegis",
       "operations": [
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -54,18 +58,34 @@ registerPortedMageTests({
           "target": "Grizzly Bears^Savannah Lions"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Basri's Aegis",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 2
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
         },
         {
-          "op": "addTarget",
+          "op": "setChoice",
           "player": 0,
-          "target": "Basri, Devoted Paladin"
+          "value": "library"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "setChoice",
+          "player": 0,
+          "value": "Basri, Devoted Paladin"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "execute"
@@ -87,6 +107,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Savannah Lions",
           "counter": "P1P1",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Basri, Devoted Paladin",
           "count": 1
         }
       ]

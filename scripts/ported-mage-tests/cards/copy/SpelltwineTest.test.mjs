@@ -85,7 +85,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Spelltwine",
+          "name": "Spelltwine@spelltwine",
           "count": 1
         },
         {
@@ -125,20 +125,38 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Spelltwine",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Spelltwine"
+          "objectAlias": "@spelltwine",
+          "target": {
+            "groups": [
+              [
+                "Impulse"
+              ],
+              [
+                "Blasphemous Act"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Impulse"
+          "op": "assertStackObject",
+          "source": "Spelltwine",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 2
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Blasphemous Act"
+          "op": "assertStackObject",
+          "source": "Mirari",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -161,35 +179,52 @@ registerPortedMageTests({
           "target": "Divination"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Spelltwine",
+          "count": 2,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
+          "player": 0,
+          "name": "@spelltwine",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
           "name": "Impulse",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "name": "Blasphemous Act",
-          "count": 1
-        },
-        {
-          "op": "assertExileCount",
-          "name": "Spelltwine",
-          "count": 1
-        },
-        {
-          "op": "assertExileCount",
+          "player": 0,
           "name": "Night's Whisper",
           "count": 1
         },
         {
           "op": "assertExileCount",
+          "player": 1,
+          "name": "Blasphemous Act",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
           "name": "Divination",
           "count": 1
         },

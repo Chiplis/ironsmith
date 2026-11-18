@@ -57,20 +57,31 @@ registerPortedMageTests({
           "name": "Sakashima the Impostor"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "text": "Sakashima the Impostor",
+          "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Krark, the Thumbless"
+          "value": "Enter as a copy of Krark, the Thumbless"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Sakashima the Impostor",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -93,12 +104,20 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after cast\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast L\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after cast\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast\", 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast",
+          "count": 2
         },
         {
           "op": "assertHandCount",
@@ -109,8 +128,10 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
+          "op": "forceCoinFaces",
+          "faces": [
+            "tails"
+          ]
         },
         {
           "op": "waitStackResolved",
@@ -127,12 +148,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after lose trigger\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast L\", 0)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after lose trigger\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast",
+          "count": 1
         },
         {
           "op": "assertHandCount",
@@ -143,8 +172,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
+          "op": "forceCoinFaces",
+          "faces": [
+            "heads"
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
         },
         {
           "op": "waitStackResolved",
@@ -154,11 +190,6 @@ registerPortedMageTests({
           "once": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
           "op": "assertStackSize",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -166,12 +197,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after lose trigger\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast L\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after win trigger\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast\", 0)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast",
+          "count": 0
         },
         {
           "op": "assertHandCount",
@@ -195,8 +234,33 @@ registerPortedMageTests({
           "value": "Whenever"
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 4
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast",
+          "count": 2
+        },
+        {
+          "op": "forceCoinFaces",
+          "faces": [
+            "heads"
+          ]
         },
         {
           "op": "setChoice",
@@ -204,8 +268,10 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
+          "op": "forceCoinFaces",
+          "faces": [
+            "heads"
+          ]
         },
         {
           "op": "setChoice",

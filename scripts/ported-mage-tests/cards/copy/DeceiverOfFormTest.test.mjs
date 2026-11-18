@@ -28,6 +28,44 @@ registerPortedMageTests({
           "count": 3
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "source": "Deceiver of Form",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Affa Protector",
+          "count": 3,
+          "player": 0,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
@@ -77,6 +115,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Silvercoat Lion",
           "count": 3
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Affa Protector",
+          "count": 0,
+          "player": 0
         },
         {
           "op": "assertPowerToughness",

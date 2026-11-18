@@ -169,26 +169,42 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "activateManaAbility",
+          "source": "Forest",
+          "ability": "Add {G}",
           "player": 0,
-          "name": "Tin Street Hooligan"
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "waitStackResolved",
+          "op": "activateManaAbility",
+          "source": "Mountain",
+          "ability": "Add {R}",
+          "player": 0,
+          "count": 1,
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "GR",
+          "amount": 2
         },
         {
           "op": "castSpell",
+          "name": "Tin Street Hooligan",
+          "player": 0,
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Lightning Bolt",
-          "target": "Tin Street Hooligan"
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Tin Street Hooligan",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "addTarget",
@@ -196,38 +212,80 @@ registerPortedMageTests({
           "target": "Abzan Banner"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Tin Street Hooligan",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "objectTarget": "Abzan Banner",
+          "completeTargets": true
         },
         {
-          "op": "assertPermanentCount",
+          "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": "Tin Street Hooligan"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Tin Street Hooligan"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 0,
           "name": "Tin Street Hooligan",
-          "count": 0
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Tin Street Hooligan",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "objectTarget": "Abzan Banner"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Abzan Banner",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Lightning Bolt",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Abzan Banner",
           "count": 0
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "count": 1
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 1,
-          "count": 2
         }
       ]
     },
@@ -270,11 +328,51 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "activateManaAbility",
+          "source": "Snow-Covered Plains",
+          "ability": "Add {W}",
           "player": 0,
-          "name": "Search for Glory"
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Boreal Druid",
+          "ability": "Add {C}",
+          "player": 0,
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Plains",
+          "ability": "Add {W}",
+          "player": 0,
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "WC",
+          "amount": 3
+        },
+        {
+          "op": "castSpell",
+          "name": "Search for Glory",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Search for Glory",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "addTarget",
@@ -282,16 +380,15 @@ registerPortedMageTests({
           "target": "Snow-Covered Plains"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Snow-Covered Plains",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -367,34 +464,110 @@ registerPortedMageTests({
         },
         {
           "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "source": "Island",
+          "ability": "Add {U}",
           "player": 0,
-          "ability": "{T}: Add {U}",
-          "count": 1
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "source": "Snow-Covered Mountain",
+          "ability": "Add {R}",
           "player": 0,
-          "ability": "{T}: Add {R}",
-          "count": 1
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "UR",
+          "amount": 2
         },
         {
           "op": "activateAbility",
+          "source": "Rimefeather Owl",
+          "ability": "{1}{S}",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{1}{S}",
           "target": "Vodalian Arcanist"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Rimefeather Owl",
+          "count": 1,
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Vodalian Arcanist"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
           "player": 0,
-          "name": "Search for Glory"
+          "name": "Vodalian Arcanist",
+          "count": 1,
+          "counter": "ICE"
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Vodalian Arcanist",
+          "cardType": "SNOW"
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Vodalian Arcanist",
+          "ability": "Add {C}",
+          "player": 0,
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Plains",
+          "ability": "Add {W}",
+          "player": 0,
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Swamp",
+          "ability": "Add {B}",
+          "player": 0,
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "CWB",
+          "amount": 3
+        },
+        {
+          "op": "castSpell",
+          "name": "Search for Glory",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Search for Glory",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "addTarget",
@@ -402,16 +575,15 @@ registerPortedMageTests({
           "target": "Snow-Covered Plains"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Snow-Covered Plains",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -458,6 +630,22 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Snow-Covered Island",
+          "ability": "{T}: Add {U}"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "U",
+          "amount": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -467,7 +655,50 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Silvercoat Lion"
+          "target": {
+            "groups": [
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Berg Strider",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Berg Strider",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "tapped": true,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -482,8 +713,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Silvercoat Lion\", true)"
+          "op": "assertTapped",
+          "name": "Silvercoat Lion",
+          "tapped": true,
+          "player": 1
         }
       ]
     },

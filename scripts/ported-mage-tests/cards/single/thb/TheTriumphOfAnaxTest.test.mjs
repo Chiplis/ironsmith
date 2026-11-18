@@ -57,10 +57,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Memnite"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "ability": "TrampleAbility.class",
+          "expected": true
         },
         {
           "op": "addTarget",
@@ -78,10 +80,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": "T3: Memnite has trample",
-          "name": 3,
-          "ability": "POSTCOMBAT_MAIN",
-          "expected": 0
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "ability": "TrampleAbility.class",
+          "expected": true
         },
         {
           "op": "addTarget",
@@ -99,10 +103,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": "T4: Memnite has trample",
-          "name": 5,
-          "ability": "POSTCOMBAT_MAIN",
-          "expected": 0
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "ability": "TrampleAbility.class",
+          "expected": true
         },
         {
           "op": "addTarget",

@@ -29,20 +29,44 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 1\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Gideon Jura\", CounterType.LOYALTY, 6 + 2)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Gideon Jura",
+          "counter": "LOYALTY",
+          "count": 8,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 2\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Gideon Jura\", CounterType.LOYALTY, 6 + 2 - 2)"
+          "op": "assertCounterCount",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Gideon Jura",
+          "counter": "LOYALTY",
+          "count": 6,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 3\", 3, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Gideon Jura\", CounterType.LOYALTY, 6 + 2 - 2)"
+          "op": "assertCounterCount",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Gideon Jura",
+          "counter": "LOYALTY",
+          "count": 6,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"turn 4\", 4, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Gideon Jura\", CounterType.LOYALTY, 6 + 2 - 2)"
+          "op": "assertCounterCount",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Gideon Jura",
+          "counter": "LOYALTY",
+          "count": 6,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",

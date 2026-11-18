@@ -35,35 +35,57 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Akroma, Angel of Wrath"
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Akroma, Angel of Wrath"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Trample",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Augur il-Vec"
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Augur il-Vec"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Trample",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, {T}, Choose"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Akroma, Angel of Wrath"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Augur il-Vec"
+          "source": "Phyrexian Splicer",
+          "ability": "{2}, {T}, Choose",
+          "target": "Akroma, Angel of Wrath^Augur il-Vec"
         },
         {
           "op": "setChoice",
@@ -71,36 +93,121 @@ registerPortedMageTests({
           "value": "Trample"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Phyrexian Splicer",
+          "abilityKind": "Activated",
+          "objectTarget": "Akroma, Angel of Wrath"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Phyrexian Splicer",
+          "abilityKind": "Activated",
+          "objectTarget": "Augur il-Vec"
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Akroma, Angel of Wrath"
-        },
-        {
-          "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Augur il-Vec"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertEachObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Akroma, Angel of Wrath"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Trample",
+              "expected": false
+            }
+          ]
         },
         {
-          "op": "execute"
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Augur il-Vec"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Trample",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Akroma, Angel of Wrath"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Trample",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Augur il-Vec"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Trample",
+              "expected": false
+            }
+          ]
         }
       ]
     }

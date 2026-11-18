@@ -39,19 +39,24 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}{U}: Exile "
+          "ability": "{3}{U}: Exile ",
+          "source": "Jin-Gitaxias"
         },
         {
           "op": "assertHandCount",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "count": 0
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "count": 14,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": "after III",
-          "name": 3,
-          "count": "POSTCOMBAT_MAIN"
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "count": 15,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -62,10 +67,17 @@ registerPortedMageTests({
           "count": 4
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "TestPlayer.CHOICE_SKIP"
+        },
+        {
           "op": "assertHandCount",
-          "player": "after III",
-          "name": 5,
-          "count": "POSTCOMBAT_MAIN"
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "count": 16,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -77,7 +89,28 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Discard 9 card(s) to reach maximum hand size",
+          "min": 9,
+          "max": 9,
+          "includes": [
+            "Mountain"
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 7
         },
         {
           "op": "assertHandCount",

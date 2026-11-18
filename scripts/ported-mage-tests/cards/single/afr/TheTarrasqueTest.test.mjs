@@ -22,70 +22,143 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "The Tarrasque",
           "player": 0,
-          "name": "The Tarrasque"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "The Tarrasque",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 9,
+          "tapped": true
+        },
+        {
+          "op": "assertAttackDefenders",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "attacker": "The Tarrasque",
+          "defenders": [
+            1
+          ]
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "END_TURN"
         },
         {
-          "op": "execute"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "The Tarrasque"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "haste"
+            },
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "ward"
+            }
+          ]
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "The Tarrasque",
-          "ability": "Haste",
-          "expected": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 2,
           "phase": "END_TURN"
         },
         {
-          "op": "execute"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "The Tarrasque"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "haste"
+            },
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "ward"
+            }
+          ]
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "The Tarrasque",
-          "ability": "Haste",
-          "expected": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 3,
           "phase": "END_TURN"
         },
         {
-          "op": "execute"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "The Tarrasque"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "haste"
+            },
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "ward"
+            }
+          ]
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "The Tarrasque",
-          "ability": "Haste",
-          "expected": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 4,
           "phase": "END_TURN"
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "The Tarrasque",
-          "ability": "Haste",
-          "expected": true
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "The Tarrasque"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "haste"
+            },
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "ward"
+            }
+          ]
         }
       ]
     },

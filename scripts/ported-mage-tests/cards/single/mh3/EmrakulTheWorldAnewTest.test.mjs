@@ -233,20 +233,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Pacifism",
-          "expected": true
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Emrakul, the World Anew",
+          "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Pacifism",
-          "target": "Emrakul, the World Anew"
+          "kind": "cast_spell",
+          "label": "Pacifism",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStopAt",
@@ -254,8 +254,19 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"should have failed on casting Pacifism\"); } catch (AssertionError error) { Assert.assertEquals(\"Can't find ability to activate command: Cast Pacifism$target=Emrakul, the World Anew\", error.getMessage()); }"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Emrakul, the World Anew",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Pacifism",
+          "count": 1
         }
       ]
     },
@@ -299,7 +310,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "-3",
+          "label": "Activate Chandra, Torch of Defiance: -3",
           "expected": false
         },
         {
@@ -307,7 +318,7 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "-3",
+          "label": "Activate Chandra, Torch of Defiance: -3",
           "expected": true
         },
         {
@@ -316,7 +327,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "-3",
-          "target": "Emrakul, the World Anew"
+          "target": "Emrakul, the World Anew",
+          "source": "Chandra, Torch of Defiance"
         },
         {
           "op": "setStopAt",
@@ -327,8 +339,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, emrakul, 4)"
+          "op": "assertDamageReceived",
+          "name": "Emrakul, the World Anew",
+          "player": 1,
+          "damage": 4
         }
       ]
     },

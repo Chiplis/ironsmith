@@ -21,6 +21,10 @@ registerPortedMageTests({
           "count": 7
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -28,33 +32,54 @@ registerPortedMageTests({
           "name": "Novijen Sages"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Novijen Sages",
+          "power": 4,
+          "toughness": 4
+        },
+        {
           "op": "activateAbility",
+          "player": 0,
+          "source": "Novijen Sages",
+          "ability": "{1}, Remove 2 +1/+1 counters from among creatures you control: Draw a card.",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "distribution",
+          "player": 0,
+          "description": "Distribute 2 among targets (assign exactly 2 total)",
+          "choices": [
+            "Novijen Sages",
+            "Novijen Sages"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Novijen Sages",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertPowerToughness",
           "player": 0,
-          "ability": "{1}, Remove two +1/+1 counters"
+          "name": "Novijen Sages",
+          "power": 2,
+          "toughness": 2
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Novijen Sages"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "X=2"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

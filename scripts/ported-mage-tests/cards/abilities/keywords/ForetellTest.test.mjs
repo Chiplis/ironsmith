@@ -29,7 +29,27 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Fore"
+          "ability": "Foretell Behold the Multiverse"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Behold the Multiverse"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -73,15 +93,51 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Fore"
+          "ability": "Foretell Behold the Multiverse"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Behold the Multiverse"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Behold the Multiverse",
+          "count": 1
         },
         {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "label": "Foretell {1}{U}",
+          "label": "Cast Behold the Multiverse using Foretell",
           "expected": false
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Behold the Multiverse",
+          "count": 0
         },
         {
           "op": "setStopAt",
@@ -142,14 +198,35 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Fore"
+          "ability": "Foretell Behold the Multiverse"
         },
         {
-          "op": "activateAbility",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Behold the Multiverse"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Foretell {1}{U}"
+          "name": "Behold the Multiverse",
+          "actionLabel": "Cast Behold the Multiverse (foretell)"
         },
         {
           "op": "addTarget",
@@ -223,14 +300,55 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Susp"
+          "ability": "Suspend Sol Talisman"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Sol Talisman"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 3
+            }
+          ]
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Fore"
+          "ability": "Foretell Lightning Bolt"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Lightning Bolt"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "setStopAt",

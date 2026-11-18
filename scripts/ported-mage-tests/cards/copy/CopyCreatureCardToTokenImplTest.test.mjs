@@ -116,7 +116,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Thrashing Brontodon",
+          "name": "Thrashing Brontodon@native",
           "count": 1
         },
         {
@@ -127,46 +127,89 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "castSpell",
+          "name": "Thrashing Brontodon",
+          "player": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Thrashing Brontodon"
+          "objectAlias": "@native"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Thrashing Brontodon",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Faerie Artisans",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Thrashing Brontodon",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "artifact",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "creature",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "activateAbility",
+          "source": "Thrashing Brontodon",
+          "ability": "Destroy target artifact or enchantment",
+          "player": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "ability": "{1}, Sacrifice",
           "target": "Alpha Myr"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Thrashing Brontodon",
+          "count": 1,
           "turn": 2,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Alpha Myr"
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 20
-        },
-        {
-          "op": "assertLife",
-          "player": 1,
-          "life": 20
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
           "player": 1,
-          "name": "Thrashing Brontodon",
+          "name": "@native",
           "count": 1
         },
         {
@@ -182,8 +225,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Thrashing Brontodon\", CardType.ARTIFACT, true)"
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
         }
       ]
     },
@@ -231,8 +280,54 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTrue(token.getCardType(currentGame).contains(CardType.ARTIFACT))"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Hook-Haunt Drifter",
+            "token": false
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "doubleFaced",
+              "expected": true
+            },
+            {
+              "property": "transformed",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "token": true,
+            "name": "Hook-Haunt Drifter"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            },
+            {
+              "property": "doubleFaced",
+              "expected": true
+            },
+            {
+              "property": "transformed",
+              "expected": true
+            }
+          ],
+          "count": 1
         }
       ]
     }

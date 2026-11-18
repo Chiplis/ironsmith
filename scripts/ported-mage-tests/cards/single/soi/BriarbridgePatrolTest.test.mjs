@@ -105,7 +105,24 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Rabid Bite",
-          "target": "Briarbridge Patrol"
+          "target": {
+            "groups": [
+              [
+                "Briarbridge Patrol"
+              ],
+              [
+                "Wall of Roots"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Rabid Bite",
+          "count": 1,
+          "targetCount": 2
         },
         {
           "op": "setStopAt",
@@ -132,6 +149,12 @@ registerPortedMageTests({
           "player": 1,
           "name": "Wall of Roots",
           "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Wall of Roots",
+          "damage": 3
         }
       ]
     }

@@ -258,8 +258,14 @@ registerPortedMageTests({
       "name": "test_BalefulMastery_BlinkMustResetAlternativeCost",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_ReturnFromAnyToHand(playerA)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Graveyard Return Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Return target card from your graveyard to your hand."
         },
         {
           "op": "addCard",
@@ -319,42 +325,49 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Baleful Mastery",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
           "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "count": 0
-        },
-        {
-          "op": "assertHandCount",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "count": 1
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
+          "player": 1,
           "name": "Goblin Piker",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
+          "player": 1,
           "name": "Grizzly Bears",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "return from graveyard"
+          "ability": "{0}: Return target card from"
         },
         {
           "op": "addTarget",
@@ -373,7 +386,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Baleful Mastery",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -400,35 +414,42 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Baleful Mastery",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
           "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "count": 0
-        },
-        {
-          "op": "assertHandCount",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "count": 1
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
+          "player": 1,
           "name": "Goblin Piker",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
+          "player": 1,
           "name": "Grizzly Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

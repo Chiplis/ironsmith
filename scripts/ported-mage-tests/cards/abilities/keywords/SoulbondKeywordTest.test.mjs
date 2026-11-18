@@ -1738,40 +1738,101 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Elite Vanguard",
           "player": 0,
-          "name": "Elite Vanguard"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "source": "Elite Vanguard",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Trusted Forcemage",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose 0-1",
+          "choices": [
+            "Elite Vanguard"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Trusted Forcemage",
+          "power": 3,
+          "toughness": 3
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "power": 3,
+          "toughness": 2
         },
         {
           "op": "castSpell",
+          "name": "Cloudshift",
+          "player": 0,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Cloudshift",
           "target": "Trusted Forcemage"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Cloudshift",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "objectTarget": "Trusted Forcemage"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Trusted Forcemage",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose 0-1",
+          "choices": []
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

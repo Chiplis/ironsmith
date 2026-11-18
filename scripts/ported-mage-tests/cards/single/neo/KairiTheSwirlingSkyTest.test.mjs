@@ -203,8 +203,9 @@ registerPortedMageTests({
           "target": "Kairi, the Swirling Sky"
         },
         {
-          "op": "addTarget",
+          "op": "assertTargetExcluded",
           "player": 0,
+          "context": "Kairi, the Swirling Sky's triggered ability",
           "target": "Axebane Stag"
         },
         {
@@ -213,8 +214,19 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { foundError = e.getMessage(); } Assert.assertEquals(\"PlayerA - Targets list was setup by addTarget with [Axebane Stag], but not used\", foundError.split(\"\\n\")[0])"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Kairi, the Swirling Sky",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Axebane Stag",
+          "count": 1
         }
       ]
     }

@@ -46,8 +46,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", false ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", false ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", false ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", false ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", false ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 6,
+            "toughness": 4,
+            "manaCost": "{7}",
+            "manaValue": 7,
+            "colors": []
+          }
         }
       ]
     },
@@ -94,8 +105,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 3,
+            "toughness": 2,
+            "manaCost": "{2}{R}",
+            "manaValue": 3,
+            "colors": [
+              "red"
+            ]
+          }
         }
       ]
     },
@@ -216,8 +240,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", false ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", false ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", false ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", false ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", false ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 6,
+            "toughness": 4,
+            "manaCost": "{7}",
+            "manaValue": 7,
+            "colors": []
+          }
         }
       ]
     },
@@ -239,8 +274,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerB, new EntersBattlefieldAllTriggeredAbility( new GainLifeEffect(1), filterB, false ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Cast Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever you cast a colorless spell, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Entry Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever a colorless permanent enters, you gain 1 life."
         },
         {
           "op": "castSpell",
@@ -291,8 +342,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerB, new EntersBattlefieldAllTriggeredAbility( new GainLifeEffect(1), filterB, false ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Cast Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever you cast a red spell, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Entry Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever a red permanent enters, you gain 1 life."
         },
         {
           "op": "castSpell",
@@ -343,8 +410,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerB, new EntersBattlefieldAllTriggeredAbility( new GainLifeEffect(1), filterB, false ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Cast Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever you cast a creature spell with power 6 and toughness 4, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Entry Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever a creature with power 6 and toughness 4 enters, you gain 1 life."
         },
         {
           "op": "castSpell",
@@ -395,8 +478,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerB, new EntersBattlefieldAllTriggeredAbility( new GainLifeEffect(1), filterB, false ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Cast Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever you cast a creature spell with power 3 and toughness 2, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Entry Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever a creature with power 3 and toughness 2 enters, you gain 1 life."
         },
         {
           "op": "castSpell",
@@ -447,8 +546,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerB, new EntersBattlefieldAllTriggeredAbility( new GainLifeEffect(1), filterB, false ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Cast Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever you cast a spell with mana value 7, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Entry Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever a permanent with mana value 7 enters, you gain 1 life."
         },
         {
           "op": "castSpell",
@@ -499,8 +614,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerB, new EntersBattlefieldAllTriggeredAbility( new GainLifeEffect(1), filterB, false ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Cast Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever you cast a spell with mana value 3, you gain 1 life."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Entry Watcher",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Whenever a permanent with mana value 3 enters, you gain 1 life."
         },
         {
           "op": "castSpell",
@@ -565,6 +696,21 @@ registerPortedMageTests({
           "name": "Blitz Automaton"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -572,14 +718,17 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "text": "Clone",
+          "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Blitz Automaton"
+          "value": "Enter as a copy of Blitz Automaton"
         },
         {
           "op": "setStopAt",
@@ -600,8 +749,19 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", false ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", false ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", false ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", false ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", false ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 6,
+            "toughness": 4,
+            "manaCost": "{7}",
+            "manaValue": 7,
+            "colors": []
+          }
         }
       ]
     },
@@ -637,6 +797,21 @@ registerPortedMageTests({
           "name": "Blitz Automaton using Prototype"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -644,14 +819,17 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "text": "Clone",
+          "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Blitz Automaton"
+          "value": "Enter as a copy of Blitz Automaton"
         },
         {
           "op": "setStopAt",
@@ -672,8 +850,21 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 3,
+            "toughness": 2,
+            "manaCost": "{2}{R}",
+            "manaValue": 3,
+            "colors": [
+              "red"
+            ]
+          }
         }
       ]
     },
@@ -735,8 +926,19 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", false ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", false ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", false ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", false ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", false ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 6,
+            "toughness": 4,
+            "manaCost": "{7}",
+            "manaValue": 7,
+            "colors": []
+          }
         }
       ]
     },
@@ -798,8 +1000,21 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 3,
+            "toughness": 2,
+            "manaCost": "{2}{R}",
+            "manaValue": 3,
+            "colors": [
+              "red"
+            ]
+          }
         }
       ]
     },
@@ -891,8 +1106,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", false ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", false ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", false ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", false ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", false ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 6,
+            "toughness": 4,
+            "manaCost": "{7}",
+            "manaValue": 7,
+            "colors": []
+          }
         }
       ]
     },
@@ -984,8 +1210,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 3,
+            "toughness": 2,
+            "manaCost": "{2}{R}",
+            "manaValue": 3,
+            "colors": [
+              "red"
+            ]
+          }
         }
       ]
     },
@@ -1062,10 +1301,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Blitz Automaton",
           "count": 0
-        },
-        {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
         }
       ]
     },
@@ -1142,10 +1377,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Blitz Automaton",
           "count": 0
-        },
-        {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
         }
       ]
     },
@@ -1224,10 +1455,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Blitz Automaton",
           "count": 0
-        },
-        {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", false ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", false ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", false ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", false ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", false ? 3 : 7, permanent.getManaValue()); }"
         }
       ]
     },
@@ -1306,10 +1533,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Blitz Automaton",
           "count": 0
-        },
-        {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
         }
       ]
     },
@@ -1460,8 +1683,21 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 3,
+            "toughness": 2,
+            "manaCost": "{2}{R}",
+            "manaValue": 3,
+            "colors": [
+              "red"
+            ]
+          }
         }
       ]
     },
@@ -1552,8 +1788,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 3,
+            "toughness": 2,
+            "manaCost": "{2}{R}",
+            "manaValue": 3,
+            "colors": [
+              "red"
+            ]
+          }
         }
       ]
     },
@@ -1607,8 +1856,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 3,
+            "toughness": 2,
+            "manaCost": "{2}{R}",
+            "manaValue": 3,
+            "colors": [
+              "red"
+            ]
+          }
         },
         {
           "op": "assertTappedCount",
@@ -1870,8 +2132,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 3,
+            "toughness": 2,
+            "manaCost": "{2}{R}",
+            "manaValue": 3,
+            "colors": [
+              "red"
+            ]
+          }
         }
       ]
     },
@@ -1907,6 +2182,21 @@ registerPortedMageTests({
           "name": "Blitz Automaton using Prototype"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -1914,14 +2204,17 @@ registerPortedMageTests({
           "name": "Hulking Metamorph"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "text": "Hulking Metamorph",
+          "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Blitz Automaton"
+          "value": "Enter as a copy of Blitz Automaton"
         },
         {
           "op": "setStopAt",
@@ -1983,6 +2276,21 @@ registerPortedMageTests({
           "name": "Blitz Automaton"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -1990,14 +2298,17 @@ registerPortedMageTests({
           "name": "Hulking Metamorph using Prototype"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "text": "Hulking Metamorph",
+          "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Blitz Automaton"
+          "value": "Enter as a copy of Blitz Automaton"
         },
         {
           "op": "setStopAt",
@@ -2072,12 +2383,58 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Infinite Reflection",
           "target": "Blitz Automaton"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0
+        },
+        {
+          "op": "assertAttachedTo",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "attachment": "Infinite Reflection",
+          "target": "Blitz Automaton",
+          "expected": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Infinite Reflection",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -2105,8 +2462,21 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 3,
+            "toughness": 2,
+            "manaCost": "{2}{R}",
+            "manaValue": 3,
+            "colors": [
+              "red"
+            ]
+          }
         }
       ]
     },
@@ -2155,12 +2525,58 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Infinite Reflection",
           "target": "Blitz Automaton"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0
+        },
+        {
+          "op": "assertAttachedTo",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "attachment": "Infinite Reflection",
+          "target": "Blitz Automaton",
+          "expected": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Infinite Reflection",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -2188,8 +2604,19 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", false ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", false ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", false ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", false ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", false ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 6,
+            "toughness": 4,
+            "manaCost": "{7}",
+            "manaValue": 7,
+            "colors": []
+          }
         }
       ]
     },
@@ -2225,6 +2652,21 @@ registerPortedMageTests({
           "name": "Blitz Automaton using Prototype"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -2232,14 +2674,17 @@ registerPortedMageTests({
           "name": "Progenitor Mimic"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "text": "Progenitor Mimic",
+          "count": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Blitz Automaton"
+          "value": "Enter as a copy of Blitz Automaton"
         },
         {
           "op": "setStopAt",
@@ -2260,8 +2705,21 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", true ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", true ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", true ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", true ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", true ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 3,
+            "toughness": 2,
+            "manaCost": "{2}{R}",
+            "manaValue": 3,
+            "colors": [
+              "red"
+            ]
+          }
         }
       ]
     },
@@ -2449,8 +2907,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_PERMANENT, playerA.getId(), currentGame )) { if (!permanent.getName().equals(automaton)) { continue; } Assert.assertTrue(\"Needs haste\", permanent.getAbilities(currentGame).contains(HasteAbility.getInstance())); Assert.assertEquals(\"Power is wrong\", false ? 3 : 6, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness is wrong\", false ? 2 : 4, permanent.getToughness().getValue()); Assert.assertTrue(\"Color is wrong\", false ? permanent.getColor(currentGame).isRed() : permanent.getColor(currentGame).isColorless() ); Assert.assertEquals(\"Mana cost is wrong\", false ? \"{2}{R}\" : \"{7}\", permanent.getManaCost().getText()); Assert.assertEquals(\"Mana value is wrong\", false ? 3 : 7, permanent.getManaValue()); }"
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Blitz Automaton",
+          "abilities": [
+            "Haste"
+          ],
+          "expected": {
+            "power": 6,
+            "toughness": 4,
+            "manaCost": "{7}",
+            "manaValue": 7,
+            "colors": []
+          }
         },
         {
           "op": "assertLife",

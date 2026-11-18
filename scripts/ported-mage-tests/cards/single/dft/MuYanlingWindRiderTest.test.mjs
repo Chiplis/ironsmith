@@ -99,6 +99,17 @@ registerPortedMageTests({
           "name": "Mu Yanling, Wind Rider"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Vehicle Token",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -110,7 +121,8 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Crew 1"
+          "ability": "Tap any number of untapped creatures you control with total power 1 or more: Continuous.",
+          "source": "Vehicle Token"
         },
         {
           "op": "setChoice",
@@ -171,7 +183,7 @@ registerPortedMageTests({
           "op": "assertAbility",
           "player": 0,
           "name": "Vehicle Token",
-          "ability": "Flying",
+          "ability": "FlyingAbility.class",
           "expected": true
         },
         {

@@ -131,25 +131,31 @@ registerPortedMageTests({
           "name": "Replenish"
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN",
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Replenish",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
           "name": "Oath of Lieges",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "END_TURN",
           "player": 0,
           "name": "Plains",
           "count": 5
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "END_TURN",
           "player": 1,
           "name": "Plains",
           "count": 4
@@ -165,17 +171,27 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addTarget",
+          "op": "setObjectChoices",
           "player": 1,
-          "target": "Plains"
+          "description": "objects",
+          "choices": [
+            "Plains"
+          ]
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 2,
-          "phase": "END_TURN"
+          "phase": "UPKEEP",
+          "source": "Oath of Lieges",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "targetCount": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "UPKEEP"
         },
         {
           "op": "assertPermanentCount",
@@ -303,16 +319,6 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Plains"
-        },
-        {
           "op": "addTarget",
           "player": 0,
           "target": 1
@@ -323,17 +329,34 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": "Plains"
         },
         {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
+          "op": "addTarget",
+          "player": 0,
+          "target": "Plains"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "source": "Oath of Lieges",
+          "count": 2,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
         },
         {
           "op": "assertPermanentCount",
@@ -427,6 +450,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Plains",
           "ability": "{T}: Add {W}",
           "count": 4
         },
@@ -438,6 +462,33 @@ registerPortedMageTests({
           "name": "Replenish"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Replenish",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Oath of Lieges",
+          "count": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Island",
+          "ability": "{T}: Add {U}",
+          "count": 3
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -445,69 +496,75 @@ registerPortedMageTests({
           "name": "Copy Enchantment"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Copy Enchantment",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Oath of Lieges"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Oath of Lieges"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "END_TURN",
           "player": 0,
           "name": "Oath of Lieges",
           "count": 2
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "END_TURN",
           "player": 0,
           "name": "Plains",
           "count": 10
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "END_TURN",
           "player": 1,
           "name": "Plains",
           "count": 12
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "At the beginning of each player's upkeep"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "END_TURN",
           "player": 0,
           "name": "Plains",
           "count": 10
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "END_TURN",
           "player": 1,
           "name": "Plains",
           "count": 12
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "At the beginning of each player's upkeep"
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
         },
         {
           "op": "setChoice",
@@ -522,29 +579,22 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
           "target": "Plains"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 3,
-          "phase": "END_TURN"
+          "phase": "UPKEEP",
+          "source": "Oath of Lieges",
+          "count": 2,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "targetCount": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP"
         },
         {
           "op": "assertPermanentCount",
@@ -576,6 +626,11 @@ registerPortedMageTests({
           "player": 0,
           "name": "Island",
           "count": 3
+        },
+        {
+          "op": "clearZone",
+          "zone": "LIBRARY",
+          "player": 0
         },
         {
           "op": "addCard",
@@ -650,12 +705,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Oath of Lieges"
+          "value": "Enter as a copy of Oath of Lieges"
         },
         {
           "op": "assertPermanentCount",
@@ -663,15 +713,17 @@ registerPortedMageTests({
           "phase": "END_TURN",
           "player": 0,
           "name": "Oath of Lieges",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 2,
           "phase": "END_TURN",
-          "player": 0,
+          "player": 1,
           "name": "Oath of Lieges",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -679,7 +731,8 @@ registerPortedMageTests({
           "phase": "END_TURN",
           "player": 0,
           "name": "Plains",
-          "count": 10
+          "count": 10,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -687,7 +740,8 @@ registerPortedMageTests({
           "phase": "END_TURN",
           "player": 1,
           "name": "Plains",
-          "count": 12
+          "count": 12,
+          "seatIndependent": true
         },
         {
           "op": "addTarget",

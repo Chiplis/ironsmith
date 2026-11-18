@@ -89,8 +89,104 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : playerA.getLibrary().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertTrue(card.getName() + \" should have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); Assert.assertFalse(card.getName() + \" should not have CAT type\", card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerB.getLibrary().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); Assert.assertTrue(card.getName() + \" should have CAT type\", card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerA.getHand().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertTrue(card.getName() + \" should have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } } for (Card card : playerB.getHand().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } } for (Card card : playerA.getGraveyard().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertTrue(card.getName() + \" should have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } } for (Card card : playerB.getGraveyard().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -208,8 +304,64 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : playerA.getLibrary().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); Assert.assertTrue(card.getName() + \" should have CAT type\", card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerA.getHand().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); Assert.assertTrue(card.getName() + \" should have CAT type\", card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerA.getGraveyard().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); Assert.assertTrue(card.getName() + \" should have CAT type\", card.hasSubtype(SubType.CAT, currentGame)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -299,8 +451,124 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : playerA.getLibrary().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertEquals(card.getName() + \" should have ORC type\", true, card.hasSubtype(SubType.ORC, currentGame)); Assert.assertEquals(card.getName() + \" should have CAT type\", true, card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerB.getLibrary().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertEquals(card.getName() + \" should not have ORC type\", false, card.hasSubtype(SubType.ORC, currentGame)); Assert.assertEquals(card.getName() + \" should have CAT type\", true, card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerA.getHand().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertEquals(card.getName() + \" should have ORC type\", true, card.hasSubtype(SubType.ORC, currentGame)); Assert.assertEquals(card.getName() + \" should have CAT type\", true, card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerB.getHand().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertEquals(card.getName() + \" should not have ORC type\", false, card.hasSubtype(SubType.ORC, currentGame)); Assert.assertEquals(card.getName() + \" should have CAT type\", true, card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerA.getGraveyard().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertEquals(card.getName() + \" should have ORC type\", true, card.hasSubtype(SubType.ORC, currentGame)); Assert.assertEquals(card.getName() + \" should have CAT type\", true, card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerB.getGraveyard().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertEquals(card.getName() + \" should not have ORC type\", false, card.hasSubtype(SubType.ORC, currentGame)); Assert.assertEquals(card.getName() + \" should have CAT type\", true, card.hasSubtype(SubType.CAT, currentGame)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -472,8 +740,64 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : playerA.getLibrary().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertEquals(card.getName() + \" should not have ORC type\", false, card.hasSubtype(SubType.ORC, currentGame)); Assert.assertEquals(card.getName() + \" should have CAT type\", true, card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerA.getHand().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertEquals(card.getName() + \" should not have ORC type\", false, card.hasSubtype(SubType.ORC, currentGame)); Assert.assertEquals(card.getName() + \" should have CAT type\", true, card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerA.getGraveyard().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertEquals(card.getName() + \" should not have ORC type\", false, card.hasSubtype(SubType.ORC, currentGame)); Assert.assertEquals(card.getName() + \" should have CAT type\", true, card.hasSubtype(SubType.CAT, currentGame)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -665,8 +989,104 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : playerA.getLibrary().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertTrue(card.getName() + \" should have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); Assert.assertTrue(card.getName() + \" should have CAT type\", card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerB.getLibrary().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); Assert.assertTrue(card.getName() + \" should have CAT type\", card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerA.getHand().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertTrue(card.getName() + \" should have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } } for (Card card : playerB.getHand().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } } for (Card card : playerA.getGraveyard().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertTrue(card.getName() + \" should have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } } for (Card card : playerB.getGraveyard().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -766,8 +1186,104 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : playerA.getLibrary().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); Assert.assertTrue(card.getName() + \" should have CAT type\", card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerB.getLibrary().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); Assert.assertTrue(card.getName() + \" should have CAT type\", card.hasSubtype(SubType.CAT, currentGame)); } } for (Card card : playerA.getHand().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } } for (Card card : playerB.getHand().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } } for (Card card : playerA.getGraveyard().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } } for (Card card : playerB.getGraveyard().getCards(currentGame)) { if (card.isCreature(currentGame)) { Assert.assertFalse(card.getName() + \" should not have ORC type\", card.hasSubtype(SubType.ORC, currentGame)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "CAT",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 1,
+            "cardType": "Creature"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "ORC",
+              "expected": false
+            }
+          ]
         }
       ]
     },

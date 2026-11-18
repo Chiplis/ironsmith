@@ -50,7 +50,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -58,7 +59,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Bronze Sable",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -66,7 +68,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -74,31 +77,16 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Bronze Sable",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "assertPlayableAbility",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Grizzly Bears",
-          "expected": false
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Bronze Sable",
-          "expected": false
-        },
-        {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "label": "Cast Grizzly Bears",
-          "expected": false
+          "kind": "cast_spell"
         },
         {
           "op": "assertPlayableAbility",
@@ -109,12 +97,29 @@ registerPortedMageTests({
           "expected": true
         },
         {
+          "op": "assertNoAction",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Grizzly Bears",
+          "kind": "cast_spell"
+        },
+        {
+          "op": "assertNoAction",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Bronze Sable",
+          "kind": "cast_spell"
+        },
+        {
           "op": "assertExileCount",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -122,7 +127,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Bronze Sable",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPlayableAbility",
@@ -133,28 +139,28 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Bronze Sable",
-          "expected": false
+          "kind": "cast_spell"
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "label": "Cast Grizzly Bears",
-          "expected": false
+          "kind": "cast_spell"
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "label": "Cast Bronze Sable",
-          "expected": false
+          "kind": "cast_spell"
         },
         {
           "op": "castSpell",

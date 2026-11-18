@@ -254,14 +254,35 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "For"
+          "ability": "Foretell Lifestream's Blessing"
         },
         {
-          "op": "activateAbility",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Lifestream's Blessing"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "For"
+          "name": "Lifestream's Blessing",
+          "actionLabel": "Cast Lifestream's Blessing (foretell)"
         },
         {
           "op": "setStrictChooseMode",

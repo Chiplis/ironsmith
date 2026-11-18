@@ -65,11 +65,14 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Imperiosaur"
+          "kind": "cast_spell",
+          "label": "Imperiosaur",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStrictChooseMode",
@@ -81,8 +84,7 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { foundError = e.getMessage(); } Assert.assertEquals(expectedError, foundError)"
+          "op": "execute"
         }
       ]
     },
@@ -111,11 +113,14 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Imperiosaur"
+          "kind": "cast_spell",
+          "label": "Imperiosaur",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStrictChooseMode",
@@ -127,8 +132,7 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { foundError = e.getMessage(); } Assert.assertEquals(expectedError, foundError)"
+          "op": "execute"
         }
       ]
     },
@@ -174,11 +178,14 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Imperiosaur"
+          "kind": "cast_spell",
+          "label": "Imperiosaur",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStrictChooseMode",
@@ -190,8 +197,7 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { foundError = e.getMessage(); } Assert.assertEquals(expectedError, foundError)"
+          "op": "execute"
         }
       ]
     },
@@ -213,11 +219,14 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Myr Superion"
+          "kind": "cast_spell",
+          "label": "Myr Superion",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStrictChooseMode",
@@ -229,8 +238,7 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { foundError = e.getMessage(); } Assert.assertEquals(expectedError, foundError)"
+          "op": "execute"
         }
       ]
     },
@@ -359,16 +367,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Myr Superion"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Chief Engineer"
+          "kind": "cast_spell",
+          "label": "Myr Superion",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStrictChooseMode",
@@ -380,8 +386,7 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { foundError = e.getMessage(); } Assert.assertEquals(expectedError, foundError)"
+          "op": "execute"
         }
       ]
     },
@@ -482,16 +487,14 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Security Rhox"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast with alternative cost: {R}{G} (source: Security Rhox"
+          "kind": "cast_spell",
+          "label": "Security Rhox",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStrictChooseMode",
@@ -503,8 +506,7 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { foundError = e.getMessage(); } Assert.assertEquals(expectedError, foundError)"
+          "op": "execute"
         }
       ]
     }

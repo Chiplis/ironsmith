@@ -7,8 +7,14 @@ registerPortedMageTests({
       "name": "test_WithoutStack",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"test\", playerA, new CustomStateTriggeredAbility(false))"
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Empty Battlefield Fixture",
+          "fixtureSource": true,
+          "custom": true,
+          "typeLine": "Artifact",
+          "oracleText": "When there are no creatures or enchantments on the battlefield, create a 1/1 white Soldier creature token."
         },
         {
           "op": "addCard",
@@ -55,15 +61,55 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"on cast bolt\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Lightning Bolt\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Soldier Token",
+          "count": 0
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Empty Battlefield Fixture",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertStackSize",
@@ -96,8 +142,14 @@ registerPortedMageTests({
       "name": "test_WithStack",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"test\", playerA, new CustomStateTriggeredAbility(true))"
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Empty Battlefield Fixture",
+          "fixtureSource": true,
+          "custom": true,
+          "typeLine": "Artifact",
+          "oracleText": "When there are no creatures or enchantments on the battlefield, create a 1/1 white Soldier creature token."
         },
         {
           "op": "addCard",
@@ -144,15 +196,18 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"on cast bolt\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Lightning Bolt\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "resolutions": 1
         },
         {
           "op": "assertStackSize",
@@ -162,15 +217,18 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after bolt resolve - sba\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"If no creates or enchantments\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Empty Battlefield Fixture",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "resolutions": 1
         },
         {
           "op": "assertStackSize",
@@ -294,16 +352,18 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Soldier Token"
+          "targetPlayer": 0,
+          "name": "Soldier Token",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Grizzly Bears"
+          "targetPlayer": 1,
+          "name": "Grizzly Bears",
+          "count": 0
         },
         {
           "op": "activateManaAbility",
@@ -341,16 +401,18 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Soldier Token"
+          "targetPlayer": 0,
+          "name": "Soldier Token",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Grizzly Bears"
+          "targetPlayer": 1,
+          "name": "Grizzly Bears",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -371,8 +433,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Soldier Token"
+          "targetPlayer": 0,
+          "name": "Soldier Token",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",

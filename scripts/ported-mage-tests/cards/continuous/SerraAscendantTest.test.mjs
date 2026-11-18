@@ -50,24 +50,37 @@ registerPortedMageTests({
         },
         {
           "op": "playLand",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Plains"
+          "name": "Plains",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Serra Ascendant",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Serra Ascendant",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Serra Ascendant"
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "playLand",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Stomping Ground"
+          "name": "Stomping Ground",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setChoice",
@@ -76,46 +89,121 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Wild Nacatl",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Wild Nacatl",
+          "count": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
           "player": 1,
-          "name": "Wild Nacatl"
+          "life": 18
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 1,
+          "name": "Wild Nacatl",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "playLand",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Plains"
+          "name": "Plains",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Martyr of Sands",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Martyr of Sands",
+          "count": 1,
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "name": "Martyr of Sands"
+          "value": "X=3"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Silvercoat Lion"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Silvercoat Lion"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Silvercoat Lion"
         },
         {
           "op": "activateAbility",
+          "source": "Martyr of Sands",
+          "ability": "Reveal X white cards",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Martyr of Sands",
+          "count": 1,
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{1}, Reveal X white cards from your hand"
+          "abilityKind": "Activated"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Silvercoat Lion"
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setChoice",
+          "op": "assertLife",
           "player": 0,
-          "value": "Silvercoat Lion"
+          "life": 29
         },
         {
-          "op": "setChoice",
+          "op": "assertGraveyardCount",
           "player": 0,
-          "value": "Silvercoat Lion"
+          "name": "Martyr of Sands",
+          "count": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Serra Ascendant",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "attack",
@@ -132,28 +220,19 @@ registerPortedMageTests({
           "attacker": "Serra Ascendant"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Martyr of Sands",
-          "count": 1
-        },
-        {
-          "op": "assertLife",
-          "player": 1,
-          "life": 18
         },
         {
           "op": "assertLife",
           "player": 0,
           "life": 30
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 18
         },
         {
           "op": "assertPermanentCount",

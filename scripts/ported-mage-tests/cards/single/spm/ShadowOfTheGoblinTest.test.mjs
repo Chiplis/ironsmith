@@ -122,6 +122,20 @@ registerPortedMageTests({
         },
         {
           "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Mountain",
+          "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Mountain@goblinLand",
+          "count": 1
+        },
+        {
+          "op": "addCard",
           "zone": "EXILED",
           "player": 0,
           "name": "Misthollow Griffin",
@@ -130,7 +144,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "<i>Unreliable Visions</i>"
+          "value": "Shadow of the Goblin"
         },
         {
           "op": "setChoice",
@@ -143,17 +157,36 @@ registerPortedMageTests({
           "value": "Mountain"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "@goblinLand"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
         },
         {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@goblinLand",
+          "count": 1
+        },
+        {
           "op": "playLand",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Mountain"
+          "name": "@goblinLand"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@goblinLand",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "waitStackResolved",

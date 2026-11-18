@@ -76,10 +76,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Arbor Elf"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Arbor Elf",
+          "ability": "HasteAbility.class",
+          "expected": true
         },
         {
           "op": "attack",
@@ -90,10 +92,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": "end",
-          "name": 2,
-          "ability": "PRECOMBAT_MAIN",
-          "expected": 0
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Arbor Elf",
+          "ability": "HasteAbility.class",
+          "expected": false
         },
         {
           "op": "setStrictChooseMode",
@@ -201,10 +205,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Arbor Elf"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Arbor Elf",
+          "ability": "HasteAbility.class",
+          "expected": true
         },
         {
           "op": "castSpell",
@@ -222,10 +228,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Arbor Elf"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Arbor Elf",
+          "ability": "HasteAbility.class",
+          "expected": false
         },
         {
           "op": "setStrictChooseMode",

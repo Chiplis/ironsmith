@@ -112,13 +112,6 @@ registerPortedMageTests({
       "name": "testParapetThrasherMode3",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "skipInitShuffling"
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -126,17 +119,22 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "clearZone",
+          "zone": "library",
+          "player": 0
+        },
+        {
           "op": "addCard",
-          "zone": "LIBRARY",
+          "name": "Mountain",
           "player": 0,
-          "name": "Island",
+          "zone": "LIBRARY",
           "count": 1
         },
         {
           "op": "addCard",
-          "zone": "LIBRARY",
+          "name": "Island",
           "player": 0,
-          "name": "Mountain",
+          "zone": "LIBRARY",
           "count": 1
         },
         {
@@ -147,34 +145,67 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "3"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Exile the top card of your library. You may play it this turn."
+          ]
         },
         {
-          "op": "playLand",
+          "op": "assertStackObject",
+          "source": "Parapet Thrasher",
+          "count": 1,
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Island"
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered",
+          "completeChoices": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0
+          "name": "Island",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 16
+        },
+        {
+          "op": "playLand",
+          "name": "Island",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Island",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Island",
+          "count": 0
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "Mountain",
           "count": 1
         }
       ]

@@ -365,35 +365,83 @@ registerPortedMageTests({
           "name": "Tamiyo, Field Researcher"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tamiyo, Field Researcher",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Choose up to two"
+          "ability": "+1: Choose up to two",
+          "source": "Tamiyo, Field Researcher",
+          "target": {
+            "groups": [
+              [
+                "Sylvan Advocate"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Sylvan Advocate"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tamiyo, Field Researcher",
+          "count": 1,
+          "abilityKind": "Activated",
+          "targetCount": 1,
+          "objectTarget": "Sylvan Advocate"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Sylvan Advocate",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Tamiyo, Field Researcher",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Memnite",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -401,6 +449,25 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Sylvan Advocate",
           "attacker": "Memnite"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Tamiyo, Field Researcher",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 2
         },
         {
           "op": "setStopAt",
@@ -493,35 +560,83 @@ registerPortedMageTests({
           "name": "Tamiyo, Field Researcher"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tamiyo, Field Researcher",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Choose up to two"
+          "ability": "+1: Choose up to two",
+          "source": "Tamiyo, Field Researcher",
+          "target": {
+            "groups": [
+              [
+                "Sylvan Advocate"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Sylvan Advocate"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tamiyo, Field Researcher",
+          "count": 1,
+          "abilityKind": "Activated",
+          "targetCount": 1,
+          "objectTarget": "Sylvan Advocate"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Sylvan Advocate",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Tamiyo, Field Researcher",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Memnite",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -531,23 +646,59 @@ registerPortedMageTests({
           "attacker": "Memnite"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Tamiyo, Field Researcher",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 2
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "UPKEEP",
           "player": 1,
-          "name": "Hero's Downfall"
+          "name": "Hero's Downfall",
+          "target": "Tamiyo, Field Researcher"
         },
         {
-          "op": "addTarget",
-          "player": 1,
-          "target": "Tamiyo, Field Researcher"
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "source": "Hero's Downfall",
+          "count": 1,
+          "objectTarget": "Tamiyo, Field Researcher"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Tamiyo, Field Researcher",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
           "attacker": "Sylvan Advocate",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "setStopAt",
@@ -778,7 +929,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Bronze Sable",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",
@@ -873,14 +1024,14 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Bronze Sable",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Memnite",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",

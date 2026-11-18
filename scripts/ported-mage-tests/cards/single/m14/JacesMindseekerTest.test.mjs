@@ -7,6 +7,10 @@ registerPortedMageTests({
       "name": "testJacesMindseeker",
       "operations": [
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -45,10 +49,6 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -56,19 +56,73 @@ registerPortedMageTests({
           "name": "Jace's Mindseeker"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace's Mindseeker",
+          "count": 1,
+          "onTop": true
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace's Mindseeker",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered",
+          "targetCount": 1
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Choose up to 1 instant or sorcery card",
+          "options": [
+            "Lightning Bolt"
+          ]
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Lightning Bolt"
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

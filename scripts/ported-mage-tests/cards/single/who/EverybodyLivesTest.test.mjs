@@ -11,8 +11,16 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"lose life effect\", playerA, new SimpleActivatedAbility( new LoseLifeAllPlayersEffect(20), new ManaCostsImpl<>(\"\")) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "lose life effect",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Each player loses 20 life."
         },
         {
           "op": "addCard",
@@ -47,15 +55,18 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Everybody Lives!"
+          "name": "Everybody Lives!",
+          "resolve": true
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertSpellPlayerTargets",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Lightning Bolt",
-          "expected": false
+          "name": "Lightning Bolt",
+          "targets": [
+            0
+          ]
         },
         {
           "op": "activateAbility",
@@ -102,8 +113,16 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"lose game effect\", playerA, new SimpleActivatedAbility( new LoseGameSourceControllerEffect(), new ManaCostsImpl<>(\"\")) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "lose game effect",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: You lose the game."
         },
         {
           "op": "addCard",
@@ -131,7 +150,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Everybody Lives!"
+          "name": "Everybody Lives!",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -149,8 +169,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertHasNotLostTheGame(playerA)"
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "hasLost",
+          "expected": false
         }
       ]
     },
@@ -162,8 +184,16 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"win game effect\", playerA, new SimpleActivatedAbility( new WinGameSourceControllerEffect(), new ManaCostsImpl<>(\"\")) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Victory Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: You win the game."
         },
         {
           "op": "addCard",
@@ -191,7 +221,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Everybody Lives!"
+          "name": "Everybody Lives!",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -209,10 +240,18 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertHasNotWonTheGame(playerA)"
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "hasWon",
+          "expected": false
         }
       ]
     }
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
   ]
 });

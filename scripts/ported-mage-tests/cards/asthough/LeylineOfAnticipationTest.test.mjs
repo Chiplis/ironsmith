@@ -28,24 +28,55 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "useOpeningHandAction",
           "player": 0,
-          "value": true
+          "name": "Leyline of Anticipation"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Leyline of Anticipation",
+          "count": 1
+        },
+        {
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "turn": 2,
+          "phase": "DRAW",
+          "expected": true,
+          "label": "Cast Silvercoat Lion"
         },
         {
           "op": "castSpell",
+          "name": "Silvercoat Lion",
+          "player": 0,
+          "turn": 2,
+          "phase": "DRAW"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Silvercoat Lion",
+          "count": 1,
           "turn": 2,
           "phase": "DRAW",
-          "player": 0,
-          "name": "Silvercoat Lion"
+          "isSpell": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 2,
-          "phase": "END_COMBAT"
+          "phase": "DRAW"
         },
         {
-          "op": "execute"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -56,18 +87,6 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Leyline of Anticipation",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Silvercoat Lion",
-          "count": 1
         }
       ]
     },
@@ -96,11 +115,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
@@ -108,19 +122,55 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "useOpeningHandAction",
+          "player": 0,
+          "name": "Leyline of Anticipation"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Leyline of Anticipation",
+          "count": 1
+        },
+        {
+          "op": "assertPlayableAbility",
+          "player": 0,
           "turn": 2,
           "phase": "DRAW",
+          "expected": true,
+          "label": "Cast Silvercoat Lion"
+        },
+        {
+          "op": "castSpell",
+          "name": "Silvercoat Lion",
           "player": 0,
-          "name": "Silvercoat Lion"
-        },
-        {
-          "op": "setStopAt",
           "turn": 2,
-          "phase": "END_COMBAT"
+          "phase": "DRAW"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Silvercoat Lion",
+          "count": 1,
+          "turn": 2,
+          "phase": "DRAW",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DRAW"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -131,24 +181,6 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Leyline of Anticipation",
-          "count": 1
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Silvercoat Lion",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Silvercoat Lion",
-          "count": 1
         }
       ]
     }

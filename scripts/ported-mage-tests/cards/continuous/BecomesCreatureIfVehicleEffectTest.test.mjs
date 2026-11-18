@@ -32,8 +32,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkType(\"Goliath Truck is not a creature\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, goliathTruck, CardType.CREATURE, false)"
+          "op": "assertType",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Goliath Truck",
+          "cardType": "CREATURE",
+          "extra": "false"
         },
         {
           "op": "castSpell",

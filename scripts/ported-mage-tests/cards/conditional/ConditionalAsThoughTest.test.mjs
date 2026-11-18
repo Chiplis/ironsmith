@@ -17,8 +17,10 @@ registerPortedMageTests({
           "zone": "library"
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"play any library on any creature\", playerA, new SimpleStaticAbility( Zone.ALL, new ConditionalAsThoughEffect( new PlayFromNotOwnHandZoneAllEffect( StaticFilters.FILTER_CARD, Zone.LIBRARY, false, TargetController.ANY, Duration.EndOfTurn ), new PermanentsOnTheBattlefieldCondition( StaticFilters.FILTER_PERMANENT_CREATURE, ComparisonType.MORE_THAN, 0 ) ) ))"
+          "op": "addXmageFixture",
+          "player": 0,
+          "name": "play any library on any creature",
+          "ability": "libraryPlayWhileCreatureExists"
         },
         {
           "op": "addCard",
@@ -71,20 +73,24 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Silvercoat Lion",
-          "expected": false
+          "name": "Silvercoat Lion",
+          "zone": "library",
+          "owner": 0,
+          "methods": []
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Lightning Bolt",
-          "expected": false
+          "name": "Lightning Bolt",
+          "zone": "library",
+          "owner": 1,
+          "methods": []
         },
         {
           "op": "castSpell",
@@ -97,7 +103,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -108,20 +115,28 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Silvercoat Lion",
-          "expected": true
+          "name": "Silvercoat Lion",
+          "zone": "library",
+          "owner": 0,
+          "methods": [
+            "play_from"
+          ]
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Lightning Bolt",
-          "expected": true
+          "name": "Lightning Bolt",
+          "zone": "library",
+          "owner": 1,
+          "methods": [
+            "play_from"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -139,14 +154,16 @@ registerPortedMageTests({
     },
     {
       "name": "test_TargetCardInLibrary_CantUseAsAbilityTarget",
-      "operations": []
+      "skip": "Requires IllegalArgumentException from XMage Ability.addTarget(TargetCardInLibrary)"
     },
     {
       "name": "test_PlayFromNotOwnHandZoneTargetEffect",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"play any opponent hand\", playerA, ability)"
+          "op": "addXmageFixture",
+          "player": 0,
+          "name": "play any opponent hand",
+          "ability": "targetOpponentsGraveyardPlayWhileCreatureExists"
         },
         {
           "op": "addCard",
@@ -199,38 +216,40 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Silvercoat Lion",
-          "expected": false
+          "name": "Silvercoat Lion",
+          "zone": "graveyard",
+          "owner": 0,
+          "methods": []
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Lightning Bolt",
-          "expected": false
+          "name": "Lightning Bolt",
+          "zone": "graveyard",
+          "owner": 1,
+          "methods": []
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{R}: Allow"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
+          "ability": "{R}:",
+          "source": "play any opponent hand",
           "target": "Lightning Bolt"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -241,20 +260,24 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Silvercoat Lion",
-          "expected": false
+          "name": "Silvercoat Lion",
+          "zone": "graveyard",
+          "owner": 0,
+          "methods": []
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Lightning Bolt",
-          "expected": false
+          "name": "Lightning Bolt",
+          "zone": "graveyard",
+          "owner": 1,
+          "methods": []
         },
         {
           "op": "castSpell",
@@ -267,7 +290,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -278,20 +302,26 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Silvercoat Lion",
-          "expected": false
+          "name": "Silvercoat Lion",
+          "zone": "graveyard",
+          "owner": 0,
+          "methods": []
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Lightning Bolt",
-          "expected": true
+          "name": "Lightning Bolt",
+          "zone": "graveyard",
+          "owner": 1,
+          "methods": [
+            "play_from"
+          ]
         },
         {
           "op": "setStrictChooseMode",

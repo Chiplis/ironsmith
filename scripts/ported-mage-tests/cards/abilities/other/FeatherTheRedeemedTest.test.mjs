@@ -100,8 +100,14 @@ registerPortedMageTests({
       "name": "test_ExileSpellAndRecastWithReturnAtTheEnd",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"cast from exile\", playerA, new SimpleStaticAbility( new PlayFromNotOwnHandZoneAllEffect(StaticFilters.FILTER_CARD, Zone.EXILED, false, TargetController.ANY, Duration.WhileOnBattlefield) ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Exile Permission Fixture",
+          "typeLine": "",
+          "custom": true,
+          "fixtureSource": true,
+          "oracleText": "You may cast spells from exile."
         },
         {
           "op": "addCard",
@@ -151,7 +157,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -159,7 +166,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -167,7 +175,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -189,7 +198,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -197,7 +207,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -205,7 +216,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -218,7 +230,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -226,7 +239,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -246,8 +260,14 @@ registerPortedMageTests({
       "name": "test_ExileSpellAndRecastWithoutReturn",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"cast from exile\", playerA, new SimpleStaticAbility( new PlayFromNotOwnHandZoneAllEffect(StaticFilters.FILTER_CARD, Zone.EXILED, false, TargetController.ANY, Duration.WhileOnBattlefield) ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Exile Permission Fixture",
+          "typeLine": "",
+          "custom": true,
+          "fixtureSource": true,
+          "oracleText": "You may cast spells from exile."
         },
         {
           "op": "addCard",
@@ -297,7 +317,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -305,7 +326,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -313,7 +335,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -335,11 +358,16 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"turn 1 recast\", 1, PhaseStep.PRECOMBAT_MAIN, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "life": 17,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -347,7 +375,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -355,7 +384,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -363,7 +393,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -371,7 +402,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -421,6 +453,42 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "addTargetAmount(playerA, \"Feather, the Redeemed\", 2)"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Feather, the Redeemed",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "text": "Cast Fire",
+          "objectTarget": "Feather, the Redeemed",
+          "targetCount": 1,
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "assertExileCount",

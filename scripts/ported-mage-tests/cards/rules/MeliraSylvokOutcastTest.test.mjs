@@ -25,8 +25,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "{T}: Add {G}",
+          "label": "Activate Devoted Druid: Put a -1/-1 counter",
           "expected": false
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Activate Devoted Druid: {T}: Add {G}",
+          "expected": true
         }
       ]
     },

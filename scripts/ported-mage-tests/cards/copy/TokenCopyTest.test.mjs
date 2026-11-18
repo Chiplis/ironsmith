@@ -62,8 +62,59 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents()) { switch (permanent.getName()) { case prowler: Assert.assertEquals(\"Power of \" + prowler + \" should be 2\", 2, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + prowler + \" should be 1\", 1, permanent.getToughness().getValue()); Assert.assertEquals(prowler + \" should be green\", ObjectColor.GREEN, permanent.getColor(currentGame)); Assert.assertTrue(prowler + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertTrue(prowler + \" should be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertFalse(prowler + \" should not be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertEquals(prowler + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertFalse(prowler + \" should not be transformed\", permanent.isTransformed()); break; case predator: Assert.assertEquals(\"Power of \" + predator + \" should be 4\", 4, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + predator + \" should be 4\", 4, permanent.getToughness().getValue()); Assert.assertTrue(predator + \" should be colorless\", permanent.getColor(currentGame).isColorless()); Assert.assertTrue(predator + \" should be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertTrue(predator + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertFalse(predator + \" should not be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertEquals(predator + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertTrue(prowler + \" should be transformed\", permanent.isTransformed()); break; } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Kessig Prowler"
+          },
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "colorCount",
+              "expected": 1
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "green"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Werewolf"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Horror"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Eldrazi"
+            },
+            {
+              "property": "doubleFaced",
+              "expected": true
+            },
+            {
+              "property": "transformed",
+              "expected": false
+            },
+            {
+              "property": "manaValue",
+              "expected": 1
+            }
+          ],
+          "count": 2
         }
       ]
     },
@@ -98,6 +149,11 @@ registerPortedMageTests({
           "player": 0,
           "name": "Rite of Replication",
           "target": "Kessig Prowler"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
         },
         {
           "op": "waitStackResolved",
@@ -152,8 +208,54 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents()) { switch (permanent.getName()) { case prowler: Assert.assertEquals(\"Power of \" + prowler + \" should be 2\", 2, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + prowler + \" should be 1\", 1, permanent.getToughness().getValue()); Assert.assertEquals(prowler + \" should be green\", ObjectColor.GREEN, permanent.getColor(currentGame)); Assert.assertTrue(prowler + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertTrue(prowler + \" should be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertFalse(prowler + \" should not be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertEquals(prowler + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertFalse(prowler + \" should not be transformed\", permanent.isTransformed()); break; case predator: Assert.assertEquals(\"Power of \" + predator + \" should be 4\", 4, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + predator + \" should be 4\", 4, permanent.getToughness().getValue()); Assert.assertTrue(predator + \" should be colorless\", permanent.getColor(currentGame).isColorless()); Assert.assertTrue(predator + \" should be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertTrue(predator + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertFalse(predator + \" should not be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertEquals(predator + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertTrue(prowler + \" should be transformed\", permanent.isTransformed()); break; } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Sinuous Predator"
+          },
+          "checks": [
+            {
+              "property": "power",
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "expected": 4
+            },
+            {
+              "property": "colorCount",
+              "expected": 0
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Werewolf"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Horror"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Eldrazi"
+            },
+            {
+              "property": "doubleFaced",
+              "expected": true
+            },
+            {
+              "property": "transformed",
+              "expected": true
+            },
+            {
+              "property": "manaValue",
+              "expected": 1
+            }
+          ],
+          "count": 2
         }
       ]
     },
@@ -229,8 +331,54 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents()) { switch (permanent.getName()) { case prowler: Assert.assertEquals(\"Power of \" + prowler + \" should be 2\", 2, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + prowler + \" should be 1\", 1, permanent.getToughness().getValue()); Assert.assertEquals(prowler + \" should be green\", ObjectColor.GREEN, permanent.getColor(currentGame)); Assert.assertTrue(prowler + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertTrue(prowler + \" should be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertFalse(prowler + \" should not be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertEquals(prowler + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertFalse(prowler + \" should not be transformed\", permanent.isTransformed()); break; case predator: Assert.assertEquals(\"Power of \" + predator + \" should be 4\", 4, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + predator + \" should be 4\", 4, permanent.getToughness().getValue()); Assert.assertTrue(predator + \" should be colorless\", permanent.getColor(currentGame).isColorless()); Assert.assertTrue(predator + \" should be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertTrue(predator + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertFalse(predator + \" should not be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertEquals(predator + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertTrue(prowler + \" should be transformed\", permanent.isTransformed()); break; } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Sinuous Predator"
+          },
+          "checks": [
+            {
+              "property": "power",
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "expected": 4
+            },
+            {
+              "property": "colorCount",
+              "expected": 0
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Werewolf"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Horror"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Eldrazi"
+            },
+            {
+              "property": "doubleFaced",
+              "expected": true
+            },
+            {
+              "property": "transformed",
+              "expected": true
+            },
+            {
+              "property": "manaValue",
+              "expected": 1
+            }
+          ],
+          "count": 2
         }
       ]
     },
@@ -292,8 +440,59 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents()) { switch (permanent.getName()) { case prowler: Assert.assertEquals(\"Power of \" + prowler + \" should be 2\", 2, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + prowler + \" should be 1\", 1, permanent.getToughness().getValue()); Assert.assertEquals(prowler + \" should be green\", ObjectColor.GREEN, permanent.getColor(currentGame)); Assert.assertTrue(prowler + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertTrue(prowler + \" should be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertFalse(prowler + \" should not be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertEquals(prowler + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertFalse(prowler + \" should not be transformed\", permanent.isTransformed()); break; case predator: Assert.assertEquals(\"Power of \" + predator + \" should be 4\", 4, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + predator + \" should be 4\", 4, permanent.getToughness().getValue()); Assert.assertTrue(predator + \" should be colorless\", permanent.getColor(currentGame).isColorless()); Assert.assertTrue(predator + \" should be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertTrue(predator + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertFalse(predator + \" should not be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertEquals(predator + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertTrue(prowler + \" should be transformed\", permanent.isTransformed()); break; } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Kessig Prowler"
+          },
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "colorCount",
+              "expected": 1
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "green"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Werewolf"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Horror"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Eldrazi"
+            },
+            {
+              "property": "doubleFaced",
+              "expected": true
+            },
+            {
+              "property": "transformed",
+              "expected": false
+            },
+            {
+              "property": "manaValue",
+              "expected": 1
+            }
+          ],
+          "count": 1
         }
       ]
     },
@@ -362,8 +561,54 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents()) { switch (permanent.getName()) { case prowler: Assert.assertEquals(\"Power of \" + prowler + \" should be 2\", 2, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + prowler + \" should be 1\", 1, permanent.getToughness().getValue()); Assert.assertEquals(prowler + \" should be green\", ObjectColor.GREEN, permanent.getColor(currentGame)); Assert.assertTrue(prowler + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertTrue(prowler + \" should be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertFalse(prowler + \" should not be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertEquals(prowler + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertFalse(prowler + \" should not be transformed\", permanent.isTransformed()); break; case predator: Assert.assertEquals(\"Power of \" + predator + \" should be 4\", 4, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + predator + \" should be 4\", 4, permanent.getToughness().getValue()); Assert.assertTrue(predator + \" should be colorless\", permanent.getColor(currentGame).isColorless()); Assert.assertTrue(predator + \" should be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertTrue(predator + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertFalse(predator + \" should not be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertEquals(predator + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertTrue(prowler + \" should be transformed\", permanent.isTransformed()); break; } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Sinuous Predator"
+          },
+          "checks": [
+            {
+              "property": "power",
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "expected": 4
+            },
+            {
+              "property": "colorCount",
+              "expected": 0
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Werewolf"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Horror"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Eldrazi"
+            },
+            {
+              "property": "doubleFaced",
+              "expected": true
+            },
+            {
+              "property": "transformed",
+              "expected": true
+            },
+            {
+              "property": "manaValue",
+              "expected": 1
+            }
+          ],
+          "count": 1
         }
       ]
     }

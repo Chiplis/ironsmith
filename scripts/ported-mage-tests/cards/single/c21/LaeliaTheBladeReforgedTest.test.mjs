@@ -94,6 +94,12 @@ registerPortedMageTests({
           "name": "Laelia, the Blade Reforged",
           "counter": "P1P1",
           "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Llanowar Elves",
+          "count": 3
         }
       ]
     },
@@ -188,6 +194,12 @@ registerPortedMageTests({
           "name": "Laelia, the Blade Reforged",
           "counter": "P1P1",
           "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Llanowar Elves",
+          "count": 3
         }
       ]
     },
@@ -282,6 +294,12 @@ registerPortedMageTests({
           "name": "Laelia, the Blade Reforged",
           "counter": "P1P1",
           "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Llanowar Elves",
+          "count": 3
         }
       ]
     },
@@ -376,6 +394,12 @@ registerPortedMageTests({
           "name": "Laelia, the Blade Reforged",
           "counter": "P1P1",
           "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Llanowar Elves",
+          "count": 3
         }
       ]
     }

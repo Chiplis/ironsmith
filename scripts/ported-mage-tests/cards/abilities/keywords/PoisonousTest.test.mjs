@@ -114,8 +114,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertMultipleInstancesOfAbility(playerA, \"Manaweft Sliver\", new PoisonousAbility(1), 2)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Manaweft Sliver",
+          "kind": "triggered",
+          "count": 2,
+          "textPattern": "^Poisonous\\s+1$"
         },
         {
           "op": "assertCounterCount",

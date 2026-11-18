@@ -12,6 +12,110 @@ registerPortedMageTests({
           "player": 0,
           "name": "Thought Reflection",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 2
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 1
         }
       ]
     },
@@ -24,6 +128,110 @@ registerPortedMageTests({
           "player": 0,
           "name": "Thought Reflection",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Quick Study"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Quick Study"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 4
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 2
         }
       ]
     },
@@ -36,6 +244,110 @@ registerPortedMageTests({
           "player": 0,
           "name": "Thought Reflection",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 6
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 3
         }
       ]
     },
@@ -47,6 +359,110 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Blood Scrivener",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 2
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
           "count": 1
         },
         {
@@ -67,6 +483,110 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Quick Study"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Quick Study"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 3
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 2
+        },
+        {
           "op": "assertLife",
           "player": 0,
           "life": 19
@@ -82,6 +602,110 @@ registerPortedMageTests({
           "player": 0,
           "name": "Blood Scrivener",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 4
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 3
         },
         {
           "op": "assertLife",
@@ -101,6 +725,74 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Blood Scrivener"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 3
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
+        },
+        {
           "op": "assertLife",
           "player": 0,
           "life": 18
@@ -116,6 +808,74 @@ registerPortedMageTests({
           "player": 0,
           "name": "Blood Scrivener",
           "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Quick Study"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Blood Scrivener"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 4
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -135,6 +895,74 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Blood Scrivener"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 5
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
+        },
+        {
           "op": "assertLife",
           "player": 0,
           "life": 18
@@ -152,9 +980,139 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Radical Idea",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -169,9 +1127,156 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Quick Study"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Quick Study"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
           "count": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -186,9 +1291,173 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
           "count": 3
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0
+          },
+          "count": 3,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -210,9 +1479,124 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "count": 2
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Thought Reflection"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -234,9 +1618,167 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "count": 4
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Quick Study"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Thought Reflection"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Thought Reflection"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0
+          },
+          "count": 4,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -258,9 +1800,210 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "count": 6
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Thought Reflection"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Thought Reflection"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Thought Reflection"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0
+          },
+          "count": 6,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -282,9 +2025,107 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Radical Idea",
           "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Asmodeus the Archfiend"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -306,9 +2147,133 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "count": 2
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Quick Study"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Asmodeus the Archfiend"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Asmodeus the Archfiend"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -330,9 +2295,159 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "count": 3
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Asmodeus the Archfiend"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Asmodeus the Archfiend"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Asmodeus the Archfiend"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Mountain"
+          ],
+          "min": 1,
+          "max": 1,
+          "optional": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0
+          },
+          "count": 3,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -351,6 +2466,69 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Thought Reflection",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
           "count": 1
         }
       ]
@@ -371,6 +2549,69 @@ registerPortedMageTests({
           "player": 0,
           "name": "Thought Reflection",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Quick Study"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 2
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 1
         }
       ]
     },
@@ -389,6 +2630,69 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Thought Reflection",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 2
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
           "count": 1
         }
       ]
@@ -409,6 +2713,74 @@ registerPortedMageTests({
           "player": 0,
           "name": "Thought Reflection",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Notion Thief"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 1
         }
       ]
     },
@@ -428,6 +2800,79 @@ registerPortedMageTests({
           "player": 0,
           "name": "Thought Reflection",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Quick Study"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Notion Thief"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Notion Thief"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quick Study",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Quick Study",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 2
         }
       ]
     },
@@ -447,6 +2892,84 @@ registerPortedMageTests({
           "player": 0,
           "name": "Thought Reflection",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Jace's Ingenuity"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Notion Thief"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Notion Thief"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Notion Thief"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace's Ingenuity",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Jace's Ingenuity",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 3
         }
       ]
     },
@@ -466,6 +2989,74 @@ registerPortedMageTests({
           "player": 0,
           "name": "Thought Reflection",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Radical Idea"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Thought Reflection"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Radical Idea",
+          "count": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Radical Idea",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 2
         }
       ]
     },
@@ -525,26 +3116,42 @@ registerPortedMageTests({
           "name": "Ancient Excavation"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Shock"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Healing Salve"
-        },
-        {
           "op": "setStrictChooseMode",
           "value": true
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ancient Excavation",
+          "count": 1
         },
         {
-          "op": "execute"
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose 2 cards to discard",
+          "choices": [
+            "Shock",
+            "Healing Salve"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Choose 2 cards to discard",
+          "min": 2,
+          "max": 2,
+          "includes": [
+            "Shock",
+            "Healing Salve"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -574,12 +3181,24 @@ registerPortedMageTests({
           "op": "assertHandCount",
           "player": 0,
           "count": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
         }
       ]
     },
     {
       "name": "testAncientExcavationNotionThief",
       "operations": [
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -647,8 +3266,26 @@ registerPortedMageTests({
           "name": "Ancient Excavation"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ancient Excavation",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Choose 3 cards to discard",
+          "options": [],
+          "absent": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -668,24 +3305,24 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Shock",
-          "count": 1
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Dark Ritual",
-          "count": 1
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Ornithopter",
-          "count": 1
+          "count": 0
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 0
+          "count": 3
         },
         {
           "op": "assertLibraryCount",
@@ -776,26 +3413,40 @@ registerPortedMageTests({
           "name": "Ancient Excavation"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Shock"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Giant Growth"
-        },
-        {
           "op": "setStrictChooseMode",
           "value": true
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ancient Excavation",
+          "count": 1
         },
         {
-          "op": "execute"
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose 1 card to discard",
+          "choices": [
+            "Giant Growth"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Choose 1 card to discard",
+          "min": 1,
+          "max": 1,
+          "includes": [
+            "Giant Growth"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -804,7 +3455,7 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertGraveyardCount",
+          "op": "assertHandCount",
           "player": 0,
           "name": "Shock",
           "count": 1
@@ -830,7 +3481,7 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 2
+          "count": 3
         },
         {
           "op": "assertLibraryCount",
@@ -842,6 +3493,14 @@ registerPortedMageTests({
           "op": "assertHandCount",
           "player": 1,
           "count": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -862,6 +3521,11 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 8
         }
       ]
     },
@@ -1410,8 +4074,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertWonTheGame(playerA)"
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "hasWon",
+          "expected": true
         }
       ]
     }

@@ -152,8 +152,15 @@ registerPortedMageTests({
       "name": "test_Transform_Custom",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetTransform(playerA)"
+          "op": "addCard",
+          "zone": "HAND",
+          "name": "Target Transform Fixture",
+          "player": 0,
+          "count": 2,
+          "fixtureSource": true,
+          "manaCost": "{0}",
+          "typeLine": "Instant",
+          "oracleText": "Transform target permanent."
         },
         {
           "op": "addCard",
@@ -171,11 +178,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target transform",
+          "name": "Target Transform Fixture",
           "target": "Alluring Suitor"
         },
         {
@@ -201,11 +208,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target transform",
+          "name": "Target Transform Fixture",
           "target": "Deadly Dancer"
         },
         {
@@ -229,18 +236,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Deadly Dancer",
           "count": 0
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
         }
       ]
     },
@@ -248,8 +243,15 @@ registerPortedMageTests({
       "name": "test_Transform_IncubatorToken",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetTransform(playerA)"
+          "op": "addCard",
+          "zone": "HAND",
+          "name": "Target Transform Fixture",
+          "player": 0,
+          "count": 3,
+          "fixtureSource": true,
+          "manaCost": "{0}",
+          "typeLine": "Instant",
+          "oracleText": "Transform target permanent."
         },
         {
           "op": "addCard",
@@ -295,11 +297,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target transform",
+          "name": "Target Transform Fixture",
           "target": "Incubator Token"
         },
         {
@@ -317,11 +319,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target transform",
+          "name": "Target Transform Fixture",
           "target": "Phyrexian Token"
         },
         {
@@ -347,11 +349,11 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target transform",
+          "name": "Target Transform Fixture",
           "target": "Incubator Token"
         },
         {
@@ -377,16 +379,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Phyrexian Token",
+          "counter": "+1/+1",
+          "count": 3
         }
       ]
     },
@@ -394,12 +391,15 @@ registerPortedMageTests({
       "name": "test_Transform_CopiedByPermanent_FrontSide",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetTransform(playerA)"
-        },
-        {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA)"
+          "op": "addCard",
+          "zone": "HAND",
+          "name": "Target Transform Fixture",
+          "player": 0,
+          "count": 1,
+          "fixtureSource": true,
+          "manaCost": "{0}",
+          "typeLine": "Instant",
+          "oracleText": "Transform target permanent."
         },
         {
           "op": "addCard",
@@ -419,7 +419,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Copy Artifact",
+          "name": "Copy Artifact@copy.artifact",
           "count": 1
         },
         {
@@ -428,6 +428,17 @@ registerPortedMageTests({
           "player": 0,
           "name": "Island",
           "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "name": "Target Destroy Fixture",
+          "player": 0,
+          "count": 1,
+          "fixtureSource": true,
+          "manaCost": "{0}",
+          "typeLine": "Instant",
+          "oracleText": "Destroy target permanent."
         },
         {
           "op": "assertPermanentCount",
@@ -459,21 +470,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Incubator Token"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Copy Artifact"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Incubator Token"
+          "name": "Copy Artifact",
+          "objectAlias": "@copy.artifact"
         },
         {
           "op": "waitStackResolved",
@@ -490,16 +501,30 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target destroy"
+          "name": "Target Destroy Fixture",
+          "target": {
+            "groups": [
+              [
+                {
+                  "name": "Incubator Token",
+                  "objectKind": "token"
+                }
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Incubator Token[no copy]"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Target Destroy Fixture",
+          "count": 1,
+          "objectTarget": "Incubator Token",
+          "objectTargetKind": "token"
         },
         {
           "op": "waitStackResolved",
@@ -516,11 +541,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target transform",
+          "name": "Target Transform Fixture",
           "target": "Incubator Token"
         },
         {
@@ -546,16 +571,19 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@copy.artifact"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "doubleFaced",
+              "expected": false
+            }
+          ]
         }
       ]
     },

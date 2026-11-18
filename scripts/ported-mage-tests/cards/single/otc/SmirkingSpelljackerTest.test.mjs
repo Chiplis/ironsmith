@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "test_Simple",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
@@ -21,7 +17,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Lightning Bolt",
+          "name": "Lightning Bolt@bolt",
           "count": 1
         },
         {
@@ -44,7 +40,16 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": 1
+          "target": 1,
+          "objectAlias": "@bolt"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "controller": 0
         },
         {
           "op": "castSpell",
@@ -54,16 +59,55 @@ registerPortedMageTests({
           "name": "Smirking Spelljacker"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Smirking Spelljacker",
+          "count": 1,
+          "controller": 1
+        },
+        {
           "op": "addTarget",
           "player": 1,
           "target": "Lightning Bolt"
         },
         {
-          "op": "assertExileCount",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Smirking Spelljacker",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Lightning Bolt",
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
           "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Smirking Spelljacker",
           "count": 1
         },
         {
@@ -72,6 +116,15 @@ registerPortedMageTests({
           "player": 1,
           "attacker": "Smirking Spelljacker",
           "defender": 0
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Smirking Spelljacker",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "controller": 1
         },
         {
           "op": "setChoice",
@@ -89,12 +142,23 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 2,
-          "phase": "END_COMBAT"
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_COMBAT"
         },
         {
           "op": "assertLife",

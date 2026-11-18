@@ -18,7 +18,8 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Rosheen Meanderer",
-          "count": 1
+          "count": 1,
+          "tapped": true
         },
         {
           "op": "addCard",

@@ -393,6 +393,13 @@ registerPortedMageTests({
           "value": "Well"
         },
         {
+          "op": "assertStackObject",
+          "source": "Meddling Mage",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -419,7 +426,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "fused Alive // Well",
+          "label": "Cast fused Alive // Well",
           "expected": false
         },
         {

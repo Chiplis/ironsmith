@@ -51,8 +51,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{C}{C}{C}{C}[{ActivatedAbilityManaCondition}]\", manaOptions)"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Cryptic Trilobite",
+          "counter": "P1P1",
+          "count": 5
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "exact": true,
+          "options": [
+            {
+              "mana": "{C}{C}{C}{C}{C}{C}{C}{C}{C}{C}",
+              "restricted": {
+                "activateAbilities": 10
+              }
+            }
+          ]
         }
       ]
     },
@@ -97,18 +113,119 @@ registerPortedMageTests({
           "value": "X=5"
         },
         {
-          "op": "activateAbility",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cryptic Trilobite",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Cryptic Trilobite",
+          "count": 5,
+          "player": 0,
+          "counter": "P1P1",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true
+        },
+        {
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}:"
+          "source": "Cryptic Trilobite",
+          "ability": "Remove a +1/+1 counter"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "C",
+          "amount": 2,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}:"
+          "ability": "{2}:",
+          "source": "Deathknell Kami"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Deathknell Kami",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "C",
+          "amount": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Cryptic Trilobite",
+          "ability": "Remove a +1/+1 counter"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "C",
+          "amount": 2,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{2}:",
+          "source": "Deathknell Kami"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Deathknell Kami",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "C",
+          "amount": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -129,7 +246,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Cryptic Trilobite",
           "counter": "P1P1",
-          "count": 3
+          "count": 3,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -139,8 +257,17 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}[{ActivatedAbilityManaCondition}]\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": 0,
+          "options": [
+            {
+              "mana": "{C}{C}{C}{C}{C}{C}",
+              "restricted": {
+                "activateAbilities": 6
+              }
+            }
+          ],
+          "exact": true
         }
       ]
     },

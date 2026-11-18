@@ -176,12 +176,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Activate Pillarfield Ox: its mana cost, Exile this source: Put counters.",
+          "expected": true
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Scavenge",
-          "target": "Silvercoat Lion"
+          "ability": "its mana cost, Exile this source: Put counters.",
+          "target": "Silvercoat Lion",
+          "source": "Pillarfield Ox"
         },
         {
           "op": "setStopAt",
@@ -257,12 +266,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Activate Pillarfield Ox: its mana cost, Exile this source: Put counters.",
+          "expected": true
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Scavenge",
-          "target": "Silvercoat Lion"
+          "ability": "its mana cost, Exile this source: Put counters.",
+          "target": "Silvercoat Lion",
+          "source": "Pillarfield Ox"
         },
         {
           "op": "setStopAt",

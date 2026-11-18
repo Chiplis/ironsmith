@@ -172,11 +172,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "{T}"
+          "kind": "activate_mana_ability",
+          "label": "{T}",
+          "source": "Taiga"
         },
         {
           "op": "setStopAt",
@@ -184,8 +186,7 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Can't find ability to activate command: {T}\")) { Assert.fail(\"must throw error about bad targets, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
         }
       ]
     },
@@ -235,12 +236,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Lightning Bolt",
-          "target": 0
+          "kind": "cast_spell",
+          "label": "Lightning Bolt",
+          "sourceZone": "hand"
         },
         {
           "op": "setStopAt",
@@ -248,8 +250,7 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Lightning Bolt$targetPlayer=PlayerA\")) { Assert.fail(\"must throw error about bad targets, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
         }
       ]
     }

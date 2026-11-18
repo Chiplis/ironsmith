@@ -525,7 +525,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Barad-dur",
+          "name": "Barad-dûr",
           "count": 1
         },
         {
@@ -540,7 +540,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Barad-dur"
+          "name": "Barad-dûr"
         },
         {
           "op": "setStopAt",
@@ -551,8 +551,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(barad, true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Barad-dûr",
+          "tapped": true,
+          "count": 1
         }
       ]
     },
@@ -567,7 +570,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Barad-dur",
+          "name": "Barad-dûr",
           "count": 1
         },
         {
@@ -582,7 +585,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Barad-dur"
+          "name": "Barad-dûr"
         },
         {
           "op": "setStopAt",
@@ -593,8 +596,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(barad, false)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Barad-dûr",
+          "tapped": false,
+          "count": 1
         }
       ]
     }

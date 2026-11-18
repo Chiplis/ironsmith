@@ -165,10 +165,19 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "source": "Ajani's Aid",
+          "ability": "Sacrifice",
           "player": 0,
-          "ability": "Sacrifice"
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Ajani's Aid",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
@@ -176,24 +185,38 @@ registerPortedMageTests({
           "value": "Prodigal Pyromancer"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Ajani's Aid",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
+          "source": "Prodigal Pyromancer",
+          "ability": "deals 1 damage",
           "player": 1,
-          "ability": "{T}: ",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
           "target": 0
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertStackObject",
+          "source": "Prodigal Pyromancer",
+          "count": 1,
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
         },
         {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertLife",

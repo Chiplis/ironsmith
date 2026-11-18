@@ -43,8 +43,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, lion, 2, 2)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "assertPowerToughness",
@@ -130,8 +133,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, lion, 2, 2)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "assertPowerToughness",
@@ -141,8 +147,11 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, airElemental, 4, 4)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Air Elemental",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "assertPowerToughness",
@@ -172,8 +181,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, lion, 5, 5)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "assertPowerToughness",
@@ -183,8 +195,11 @@ registerPortedMageTests({
           "toughness": 6
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, airElemental, 5, 5)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Air Elemental",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "assertPowerToughness",
@@ -276,8 +291,11 @@ registerPortedMageTests({
           "toughness": 6
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, solRing, 5, 5)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Sol Ring",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "assertAbility",
@@ -302,8 +320,11 @@ registerPortedMageTests({
           "toughness": 6
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, solRing, 5, 5)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Sol Ring",
+          "power": 5,
+          "toughness": 5
         },
         {
           "op": "assertAbility",
@@ -329,15 +350,15 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPowerToughness",
+          "op": "assertPermanentCharacteristics",
           "player": 0,
           "name": "Sol Ring",
-          "power": 0,
-          "toughness": 0
-        },
-        {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, solRing, 0, 0)"
+          "expected": {
+            "power": null,
+            "toughness": null,
+            "basePower": null,
+            "baseToughness": null
+          }
         },
         {
           "op": "assertAbility",
@@ -413,8 +434,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, lion, 1, 1)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "assertPowerToughness",
@@ -432,8 +456,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, lion, 2, 2)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "assertPowerToughness",
@@ -485,8 +512,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, lion, 0, 1)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "power": 0,
+          "toughness": 1
         },
         {
           "op": "assertPowerToughness",

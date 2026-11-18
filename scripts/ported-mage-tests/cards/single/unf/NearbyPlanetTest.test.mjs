@@ -18,7 +18,10 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "Nearby Planet",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Land — Cave Desert Forest Gate Island Lair Locus Mine Mountain Plains Planet Power-Plant Sphere Swamp Tower Town Urza’s",
+          "oracleText": "This land enters tapped.\nWhen this land enters, sacrifice it unless you pay {1}."
         },
         {
           "op": "addCard",
@@ -101,7 +104,10 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "Nearby Planet",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Land — Cave Desert Forest Gate Island Lair Locus Mine Mountain Plains Planet Power-Plant Sphere Swamp Tower Town Urza’s",
+          "oracleText": "This land enters tapped.\nWhen this land enters, sacrifice it unless you pay {1}."
         },
         {
           "op": "addCard",

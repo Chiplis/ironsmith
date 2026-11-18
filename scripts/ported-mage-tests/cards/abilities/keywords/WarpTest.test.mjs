@@ -191,11 +191,13 @@ registerPortedMageTests({
           "player": 0
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bygone Colossus with Warp"
+          "kind": "cast_spell",
+          "label": "Bygone Colossus with Warp",
+          "sourceZone": "exile"
         },
         {
           "op": "setStrictChooseMode",
@@ -207,8 +209,7 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { Assert.assertEquals( \"Should fail to be able to cast \" + colossus + \" with warp\", \"Can't find ability to activate command: Cast \" + colossus + \" with Warp\", e.getMessage() ); }"
+          "op": "execute"
         }
       ]
     },

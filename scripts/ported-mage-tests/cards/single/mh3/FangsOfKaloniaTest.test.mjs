@@ -185,9 +185,26 @@ registerPortedMageTests({
           "name": "Arcbound Lancer"
         },
         {
-          "op": "assertPowerToughness",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "source": "Arcbound Lancer",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "counter": "+1/+1",
+          "count": 2
+        },
+        {
+          "op": "assertPowerToughness",
           "player": 0,
           "name": "Arcbound Lancer",
           "power": 2,
@@ -202,6 +219,33 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fangs of Kalonia",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "counter": "+1/+1",
+          "count": 0
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 2,
+          "toughness": 2
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -210,19 +254,24 @@ registerPortedMageTests({
           "target": "Arcbound Lancer"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fangs of Kalonia",
+          "count": 1,
+          "objectTarget": "Arcbound Lancer"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertPowerToughness",
+          "op": "assertCounterCount",
           "player": 0,
-          "name": "Grizzly Bears",
-          "power": 2,
-          "toughness": 2
+          "name": "Arcbound Lancer",
+          "counter": "+1/+1",
+          "count": 2
         },
         {
           "op": "assertPowerToughness",
@@ -373,20 +422,35 @@ registerPortedMageTests({
           "name": "Arcbound Lancer"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Arcbound Lancer",
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Hardened Scales"
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Hardened Scales"
+          ]
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "counter": "+1/+1",
+          "count": 2
         },
         {
           "op": "assertPowerToughness",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Arcbound Lancer",
           "power": 2,
@@ -401,17 +465,42 @@ registerPortedMageTests({
           "target": "Arcbound Lancer"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Hardened Scales"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fangs of Kalonia",
+          "count": 1,
+          "objectTarget": "Arcbound Lancer"
         },
         {
-          "op": "execute"
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Hardened Scales"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Hardened Scales"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "counter": "+1/+1",
+          "count": 5
         },
         {
           "op": "assertPowerToughness",
@@ -468,20 +557,35 @@ registerPortedMageTests({
           "name": "Arcbound Lancer"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Arcbound Lancer",
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Vorinclex, Monstrous Raider"
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Vorinclex, Monstrous Raider"
+          ]
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "counter": "+1/+1",
+          "count": 3
         },
         {
           "op": "assertPowerToughness",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Arcbound Lancer",
           "power": 3,
@@ -496,17 +600,33 @@ registerPortedMageTests({
           "target": "Arcbound Lancer"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Vorinclex, Monstrous Raider"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fangs of Kalonia",
+          "count": 1,
+          "objectTarget": "Arcbound Lancer"
         },
         {
-          "op": "execute"
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Vorinclex, Monstrous Raider"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Arcbound Lancer",
+          "counter": "+1/+1",
+          "count": 3
         },
         {
           "op": "assertPowerToughness",

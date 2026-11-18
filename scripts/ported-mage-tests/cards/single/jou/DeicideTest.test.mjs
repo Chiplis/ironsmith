@@ -25,7 +25,11 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 1,
           "name": "Crusade",
-          "count": 3
+          "count": 3,
+          "fixtureSource": true,
+          "typeLine": "Enchantment",
+          "oracleText": "White creatures get +1/+1.",
+          "manaCost": "{W}{W}"
         },
         {
           "op": "addCard",
@@ -33,6 +37,22 @@ registerPortedMageTests({
           "player": 0,
           "name": "Plains",
           "count": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Heliod, Sun-Crowned"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "creature",
+              "expected": true
+            }
+          ],
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -51,8 +71,20 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertExiledCardSubtype(\"Heliod, Sun-Crowned\", SubType.GOD)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 1,
+            "name": "Heliod, Sun-Crowned"
+          },
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "God",
+              "expected": true
+            }
+          ],
+          "count": 1
         }
       ]
     }

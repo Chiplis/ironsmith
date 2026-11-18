@@ -47,7 +47,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Illustrious Historian",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -56,15 +57,24 @@ registerPortedMageTests({
           "player": 0,
           "name": "Spirit Token",
           "power": 3,
-          "toughness": 2
+          "toughness": 2,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"before trigger\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, 20)"
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": "20",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"before trigger\", 2, PhaseStep.POSTCOMBAT_MAIN, playerB, 20)"
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "life": "20",
+          "seatIndependent": true
         },
         {
           "op": "addTarget",
@@ -166,15 +176,24 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Illustrious Historian",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"before trigger\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, 20)"
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": "20",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"before trigger\", 2, PhaseStep.POSTCOMBAT_MAIN, playerB, 20)"
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "life": "20",
+          "seatIndependent": true
         },
         {
           "op": "addTarget",

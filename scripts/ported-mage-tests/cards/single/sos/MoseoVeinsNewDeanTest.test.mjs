@@ -146,8 +146,9 @@ registerPortedMageTests({
           "name": "Chaplain's Blessing"
         },
         {
-          "op": "addTarget",
+          "op": "assertTargetExcluded",
           "player": 0,
+          "context": "Moseo, Vein's New Dean's triggered ability",
           "target": "Craw Wurm"
         },
         {
@@ -160,8 +161,24 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Targets list was setup by addTarget with [Craw Wurm], but not used\")) { Assert.fail(\"must have thrown error about unused target, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerA, \"Craw Wurm\", 0)"
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 25
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Craw Wurm",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Craw Wurm",
+          "count": 0
         }
       ]
     },

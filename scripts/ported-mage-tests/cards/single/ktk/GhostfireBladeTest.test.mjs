@@ -32,7 +32,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Equip {3}",
+          "label": "Activate Ghostfire Blade: Equip",
           "expected": false
         },
         {
@@ -53,7 +53,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Equip {3}",
+          "label": "Activate Ghostfire Blade: Equip",
           "expected": false
         },
         {
@@ -61,16 +61,35 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Equip {3}",
+          "label": "Activate Ghostfire Blade: Equip",
           "expected": true
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Forest",
+          "ability": "{T}: Add {G}",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Equip {3}",
-          "target": "Alpha Myr"
+          "ability": "Equip {1}",
+          "target": "Alpha Myr",
+          "source": "Ghostfire Blade"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ghostfire Blade",
+          "objectTarget": "Alpha Myr",
+          "abilityKind": "Activated",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -83,6 +102,13 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Forest",
+          "player": 0,
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "assertPowerToughness",

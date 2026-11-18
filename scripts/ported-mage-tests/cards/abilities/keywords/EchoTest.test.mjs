@@ -181,7 +181,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Deranged Hermit",
+          "name": "Deranged Hermit@hermit",
           "count": 1
         },
         {
@@ -200,73 +200,128 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Deranged Hermit",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Deranged Hermit"
+          "objectAlias": "@hermit"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Deranged Hermit",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Double Major",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Double Major",
           "target": "Deranged Hermit"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Double Major",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Deranged Hermit"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Phantasmal Image"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Deranged Hermit"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Echo {3}{G}{G}"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 3,
           "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Deranged Hermit",
+          "count": 2
+        },
+        {
+          "op": "castSpell",
+          "name": "Phantasmal Image",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Phantasmal Image",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "description": "Choose what to copy as this permanent enters",
+          "kind": "options",
+          "choices": [
+            {
+              "description": "Enter as a copy of Deranged Hermit",
+              "object": "@hermit"
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Deranged Hermit",
+          "count": 3
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Deranged Hermit",
+          "count": 3,
+          "turn": 3,
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Pay echo cost?",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Pay echo cost?",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Pay echo cost?",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Deranged Hermit",
+          "count": 3
         },
         {
           "op": "assertLife",
@@ -279,13 +334,8 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Deranged Hermit",
-          "count": 3
-        },
-        {
           "op": "assertTappedCount",
+          "player": 0,
           "name": "Tropical Island",
           "tapped": true,
           "count": 15

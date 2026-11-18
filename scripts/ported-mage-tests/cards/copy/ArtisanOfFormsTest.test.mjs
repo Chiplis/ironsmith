@@ -97,8 +97,21 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents(playerA.getId())) { if (permanent.getName().equals(\"Silvercoat Lion\")) { Assert.assertEquals(\"Creature has to have Cast + Heroic ability\", 2, permanent.getAbilities().size()); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Silvercoat Lion",
+            "player": 0
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "ability",
+              "kind": "triggered",
+              "value": "whenever you cast",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -221,8 +234,21 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "unsupported",
-          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents(playerA.getId())) { if (permanent.getName().equals(\"Silvercoat Lion\")) { Assert.assertEquals(\"Creature has to have Cast + Heroic ability\", 2, permanent.getAbilities().size()); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Silvercoat Lion",
+            "player": 0
+          },
+          "count": 3,
+          "checks": [
+            {
+              "property": "ability",
+              "kind": "triggered",
+              "value": "whenever you cast",
+              "expected": true
+            }
+          ]
         }
       ]
     }

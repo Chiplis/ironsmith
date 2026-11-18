@@ -79,7 +79,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Basri Ket",
           "counter": "LOYALTY",
           "count": 2

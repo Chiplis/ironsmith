@@ -7,28 +7,55 @@ registerPortedMageTests({
       "name": "test_PlayerLeaveGame",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"turn 1\", 1, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"turn 2\", 2, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"turn 3 before\", 3, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
-          "op": "unsupported",
-          "source": "concede(3, PhaseStep.POSTCOMBAT_MAIN, playerA)"
+          "op": "concede",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"turn 3 after\", 3, PhaseStep.END_TURN, playerD, playerA, false)"
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"turn 4\", 4, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, false)"
+          "op": "assertPlayerState",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
           "op": "setStopAt",
@@ -55,68 +82,100 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"turn 1\", 1, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"turn 2\", 2, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"turn 3 before\", 3, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "concede(3, PhaseStep.POSTCOMBAT_MAIN, playerA)"
+          "op": "concede",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"turn 3 after\", 3, PhaseStep.END_TURN, playerD, playerA, false)"
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "END_TURN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"turn 4\", 4, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, false)"
+          "op": "assertPlayerState",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 0
         },
         {
           "op": "setStopAt",
@@ -134,7 +193,8 @@ registerPortedMageTests({
     },
     {
       "name": "test_PlayerLeaveGameWithOwnPermanentAndCustomEffect",
-      "operations": []
+      "operations": [],
+      "skip": "upstream body comments out the only test call"
     },
     {
       "name": "test_PlayerLeaveGameWithOwnPermanentAndWhileOnBattlefieldEffect",
@@ -154,20 +214,32 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"effect\", playerA, new SimpleStaticAbility(new BoostAllEffect(1, 1, Duration.WhileOnBattlefield)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "effect",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Creatures get +1/+1."
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.WhileOnBattlefield.toString() + \" - turn 1\", 1, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -179,16 +251,22 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.WhileOnBattlefield.name() + \" - turn 2\", 2, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -200,16 +278,22 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.WhileOnBattlefield.name() + \" - turn 3 before\", 3, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -221,20 +305,28 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "concede(3, PhaseStep.POSTCOMBAT_MAIN, playerA)"
+          "op": "concede",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.WhileOnBattlefield.name() + \" - turn 3 after\", 3, PhaseStep.END_TURN, playerD, playerA, false)"
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "END_TURN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 0
         },
         {
           "op": "assertPowerToughness",
@@ -246,16 +338,22 @@ registerPortedMageTests({
           "toughness": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.WhileOnBattlefield.name() + \" - turn 4\", 4, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, false)"
+          "op": "assertPlayerState",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 0
         },
         {
           "op": "assertPowerToughness",
@@ -298,20 +396,32 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"effect\", playerA, new SimpleStaticAbility(new BoostAllEffect(1, 1, Duration.EndOfGame)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "effect",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Creatures get +1/+1."
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.EndOfGame.toString() + \" - turn 1\", 1, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -323,16 +433,22 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.EndOfGame.name() + \" - turn 2\", 2, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -344,16 +460,22 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.EndOfGame.name() + \" - turn 3 before\", 3, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -365,20 +487,28 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "concede(3, PhaseStep.POSTCOMBAT_MAIN, playerA)"
+          "op": "concede",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.EndOfGame.name() + \" - turn 3 after\", 3, PhaseStep.END_TURN, playerD, playerA, false)"
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "END_TURN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 0
         },
         {
           "op": "assertPowerToughness",
@@ -390,16 +520,22 @@ registerPortedMageTests({
           "toughness": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.EndOfGame.name() + \" - turn 4\", 4, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, false)"
+          "op": "assertPlayerState",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 0
         },
         {
           "op": "assertPowerToughness",
@@ -442,20 +578,41 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"effect\", playerA, new SimpleStaticAbility(new BoostAllEffect(1, 1, Duration.UntilSourceLeavesBattlefield)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "effect",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Creatures get +1/+1 for as long as this permanent remains on the battlefield."
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.UntilSourceLeavesBattlefield.toString() + \" - turn 1\", 1, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "effect",
+          "ability": "Creatures get +1/+1",
+          "resolve": true
+        },
+        {
+          "op": "assertPlayerState",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -467,16 +624,22 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.UntilSourceLeavesBattlefield.name() + \" - turn 2\", 2, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -488,16 +651,22 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.UntilSourceLeavesBattlefield.name() + \" - turn 3 before\", 3, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -509,20 +678,28 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "concede(3, PhaseStep.POSTCOMBAT_MAIN, playerA)"
+          "op": "concede",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.UntilSourceLeavesBattlefield.name() + \" - turn 3 after\", 3, PhaseStep.END_TURN, playerD, playerA, false)"
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "END_TURN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 0
         },
         {
           "op": "assertPowerToughness",
@@ -534,16 +711,22 @@ registerPortedMageTests({
           "toughness": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(Duration.UntilSourceLeavesBattlefield.name() + \" - turn 4\", 4, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, false)"
+          "op": "assertPlayerState",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "Balduvian Bears"
+          "targetPlayer": 0,
+          "name": "Balduvian Bears",
+          "count": 0
         },
         {
           "op": "assertPowerToughness",
@@ -572,8 +755,14 @@ registerPortedMageTests({
       "name": "test_EndOfTurnMultiLeave",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"boost\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.EndOfTurn)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "boost",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Creatures get +1/+1 until end of turn."
         },
         {
           "op": "addCard",
@@ -604,8 +793,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "concede(1, PhaseStep.POSTCOMBAT_MAIN, playerA)"
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "boost",
+          "ability": "Creatures get +1/+1",
+          "resolve": true
+        },
+        {
+          "op": "concede",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0
         },
         {
           "op": "assertPowerToughness",
@@ -661,8 +861,14 @@ registerPortedMageTests({
       "name": "test_UntilYourNextTurnMultiLeave",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"boost\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.UntilYourNextTurn)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "boost",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Creatures get +1/+1 until your next turn."
         },
         {
           "op": "addCard",
@@ -693,8 +899,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "concede(1, PhaseStep.POSTCOMBAT_MAIN, playerA)"
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "boost",
+          "ability": "Creatures get +1/+1",
+          "resolve": true
+        },
+        {
+          "op": "concede",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0
         },
         {
           "op": "assertPowerToughness",
@@ -710,8 +927,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "boost"
+          "targetPlayer": 0,
+          "name": "boost",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -727,8 +945,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "boost"
+          "targetPlayer": 0,
+          "name": "boost",
+          "count": 0
         },
         {
           "op": "assertPowerToughness",
@@ -793,8 +1012,14 @@ registerPortedMageTests({
       "name": "test_UntilEndOfYourNextTurnMultiLeave",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"boost\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.UntilEndOfYourNextTurn)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "boost",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Creatures get +1/+1 until the end of your next turn."
         },
         {
           "op": "addCard",
@@ -825,8 +1050,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "concede(1, PhaseStep.POSTCOMBAT_MAIN, playerA)"
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "boost",
+          "ability": "Creatures get +1/+1",
+          "resolve": true
+        },
+        {
+          "op": "concede",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0
         },
         {
           "op": "assertPowerToughness",
@@ -842,8 +1078,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "boost"
+          "targetPlayer": 0,
+          "name": "boost",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -859,8 +1096,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": "playerD",
-          "name": 0,
-          "count": "boost"
+          "targetPlayer": 0,
+          "name": "boost",
+          "count": 0
         },
         {
           "op": "assertPowerToughness",
@@ -921,5 +1159,11 @@ registerPortedMageTests({
         }
       ]
     }
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
   ]
 });

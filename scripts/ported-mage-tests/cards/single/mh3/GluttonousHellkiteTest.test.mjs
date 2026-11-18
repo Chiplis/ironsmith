@@ -461,8 +461,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"before blink\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Gluttonous Hellkite\", CounterType.P1P1, 2 + 2 + 2)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Gluttonous Hellkite",
+          "counter": "P1P1",
+          "count": 6,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",

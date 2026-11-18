@@ -271,10 +271,6 @@ registerPortedMageTests({
       "name": "test_DieOther_Multiple_CanRecover",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA, 2)"
-        },
-        {
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
@@ -296,31 +292,80 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Two Creature Destroy Fixture",
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Destroy two target creatures."
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target destroy"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
+          "source": "Two Creature Destroy Fixture",
+          "ability": "Destroy two target creatures",
           "target": "Silvercoat Lion^Grizzly Bears"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": "Recover&mdash;Pay half your life"
+          "count": 1,
+          "source": "Two Creature Destroy Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Two Creature Destroy Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Grizzly Bears"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"on recover triggers\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Recover&mdash;Pay half your life\", 2)"
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 2,
+          "source": "Garza's Assassin",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -328,42 +373,81 @@ registerPortedMageTests({
           "value": false
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Garza's Assassin",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 20,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Garza's Assassin",
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Garza's Assassin",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "life": "20 / 2"
+          "life": 10,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Garza's Assassin",
+          "count": 0,
+          "seatIndependent": true
         }
       ]
     },
     {
       "name": "test_DieItself_MustNotWork",
       "operations": [
-        {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA, 1)"
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -372,34 +456,71 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "ability": "target destroy"
+          "name": "Swamp",
+          "count": 3
         },
         {
-          "op": "addTarget",
+          "op": "addCard",
+          "zone": "HAND",
           "player": 0,
+          "name": "Murder",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "name": "Murder",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "target": "Garza's Assassin"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Murder",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Garza's Assassin"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Garza's Assassin",
+          "count": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Garza's Assassin",
           "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Garza's Assassin",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Garza's Assassin",
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -411,10 +532,6 @@ registerPortedMageTests({
     {
       "name": "test_DieItselfAndMultiple_MustNotWork",
       "operations": [
-        {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA, 2)"
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -430,34 +547,69 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plains",
+          "count": 4
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Day of Judgment",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "name": "Day of Judgment",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Day of Judgment",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "target destroy"
+          "resolutions": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Garza's Assassin^Silvercoat Lion"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Garza's Assassin",
+          "count": 0,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Garza's Assassin",
           "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Garza's Assassin",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Garza's Assassin",
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",

@@ -60,8 +60,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : currentGame.getExile().getAllCards(currentGame)) { Assert.assertTrue(\"Exiled card is not face down\", card.isFaceDown(currentGame)); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile"
+          },
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -639,21 +647,45 @@ registerPortedMageTests({
           "name": "Shelldock Isle"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Ulamog's Crusher"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Ulamog's Crusher"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Ulamog's Crusher",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}"
+          "ability": "{U}, {T}: You may play that card",
+          "source": "Shelldock Isle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Ulamog's Crusher"
+          "description": "Play that card without paying its mana cost if a library has twenty or fewer cards in it",
+          "kind": "boolean",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -739,21 +771,45 @@ registerPortedMageTests({
           "name": "Shelldock Isle"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Ulamog's Crusher"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Ulamog's Crusher"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Ulamog's Crusher",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}"
+          "ability": "{U}, {T}: You may play that card",
+          "source": "Shelldock Isle"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Ulamog's Crusher"
+          "description": "Play that card without paying its mana cost if a library has twenty or fewer cards in it",
+          "kind": "boolean",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -844,19 +900,37 @@ registerPortedMageTests({
           "name": "Windbrisk Heights"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Hideaway 4"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Auriok Champion"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Auriok Champion"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Llanowar Elves"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
           "player": 0,
-          "value": "Llanowar Elves"
+          "name": "Auriok Champion",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Llanowar Elves",
+          "count": 1
         },
         {
           "op": "attack",
@@ -884,27 +958,22 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "DECLARE_BLOCKERS",
           "player": 0,
-          "ability": "{W},"
+          "ability": "{W}, {T}: You may play that card",
+          "source": "Windbrisk Heights"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Llanowar Elves^Auriok Champion"
+          "description": "Play that card without paying its mana cost if you attacked with three or more creatures this turn",
+          "kind": "boolean",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Whenever"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS"
         },
         {
           "op": "setStopAt",
@@ -997,19 +1066,37 @@ registerPortedMageTests({
           "name": "Windbrisk Heights"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Hideaway 4"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Ghost Quarter"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Ghost Quarter"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Field of the Dead"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
           "player": 0,
-          "value": "Field of the Dead"
+          "name": "Ghost Quarter",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Field of the Dead",
+          "count": 1
         },
         {
           "op": "attack",
@@ -1037,12 +1124,22 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "DECLARE_BLOCKERS",
           "player": 0,
-          "ability": "{W},"
+          "ability": "{W}, {T}: You may play that card",
+          "source": "Windbrisk Heights"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Ghost Quarter^Field of the Dead"
+          "description": "Play that card without paying its mana cost if you attacked with three or more creatures this turn",
+          "kind": "boolean",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS"
         },
         {
           "op": "setStopAt",
@@ -1129,14 +1226,31 @@ registerPortedMageTests({
           "name": "Windbrisk Heights"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Hideaway 4"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Ghost Quarter"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Ghost Quarter"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Ghost Quarter"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Ghost Quarter",
+          "count": 2
         },
         {
           "op": "attack",
@@ -1164,12 +1278,22 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "DECLARE_BLOCKERS",
           "player": 0,
-          "ability": "{W},"
+          "ability": "{W}, {T}: You may play that card",
+          "source": "Windbrisk Heights"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Ghost Quarter^Ghost Quarter"
+          "description": "Play that card without paying its mana cost if you attacked with three or more creatures this turn",
+          "kind": "boolean",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS"
         },
         {
           "op": "setStopAt",

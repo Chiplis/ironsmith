@@ -25,12 +25,16 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Meandering Powershell"
+          "targetPlayer": 0,
+          "name": "Meandering Towershell",
+          "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"T3 First Main: playerB at 20 life\", 3, PhaseStep.PRECOMBAT_MAIN, playerB, 20)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "life": 20
         },
         {
           "op": "setStrictChooseMode",
@@ -93,19 +97,37 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Meandering Powershell"
+          "targetPlayer": 0,
+          "name": "Meandering Towershell",
+          "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"T3 First Main: playerB at 20 life\", 3, PhaseStep.PRECOMBAT_MAIN, playerB, 20)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "life": 20
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Time Stop"
+          "name": "Time Stop",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Time Stop",
+          "isSpell": true,
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",

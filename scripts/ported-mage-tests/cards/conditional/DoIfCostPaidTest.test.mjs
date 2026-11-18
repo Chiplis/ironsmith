@@ -84,8 +84,14 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"must be untapped on start\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Mana Vault\", false, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mana Vault",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",
@@ -100,8 +106,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"must be tapped after usage\", 2, PhaseStep.PRECOMBAT_MAIN, playerA, \"Mana Vault\", true, 1)"
+          "op": "assertTappedCount",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mana Vault",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -109,8 +121,14 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"must be tapped after dialog\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Mana Vault\", true, 1)"
+          "op": "assertTappedCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mana Vault",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",
@@ -122,8 +140,14 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"must be untapped after dialog\", 5, PhaseStep.PRECOMBAT_MAIN, playerA, \"Mana Vault\", false, 1)"
+          "op": "assertTappedCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mana Vault",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",
@@ -173,8 +197,14 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"must be untapped\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Mana Vault\", false, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mana Vault",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "unsupported",

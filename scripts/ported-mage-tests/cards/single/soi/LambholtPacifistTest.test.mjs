@@ -53,7 +53,8 @@ registerPortedMageTests({
           "turn": 3,
           "player": 0,
           "attacker": "Lambholt Pacifist",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": false
         },
         {
           "op": "setStopAt",
@@ -61,12 +62,19 @@ registerPortedMageTests({
           "phase": "END_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerA must have 0 actions but found 1\")) { Assert.fail(\"Should have had error about not being able to attack, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerB, orni, 1)"
+          "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(lambholt, false)"
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Ornithopter",
+          "count": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Lambholt Pacifist",
+          "tapped": false
         },
         {
           "op": "assertLife",

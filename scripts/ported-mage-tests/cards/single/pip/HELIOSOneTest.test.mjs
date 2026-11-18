@@ -107,30 +107,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "{3}",
-          "expected": true
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
-        },
-        {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{3}"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Elite Vanguard"
+          "kind": "activate_ability",
+          "source": "HELIOS One",
+          "checkPayment": true
         },
         {
           "op": "setStopAt",
@@ -138,8 +122,19 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"Should not be possible to activate the {3} ability without energy and without a 0 mana target\"); } catch (AssertionError e) { Assert.assertTrue( \"X=0 is not a valid choice. Error message:\\n\" + e.getMessage(), e.getMessage().contains(\"Can't find ability to activate command: {3}\") ); }"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "HELIOS One",
+          "count": 2
         }
       ]
     },
@@ -177,7 +172,7 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "{3}",
-          "expected": true
+          "expected": false
         },
         {
           "op": "activateManaAbility",
@@ -192,13 +187,23 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}"
+          "ability": "{1}",
+          "source": "HELIOS One"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": 0,
+          "counter": "ENERGY",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPlayableAbility",
@@ -218,7 +223,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}"
+          "ability": "{3}",
+          "source": "HELIOS One"
         },
         {
           "op": "addTarget",
@@ -249,7 +255,8 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Plains",
           "tapped": true,
-          "count": 4
+          "count": 4,
+          "player": 0
         },
         {
           "op": "assertCounterCount",

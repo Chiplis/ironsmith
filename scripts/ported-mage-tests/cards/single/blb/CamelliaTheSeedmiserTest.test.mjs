@@ -211,32 +211,92 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "source": "Sorin, Ravenous Neonate",
+          "ability": "+2",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Sorin, Ravenous Neonate",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "ability": "+2"
+          "name": "Food Token",
+          "count": 1
         },
         {
           "op": "activateAbility",
+          "source": "Sorin, Ravenous Neonate",
+          "ability": "+2",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Sorin, Ravenous Neonate",
+          "count": 1,
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "ability": "+2"
+          "name": "Food Token",
+          "count": 2
         },
         {
           "op": "activateAbility",
+          "source": "Sai, Master Thopterist",
+          "ability": "Sacrifice two artifacts",
+          "player": 0,
+          "turn": 5,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Sai, Master Thopterist",
+          "count": 1,
           "turn": 5,
           "phase": "UPKEEP",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "ability": "{1}{U}, Sacrifice two artifacts: Draw a card."
+          "name": "Food Token",
+          "count": 0
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Camellia, the Seedmiser",
+          "count": 1,
           "turn": 5,
-          "phase": "BEGIN_COMBAT"
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "UPKEEP"
         },
         {
           "op": "assertPermanentCount",

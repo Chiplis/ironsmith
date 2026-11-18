@@ -17,7 +17,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Panharmonicon",
+          "name": "Panharmonicon@panharmonicon",
           "count": 1
         },
         {
@@ -31,28 +31,28 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Plains",
+          "name": "Plains@plains",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Mountain",
+          "name": "Mountain@mountain",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Forest",
+          "name": "Forest@forest",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Swamp",
+          "name": "Swamp@swamp",
           "count": 1
         },
         {
@@ -73,6 +73,26 @@ registerPortedMageTests({
           "target": "Mountain"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "text": "Felidar Guardian",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "text": "Grip of Chaos",
+          "count": 2
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "BEGIN_COMBAT"
@@ -87,10 +107,22 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "if (zcc != 7) { Assert.assertEquals(\"Sum of zone change counter should be 9\", 9, zcc); }"
+          "op": "assertReenteredFixtures",
+          "player": 0,
+          "fixtures": [
+            "@panharmonicon",
+            "@plains",
+            "@mountain",
+            "@forest",
+            "@swamp"
+          ],
+          "counts": [
+            1,
+            2
+          ]
         }
-      ]
+      ],
+      "seed": 137
     }
   ]
 });

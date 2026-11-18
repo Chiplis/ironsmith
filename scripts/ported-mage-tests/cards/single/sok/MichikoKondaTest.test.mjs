@@ -199,8 +199,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, zombie, 1)"
+          "op": "assertDamageReceived",
+          "name": "Walking Corpse",
+          "damage": 1,
+          "player": 0
         }
       ]
     },

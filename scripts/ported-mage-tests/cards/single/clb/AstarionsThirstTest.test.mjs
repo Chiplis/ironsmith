@@ -57,7 +57,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Akiri, Line-Slinger"
+          "name": "Akiri, Line-Slinger",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -66,6 +67,11 @@ registerPortedMageTests({
           "player": 0,
           "name": "Astarion's Thirst",
           "target": "Ancient Bronze Dragon"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Akiri, Line-Slinger"
         },
         {
           "op": "execute"
@@ -86,5 +92,11 @@ registerPortedMageTests({
         }
       ]
     }
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
   ]
 });

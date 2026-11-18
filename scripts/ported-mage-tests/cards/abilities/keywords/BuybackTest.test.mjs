@@ -404,8 +404,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"bolt 1\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Mountain\", true, 1 + 3 + 3)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 7,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -461,8 +467,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"bolt 2\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Mountain\", true, (1 + 3 + 3) + (1 + 1 + 3))"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 12,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

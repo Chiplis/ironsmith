@@ -39,7 +39,20 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Epochrasite"
+          "name": "Epochrasite",
+          "castingMethod": "normal"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Epochrasite",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "castSpell",
@@ -50,9 +63,56 @@ registerPortedMageTests({
           "target": "Epochrasite"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "objectTarget": "Epochrasite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Epochrasite",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Epochrasite"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 3
+            }
+          ]
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 7,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Epochrasite",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "setStrictChooseMode",
@@ -91,6 +151,16 @@ registerPortedMageTests({
           "name": "Epochrasite",
           "ability": "Haste",
           "expected": true
+        },
+        {
+          "op": "assertAttackDefenders",
+          "turn": 7,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "attacker": "Epochrasite",
+          "defenders": [
+            1
+          ]
         }
       ]
     },
@@ -144,7 +214,20 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Epochrasite"
+          "name": "Epochrasite",
+          "castingMethod": "normal"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Epochrasite",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "castSpell",
@@ -155,6 +238,58 @@ registerPortedMageTests({
           "target": "Epochrasite"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "objectTarget": "Epochrasite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Epochrasite",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Epochrasite"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 3
+            }
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 7,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Epochrasite",
+          "power": 4,
+          "toughness": 4
+        },
+        {
           "op": "castSpell",
           "turn": 7,
           "phase": "DRAW",
@@ -163,16 +298,22 @@ registerPortedMageTests({
           "target": "Epochrasite"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 7,
+          "phase": "DRAW"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Epochrasite",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 7,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Epochrasite"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
         },
         {
           "op": "setStrictChooseMode",
@@ -400,7 +541,28 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Suspend"
+          "ability": "Suspend Deep-Sea Kraken"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Deep-Sea Kraken"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 9
+            }
+          ]
         },
         {
           "op": "castSpell",
@@ -434,8 +596,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertCounterOnExiledCardCount(\"Deep-Sea Kraken\", CounterType.TIME, 8)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "name": "Deep-Sea Kraken"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "TIME",
+              "expected": 8
+            }
+          ]
         }
       ]
     },
@@ -699,8 +873,12 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after counter\", 1, PhaseStep.PRECOMBAT_MAIN, playerB, 20)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "life": "20",
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -708,7 +886,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -721,8 +900,12 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after suspend\", 7, PhaseStep.PRECOMBAT_MAIN, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "life": "20 - 3",
+          "seatIndependent": true
         },
         {
           "op": "assertGraveyardCount",
@@ -730,7 +913,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -826,7 +1010,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Bident of Thassa",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -834,7 +1019,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Bow of Nylea",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -842,7 +1028,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Wear // Tear",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -865,7 +1052,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Bident of Thassa",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -873,7 +1061,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Bow of Nylea",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertGraveyardCount",
@@ -881,7 +1070,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Wear // Tear",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -918,7 +1108,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Wear // Tear",
+          "name": "Wear // Tear@fixture.fuse",
           "count": 1
         },
         {
@@ -950,21 +1140,44 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Wear // Tear",
+          "objectAlias": "@fixture.fuse",
+          "methods": [
+            "fuse",
+            "normal",
+            "split_other_half"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "fused Wear // Tear"
+          "name": "fused Wear // Tear",
+          "castingMethod": "fuse",
+          "objectAlias": "@fixture.fuse",
+          "target": {
+            "groups": [
+              [
+                "Bident of Thassa"
+              ],
+              [
+                "Bow of Nylea"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Bident of Thassa"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Bow of Nylea"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Wear // Tear",
+          "count": 1,
+          "targetCount": 2
         },
         {
           "op": "castSpell",
@@ -1087,7 +1300,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Suspend 5",
+          "label": "Suspend Durkwood Baloth",
           "expected": true
         },
         {
@@ -1095,7 +1308,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Suspend 3",
+          "label": "Suspend Mox Tantalite",
           "expected": false
         },
         {
@@ -1103,7 +1316,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "label": "Suspend 3",
+          "label": "Suspend Mox Tantalite",
           "expected": false
         },
         {
@@ -1111,7 +1324,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "label": "Suspend 5",
+          "label": "Suspend Durkwood Baloth",
           "expected": false
         },
         {
@@ -1119,7 +1332,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Suspend 5",
+          "label": "Suspend Durkwood Baloth",
           "expected": false
         },
         {
@@ -1127,7 +1340,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Suspend 3",
+          "label": "Suspend Mox Tantalite",
           "expected": false
         },
         {
@@ -1135,7 +1348,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "label": "Suspend 3",
+          "label": "Suspend Mox Tantalite",
           "expected": true
         },
         {
@@ -1143,7 +1356,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "label": "Suspend 5",
+          "label": "Suspend Durkwood Baloth",
           "expected": false
         },
         {
@@ -1151,7 +1364,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "ability": "Suspend 3"
+          "ability": "Suspend Mox Tantalite"
         },
         {
           "op": "setStrictChooseMode",
@@ -1170,6 +1383,10 @@ registerPortedMageTests({
           "player": 1,
           "name": "Mox Tantalite",
           "count": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "assertCounterOnExiledCardCount(\"Mox Tantalite\", CounterType.TIME, 3)"
         }
       ]
     }

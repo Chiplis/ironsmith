@@ -36,25 +36,67 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Conclave Sledge-Captain",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Conclave Sledge-Captain",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Raging Goblin"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Raging Goblin"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Raging Goblin"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Conclave Sledge-Captain"
+          "resolutions": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Raging Goblin"
+          "op": "assertStackObject",
+          "source": "Conclave Sledge-Captain",
+          "count": 3,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "objectTarget": "Raging Goblin",
+          "completeTargets": true
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Raging Goblin"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "addTarget",
+          "op": "assertCounterCount",
           "player": 0,
-          "target": "Raging Goblin"
+          "name": "Raging Goblin",
+          "counter": "+1/+1",
+          "count": 3
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Raging Goblin",
+          "ability": "Trample",
+          "expected": true
         },
         {
           "op": "attack",
@@ -71,22 +113,33 @@ registerPortedMageTests({
           "attacker": "Raging Goblin"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": false
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertPermanentCount",
+          "op": "setChoice",
           "player": 0,
-          "name": "Raging Goblin",
+          "value": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Raging Goblin",
+          "count": 3,
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 17
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Memnite",
           "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "assertPowerToughness",
@@ -94,12 +147,6 @@ registerPortedMageTests({
           "name": "Raging Goblin",
           "power": 13,
           "toughness": 13
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Conclave Sledge-Captain",
-          "count": 1
         },
         {
           "op": "assertPowerToughness",

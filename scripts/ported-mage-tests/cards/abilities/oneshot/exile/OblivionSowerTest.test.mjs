@@ -21,6 +21,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
@@ -35,33 +40,50 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "skipInitShuffling"
-        },
-        {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Oblivion Sower",
           "player": 0,
-          "name": "Oblivion Sower"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Canopy Vista^Canopy Vista^Canopy Vista"
+          "target": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Oblivion Sower",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertHandCount",
+          "op": "setOptionChoices",
+          "kind": "boolean",
           "player": 0,
-          "name": "Oblivion Sower",
-          "count": 0
+          "description": "Put any number of land card in target opponent's exiles onto the battlefield under your control",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose land card in target opponent's exile",
+          "choices": [
+            "Canopy Vista",
+            "Canopy Vista",
+            "Canopy Vista"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -71,8 +93,15 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
+          "player": 1,
           "name": "Silvercoat Lion",
           "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Canopy Vista",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
@@ -82,9 +111,10 @@ registerPortedMageTests({
         },
         {
           "op": "assertTappedCount",
+          "player": 0,
           "name": "Canopy Vista",
-          "tapped": false,
-          "count": 3
+          "count": 3,
+          "tapped": false
         }
       ]
     }

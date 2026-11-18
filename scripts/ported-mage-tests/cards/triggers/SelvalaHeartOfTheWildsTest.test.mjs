@@ -174,8 +174,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"must have etb\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever another creature\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever another creature",
+          "count": 1
         },
         {
           "op": "castSpell",

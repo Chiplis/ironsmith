@@ -351,28 +351,16 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Detective's Phoenix",
-          "expected": true
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Detective's Phoenix using bestow",
-          "expected": true
-        },
-        {
-          "op": "castSpell",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Detective's Phoenix",
-          "target": "Memnite"
+          "zone": "graveyard",
+          "methods": [
+            "play_from"
+          ],
+          "methodLabel": "(bestow, from graveyard)"
         },
         {
           "op": "setStopAt",
@@ -380,8 +368,13 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"should have failed\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast \" + phoenix)) { Assert.fail(\"Should have thrown error about not being able to cast the Phoenix, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Detective's Phoenix",
+          "count": 1
         }
       ]
     }

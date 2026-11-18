@@ -100,6 +100,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Mountain",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -107,11 +114,54 @@ registerPortedMageTests({
           "name": "Relic Seeker"
         },
         {
+          "op": "assertHandCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Veteran's Sidearm",
+          "count": 0
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Veteran's Sidearm",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "description": "Search library (revealed)",
+          "player": 0,
+          "includes": [
+            "Veteran's Sidearm"
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Veteran's Sidearm"
+        },
+        {
           "op": "attack",
           "turn": 3,
           "player": 0,
           "attacker": "Relic Seeker",
           "defender": 1
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Veteran's Sidearm",
+          "count": 1
         },
         {
           "op": "attack",
@@ -347,14 +397,6 @@ registerPortedMageTests({
           "name": "Rhox Maulers"
         },
         {
-          "op": "castSpell",
-          "turn": 5,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Cloudshift",
-          "target": "Rhox Maulers"
-        },
-        {
           "op": "attack",
           "turn": 3,
           "player": 0,
@@ -367,6 +409,36 @@ registerPortedMageTests({
           "player": 0,
           "attacker": "Rhox Maulers",
           "defender": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Cloudshift",
+          "target": "Rhox Maulers"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Cloudshift",
+          "count": 1,
+          "onTop": true,
+          "objectTarget": "Rhox Maulers"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Rhox Maulers",
+          "counter": "P1P1",
+          "count": 0
         },
         {
           "op": "attack",
@@ -441,14 +513,6 @@ registerPortedMageTests({
           "name": "Goblin Glory Chaser"
         },
         {
-          "op": "castSpell",
-          "turn": 5,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Cloudshift",
-          "target": "Goblin Glory Chaser"
-        },
-        {
           "op": "attack",
           "turn": 3,
           "player": 0,
@@ -461,6 +525,36 @@ registerPortedMageTests({
           "player": 0,
           "attacker": "Goblin Glory Chaser",
           "defender": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Cloudshift",
+          "target": "Goblin Glory Chaser"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Cloudshift",
+          "count": 1,
+          "onTop": true,
+          "objectTarget": "Goblin Glory Chaser"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Goblin Glory Chaser",
+          "counter": "P1P1",
+          "count": 0
         },
         {
           "op": "attack",
@@ -605,7 +699,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Scab-Clan Berserker",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "castSpell",

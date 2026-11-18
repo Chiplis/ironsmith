@@ -88,8 +88,17 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : currentGame.getExile().getAllCards(currentGame)) { if (card.getName().equals(\"Goblin Roughrider\")) { Assert.assertTrue(\"Exiled card is not face down\", card.isFaceDown(currentGame)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "name": "Goblin Roughrider"
+          },
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            }
+          ]
         }
       ]
     },

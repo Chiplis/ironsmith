@@ -813,19 +813,38 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Lightning Bolt",
           "target": 0
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
+          "isSpell": true,
+          "targetCount": 1
+        },
+        {
+          "op": "castSpell",
           "name": "Deflecting Palm",
-          "target": "Lightning Bolt"
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Deflecting Palm",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 0,
+          "onTop": true
         },
         {
           "op": "setChoice",
@@ -833,23 +852,34 @@ registerPortedMageTests({
           "value": "Lightning Bolt"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 1,
-          "name": "Lightning Bolt",
-          "count": 1
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Deflecting Palm",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Lightning Bolt",
           "count": 1
         },
         {
@@ -861,6 +891,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 0,
           "life": 23
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Soulfire Grand Master",
+          "count": 1
         }
       ]
     }

@@ -56,11 +56,12 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 3,
           "player": 1,
           "blocker": "Llanowar Elves",
-          "attacker": "Merfolk of the Pearl Trident"
+          "attacker": "Merfolk of the Pearl Trident",
+          "expected": false
         },
         {
           "op": "setStopAt",
@@ -157,19 +158,19 @@ registerPortedMageTests({
           "name": "Master of the Pearl Trident"
         },
         {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Merfolk of the Pearl Trident",
+          "defender": 1
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "DECLARE_ATTACKERS",
           "player": 1,
           "name": "Murder",
           "target": "Master of the Pearl Trident"
-        },
-        {
-          "op": "attack",
-          "turn": 3,
-          "player": 0,
-          "attacker": "Merfolk of the Pearl Trident",
-          "defender": 1
         },
         {
           "op": "block",
@@ -381,19 +382,19 @@ registerPortedMageTests({
           "target": "Master of the Pearl Trident"
         },
         {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Merfolk of the Pearl Trident",
+          "defender": 1
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "DECLARE_ATTACKERS",
           "player": 1,
           "name": "Murder",
           "target": "Master of the Pearl Trident"
-        },
-        {
-          "op": "attack",
-          "turn": 3,
-          "player": 0,
-          "attacker": "Merfolk of the Pearl Trident",
-          "defender": 1
         },
         {
           "op": "block",

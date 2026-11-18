@@ -47,7 +47,32 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Combo Attack",
-          "target": "Memnite^Runeclaw Bear^Fortress Crab"
+          "target": {
+            "groups": [
+              [
+                "Memnite",
+                "Runeclaw Bear"
+              ],
+              [
+                "Fortress Crab"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Combo Attack",
+          "count": 1,
+          "targetCount": 3,
+          "objectTarget": "Fortress Crab"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -68,8 +93,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, \"Fortress Crab\", 3)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Fortress Crab",
+          "damage": 3
         }
       ]
     },
@@ -131,7 +158,26 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Combo Attack",
-          "target": "Memnite^Runeclaw Bear^Fortress Crab"
+          "target": {
+            "groups": [
+              [
+                "Memnite",
+                "Runeclaw Bear"
+              ],
+              [
+                "Fortress Crab"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Combo Attack",
+          "count": 1,
+          "targetCount": 3,
+          "objectTarget": "Fortress Crab"
         },
         {
           "op": "castSpell",
@@ -140,6 +186,27 @@ registerPortedMageTests({
           "player": 1,
           "name": "Unsummon",
           "target": "Memnite"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Unsummon",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -172,8 +239,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, \"Fortress Crab\", 2)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Fortress Crab",
+          "damage": 2
         }
       ]
     },
@@ -235,7 +304,26 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Combo Attack",
-          "target": "Memnite^Runeclaw Bear^Fortress Crab"
+          "target": {
+            "groups": [
+              [
+                "Memnite",
+                "Runeclaw Bear"
+              ],
+              [
+                "Fortress Crab"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Combo Attack",
+          "count": 1,
+          "targetCount": 3,
+          "objectTarget": "Fortress Crab"
         },
         {
           "op": "castSpell",
@@ -244,6 +332,27 @@ registerPortedMageTests({
           "player": 1,
           "name": "Unsummon",
           "target": "Runeclaw Bear"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Unsummon",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -276,8 +385,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, \"Fortress Crab\", 1)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Fortress Crab",
+          "damage": 1
         }
       ]
     }

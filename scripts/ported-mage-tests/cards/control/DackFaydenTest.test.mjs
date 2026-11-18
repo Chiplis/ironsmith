@@ -17,7 +17,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Ornithopter",
+          "name": "Ornithopter@art",
           "count": 1
         },
         {
@@ -28,20 +28,198 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "activateAbility",
+          "source": "Dack Fayden",
+          "ability": "+1: Target player draws",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dack Fayden",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Dack Fayden",
+          "count": 4,
+          "counter": "loyalty"
+        },
+        {
+          "op": "activateAbility",
+          "source": "Dack Fayden",
+          "ability": "+1: Target player draws",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dack Fayden",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Dack Fayden",
+          "count": 5,
+          "counter": "loyalty"
+        },
+        {
+          "op": "activateAbility",
+          "source": "Dack Fayden",
+          "ability": "+1: Target player draws",
+          "player": 0,
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dack Fayden",
+          "count": 1,
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Dack Fayden",
+          "count": 6,
+          "counter": "loyalty"
+        },
+        {
+          "op": "activateAbility",
+          "source": "Dack Fayden",
+          "ability": "+1: Target player draws",
+          "player": 0,
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dack Fayden",
+          "count": 1,
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Dack Fayden",
+          "count": 7,
+          "counter": "loyalty"
+        },
+        {
+          "op": "activateAbility",
+          "source": "Dack Fayden",
+          "ability": "-6: You get an emblem",
+          "player": 0,
+          "turn": 9,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dack Fayden",
+          "count": 1,
+          "turn": 9,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 9,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEmblemCount",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Dack Fayden",
+          "count": 1,
+          "counter": "loyalty"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 1 of Gut Shot",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
+        },
+        {
           "op": "castSpell",
+          "name": "Gut Shot",
+          "player": 0,
           "turn": 10,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Gut Shot",
-          "target": "Ornithopter"
+          "target": "@art"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Gut Shot",
+          "count": 1,
           "turn": 10,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Ornithopter"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 10,
+          "phase": "PRECOMBAT_MAIN",
+          "text": "Whenever you cast a spell that targets one or more permanents",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "source": "Emblem",
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 10,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -54,17 +232,14 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "assertCounterCount",
-          "player": 0,
-          "name": "Dack Fayden",
-          "counter": "LOYALTY",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Ornithopter",
-          "count": 1
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@art"
+          },
+          "count": 1,
+          "checks": []
         }
       ]
     },
@@ -82,7 +257,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Ornithopter",
+          "name": "Ornithopter@art",
           "count": 1
         },
         {
@@ -107,36 +282,198 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 10,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "activateAbility",
+          "source": "Dack Fayden",
+          "ability": "+1: Target player draws",
           "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dack Fayden",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Dack Fayden",
+          "count": 4,
+          "counter": "loyalty"
+        },
+        {
+          "op": "activateAbility",
+          "source": "Dack Fayden",
+          "ability": "+1: Target player draws",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dack Fayden",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Dack Fayden",
+          "count": 5,
+          "counter": "loyalty"
+        },
+        {
+          "op": "activateAbility",
+          "source": "Dack Fayden",
+          "ability": "+1: Target player draws",
+          "player": 0,
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dack Fayden",
+          "count": 1,
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Dack Fayden",
+          "count": 6,
+          "counter": "loyalty"
+        },
+        {
+          "op": "activateAbility",
+          "source": "Dack Fayden",
+          "ability": "+1: Target player draws",
+          "player": 0,
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dack Fayden",
+          "count": 1,
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Dack Fayden",
+          "count": 7,
+          "counter": "loyalty"
+        },
+        {
+          "op": "activateAbility",
+          "source": "Dack Fayden",
+          "ability": "-6: You get an emblem",
+          "player": 0,
+          "turn": 9,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dack Fayden",
+          "count": 1,
+          "turn": 9,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 9,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEmblemCount",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Dack Fayden",
+          "count": 1,
+          "counter": "loyalty"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 1 of Gut Shot",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
+        },
+        {
+          "op": "castSpell",
           "name": "Gut Shot",
-          "target": "Ornithopter"
-        },
-        {
-          "op": "castSpell",
+          "player": 0,
           "turn": 10,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Unsummon",
-          "target": "Ornithopter",
-          "waitForStack": "WHILE_NOT_ON_STACK"
+          "target": "@art"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Gut Shot",
+          "count": 1,
           "turn": 10,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 1,
-          "name": "Ornithopter"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Ornithopter"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 10,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "text": "Whenever you cast a spell that targets one or more permanents",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "source": "Emblem",
+          "controller": 0
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 10,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -149,17 +486,83 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "assertCounterCount",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@art"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "castSpell",
+          "name": "Unsummon",
           "player": 0,
-          "name": "Dack Fayden",
-          "counter": "LOYALTY",
+          "turn": 10,
+          "phase": "PRECOMBAT_MAIN",
+          "target": "@art"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Unsummon",
+          "count": 1,
+          "turn": 10,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Ornithopter"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 10,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "@art",
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
-          "player": 1,
+          "op": "castSpell",
           "name": "Ornithopter",
-          "count": 1
+          "player": 1,
+          "turn": 10,
+          "phase": "POSTCOMBAT_MAIN",
+          "objectAlias": "@art"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Ornithopter",
+          "count": 1,
+          "turn": 10,
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 10,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@art"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@art"
+          },
+          "count": 0,
+          "checks": []
         }
       ]
     }

@@ -37,14 +37,14 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 3,
           "name": "Swamp",
           "count": 7
         },
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerD",
+          "player": 3,
           "name": "Nether Void",
           "count": 1
         },
@@ -56,6 +56,17 @@ registerPortedMageTests({
           "name": "Nether Void"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Nether Void",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -63,11 +74,39 @@ registerPortedMageTests({
           "name": "Silvercoat Lion"
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "{3} to prevent effect?",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerD",
+          "player": 3,
           "name": "Nether Void"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 3,
+          "kind": "boolean",
+          "description": "{3} to prevent effect?",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -86,9 +125,17 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Nether Void",
-          "count": 1
+          "count": 1,
+          "player": 3
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "rangeOfInfluence": 1
     },
     {
       "name": "TestTwoWorldEnchantmentsNotInRangeOfInfluence",
@@ -124,14 +171,14 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
+          "player": 2,
           "name": "Swamp",
           "count": 7
         },
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerC",
+          "player": 2,
           "name": "Nether Void",
           "count": 1
         },
@@ -143,6 +190,17 @@ registerPortedMageTests({
           "name": "Nether Void"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Nether Void",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -150,11 +208,30 @@ registerPortedMageTests({
           "name": "Silvercoat Lion"
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "{3} to prevent effect?",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerC",
+          "player": 2,
           "name": "Nether Void"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -173,9 +250,17 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Nether Void",
-          "count": 1
+          "count": 1,
+          "player": 2
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "rangeOfInfluence": 1
     },
     {
       "name": "TestTwoWorldEnchantmentsFromTriggers",
@@ -195,7 +280,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Concordant Crossroads",
+          "name": "Concordant Crossroads@world.a",
           "count": 1
         },
         {
@@ -215,37 +300,55 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerD",
+          "player": 3,
           "name": "Oblivion Ring",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerD",
+          "player": 3,
           "name": "Anarchy",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
-          "name": "Concordant Crossroads",
+          "player": 3,
+          "name": "Concordant Crossroads@world.d",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 3,
           "name": "Plains",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 3,
           "name": "Mountain",
           "count": 6
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Forest",
+          "ability": "{T}: Add {G}",
+          "count": 2
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Plains",
+          "ability": "{T}: Add {W}",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -257,7 +360,12 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Concordant Crossroads"
+          "target": "@world.d"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -270,20 +378,39 @@ registerPortedMageTests({
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerD",
+          "player": 3,
           "name": "Oblivion Ring"
         },
         {
           "op": "addTarget",
-          "player": "playerD",
-          "target": "Concordant Crossroads"
+          "player": 3,
+          "target": "@world.a"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
-          "player": "playerD",
+          "player": 3,
           "name": "Anarchy"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Oblivion Ring",
+          "count": 2,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setStopAt",
@@ -296,7 +423,8 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Concordant Crossroads",
-          "count": 0
+          "count": 0,
+          "player": 3
         },
         {
           "op": "assertPermanentCount",
@@ -319,19 +447,29 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "name": "Oblivion Ring",
-          "count": 1
+          "count": 1,
+          "player": 3
         },
         {
           "op": "assertGraveyardCount",
           "name": "Concordant Crossroads",
-          "count": 1
+          "count": 1,
+          "player": 3
         },
         {
           "op": "assertGraveyardCount",
           "name": "Anarchy",
-          "count": 1
+          "count": 1,
+          "player": 3
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "rangeOfInfluence": 1
     },
     {
       "name": "TestTwoWorldEnchantmentsWithSameOrder",
@@ -357,7 +495,7 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerD",
+          "player": 3,
           "name": "Concordant Crossroads",
           "count": 1
         },
@@ -377,12 +515,12 @@ registerPortedMageTests({
         },
         {
           "op": "setChoice",
-          "player": "playerD",
+          "player": 3,
           "value": true
         },
         {
           "op": "setChoice",
-          "player": "playerD",
+          "player": 3,
           "value": "Concordant Crossroads"
         },
         {
@@ -396,12 +534,37 @@ registerPortedMageTests({
           "value": "Concordant Crossroads"
         },
         {
-          "op": "unsupported",
-          "source": "concede(1, PhaseStep.PRECOMBAT_MAIN, playerC)"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "concede",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "seatIndependent": true,
+          "player": 3,
+          "name": "Concordant Crossroads",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "seatIndependent": true,
+          "player": 1,
+          "name": "Concordant Crossroads",
+          "count": 1
         },
         {
           "op": "setStopAt",
-          "turn": 1,
+          "turn": 2,
           "phase": "BEGIN_COMBAT"
         },
         {
@@ -415,6 +578,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
+          "player": 3,
           "name": "Concordant Crossroads",
           "count": 0
         },
@@ -432,10 +596,18 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
+          "player": 3,
           "name": "Concordant Crossroads",
           "count": 1
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "rangeOfInfluence": 1
     }
   ]
 });

@@ -11,7 +11,8 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 1,
           "name": "Island",
-          "count": 2
+          "count": 2,
+          "tapped": true
         },
         {
           "op": "addCard",
@@ -64,7 +65,8 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Island",
-          "count": 2
+          "count": 2,
+          "tapped": true
         },
         {
           "op": "addCard",

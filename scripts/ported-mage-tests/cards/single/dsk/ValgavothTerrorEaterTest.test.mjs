@@ -745,8 +745,39 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerB, playerA, 2)"
+          "op": "addTargetAmount",
+          "player": 1,
+          "target": 0,
+          "amount": 2,
+          "selectTarget": false
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fire",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 15,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Fire // Ice",
+          "count": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -812,7 +843,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 2,
+          "turn": 3,
           "phase": "END_TURN",
           "player": 1,
           "label": "Cast Lightning Bolt",
@@ -828,7 +859,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 2,
+          "turn": 3,
           "phase": "END_TURN",
           "player": 1,
           "label": "Cast Fire",
@@ -844,7 +875,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 2,
+          "turn": 3,
           "phase": "END_TURN",
           "player": 1,
           "label": "Cast Ice",
@@ -867,8 +898,25 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, playerB, 2)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": 1,
+          "amount": 2,
+          "selectTarget": false
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "END_TURN",
+          "source": "Fire",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "END_TURN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -992,6 +1040,20 @@ registerPortedMageTests({
           "player": 0
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Akoum Warrior",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 14,
+          "seatIndependent": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -1005,6 +1067,20 @@ registerPortedMageTests({
           "player": 0
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Akoum Warrior",
+          "count": 2
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 8,
+          "seatIndependent": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -1016,6 +1092,20 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Akoum Warrior",
+          "count": 3
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPlayableAbility",

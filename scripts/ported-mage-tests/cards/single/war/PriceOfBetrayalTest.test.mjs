@@ -54,12 +54,12 @@ registerPortedMageTests({
           "target": "Bear Cub"
         },
         {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 3)"
+          "op": "setCounterChoice",
+          "player": 0,
+          "counts": {
+            "CHARGE": 1,
+            "P1P1": 3
+          }
         },
         {
           "op": "setStopAt",
@@ -75,6 +75,13 @@ registerPortedMageTests({
           "name": "Bear Cub",
           "power": 2,
           "toughness": 2
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Bear Cub",
+          "counter": "CHARGE",
+          "count": 0
         }
       ]
     },
@@ -86,8 +93,14 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"add counter\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "add counter",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Target player gets five energy counters."
         },
         {
           "op": "addCard",
@@ -108,7 +121,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target player gets",
+          "ability": "add counter",
           "target": 1
         },
         {
@@ -116,6 +129,13 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": 1,
+          "counter": "ENERGY",
+          "count": 5
         },
         {
           "op": "castSpell",
@@ -126,8 +146,11 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 5)"
+          "op": "setCounterChoice",
+          "player": 0,
+          "counts": {
+            "ENERGY": 5
+          }
         },
         {
           "op": "setStopAt",
@@ -138,8 +161,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertEquals(\"Player should have no counters\", 0, playerA.getCountersCount(CounterType.ENERGY))"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": 1,
+          "counter": "ENERGY",
+          "count": 0
         }
       ]
     }

@@ -350,11 +350,56 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Jade Orb of Dragonkind",
+          "ability": "{T}: Add {G}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertTapped",
+          "name": "Jade Orb of Dragonkind",
+          "tapped": true,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Mowu, Loyal Companion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Mowu, Loyal Companion",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -369,8 +414,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(jadeOrb, true)"
+          "op": "assertTapped",
+          "name": "Jade Orb of Dragonkind",
+          "tapped": true,
+          "player": 0
         },
         {
           "op": "assertCounterCount",

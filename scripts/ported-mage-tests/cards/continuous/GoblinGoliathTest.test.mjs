@@ -43,8 +43,12 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"normal damage to opponent\", 1, PhaseStep.PRECOMBAT_MAIN, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "life": "20 - 3",
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -52,6 +56,21 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{3}{R}"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Goblin Goliath",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "castSpell",
@@ -62,8 +81,18 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"double damage to opponent\", 1, PhaseStep.END_COMBAT, playerB, 20 - 3 - 3 * 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "castSpell",
@@ -74,12 +103,18 @@ registerPortedMageTests({
           "target": "Barktooth Warbeard"
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_COMBAT",
-          "player": 1,
-          "name": "Barktooth Warbeard",
-          "count": 1
+          "phase": "BEGIN_COMBAT",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "castSpell",
@@ -90,16 +125,30 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"normal damage to yourself\", 1, PhaseStep.END_COMBAT, playerA, 20 - 3)"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "BEGIN_COMBAT",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "onTop": true
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "resolutions": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Barktooth Warbeard",
+          "damage": 3
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Barktooth Warbeard",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -115,7 +164,7 @@ registerPortedMageTests({
         {
           "op": "assertLife",
           "player": 1,
-          "life": "20 - 3 - 3 * 2"
+          "life": 11
         },
         {
           "op": "assertGraveyardCount",

@@ -86,8 +86,14 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after first cast must have 3x counters\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Marath, Will of the Wild\", CounterType.P1P1, 3)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Marath, Will of the Wild",
+          "counter": "P1P1",
+          "count": 3,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -122,8 +128,14 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after second cast must have 5x counters\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Marath, Will of the Wild\", CounterType.P1P1, 3 + 2)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Marath, Will of the Wild",
+          "counter": "P1P1",
+          "count": 5,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

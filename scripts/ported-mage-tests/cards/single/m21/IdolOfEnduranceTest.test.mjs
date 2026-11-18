@@ -37,28 +37,49 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Squire",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{W}"
+          "ability": "{1}{W}, {T}:",
+          "source": "Idol of Endurance"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "label": "Cast Squire",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Squire"
+          "name": "Squire",
+          "permissionSource": "Idol of Endurance"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Squire",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -117,34 +138,60 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Squire",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Glory Seeker",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{W}"
+          "ability": "{1}{W}, {T}:",
+          "source": "Idol of Endurance"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "label": "Cast Squire",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Squire"
+          "name": "Squire",
+          "permissionSource": "Idol of Endurance"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Squire",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPlayableAbility",
@@ -218,34 +265,60 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Squire",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Glory Seeker",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{W}"
+          "ability": "{1}{W}, {T}:",
+          "source": "Idol of Endurance"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "label": "Cast Squire",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Squire"
+          "name": "Squire",
+          "permissionSource": "Idol of Endurance"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Squire",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -254,6 +327,19 @@ registerPortedMageTests({
           "player": 0,
           "name": "Disenchant",
           "target": "Idol of Endurance"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disenchant",
+          "count": 1,
+          "objectTarget": "Idol of Endurance"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -338,28 +424,55 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Squire",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Boneyard Wurm",
+          "count": 2
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{W}"
+          "ability": "{1}{W}, {T}:",
+          "source": "Idol of Endurance"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "label": "Cast Boneyard Wurm",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Boneyard Wurm"
+          "name": "Boneyard Wurm",
+          "permissionSource": "Idol of Endurance"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Boneyard Wurm",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -368,6 +481,19 @@ registerPortedMageTests({
           "player": 0,
           "name": "Disenchant",
           "target": "Idol of Endurance"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disenchant",
+          "count": 1,
+          "objectTarget": "Idol of Endurance"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -451,21 +577,32 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Squire",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Glory Seeker",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{W}"
+          "ability": "{1}{W}, {T}:",
+          "source": "Idol of Endurance"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -473,46 +610,77 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{1},",
-          "target": "Idol of Endurance"
+          "target": "Idol of Endurance",
+          "source": "Voltaic Key"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{W}"
+          "ability": "{1}{W}, {T}:",
+          "source": "Idol of Endurance"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "label": "Cast Squire",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Squire"
+          "name": "Squire",
+          "permissionSource": "Idol of Endurance"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Squire",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "label": "Cast Glory Seeker",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Glory Seeker"
+          "name": "Glory Seeker",
+          "permissionSource": "Idol of Endurance"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Glory Seeker",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -584,34 +752,60 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Squire",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Glory Seeker",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{W}"
+          "ability": "{1}{W}, {T}:",
+          "source": "Idol of Endurance"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "label": "Cast Squire",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Squire"
+          "name": "Squire",
+          "permissionSource": "Idol of Endurance"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Squire",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -619,33 +813,49 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{1},",
-          "target": "Idol of Endurance"
+          "target": "Idol of Endurance",
+          "source": "Voltaic Key"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{W}"
+          "ability": "{1}{W}, {T}:",
+          "source": "Idol of Endurance"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "label": "Cast Glory Seeker",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Glory Seeker"
+          "name": "Glory Seeker",
+          "permissionSource": "Idol of Endurance"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Glory Seeker",
+          "count": 1
         },
         {
           "op": "setStopAt",

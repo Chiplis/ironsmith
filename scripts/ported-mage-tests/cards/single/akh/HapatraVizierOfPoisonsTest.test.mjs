@@ -21,6 +21,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Hill Giant",
+          "count": 1
+        },
+        {
           "op": "attack",
           "turn": 3,
           "player": 0,
@@ -28,34 +35,58 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
           "op": "addTarget",
           "player": 0,
           "target": "Grizzly Bears"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Hapatra, Vizier of Poisons",
+          "count": 1,
           "turn": 3,
-          "phase": "END_COMBAT"
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered",
+          "completeTargets": true
         },
         {
-          "op": "execute"
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Put a -1/-1 counter on target creature",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "assertLife",
-          "player": 1,
-          "life": 18
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
         },
         {
           "op": "assertCounterCount",
           "player": 1,
           "name": "Grizzly Bears",
-          "counter": "M1M1",
-          "count": 1
+          "count": 1,
+          "counter": "-1/-1"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Hapatra, Vizier of Poisons",
+          "count": 1,
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 18
         },
         {
           "op": "assertPowerToughness",
@@ -65,17 +96,60 @@ registerPortedMageTests({
           "toughness": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Snake Token",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "keyword",
+              "value": "deathtouch",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "attack",
+          "turn": 5,
+          "player": 0,
+          "attacker": "Snake Token",
+          "defender": 1
+        },
+        {
+          "op": "block",
+          "turn": 5,
+          "player": 1,
+          "blocker": "Hill Giant",
+          "attacker": "Snake Token"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "END_COMBAT"
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Snake Token",
-          "count": 1
+          "count": 0
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Snake Token",
-          "ability": "Deathtouch",
-          "expected": true
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Hill Giant",
+          "count": 1
         }
       ]
     },
@@ -104,6 +178,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Hill Giant",
+          "count": 1
+        },
+        {
           "op": "attack",
           "turn": 3,
           "player": 0,
@@ -118,12 +199,17 @@ registerPortedMageTests({
           "attacker": "Blight Mamba"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Hapatra, Vizier of Poisons",
+          "count": 1,
           "turn": 3,
-          "phase": "END_COMBAT"
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "assertLife",
@@ -134,8 +220,15 @@ registerPortedMageTests({
           "op": "assertCounterCount",
           "player": 0,
           "name": 1,
-          "counter": "POISON",
-          "count": 0
+          "count": 0,
+          "counter": "POISON"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "Wall of Omens",
+          "count": 1,
+          "counter": "-1/-1"
         },
         {
           "op": "assertPowerToughness",
@@ -145,24 +238,60 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "assertCounterCount",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Snake Token",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "keyword",
+              "value": "deathtouch",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "attack",
+          "turn": 5,
+          "player": 0,
+          "attacker": "Snake Token",
+          "defender": 1
+        },
+        {
+          "op": "block",
+          "turn": 5,
           "player": 1,
-          "name": "Wall of Omens",
-          "counter": "M1M1",
-          "count": 1
+          "blocker": "Hill Giant",
+          "attacker": "Snake Token"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "END_COMBAT"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Snake Token",
-          "count": 1
+          "count": 0
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Snake Token",
-          "ability": "Deathtouch",
-          "expected": true
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Hill Giant",
+          "count": 1
         }
       ]
     },
@@ -184,26 +313,39 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Hill Giant",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Put"
+          "source": "Devoted Druid",
+          "ability": "Untap this creature"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Hapatra, Vizier of Poisons",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Devoted Druid",
-          "counter": "M1M1",
-          "count": 1
+          "count": 1,
+          "counter": "-1/-1"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPowerToughness",
@@ -213,17 +355,60 @@ registerPortedMageTests({
           "toughness": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Snake Token",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "keyword",
+              "value": "deathtouch",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "attack",
+          "turn": 5,
+          "player": 0,
+          "attacker": "Snake Token",
+          "defender": 1
+        },
+        {
+          "op": "block",
+          "turn": 5,
+          "player": 1,
+          "blocker": "Hill Giant",
+          "attacker": "Snake Token"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "END_COMBAT"
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Snake Token",
-          "count": 1
+          "count": 0
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Snake Token",
-          "ability": "Deathtouch",
-          "expected": true
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Hill Giant",
+          "count": 1
         }
       ]
     },

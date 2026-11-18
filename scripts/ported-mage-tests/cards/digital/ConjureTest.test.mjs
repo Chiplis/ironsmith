@@ -18,7 +18,13 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "Wingsteed Trainer",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Creature — Human",
+          "oracleText": "When this creature enters or attacks, conjure a Stormfront Pegasus card into your hand.",
+          "manaCost": "{3}{W}",
+          "power": 2,
+          "toughness": 3
         },
         {
           "op": "castSpell",
@@ -68,7 +74,13 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "Wingsteed Trainer",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Creature — Human",
+          "oracleText": "When this creature enters or attacks, conjure a Stormfront Pegasus card into your hand.",
+          "manaCost": "{3}{W}",
+          "power": 2,
+          "toughness": 3
         },
         {
           "op": "castSpell",
@@ -132,7 +144,13 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Boneyard Aberration",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Creature — Skeleton Dog",
+          "oracleText": "When this creature dies, exile it. If you do, conjure three Reassembling Skeleton cards into your graveyard.",
+          "manaCost": "{4}{B}",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "castSpell",

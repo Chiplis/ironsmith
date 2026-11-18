@@ -60,7 +60,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Elesh Norn, Grand Cenobite",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -203,7 +203,7 @@ registerPortedMageTests({
           "turn": 4,
           "player": 1,
           "attacker": "Elesh Norn, Grand Cenobite",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",

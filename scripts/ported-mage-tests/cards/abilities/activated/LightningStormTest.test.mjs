@@ -36,23 +36,41 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Lightning Storm",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Storm",
           "target": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertStackObject",
+          "source": "Lightning Storm",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "ability": "Discard"
+          "targetCount": 1
         },
         {
           "op": "setChoice",
           "player": 1,
           "value": "Mountain"
+        },
+        {
+          "op": "activateAbility",
+          "source": "Lightning Storm",
+          "ability": "Discard a land card",
+          "player": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Storm",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "controller": 1
         },
         {
           "op": "setChoice",
@@ -65,16 +83,40 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "activateAbility",
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Discard"
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Storm",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Mountain"
+        },
+        {
+          "op": "activateAbility",
+          "source": "Lightning Storm",
+          "ability": "Discard a land card",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Storm",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "controller": 0
         },
         {
           "op": "setChoice",
@@ -87,16 +129,23 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Lightning Storm",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertGraveyardCount",
@@ -106,13 +155,13 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
-          "player": 1,
+          "player": 0,
           "name": "Mountain",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
+          "player": 1,
           "name": "Mountain",
           "count": 1
         },

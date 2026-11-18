@@ -21,8 +21,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Mountain"
+          ]
         },
         {
           "op": "playLand",
@@ -32,39 +37,71 @@ registerPortedMageTests({
           "name": "Thran Portal"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Thran"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 0
         },
         {
-          "op": "setChoice",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Thran Portal"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Mountain",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertTapped",
           "player": 0,
-          "value": "Mountain"
+          "name": "Thran Portal",
+          "tapped": false
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Thran Portal",
+          "ability": "{T}: Add {R}",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 19
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Lightning Bolt"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
+          "name": "Lightning Bolt",
           "target": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 19
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -98,8 +135,18 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Mountain"
+          ]
         },
         {
           "op": "playLand",
@@ -109,36 +156,51 @@ registerPortedMageTests({
           "name": "Thran Portal"
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Thran Portal"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Mountain",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertTapped",
           "player": 0,
-          "value": "Thran"
+          "name": "Thran Portal",
+          "tapped": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Valakut, the Molten Pinnacle",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Mountain"
+          "value": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Yes"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertTapped(thranPortal, true)"
         },
         {
           "op": "assertLife",
@@ -241,6 +303,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Island"
+          ]
+        },
+        {
           "op": "playLand",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -248,14 +319,65 @@ registerPortedMageTests({
           "name": "Thran Portal"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Thran"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 0
         },
         {
-          "op": "setChoice",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Thran Portal"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Island",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertTapped",
           "player": 0,
-          "value": "Island"
+          "name": "Thran Portal",
+          "tapped": false
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Thran Portal",
+          "ability": "{T}: Add {U}",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 19
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Manascape Refractor",
+          "ability": "{T}: Add {U}",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 19
         },
         {
           "op": "castSpell",
@@ -265,17 +387,16 @@ registerPortedMageTests({
           "name": "Academy Loremaster"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Academy Loremaster",
+          "count": 1
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 19
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

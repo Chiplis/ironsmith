@@ -31,7 +31,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Estrid's Invocation",
+          "name": "Estrid's Invocation@copy",
           "count": 1
         },
         {
@@ -64,22 +64,106 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Feather of Flight",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Feather of Flight"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
           "target": "Balduvian Bears"
         },
         {
+          "op": "assertStackObject",
+          "source": "Feather of Flight",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Balduvian Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Feather of Flight\"",
+          "target": "Balduvian Bears",
+          "expected": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 2
+        },
+        {
           "op": "castSpell",
+          "name": "Estrid's Invocation",
+          "player": 0,
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
+          "objectAlias": "@copy"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Estrid's Invocation",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "name": "Estrid's Invocation"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Feather of Flight"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Attach Aura to",
+          "choices": [
+            "Bear Cub"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"@copy\"",
+          "target": "Bear Cub",
+          "expected": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Bear Cub",
+          "power": 3,
+          "toughness": 2
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 2,
+          "toughness": 2
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Feather of Flight",
+          "count": 1,
+          "turn": 5,
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -87,46 +171,38 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Feather of Flight"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Feather of Flight"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Bear Cub"
+          "description": "Attach Aura to",
+          "choices": [
+            "Grizzly Bears"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "UPKEEP"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Feather of Flight"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Grizzly Bears"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"@copy\"",
+          "target": "Grizzly Bears",
+          "expected": true
         },
         {
           "op": "assertPowerToughness",

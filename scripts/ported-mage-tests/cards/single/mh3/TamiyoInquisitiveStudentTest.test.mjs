@@ -235,20 +235,39 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, tamiyoPW, CounterType.LOYALTY, 2)"
+          "op": "addObjectCounters",
+          "player": 0,
+          "name": "Tamiyo, Seasoned Scholar",
+          "counter": "LOYALTY",
+          "count": 2,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Tamiyo, Seasoned Scholar",
+          "count": 4,
+          "player": 0,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-3"
+          "ability": "-3",
+          "source": "Tamiyo, Seasoned Scholar",
+          "target": "Lightning Bolt"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Lightning Bolt"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tamiyo, Seasoned Scholar",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setStopAt",
@@ -302,20 +321,39 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, tamiyoPW, CounterType.LOYALTY, 2)"
+          "op": "addObjectCounters",
+          "player": 0,
+          "name": "Tamiyo, Seasoned Scholar",
+          "counter": "LOYALTY",
+          "count": 2,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Tamiyo, Seasoned Scholar",
+          "count": 4,
+          "player": 0,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-3"
+          "ability": "-3",
+          "source": "Tamiyo, Seasoned Scholar",
+          "target": "Regrowth"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Regrowth"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tamiyo, Seasoned Scholar",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
@@ -392,15 +430,38 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, tamiyoPW, CounterType.LOYALTY, 6)"
+          "op": "addObjectCounters",
+          "player": 0,
+          "name": "Tamiyo, Seasoned Scholar",
+          "counter": "LOYALTY",
+          "count": 6,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Tamiyo, Seasoned Scholar",
+          "count": 8,
+          "player": 0,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-7"
+          "ability": "-7",
+          "source": "Tamiyo, Seasoned Scholar"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tamiyo, Seasoned Scholar",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setStopAt",

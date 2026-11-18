@@ -45,7 +45,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Utter End",
+          "name": "Utter End@utter",
           "count": 1
         },
         {
@@ -64,29 +64,82 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "source": "Sunforger",
+          "ability": "Equip",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Equip",
           "target": "Storm Crow"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Sunforger",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Storm Crow"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "activateAbility",
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Sunforger\"",
+          "target": "Storm Crow",
+          "expected": true
+        },
+        {
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{R}{W}, Unattach"
+          "source": "Mountain",
+          "ability": "Add {R}"
         },
         {
-          "op": "addTarget",
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "target": "Utter End"
+          "source": "Plains",
+          "ability": "Add {W}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "R",
+          "amount": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "W",
+          "amount": 1
+        },
+        {
+          "op": "activateAbility",
+          "source": "Sunforger",
+          "ability": "Search your library",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Sunforger",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Utter End"
         },
         {
           "op": "addTarget",
@@ -94,50 +147,69 @@ registerPortedMageTests({
           "target": "Gray Ogre"
         },
         {
-          "op": "activateAbility",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT",
-          "player": 0,
-          "ability": "{2}, {T}: You gain 5 life"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertStackObject",
+          "source": "Utter End",
+          "count": 1,
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "Equip",
-          "target": "Storm Crow"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Gray Ogre"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Sunforger",
+          "target": "Storm Crow",
+          "expected": false
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Gray Ogre",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@utter",
+          "count": 1
         },
         {
           "op": "activateAbility",
+          "source": "Elixir of Immortality",
+          "ability": "you gain 5 life",
+          "player": 0,
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "{R}{W}, Unattach"
+          "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Utter End"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Hill Giant"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Elixir of Immortality",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "BEGIN_COMBAT",
+          "abilityKind": "Activated"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 25
         },
         {
           "op": "assertPermanentCount",
@@ -146,6 +218,141 @@ registerPortedMageTests({
           "count": 0
         },
         {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "@utter",
+          "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "Elixir of Immortality",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "source": "Sunforger",
+          "ability": "Equip",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "target": "Storm Crow"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Sunforger",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Storm Crow"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Sunforger\"",
+          "target": "Storm Crow",
+          "expected": true
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Mountain",
+          "ability": "Add {R}"
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Plains",
+          "ability": "Add {W}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "R",
+          "amount": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "W",
+          "amount": 1
+        },
+        {
+          "op": "activateAbility",
+          "source": "Sunforger",
+          "ability": "Search your library",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Sunforger",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Utter End"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Hill Giant"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Utter End",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Hill Giant"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Sunforger",
+          "target": "Storm Crow",
+          "expected": false
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Hill Giant",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@utter",
+          "count": 1
+        },
+        {
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Gray Ogre",
@@ -156,12 +363,6 @@ registerPortedMageTests({
           "player": 1,
           "name": "Hill Giant",
           "count": 0
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Utter End",
-          "count": 1
         }
       ]
     },
@@ -214,7 +415,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Utter End",
+          "name": "Utter End@utter",
           "count": 1
         },
         {
@@ -233,44 +434,161 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Utter End",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Utter End",
+          "objectAlias": "@utter",
           "target": "Gray Ogre"
         },
         {
-          "op": "activateAbility",
+          "op": "assertStackObject",
+          "source": "Utter End",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT",
-          "player": 0,
-          "ability": "{2}, {T}: You gain 5 life"
-        },
-        {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "Equip",
-          "target": "Storm Crow"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Gray Ogre"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Gray Ogre",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@utter",
+          "count": 1
         },
         {
           "op": "activateAbility",
+          "source": "Elixir of Immortality",
+          "ability": "you gain 5 life",
+          "player": 0,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Elixir of Immortality",
+          "count": 1,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 25
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Elixir of Immortality",
+          "count": 0
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "@utter",
+          "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "Elixir of Immortality",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "source": "Sunforger",
+          "ability": "Equip",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "target": "Storm Crow"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Sunforger",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Storm Crow"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Sunforger\"",
+          "target": "Storm Crow",
+          "expected": true
+        },
+        {
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{R}{W}, Unattach"
+          "source": "Mountain",
+          "ability": "Add {R}"
         },
         {
-          "op": "addTarget",
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "target": "Utter End"
+          "source": "Plains",
+          "ability": "Add {W}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "R",
+          "amount": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "W",
+          "amount": 1
+        },
+        {
+          "op": "activateAbility",
+          "source": "Sunforger",
+          "ability": "Search your library",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Sunforger",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Utter End"
         },
         {
           "op": "addTarget",
@@ -278,18 +596,43 @@ registerPortedMageTests({
           "target": "Hill Giant"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Utter End",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Hill Giant"
         },
         {
-          "op": "assertPermanentCount",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
           "player": 0,
-          "name": "Elixir of Immortality",
-          "count": 0
+          "attachment": "Sunforger",
+          "target": "Storm Crow",
+          "expected": false
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Hill Giant",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@utter",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
@@ -302,12 +645,6 @@ registerPortedMageTests({
           "player": 1,
           "name": "Hill Giant",
           "count": 0
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Utter End",
-          "count": 1
         }
       ]
     }

@@ -162,40 +162,102 @@ registerPortedMageTests({
           "target": "Liberated Livestock"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Keen Sense"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Keen Sense"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Keen Sense"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Keen Sense"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Keen Sense"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Keen Sense"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Murder",
+          "count": 1,
+          "onTop": true,
+          "objectTarget": "Liberated Livestock"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Liberated Livestock",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Attach Aura to",
+          "optional": true,
+          "maxCandidates": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keen Sense"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keen Sense"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keen Sense"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keen Sense"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keen Sense"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keen Sense"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "execute"
@@ -225,16 +287,28 @@ registerPortedMageTests({
           "count": 6
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, KEENSENSE, CATTOKEN, true)"
+          "op": "assertAttachmentCount",
+          "player": 0,
+          "attachment": "Keen Sense",
+          "target": "Cat Token",
+          "count": 2,
+          "targetKind": "token"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, KEENSENSE, BIRDTOKEN, true)"
+          "op": "assertAttachmentCount",
+          "player": 0,
+          "attachment": "Keen Sense",
+          "target": "Bird Token",
+          "count": 2,
+          "targetKind": "token"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, KEENSENSE, OXTOKEN, true)"
+          "op": "assertAttachmentCount",
+          "player": 0,
+          "attachment": "Keen Sense",
+          "target": "Ox Token",
+          "count": 2,
+          "targetKind": "token"
         }
       ]
     },
@@ -458,12 +532,16 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, KEENSENSE, SPECTRALLYNX, false)"
+          "op": "assertPermanentCount",
+          "name": "Keen Sense",
+          "count": 0,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, ARACHNOFORM, SPECTRALLYNX, false)"
+          "op": "assertPermanentCount",
+          "name": "Arachnoform",
+          "count": 0,
+          "player": 0
         },
         {
           "op": "assertGraveyardCount",
@@ -600,20 +678,67 @@ registerPortedMageTests({
           "target": "Liberated Livestock"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Keen Sense"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Arachnoform"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Murder",
+          "count": 1,
+          "onTop": true,
+          "objectTarget": "Liberated Livestock"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Liberated Livestock",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Attach Aura to",
+          "optional": true,
+          "maxCandidates": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keen Sense"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Arachnoform"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "execute"
@@ -625,12 +750,20 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, KEENSENSE, DEADLYINSECT, true)"
+          "op": "assertAttachmentCount",
+          "player": 0,
+          "attachment": "Keen Sense",
+          "target": "Deadly Insect",
+          "count": 1,
+          "targetKind": "token"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, ARACHNOFORM, DEADLYINSECT, true)"
+          "op": "assertAttachmentCount",
+          "player": 0,
+          "attachment": "Arachnoform",
+          "target": "Deadly Insect",
+          "count": 1,
+          "targetKind": "token"
         },
         {
           "op": "assertPermanentCount",

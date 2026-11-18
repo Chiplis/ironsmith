@@ -68,7 +68,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 1,
+          "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Gerrard's Hourglass Pendant",
@@ -76,7 +76,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 1,
+          "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "label": "Cast Gerrard's Hourglass Pendant",
@@ -84,7 +84,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Gerrard's Hourglass Pendant",
@@ -92,7 +92,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "label": "Cast Gerrard's Hourglass Pendant",
@@ -108,11 +108,11 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "playerA.TARGET_SKIP"
+          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "END_COMBAT",
           "player": 0,
           "label": "Cast Gerrard's Hourglass Pendant",
@@ -120,7 +120,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPlayableAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "END_COMBAT",
           "player": 1,
           "label": "Cast Gerrard's Hourglass Pendant",
@@ -151,7 +151,8 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Wastes",
           "tapped": true,
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertLife",

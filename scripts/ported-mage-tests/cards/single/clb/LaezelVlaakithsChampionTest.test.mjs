@@ -116,7 +116,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Grizzly Bears",
           "counter": "P1P1",
           "count": 2
@@ -287,7 +287,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Grizzly Bears",
           "counter": "P1P1",
           "count": 2

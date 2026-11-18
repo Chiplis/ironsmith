@@ -21,11 +21,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def fingerprint(path):
-    path = Path(path)
+    path = Path(path).resolve()
     with path.open('rb') as stream:
         digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-    return {'path': str(path.relative_to(ROOT)), 'sha256': digest,
+    return {'path': str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path), 'sha256': digest,
             'size': path.stat().st_size, 'mtime_ns': path.stat().st_mtime_ns}
+
+
+def test_artifacts():
+    package = ROOT / (os.environ.get('IRONSMITH_TEST_WASM_PKG') or 'pkg')
+    return sorted(package.glob('*.wasm')) + sorted(package.glob('*.js')) + [package / 'package.json']
 
 
 def classify(error):
@@ -53,7 +58,7 @@ def parse_tap(contents):
         if not chunk.startswith('# Subtest: '):
             continue
         lines = chunk.splitlines()
-        title = lines[0].removeprefix('# Subtest: ')
+        title = unescape_tap(lines[0].removeprefix('# Subtest: '))
         result = next((line for line in lines[1:] if re.match(r'^(?:not )?ok \d+', line)), None)
         if result is None:
             rows.append({'test': title, 'status': 'missing_result', 'classification': 'unavailable'})
@@ -71,32 +76,90 @@ def parse_tap(contents):
                         error = json.loads(error)
                     except json.JSONDecodeError:
                         pass
-                else:
-                    error = error.strip("'")
+                elif error.startswith("'") and error.endswith("'"):
+                    error = error[1:-1].replace("''", "'")
                 break
         duration = re.search(r'^  duration_ms: ([\d.]+)', chunk, flags=re.M)
+        failure = re.search(r"^  failureType: ['\"]?([^'\"\r\n]+)", chunk, flags=re.M)
+        stage = re.search(r'^\s*# mage-stage: (.+)$', chunk, flags=re.M)
+        operation = re.search(r'^\s*# mage-operation: (.+)$', chunk, flags=re.M)
+        operation_record = None
+        if operation:
+            diagnostic = unescape_tap(operation.group(1))
+            try:
+                operation_record = json.loads(diagnostic)
+            except json.JSONDecodeError:
+                operation_record = {'unparsed_diagnostic': diagnostic}
         source, _, name = title.partition(' :: ')
         rows.append({'test': title, 'source': source, 'scenario': name,
                      'status': 'skipped' if skipped else 'passed' if passed else 'failed',
                      'classification': 'unavailable' if skipped else 'assertions_completed' if passed else classify(error),
                      'error': error or None,
+                     'failure_type': failure.group(1) if failure else None,
+                     'failure_stage': stage.group(1) if stage else None,
+                     'operation': operation_record,
                      'duration_ms': float(duration.group(1)) if duration else None})
+        if skipped:
+            rows[-1]['skip_reason'] = unescape_tap(result.partition('# SKIP')[2].strip()) or None
     return rows
 
 
+def unescape_tap(value):
+    # Node escapes both literal backslashes and hash marks in diagnostic lines.
+    return re.sub(r'\\([\\#])', r'\1', value)
+
+
+def match_planned_rows(rows, planned):
+    declared = collections.defaultdict(collections.deque)
+    for scenario in planned:
+        declared[scenario['test']].append(scenario)
+    observed = set()
+    for row in rows:
+        choices = declared.get(row['test'])
+        if choices:
+            scenario = choices.popleft()
+            row['scenario_id'] = scenario['scenario_id']
+            observed.add(scenario['scenario_id'])
+            row['file'] = scenario['file']
+            row['declared_direct_assertions'] = scenario['direct_assertions']
+            if row['status'] == 'passed':
+                if scenario.get('has_ported_operations') is False:
+                    error = 'unsupported Java test body: port would execute no operations'
+                    row.update(status='failed', raw_status='passed', error=error,
+                               classification=classify(error))
+                elif not scenario['direct_assertions']:
+                    row['classification'] = 'test_completed_assertion_coverage_unverified'
+    return [scenario for scenario in planned if scenario['scenario_id'] not in observed]
+
+
 def port_inventory(files):
+    def count_assertions(operations):
+        return sum((op['op'].startswith('assert') or
+                    (op['op'] == 'attack' and 'expectedLegal' in op) or
+                    (op['op'] == 'block' and 'expectedRejection' in op)) +
+                   count_assertions(op.get('operations', []))
+                   for op in operations)
+
     scenarios = []
     for path in files:
         text = path.read_text()
         marker = 'registerPortedMageTests('
         spec = json.loads(text[text.index(marker) + len(marker):text.rindex(');')])
+        fixtures = {}
+        for scenario in spec['tests']:
+            fixtures.setdefault(scenario['name'], scenario)
         for index, scenario in enumerate(spec['tests']):
+            repeated = scenario.get('repeat')
+            fixture = fixtures.get(repeated['name'], scenario) if repeated else scenario
+            operations = [*spec.get('setupOperations', []), *fixture.get('setupOperations', []),
+                          *fixture.get('operations', [])]
+            runs_fixture = repeated is None or repeated.get('seeds') != []
             scenarios.append({'test': spec['sourcePath'] + ' :: ' + scenario['name'],
                               'file': str(path.relative_to(ROOT)),
                               'scenario_id': str(path.relative_to(ROOT)) + '#' + str(index),
                               'upstream_skip': scenario.get('skip'),
-                              'direct_assertions': sum(op.get('op', '').startswith('assert')
-                                                       for op in scenario.get('operations', []))})
+                              'has_ported_operations': bool(operations) and runs_fixture,
+                              'direct_assertions': count_assertions(operations) if runs_fixture else 0})
     return scenarios
 
 
@@ -120,6 +183,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('patterns', nargs='+', help='test files or glob patterns relative to repository')
     parser.add_argument('--jobs', type=int, default=2)
+    parser.add_argument('--shared-process', action='store_true',
+                        help='reuse one WASM runtime for this bounded batch of files')
     parser.add_argument('--test-timeout-ms', type=int, default=60000)
     parser.add_argument('--wall-timeout-seconds', type=int, default=900)
     parser.add_argument('--output', type=Path, default=ROOT / 'reports/runtime-audit/mage-execution.json')
@@ -135,15 +200,19 @@ def main():
     if not files:
         parser.error('no matching unreported test files')
     sources = [ROOT / 'scripts/mage-port-runner.mjs',
-               ROOT / 'scripts/wasm-test-harness.mjs', Path(__file__).resolve(), ROOT / 'cards.json']
+               ROOT / 'scripts/wasm-test-harness.mjs', ROOT / 'cards.json',
+               ROOT / 'web/ui/src/lib/sync-commands.js', ROOT / 'web/ui/src/lib/wire-json.js']
     sources += sorted((ROOT / 'scripts/mage-port-runner').glob('*.mjs'))
-    artifacts = sorted((ROOT / 'pkg').glob('*.wasm')) + sorted((ROOT / 'pkg').glob('*.js'))
-    before = [fingerprint(path) for path in sources + artifacts + files]
     selected = set(str(path.relative_to(ROOT)) for path in files)
     planned = [scenario for scenario in inventory if scenario['file'] in selected]
+    java_fixtures = sorted({ROOT / scenario['test'].partition(' :: ')[0] for scenario in planned})
+    inputs = sources + test_artifacts() + files + [path for path in java_fixtures if path.is_file()]
+    before = [fingerprint(path) for path in inputs]
     command = ['node', '--test', f'--test-concurrency={args.jobs}',
-               f'--test-timeout={args.test_timeout_ms}', '--test-reporter=tap',
-               *[str(path.relative_to(ROOT)) for path in files]]
+               f'--test-timeout={args.test_timeout_ms}', '--test-reporter=tap']
+    if args.shared_process:
+        command.append('--test-isolation=none')
+    command.extend(str(path.relative_to(ROOT)) for path in files)
     environment = {key: value for key, value in os.environ.items() if not key.startswith('MAGE_PORT_')}
     environment['MAGE_PORT_ALLOW_ENGINE_SHIMS'] = '0'
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -165,28 +234,18 @@ def main():
             except subprocess.TimeoutExpired:
                 os.killpg(child.pid, signal.SIGKILL)
                 returncode = child.wait()
-    after = [fingerprint(path) for path in sources + artifacts + files]
+    after = [fingerprint(path) for path in inputs]
     rows = parse_tap(tap.read_text())
-    declared = collections.defaultdict(collections.deque)
-    for scenario in planned:
-        declared[scenario['test']].append(scenario)
-    observed = set()
-    for row in rows:
-        choices = declared.get(row['test'])
-        if choices:
-            scenario = choices.popleft()
-            row['scenario_id'] = scenario['scenario_id']
-            observed.add(scenario['scenario_id'])
-            row['file'] = scenario['file']
-            row['declared_direct_assertions'] = scenario['direct_assertions']
-            if row['status'] == 'passed' and not scenario['direct_assertions']:
-                row['classification'] = 'test_completed_assertion_coverage_unverified'
+    unreported = match_planned_rows(rows, planned)
     report = {'scope': 'Selected ported MAGE scenarios, not all-card correctness',
               'started_at': started_at, 'duration_seconds': time.monotonic() - start,
+              'node_version': subprocess.check_output(['node', '--version'], text=True).strip(),
+              'wasm_package': os.environ.get('IRONSMITH_TEST_WASM_PKG', 'pkg'),
+              'reporter': fingerprint(Path(__file__)),
               'command': command, 'engine_shims': False, 'returncode': returncode,
               'wall_timeout': timed_out, 'selected_files': len(files),
               'inventory_scenarios': len(inventory), 'selected_scenarios': len(planned),
-              'selected_unreported': [scenario for scenario in planned if scenario['scenario_id'] not in observed],
+              'selected_unreported': unreported,
               'unselected_scenarios': [scenario for scenario in inventory if scenario['file'] not in selected],
               'resume_sources': [fingerprint(path.resolve()) for path in args.resume_from],
               'resumed_completed_files': sorted(completed_files),

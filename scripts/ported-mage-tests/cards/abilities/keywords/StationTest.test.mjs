@@ -33,30 +33,40 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Galvanizing Sawship",
-          "ability": "Haste",
-          "expected": "0 >= 3"
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Galvanizing Sawship",
-          "ability": "Flying",
-          "expected": "0 >= 3"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(sawship, CardType.ARTIFACT, SubType.SPACECRAFT)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(sawship, CardType.CREATURE, isLeveled)"
-        },
-        {
-          "op": "unsupported",
-          "source": "if (isLeveled) { assertPowerToughness(playerA, sawship, 6, 5); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Galvanizing Sawship"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Spacecraft"
+            },
+            {
+              "property": "cardType",
+              "expected": false,
+              "value": "Creature"
+            },
+            {
+              "property": "keyword",
+              "value": "Haste",
+              "expected": false
+            },
+            {
+              "property": "keyword",
+              "value": "Flying",
+              "expected": false
+            }
+          ],
+          "count": 1
         }
       ]
     },
@@ -102,10 +112,6 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(devils, true)"
-        },
-        {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Galvanizing Sawship",
@@ -113,30 +119,46 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "assertAbility",
+          "op": "assertTapped",
           "player": 0,
-          "name": "Galvanizing Sawship",
-          "ability": "Haste",
-          "expected": "2 >= 3"
+          "name": "Riot Devils",
+          "tapped": true
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Galvanizing Sawship",
-          "ability": "Flying",
-          "expected": "2 >= 3"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(sawship, CardType.ARTIFACT, SubType.SPACECRAFT)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(sawship, CardType.CREATURE, isLeveled)"
-        },
-        {
-          "op": "unsupported",
-          "source": "if (isLeveled) { assertPowerToughness(playerA, sawship, 6, 5); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Galvanizing Sawship"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Spacecraft"
+            },
+            {
+              "property": "cardType",
+              "expected": false,
+              "value": "Creature"
+            },
+            {
+              "property": "keyword",
+              "value": "Haste",
+              "expected": false
+            },
+            {
+              "property": "keyword",
+              "value": "Flying",
+              "expected": false
+            }
+          ],
+          "count": 1
         }
       ]
     },
@@ -182,10 +204,6 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(giant, true)"
-        },
-        {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Galvanizing Sawship",
@@ -193,30 +211,54 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "assertAbility",
+          "op": "assertTapped",
           "player": 0,
-          "name": "Galvanizing Sawship",
-          "ability": "Haste",
-          "expected": "3 >= 3"
+          "name": "Hill Giant",
+          "tapped": true
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Galvanizing Sawship",
-          "ability": "Flying",
-          "expected": "3 >= 3"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(sawship, CardType.ARTIFACT, SubType.SPACECRAFT)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(sawship, CardType.CREATURE, isLeveled)"
-        },
-        {
-          "op": "unsupported",
-          "source": "if (isLeveled) { assertPowerToughness(playerA, sawship, 6, 5); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Galvanizing Sawship"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Spacecraft"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "power",
+              "expected": 6
+            },
+            {
+              "property": "toughness",
+              "expected": 5
+            },
+            {
+              "property": "keyword",
+              "value": "Haste",
+              "expected": true
+            },
+            {
+              "property": "keyword",
+              "value": "Flying",
+              "expected": true
+            }
+          ],
+          "count": 1
         }
       ]
     },
@@ -269,10 +311,6 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(devils, true)"
-        },
-        {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Galvanizing Sawship",
@@ -280,30 +318,54 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "assertAbility",
+          "op": "assertTapped",
           "player": 0,
-          "name": "Galvanizing Sawship",
-          "ability": "Haste",
-          "expected": "3 >= 3"
+          "name": "Riot Devils",
+          "tapped": true
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Galvanizing Sawship",
-          "ability": "Flying",
-          "expected": "3 >= 3"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(sawship, CardType.ARTIFACT, SubType.SPACECRAFT)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(sawship, CardType.CREATURE, isLeveled)"
-        },
-        {
-          "op": "unsupported",
-          "source": "if (isLeveled) { assertPowerToughness(playerA, sawship, 6, 5); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Galvanizing Sawship"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Artifact"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Spacecraft"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "power",
+              "expected": 6
+            },
+            {
+              "property": "toughness",
+              "expected": 5
+            },
+            {
+              "property": "keyword",
+              "value": "Haste",
+              "expected": true
+            },
+            {
+              "property": "keyword",
+              "value": "Flying",
+              "expected": true
+            }
+          ],
+          "count": 1
         }
       ]
     },

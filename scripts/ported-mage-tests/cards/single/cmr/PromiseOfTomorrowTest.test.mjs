@@ -133,10 +133,29 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "command",
+            "name": "Balduvian Bears",
+            "player": 0
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Forest",
           "ability": "{T}: Add {G}",
           "count": 2
         },
@@ -148,10 +167,19 @@ registerPortedMageTests({
           "name": "Balduvian Bears"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Balduvian Bears"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
@@ -159,7 +187,22 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "command",
+            "name": "Balduvian Bears",
+            "player": 0
+          },
+          "count": 0,
+          "checks": []
         },
         {
           "op": "castSpell",
@@ -170,10 +213,78 @@ registerPortedMageTests({
           "target": "Balduvian Bears"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Lightning Bolt",
+          "objectTarget": "Balduvian Bears"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "command",
+            "name": "Balduvian Bears",
+            "player": 0
+          },
+          "count": 0,
+          "checks": []
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Promise of Tomorrow",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertExileCount",
@@ -181,45 +292,88 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 2,
+          "op": "assertEachObject",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Balduvian Bears",
-          "count": 1
+          "seatIndependent": true,
+          "selector": {
+            "zone": "command",
+            "name": "Balduvian Bears",
+            "player": 0
+          },
+          "count": 0,
+          "checks": []
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 2,
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 1,
+          "source": "Promise of Tomorrow",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
           "name": "Promise of Tomorrow",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 2,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "command",
+            "name": "Balduvian Bears",
+            "player": 0
+          },
+          "count": 0,
+          "checks": []
         }
       ]
     },
@@ -262,10 +416,29 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "command",
+            "name": "Balduvian Bears",
+            "player": 0
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Forest",
           "ability": "{T}: Add {G}",
           "count": 2
         },
@@ -277,10 +450,19 @@ registerPortedMageTests({
           "name": "Balduvian Bears"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Balduvian Bears"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
@@ -288,7 +470,22 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "command",
+            "name": "Balduvian Bears",
+            "player": 0
+          },
+          "count": 0,
+          "checks": []
         },
         {
           "op": "castSpell",
@@ -299,10 +496,73 @@ registerPortedMageTests({
           "target": "Balduvian Bears"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Lightning Bolt",
+          "objectTarget": "Balduvian Bears"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "command",
+            "name": "Balduvian Bears",
+            "player": 0
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Promise of Tomorrow",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertExileCount",
@@ -310,47 +570,91 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
-          "count": 1
+          "count": 0,
+          "seatIndependent": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 2,
+          "op": "assertEachObject",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Balduvian Bears",
-          "count": 1
+          "seatIndependent": true,
+          "selector": {
+            "zone": "command",
+            "name": "Balduvian Bears",
+            "player": 0
+          },
+          "count": 1,
+          "checks": []
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 2,
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 1,
+          "source": "Promise of Tomorrow",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
           "name": "Promise of Tomorrow",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 2,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "seatIndependent": true,
+          "selector": {
+            "zone": "command",
+            "name": "Balduvian Bears",
+            "player": 0
+          },
+          "count": 1,
+          "checks": []
         }
       ]
     }
-  ]
+  ],
+  "turnOrder": [0, 3, 2, 1]
 });

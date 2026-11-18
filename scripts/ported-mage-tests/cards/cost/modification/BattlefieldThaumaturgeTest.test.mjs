@@ -222,12 +222,142 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "player": 0,
+          "name": "Plains",
+          "count": 1,
+          "zone": "BATTLEFIELD"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "name": "Battlefield Thaumaturge",
+          "count": 1,
+          "zone": "BATTLEFIELD"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "name": "Agent of Horizons",
+          "count": 1,
+          "zone": "BATTLEFIELD"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "name": "Blood-Toll Harpy",
+          "count": 1,
+          "zone": "BATTLEFIELD"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "name": "Anvilwrought Raptor",
+          "count": 1,
+          "zone": "BATTLEFIELD"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "name": "Fleshmad Steed",
+          "count": 1,
+          "zone": "BATTLEFIELD"
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Launch the Fleet",
-          "target": "createTargetingString(creatures)"
+          "target": {
+            "groups": [
+              [
+                "Battlefield Thaumaturge",
+                "Agent of Horizons",
+                "Blood-Toll Harpy",
+                "Anvilwrought Raptor",
+                "Fleshmad Steed"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Launch the Fleet",
+          "count": 1,
+          "targetCount": 5
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Battlefield Thaumaturge",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Battlefield Thaumaturge",
+          "ability": "Hexproof",
+          "expected": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Battlefield Thaumaturge",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Agent of Horizons",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Blood-Toll Harpy",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Anvilwrought Raptor",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Fleshmad Steed",
+          "defender": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "execute"
@@ -257,6 +387,42 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Island",
           "tapped": false,
+          "count": 5
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Battlefield Thaumaturge",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Agent of Horizons",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Blood-Toll Harpy",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Anvilwrought Raptor",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Fleshmad Steed",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Soldier Token",
           "count": 5
         }
       ]
@@ -293,34 +459,161 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "count": 1,
+          "name": "Fleecemane Lion"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "count": 1,
+          "name": "Sedge Scorpion"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "count": 1,
+          "name": "Boon Satyr"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "count": 1,
+          "name": "Bronze Sable"
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": "X=4"
         },
         {
-          "op": "addTarget",
+          "op": "castSpell",
+          "name": "Curse of the Swine",
           "player": 0,
-          "target": "createTargetingString(opponentsCreatures)"
-        },
-        {
-          "op": "setStopAt",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "target": {
+            "groups": [
+              [
+                "Fleecemane Lion",
+                "Sedge Scorpion",
+                "Boon Satyr",
+                "Bronze Sable"
+              ]
+            ]
+          }
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Curse of the Swine",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "xValue": 4,
+          "targetCount": 4
         },
         {
-          "op": "assertTappedCount",
-          "name": "Island",
-          "tapped": true,
-          "count": 2
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertTappedCount",
-          "name": "Plains",
-          "tapped": false,
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Fleecemane Lion",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Fleecemane Lion",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Fleecemane Lion",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Sedge Scorpion",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Sedge Scorpion",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Sedge Scorpion",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Boon Satyr",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Boon Satyr",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Boon Satyr",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Bronze Sable",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Bronze Sable",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Bronze Sable",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Boar Token",
           "count": 4
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Island",
+          "count": 2,
+          "tapped": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Plains",
+          "count": 4,
+          "tapped": false
         }
       ]
     },
@@ -342,12 +635,127 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Descent of the Dragons",
+          "count": 1
         },
         {
-          "op": "execute"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Battlefield Thaumaturge",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Sedge Scorpion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Boon Satyr",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Agent of Horizons",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Blood-Toll Harpy",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Anvilwrought Raptor",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Descent of the Dragons",
+          "target": {
+            "groups": [
+              [
+                "Battlefield Thaumaturge",
+                "Sedge Scorpion",
+                "Boon Satyr",
+                "Agent of Horizons",
+                "Blood-Toll Harpy",
+                "Anvilwrought Raptor"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Descent of the Dragons",
+          "count": 1,
+          "targetCount": 6
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Battlefield Thaumaturge",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Sedge Scorpion",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Boon Satyr",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Agent of Horizons",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Blood-Toll Harpy",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Anvilwrought Raptor",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Dragon Token",
+          "count": 3
         },
         {
           "op": "assertPermanentCount",
@@ -357,15 +765,17 @@ registerPortedMageTests({
         },
         {
           "op": "assertTappedCount",
+          "player": 0,
           "name": "Mountain",
-          "tapped": true,
-          "count": 2
+          "count": 2,
+          "tapped": true
         },
         {
           "op": "assertTappedCount",
+          "player": 0,
           "name": "Swamp",
-          "tapped": false,
-          "count": 4
+          "count": 4,
+          "tapped": false
         }
       ]
     },

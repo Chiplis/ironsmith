@@ -18,7 +18,8 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Weathered Sentinels",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": false
         },
         {
           "op": "setStopAt",
@@ -26,8 +27,18 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerA must have 0 actions but found 1\")) { Assert.fail(\"Should have had error about playerA not being able to attack, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Weathered Sentinels",
+          "tapped": false
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
         }
       ]
     },
@@ -53,7 +64,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Gingerbrute",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",

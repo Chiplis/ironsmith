@@ -89,7 +89,7 @@ registerPortedMageTests({
         {
           "op": "assertPlayableAbility",
           "turn": 1,
-          "phase": "UPKEEP",
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Birgi, God of Storytelling",
           "expected": false
@@ -97,14 +97,18 @@ registerPortedMageTests({
         {
           "op": "assertPlayableAbility",
           "turn": 1,
-          "phase": "UPKEEP",
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Harnfel, Horn of Bounty",
           "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"before cast\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Birgi, God of Storytelling\", 1)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Birgi, God of Storytelling",
+          "count": 1
         },
         {
           "op": "castSpell",

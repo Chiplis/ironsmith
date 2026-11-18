@@ -342,8 +342,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"library before\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Akoum Warrior\", 1)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Akoum Warrior",
+          "count": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -375,8 +379,12 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"library after\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Akoum Warrior\", 0)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Akoum Warrior",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
@@ -448,8 +456,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"library before\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Akoum Warrior\", 1)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Akoum Warrior",
+          "count": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -475,8 +487,12 @@ registerPortedMageTests({
           "name": "Akoum Teeth"
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"library after\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Akoum Warrior\", 0)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Akoum Warrior",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
@@ -574,8 +590,12 @@ registerPortedMageTests({
           "name": "Akoum Teeth"
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"library after\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Akoum Warrior\", 0)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Akoum Warrior",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
@@ -761,6 +781,93 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 3
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "name": "Akoum Warrior"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "expected": false,
+              "value": "Land"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Minotaur"
+            },
+            {
+              "property": "power",
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "expected": 5
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "name": "Halvar, God of Battle"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "supertype",
+              "expected": true,
+              "value": "Legendary"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "God"
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "name": "Esika, God of the Tree"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "colorIdentity",
+              "expected": true,
+              "value": [
+                "W",
+                "U",
+                "B",
+                "R",
+                "G"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -785,6 +892,72 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Play Branchloft Pathway",
+          "expected": true
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Play Boulderloft Pathway",
+          "expected": true
+        },
+        {
+          "op": "saveRuntimeCheckpoint",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "playLand",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Branchloft Pathway"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Branchloft Pathway",
+          "count": 1
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
+        },
+        {
+          "op": "playLand",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Boulderloft Pathway"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Boulderloft Pathway",
+          "count": 1
         }
       ]
     },
@@ -1821,8 +1994,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -1831,6 +2003,25 @@ registerPortedMageTests({
           "player": 0,
           "name": "Balduvian Bears",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            }
+          ]
         },
         {
           "op": "assertGraveyardCount",
@@ -1886,14 +2077,13 @@ registerPortedMageTests({
           "name": "Glasspool Mimic"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Balduvian Bears"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Balduvian Bears"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -1959,7 +2149,8 @@ registerPortedMageTests({
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: You may put a creature card"
+          "ability": "{T}: You may put a creature card",
+          "source": "Aether Vial"
         },
         {
           "op": "setChoice",
@@ -1972,14 +2163,13 @@ registerPortedMageTests({
           "value": "Glasspool Mimic"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Balduvian Bears"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Balduvian Bears"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -2791,14 +2981,13 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Akoum Warrior"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Akoum Warrior"
+          ]
         },
         {
           "op": "waitStackResolved",
@@ -2836,7 +3025,13 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "Zam Wesell",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Legendary Creature — Shapeshifter Hunter",
+          "oracleText": "When you cast Zam Wesell, target opponent reveals their hand. You may choose a creature card from it and have Zam Wesell enter the battlefield as a copy of that creature card.",
+          "manaCost": "{2}{U}{U}",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "addCard",
@@ -2870,10 +3065,39 @@ registerPortedMageTests({
           "value": "Akoum Warrior"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Zam Wesell",
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Zam Wesell",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Akoum Warrior",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
@@ -2940,11 +3164,27 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 1,
+            "name": "Birgi, God of Storytelling"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "manaValue",
+              "expected": 3
+            }
+          ]
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{X}:"
+          "ability": "{X}:",
+          "source": "Valki, God of Lies"
         },
         {
           "op": "setChoice",
@@ -3198,8 +3438,13 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkType(\"server must use side 1 - type\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Tergrid, God of Fright\", CardType.CREATURE, true)"
+          "op": "assertType",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Tergrid, God of Fright",
+          "cardType": "CREATURE",
+          "extra": "true"
         },
         {
           "op": "unsupported",
@@ -3216,21 +3461,30 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Tergrid, God of Fright"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Tergrid, God of Fright",
+          "ability": "MenaceAbility.class",
+          "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "checkType(\"server must use effect - artifact\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Tergrid, God of Fright\", CardType.ARTIFACT, true)"
+          "op": "assertType",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Tergrid, God of Fright",
+          "cardType": "ARTIFACT",
+          "extra": "true"
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Tergrid, God of Fright"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Tergrid, God of Fright",
+          "ability": "HasteAbility.class",
+          "expected": true
         },
         {
           "op": "setStrictChooseMode",
@@ -3305,10 +3559,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Akoum Warrior"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Akoum Warrior",
+          "ability": "HasteAbility.class",
+          "expected": true
         },
         {
           "op": "assertPermanentCount",

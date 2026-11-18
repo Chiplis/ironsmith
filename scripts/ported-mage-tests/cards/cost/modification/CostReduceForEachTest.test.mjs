@@ -472,8 +472,22 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Balduvian Bears@bear",
-          "count": 3
+          "name": "Balduvian Bears@bear1",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Balduvian Bears@bear2",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Balduvian Bears@bear3",
+          "count": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -485,33 +499,52 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Shower of Coals",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Shower of Coals"
+          "target": {
+            "groups": [
+              [
+                "@bear1",
+                "@bear2",
+                "@bear3"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "@bear.1^@bear.2^@bear.3"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Shower of Coals",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 3
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Shower of Coals",
           "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 3
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Mountain",
+          "count": 2,
+          "tapped": true
         }
       ]
     },
@@ -575,8 +608,14 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"must be tapped\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, playerB, \"Forest\", true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Forest",
+          "tapped": true,
+          "count": 1,
+          "targetPlayer": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -648,8 +687,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{B}"
+          ],
+          "exact": true
         }
       ]
     },

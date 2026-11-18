@@ -35,7 +35,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Falkenrath Reaver",
+          "name": "Falkenrath Reaver@court.1",
           "count": 1
         },
         {
@@ -54,6 +54,15 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Court of Locthwain"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertMonarch",
+          "monarch": 0
         },
         {
           "op": "attack",
@@ -76,16 +85,33 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertMonarch",
+          "monarch": 1
+        },
+        {
           "op": "assertExileCount",
-          "name": "Falkenrath Reaver",
-          "count": 1
+          "name": "@court.1",
+          "count": 1,
+          "player": 1
+        },
+        {
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "label": "Cast Falkenrath Reaver",
+          "actionLabel": "Cast Falkenrath Reaver (from exile)",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Falkenrath Reaver"
+          "name": "Falkenrath Reaver",
+          "objectAlias": "@court.1",
+          "actionLabel": "Cast Falkenrath Reaver (from exile)",
+          "permissionSource": "Court of Locthwain"
         },
         {
           "op": "setStopAt",
@@ -134,7 +160,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Falkenrath Reaver",
+          "name": "Falkenrath Reaver@court.1",
           "count": 1
         },
         {
@@ -155,29 +181,51 @@ registerPortedMageTests({
           "name": "Court of Locthwain"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertMonarch",
+          "monarch": 0
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": 1
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertExileCount",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Falkenrath Reaver",
-          "count": 1
+          "player": 1,
+          "name": "@court.1",
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "setChoice",
+          "op": "assertPlayableAbility",
           "player": 0,
-          "value": "Without paying manacost: "
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "label": "Cast Falkenrath Reaver",
+          "actionLabel": "Cast Falkenrath Reaver (without paying its mana cost, from exile)",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Falkenrath Reaver"
+          "name": "Falkenrath Reaver",
+          "objectAlias": "@court.1",
+          "actionLabel": "Cast Falkenrath Reaver (without paying its mana cost, from exile)",
+          "permissionSource": "Court of Locthwain"
         },
         {
           "op": "setStopAt",
@@ -233,7 +281,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Fire // Ice",
+          "name": "Fire // Ice@court.1",
           "count": 1
         },
         {
@@ -254,22 +302,41 @@ registerPortedMageTests({
           "name": "Court of Locthwain"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertMonarch",
+          "monarch": 0
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": 1
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertExileCount",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Fire // Ice",
-          "count": 1
+          "player": 1,
+          "name": "@court.1",
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "setChoice",
+          "op": "assertPlayableAbility",
           "player": 0,
-          "value": "Without paying manacost: "
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "label": "Cast Ice",
+          "actionLabel": "Cast Ice (without paying its mana cost, from exile)",
+          "expected": true
         },
         {
           "op": "castSpell",
@@ -277,7 +344,10 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Ice",
-          "target": "Grizzly Bears"
+          "target": "Grizzly Bears",
+          "objectAlias": "@court.1",
+          "actionLabel": "Cast Ice (without paying its mana cost, from exile)",
+          "permissionSource": "Court of Locthwain"
         },
         {
           "op": "setStopAt",
@@ -337,7 +407,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Falkenrath Reaver",
+          "name": "Falkenrath Reaver@court.1",
           "count": 1
         },
         {
@@ -358,29 +428,51 @@ registerPortedMageTests({
           "name": "Court of Locthwain"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertMonarch",
+          "monarch": 0
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": 1
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertExileCount",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Falkenrath Reaver",
-          "count": 1
+          "player": 1,
+          "name": "@court.1",
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "setChoice",
+          "op": "assertPlayableAbility",
           "player": 0,
-          "value": "Court"
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "label": "Cast Falkenrath Reaver",
+          "actionLabel": "Cast Falkenrath Reaver (from exile)",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Falkenrath Reaver"
+          "name": "Falkenrath Reaver",
+          "objectAlias": "@court.1",
+          "actionLabel": "Cast Falkenrath Reaver (from exile)",
+          "permissionSource": "Court of Locthwain"
         },
         {
           "op": "setStopAt",
@@ -436,7 +528,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Falkenrath Reaver",
+          "name": "Falkenrath Reaver@court.1",
           "count": 1
         },
         {
@@ -450,7 +542,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Cabal Evangel",
+          "name": "Cabal Evangel@court.2",
           "count": 1
         },
         {
@@ -471,6 +563,15 @@ registerPortedMageTests({
           "name": "Court of Locthwain"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertMonarch",
+          "monarch": 0
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -483,20 +584,27 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "waitStackResolved",
           "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Cabal Evangel",
-          "count": 1
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Falkenrath Reaver",
-          "count": 0
+          "player": 1,
+          "name": "@court.2",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "@court.1",
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "addTarget",
@@ -504,32 +612,46 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "waitStackResolved",
           "turn": 5,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Cabal Evangel",
-          "count": 1
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "@court.2",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "@court.1",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPlayableAbility",
           "player": 0,
-          "name": "Falkenrath Reaver",
-          "count": 1
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "label": "Cast Falkenrath Reaver",
+          "actionLabel": "Cast Falkenrath Reaver (without paying its mana cost, from exile)",
+          "expected": true
         },
         {
           "op": "castSpell",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Falkenrath Reaver"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Without paying manacost"
+          "name": "Falkenrath Reaver",
+          "objectAlias": "@court.1",
+          "actionLabel": "Cast Falkenrath Reaver (without paying its mana cost, from exile)",
+          "permissionSource": "Court of Locthwain"
         },
         {
           "op": "setStopAt",
@@ -578,7 +700,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Falkenrath Reaver",
+          "name": "Falkenrath Reaver@court.1",
           "count": 1
         },
         {
@@ -592,7 +714,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Cabal Evangel",
+          "name": "Cabal Evangel@court.2",
           "count": 1
         },
         {
@@ -613,25 +735,13 @@ registerPortedMageTests({
           "name": "Court of Locthwain"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertExileCount",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Cabal Evangel",
-          "count": 1
-        },
-        {
-          "op": "assertExileCount",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Falkenrath Reaver",
-          "count": 0
+          "op": "assertMonarch",
+          "monarch": 0
         },
         {
           "op": "addTarget",
@@ -639,44 +749,93 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertExileCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "@court.2",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "@court.1",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "@court.2",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "@court.1",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "label": "Cast Cabal Evangel",
+          "actionLabel": "Cast Cabal Evangel (from exile)",
+          "expected": true
+        },
+        {
+          "op": "castSpell",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Cabal Evangel",
-          "count": 1
+          "objectAlias": "@court.2",
+          "actionLabel": "Cast Cabal Evangel (from exile)",
+          "permissionSource": "Court of Locthwain"
         },
         {
-          "op": "assertExileCount",
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "label": "Cast Falkenrath Reaver",
+          "actionLabel": "Cast Falkenrath Reaver (without paying its mana cost, from exile)",
+          "expected": true
+        },
+        {
+          "op": "castSpell",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Falkenrath Reaver",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Court"
-        },
-        {
-          "op": "castSpell",
-          "turn": 5,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Cabal Evangel"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Without paying manacost"
-        },
-        {
-          "op": "castSpell",
-          "turn": 5,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Falkenrath Reaver"
+          "objectAlias": "@court.1",
+          "actionLabel": "Cast Falkenrath Reaver (without paying its mana cost, from exile)",
+          "permissionSource": "Court of Locthwain"
         },
         {
           "op": "setStopAt",

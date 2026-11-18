@@ -544,10 +544,6 @@ registerPortedMageTests({
       "name": "test_Trigger_CanSacrificeOrDiscard_AndDiscard",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -584,10 +580,28 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Angel of Mercy",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Angel of Mercy",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
           "player": 0,
-          "name": "Angel of Mercy"
+          "life": 23
         },
         {
           "op": "addTarget",
@@ -595,14 +609,28 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "source": "Starseer Mentor",
+          "count": 1,
+          "turn": 1,
+          "phase": "END_TURN",
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "targetCount": 1
+        },
+        {
           "op": "setChoice",
           "player": 1,
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": false
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Discard a card"
+          ]
         },
         {
           "op": "setChoice",
@@ -610,12 +638,9 @@ registerPortedMageTests({
           "value": "Abandon Hope"
         },
         {
-          "op": "setStopAt",
-          "turn": 2,
-          "phase": "UPKEEP"
-        },
-        {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
         },
         {
           "op": "assertLife",
@@ -633,6 +658,12 @@ registerPortedMageTests({
           "player": 1,
           "name": "Abandon Hope",
           "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Abandon Hope",
+          "count": 0
         }
       ]
     },

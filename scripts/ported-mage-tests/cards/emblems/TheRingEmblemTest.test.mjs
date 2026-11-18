@@ -345,32 +345,36 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Ashiok's Skulker"
+          "targetPlayer": 0,
+          "name": "Ashiok's Skulker",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Academy Manufactor"
+          "targetPlayer": 1,
+          "name": "Academy Manufactor",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Alabaster Kirin"
+          "targetPlayer": 1,
+          "name": "Alabaster Kirin",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Alaborn Trooper"
+          "targetPlayer": 1,
+          "name": "Alaborn Trooper",
+          "count": 1
         },
         {
           "op": "attack",
@@ -396,32 +400,36 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Ashiok's Skulker"
+          "targetPlayer": 0,
+          "name": "Ashiok's Skulker",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Academy Manufactor"
+          "targetPlayer": 1,
+          "name": "Academy Manufactor",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Alabaster Kirin"
+          "targetPlayer": 1,
+          "name": "Alabaster Kirin",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Alaborn Trooper"
+          "targetPlayer": 1,
+          "name": "Alaborn Trooper",
+          "count": 1
         },
         {
           "op": "attack",
@@ -469,32 +477,36 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Ashiok's Skulker"
+          "targetPlayer": 0,
+          "name": "Ashiok's Skulker",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Academy Manufactor"
+          "targetPlayer": 1,
+          "name": "Academy Manufactor",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Alabaster Kirin"
+          "targetPlayer": 1,
+          "name": "Alabaster Kirin",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Alaborn Trooper"
+          "targetPlayer": 1,
+          "name": "Alaborn Trooper",
+          "count": 0
         },
         {
           "op": "attack",

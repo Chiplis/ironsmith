@@ -7,14 +7,10 @@ registerPortedMageTests({
       "name": "testZCC",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Living Lore",
+          "name": "Living Lore@lore",
           "count": 1
         },
         {
@@ -50,19 +46,36 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Living Lore"
+          "name": "Living Lore",
+          "objectAlias": "@lore"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Living Lore",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "target": "Cruel Ultimatum"
+          "value": "Cruel Ultimatum"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Cruel Ultimatum",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Living Lore",
+          "name": "@lore",
           "power": 7,
           "toughness": 7
         },
@@ -72,35 +85,90 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Unsummon",
-          "target": "Living Lore"
+          "target": "@lore"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Unsummon",
+          "count": 1,
+          "objectTarget": "Living Lore"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Living Lore",
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Living Lore"
+          "name": "Living Lore",
+          "objectAlias": "@lore"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Living Lore",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "target": "Lightning Bolt"
+          "value": "Lightning Bolt"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Living Lore",
+          "name": "@lore",
           "power": 1,
           "toughness": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Cruel Ultimatum",
+          "count": 1
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
-          "attacker": "Living Lore",
+          "attacker": "@lore",
           "defender": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Living Lore",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 19
         },
         {
           "op": "setChoice",
@@ -118,12 +186,22 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 3,
-          "phase": "END_COMBAT"
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "assertGraveyardCount",
@@ -138,15 +216,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertLife",
+          "player": 1,
+          "life": 16
+        },
+        {
           "op": "assertExileCount",
           "player": 0,
           "name": "Cruel Ultimatum",
           "count": 1
-        },
-        {
-          "op": "assertLife",
-          "player": 1,
-          "life": 16
         }
       ]
     },
@@ -253,15 +331,18 @@ registerPortedMageTests({
       "name": "testLivingLoreNotSharingExile",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Living Lore@lore",
+          "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Living Lore",
-          "count": 2
+          "name": "Living Lore@lore.second",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -289,73 +370,91 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Living Lore"
+          "name": "Living Lore",
+          "objectAlias": "@lore"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Living Lore",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "target": "Chaplain's Blessing"
+          "value": "Chaplain's Blessing"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Chaplain's Blessing",
+          "count": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@lore",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Living Lore"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Cruel Ultimatum"
-        },
-        {
-          "op": "attack",
-          "turn": 3,
-          "player": 0,
-          "attacker": "Living Lore",
-          "defender": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Living Lore",
+          "objectAlias": "@lore.second"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Living Lore",
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "setChoice",
           "player": 0,
-          "name": "Living Lore",
+          "value": "Cruel Ultimatum"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Cruel Ultimatum",
           "count": 1
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Living Lore",
+          "name": "@lore.second",
           "power": 7,
           "toughness": 7
         },
         {
-          "op": "assertLife",
+          "op": "attack",
+          "turn": 3,
           "player": 0,
-          "life": 25
+          "attacker": "@lore",
+          "defender": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Living Lore",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "assertLife",
@@ -363,10 +462,61 @@ registerPortedMageTests({
           "life": 19
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Chaplain's Blessing",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Living Lore",
+          "count": 1
+        },
+        {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Chaplain's Blessing",
           "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 19
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@lore.second",
+          "power": 7,
+          "toughness": 7
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 25
         },
         {
           "op": "assertExileCount",

@@ -64,38 +64,53 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Borderland Minotaur"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Borderland Minotaur",
+          "ability": "TrampleAbility.class",
+          "expected": true,
+          "seatIndependent": true
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Elite Vanguard"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "ability": "TrampleAbility.class",
+          "expected": true,
+          "seatIndependent": true
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Grizzly Bears"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "ability": "TrampleAbility.class",
+          "expected": true,
+          "seatIndependent": true
         },
         {
           "op": "assertAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "ability": 1,
-          "expected": "Goblin Piker"
+          "name": "Goblin Piker",
+          "ability": "TrampleAbility.class",
+          "expected": false,
+          "seatIndependent": true
         },
         {
           "op": "assertAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "ability": 1,
-          "expected": "Merfolk of the Pearl Trident"
+          "name": "Merfolk of the Pearl Trident",
+          "ability": "TrampleAbility.class",
+          "expected": false,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -104,7 +119,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Borderland Minotaur",
           "power": 8,
-          "toughness": 7
+          "toughness": 7,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -113,7 +129,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Elite Vanguard",
           "power": 6,
-          "toughness": 5
+          "toughness": 5,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -122,7 +139,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Grizzly Bears",
           "power": 6,
-          "toughness": 6
+          "toughness": 6,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -131,7 +149,8 @@ registerPortedMageTests({
           "player": 1,
           "name": "Goblin Piker",
           "power": 2,
-          "toughness": 1
+          "toughness": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -140,7 +159,8 @@ registerPortedMageTests({
           "player": 1,
           "name": "Merfolk of the Pearl Trident",
           "power": 1,
-          "toughness": 1
+          "toughness": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

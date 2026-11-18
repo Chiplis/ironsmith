@@ -7,13 +7,6 @@ registerPortedMageTests({
       "name": "testChoosingAlternateCastingMethod",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "skipInitShuffling"
-        },
-        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -29,84 +22,161 @@ registerPortedMageTests({
         },
         {
           "op": "addCard",
-          "zone": "LIBRARY",
-          "player": 0,
-          "name": "Abzan Beastmaster",
-          "count": 2
-        },
-        {
-          "op": "addCard",
-          "zone": "LIBRARY",
-          "player": 0,
-          "name": "Grizzly Bears",
-          "count": 1
-        },
-        {
-          "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Forest",
           "count": 5
         },
         {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "name": "Abzan Beastmaster@second",
+          "zone": "LIBRARY",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "name": "Abzan Beastmaster@first",
+          "zone": "LIBRARY",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "name": "Grizzly Bears@drawn",
+          "zone": "LIBRARY",
+          "count": 1
+        },
+        {
           "op": "castSpell",
+          "name": "Vivien, Monsters' Advocate",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Vivien, Monsters' Advocate",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Vivien, Monsters' Advocate"
+          "isSpell": true
         },
         {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Abzan Beastmaster"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Vivien"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkLife(\"Vivien not making pay life\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, 20)"
-        },
-        {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Abzan Beastmaster"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Bolas's"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
+          "name": "Vivien, Monsters' Advocate",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "@drawn",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
           "name": "Abzan Beastmaster",
-          "count": 2
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "permissionSource": "Vivien, Monsters' Advocate",
+          "objectAlias": "@first"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Abzan Beastmaster",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@first"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
         },
         {
           "op": "assertTappedCount",
+          "player": 0,
           "name": "Forest",
-          "tapped": true,
-          "count": 3
+          "count": 3,
+          "tapped": true
+        },
+        {
+          "op": "castSpell",
+          "name": "Abzan Beastmaster",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "permissionSource": "Bolas's Citadel",
+          "objectAlias": "@second"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Abzan Beastmaster",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@second"
+          },
+          "count": 1,
+          "checks": []
         },
         {
           "op": "assertLife",
           "player": 0,
           "life": 17
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 3,
+          "tapped": true
         }
       ]
     },
@@ -158,8 +228,14 @@ registerPortedMageTests({
           "value": "Gisa"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"Swamp tapped after cast with Gisa and Geralf\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Swamp\", true, 4)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": true,
+          "count": 4,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",

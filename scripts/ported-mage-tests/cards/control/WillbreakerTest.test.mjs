@@ -40,7 +40,18 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{B}, Remove",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "source": "Retribution of the Ancients"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=0"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

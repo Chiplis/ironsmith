@@ -57,17 +57,32 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "source": "Mutavault",
+          "ability": "Becomes a 2/2",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mutavault",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{1}:"
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "source": "Smuggler's Copter",
+          "ability": "Crew",
           "player": 0,
-          "ability": "Crew"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setChoice",
@@ -75,12 +90,39 @@ registerPortedMageTests({
           "value": "Mistform Ultimus"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Smuggler's Copter",
+          "count": 1,
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Mistform Ultimus",
+          "tapped": true
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Smuggler's Copter"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "creature",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
@@ -102,10 +144,6 @@ registerPortedMageTests({
           "name": "Mutavault",
           "power": 9,
           "toughness": 9
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(copter, CardType.CREATURE, true)"
         },
         {
           "op": "assertPowerToughness",

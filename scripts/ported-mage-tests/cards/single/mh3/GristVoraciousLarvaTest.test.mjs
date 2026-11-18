@@ -890,15 +890,38 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, gristPW, CounterType.LOYALTY, 4)"
+          "op": "addObjectCounters",
+          "player": 0,
+          "name": "Grist, the Plague Swarm",
+          "counter": "LOYALTY",
+          "count": 4,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Grist, the Plague Swarm",
+          "count": 7,
+          "player": 0,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-6"
+          "ability": "-6",
+          "source": "Grist, the Plague Swarm"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Grist, the Plague Swarm",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setStopAt",

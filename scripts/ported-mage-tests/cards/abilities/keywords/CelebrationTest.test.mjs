@@ -21,23 +21,35 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Armory Mice",
           "player": 0,
-          "name": "Armory Mice"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Armory Mice",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Armory Mice",
+          "power": 3,
+          "toughness": 1
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertPowerToughness",
@@ -140,35 +152,89 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "castSpell",
+          "name": "Black Lotus",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Black Lotus",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add three mana of any one color",
+          "choices": [
+            "White"
+          ]
+        },
+        {
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Black Lotus"
+          "source": "Black Lotus",
+          "ability": "Add three mana"
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
           "player": 0,
-          "value": "White"
+          "colors": "W",
+          "amount": 3
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Black Lotus",
+          "count": 1
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Armory Mice",
           "player": 0,
-          "name": "Armory Mice"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Armory Mice",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Armory Mice",
+          "cardType": "LAND"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Armory Mice",
+          "power": 3,
+          "toughness": 1
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertPowerToughness",

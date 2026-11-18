@@ -92,18 +92,19 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "source": "Flooded Strand",
+          "ability": "Search your library",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Flooded Strand",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}, Pay 1 life, Sacrifice"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "abilityKind": "Activated"
         },
         {
           "op": "assertLife",
@@ -111,15 +112,47 @@ registerPortedMageTests({
           "life": 19
         },
         {
-          "op": "assertLife",
-          "player": 1,
-          "life": 20
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Flooded Strand",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "It That Betrays",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Flooded Strand",
           "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Flooded Strand",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Flooded Strand",
+          "count": 0
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
         }
       ]
     },
@@ -181,7 +214,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "It That Betrays",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",

@@ -382,7 +382,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "{R}, {T}:",
+          "label": "Activate Quicksilver Elemental: {R}, {T}:",
           "expected": false
         },
         {
@@ -391,14 +391,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{U}:",
-          "target": "Anaba Shaman"
+          "target": "Anaba Shaman",
+          "source": "Quicksilver Elemental"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quicksilver Elemental",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Anaba Shaman"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "label": "{R}, {T}:",
+          "label": "Activate Quicksilver Elemental: {R}, {T}:",
           "expected": true
         },
         {
@@ -407,7 +423,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "ability": "{R}, {T}:",
-          "target": 1
+          "target": 1,
+          "source": "Quicksilver Elemental"
         },
         {
           "op": "setStrictChooseMode",
@@ -476,7 +493,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "{R}, {T}:",
+          "label": "Activate Quicksilver Elemental: {R}, {T}:",
           "expected": false
         },
         {
@@ -485,20 +502,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{U}:",
-          "target": "Anaba Shaman"
+          "target": "Anaba Shaman",
+          "source": "Quicksilver Elemental"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quicksilver Elemental",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Anaba Shaman"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "resolutions": 1
         },
         {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "{R}, {T}:",
+          "label": "Activate Quicksilver Elemental: {R}, {T}:",
           "expected": true
         },
         {
@@ -522,7 +549,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "label": "{R}, {T}:",
+          "label": "Activate Quicksilver Elemental: {R}, {T}:",
           "expected": true
         },
         {
@@ -531,7 +558,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "ability": "{R}, {T}:",
-          "target": 1
+          "target": 1,
+          "source": "Quicksilver Elemental"
         },
         {
           "op": "setStrictChooseMode",

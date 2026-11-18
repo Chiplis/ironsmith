@@ -93,24 +93,57 @@ registerPortedMageTests({
           "name": "Mountain"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Crystal Vein",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Mountain",
+          "count": 1
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}, Sacrifice",
+          "source": "Crystal Vein",
+          "ability": "{T}, Sacrifice"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "colors": "C",
+          "amount": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Storm Cauldron",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Crystal Vein",
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",

@@ -59,8 +59,14 @@ registerPortedMageTests({
           "target": "Skophos Warleader"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"no fungus\", 1, PhaseStep.END_TURN, playerA, warleader, CounterType.FUNGUS, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Skophos Warleader",
+          "counter": "FUNGUS",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -73,8 +79,14 @@ registerPortedMageTests({
           "target": "Skophos Warleader"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"fungus\", 3, PhaseStep.END_TURN, playerA, warleader, CounterType.FUNGUS, 2)"
+          "op": "assertCounterCount",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Skophos Warleader",
+          "counter": "FUNGUS",
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -87,8 +99,14 @@ registerPortedMageTests({
           "target": "Barony Vampire"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"fungus\", 5, PhaseStep.END_TURN, playerA, vampire, CounterType.FUNGUS, 1)"
+          "op": "assertCounterCount",
+          "turn": 5,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Barony Vampire",
+          "counter": "FUNGUS",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -101,8 +119,14 @@ registerPortedMageTests({
           "target": "Warpath Ghoul"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"fungus\", 7, PhaseStep.END_TURN, playerA, ghoul, CounterType.FUNGUS, 1)"
+          "op": "assertCounterCount",
+          "turn": 7,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Warpath Ghoul",
+          "counter": "FUNGUS",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -115,8 +139,14 @@ registerPortedMageTests({
           "target": "Warpath Ghoul"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"fungus\", 9, PhaseStep.PRECOMBAT_MAIN, playerA, ghoul, CounterType.FUNGUS, 2)"
+          "op": "assertCounterCount",
+          "turn": 9,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Warpath Ghoul",
+          "counter": "FUNGUS",
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -150,8 +180,14 @@ registerPortedMageTests({
           "target": "Douser of Lights"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"fungus\", 11, PhaseStep.END_TURN, playerA, douser, CounterType.FUNGUS, 1)"
+          "op": "assertCounterCount",
+          "turn": 11,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Douser of Lights",
+          "counter": "FUNGUS",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -166,16 +202,34 @@ registerPortedMageTests({
           "value": "Sporogenesis"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"fungus\", 12, PhaseStep.END_TURN, playerA, warleader, CounterType.FUNGUS, 0)"
+          "op": "assertCounterCount",
+          "turn": 12,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Skophos Warleader",
+          "counter": "FUNGUS",
+          "count": 0,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"fungus\", 12, PhaseStep.END_TURN, playerA, vampire, CounterType.FUNGUS, 0)"
+          "op": "assertCounterCount",
+          "turn": 12,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Barony Vampire",
+          "counter": "FUNGUS",
+          "count": 0,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"fungus\", 12, PhaseStep.END_TURN, playerA, douser, CounterType.FUNGUS, 0)"
+          "op": "assertCounterCount",
+          "turn": 12,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Douser of Lights",
+          "counter": "FUNGUS",
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",

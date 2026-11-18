@@ -84,10 +84,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "ability": 0,
-          "expected": "Balduvian Bears"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "ability": "FirstStrikeAbility.class",
+          "expected": false
         },
         {
           "op": "castSpell",
@@ -108,10 +110,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "END_TURN",
-          "ability": 0,
-          "expected": "Balduvian Bears"
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "ability": "FirstStrikeAbility.class",
+          "expected": true
         },
         {
           "op": "setStopAt",

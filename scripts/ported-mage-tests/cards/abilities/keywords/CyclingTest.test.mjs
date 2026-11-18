@@ -246,40 +246,55 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "player": 0,
+          "source": "Winged Sliver",
+          "ability": "{3}, Discard this card: Search library.",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Winged Sliver",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Slivercycling {3}"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Horned Sliver"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertHandCount",
-          "player": 0,
-          "count": 1
+          "abilityKind": "Activated"
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Winged Sliver",
-          "count": 1
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Search library (revealed)",
+          "choices": [
+            "Horned Sliver"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "name": "Horned Sliver",
           "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "name": "Horned Sliver",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertLibraryCount",
+          "name": "Horned Sliver",
+          "count": 0,
+          "player": 0
         }
       ]
     },

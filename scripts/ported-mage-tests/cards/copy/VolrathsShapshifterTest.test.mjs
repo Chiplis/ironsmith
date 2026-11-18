@@ -161,7 +161,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Volrath's Shapeshifter",
+          "name": "Volrath's Shapeshifter@shifter",
           "count": 1
         },
         {
@@ -172,27 +172,52 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "skipInitShuffling"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@shifter"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Assault Griffin",
+          "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Mind Control",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Mind Control",
-          "target": "Assault Griffin"
+          "target": "@shifter"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Mind Control",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Volrath's Shapeshifter"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@shifter"
+          },
+          "count": 1,
+          "checks": []
         },
         {
           "op": "assertPermanentCount",
@@ -203,9 +228,33 @@ registerPortedMageTests({
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Dutiful Thrull",
+          "name": "@shifter",
           "power": 1,
           "toughness": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@shifter"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Thrull",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "@shifter",
+          "kind": "activated",
+          "textPattern": "\\{2\\}.*Discard a card",
+          "count": 1
         }
       ]
     }

@@ -397,64 +397,54 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "castSpell",
+          "name": "Psychic Pickpocket",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Psychic Pickpocket",
+          "count": 1,
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Psychic Pickpocket"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Psychic Pickpocket",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
           "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Lightning Bolt",
           "target": "Psychic Pickpocket"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Swamp"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Sol Ring"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Psychic Pickpocket"
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertHandCount",
-          "player": 0,
-          "count": 1
-        },
-        {
-          "op": "assertHandCount",
-          "player": 1,
-          "name": "Sol Ring",
-          "count": 1
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Swamp",
-          "count": 1
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -466,6 +456,57 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "player": 1,
           "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose 1 card to discard",
+          "choices": [
+            "Swamp"
+          ]
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Sol Ring"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Swamp",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Psychic Pickpocket",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "objectTarget": "Sol Ring",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Sol Ring",
           "count": 1
         }
       ]

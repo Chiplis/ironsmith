@@ -77,14 +77,29 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "The Ur-Dragon",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "addTarget",
           "player": 0,
-          "value": "Silvercoat Lion"
+          "target": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

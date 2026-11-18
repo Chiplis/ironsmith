@@ -49,6 +49,13 @@ registerPortedMageTests({
           "name": "Misleading Signpost"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Misleading Signpost",
+          "count": 1
+        },
+        {
           "op": "setChoice",
           "player": 1,
           "value": true
@@ -59,9 +66,34 @@ registerPortedMageTests({
           "target": "Silvercoat Lion"
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 1,
-          "target": "Teferi, Master of Time"
+          "kind": "options",
+          "choices": [
+            "Teferi, Master of Time"
+          ],
+          "description": "Choose one"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Misleading Signpost",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -77,7 +109,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 2,
           "name": "Teferi, Master of Time",
           "counter": "LOYALTY",
           "count": 1
@@ -128,16 +160,27 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
+          "op": "addCardWithEntryChoice",
           "player": 1,
           "name": "Invasion of Segovia",
-          "count": 1
+          "choice": "Charlie"
         },
         {
-          "op": "setChoice",
+          "op": "assertBattleProtector",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "name": "Invasion of Segovia",
           "player": 1,
-          "value": "PlayerC"
+          "protector": 2
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Invasion of Segovia",
+          "count": 4,
+          "player": 1,
+          "counter": "DEFENSE",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
@@ -154,6 +197,13 @@ registerPortedMageTests({
           "name": "Misleading Signpost"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Misleading Signpost",
+          "count": 1
+        },
+        {
           "op": "setChoice",
           "player": 1,
           "value": true
@@ -164,9 +214,34 @@ registerPortedMageTests({
           "target": "Silvercoat Lion"
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 1,
-          "target": "Invasion of Segovia"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Invasion of Segovia"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Misleading Signpost",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -182,7 +257,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Invasion of Segovia",
           "counter": "DEFENSE",
           "count": 2

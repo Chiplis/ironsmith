@@ -32,12 +32,21 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}"
+          "ability": "{1}{W}, Collect evidence 2",
+          "source": "Tenth District Hero"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Hill Giant"
+          "description": "Choose up to 1 card",
+          "choices": [
+            "Hill Giant"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -78,6 +87,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Mileva, the Stalwart",
           "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Hill Giant",
+          "count": 1
         }
       ]
     },
@@ -110,12 +125,21 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}"
+          "ability": "{2}{W}, Collect evidence 4",
+          "source": "Tenth District Hero"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Hill Giant"
+          "description": "Choose up to 1 card",
+          "choices": [
+            "Hill Giant"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -162,6 +186,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Mileva, the Stalwart",
           "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Hill Giant",
+          "count": 1
         }
       ]
     },
@@ -194,17 +224,34 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}"
+          "ability": "{1}{W}, Collect evidence 2",
+          "source": "Tenth District Hero"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Hill Giant"
+          "description": "Choose up to 2 cards",
+          "choices": [
+            "Hill Giant"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "name": "Hill Giant",
+          "count": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Tenth District Hero",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "setStrictChooseMode",
@@ -223,12 +270,21 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}"
+          "ability": "{2}{W}, Collect evidence 4",
+          "source": "Tenth District Hero"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Hill Giant"
+          "description": "Choose up to 1 card",
+          "choices": [
+            "Hill Giant"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -271,6 +327,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Tenth District Hero",
           "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Hill Giant",
+          "count": 2
         }
       ]
     },
@@ -303,17 +365,34 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}"
+          "ability": "{2}{W}, Collect evidence 4",
+          "source": "Tenth District Hero"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Hill Giant"
+          "description": "Choose up to 2 cards",
+          "choices": [
+            "Hill Giant"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "name": "Hill Giant",
+          "count": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Tenth District Hero",
+          "power": 2,
+          "toughness": 3
         },
         {
           "op": "setStrictChooseMode",
@@ -332,12 +411,21 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}"
+          "ability": "{1}{W}, Collect evidence 2",
+          "source": "Tenth District Hero"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Hill Giant"
+          "description": "Choose up to 1 card",
+          "choices": [
+            "Hill Giant"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -374,6 +462,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Mileva, the Stalwart",
           "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Hill Giant",
+          "count": 2
         }
       ]
     }

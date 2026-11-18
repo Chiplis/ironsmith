@@ -50,22 +50,31 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Graceful Takedown"
+          "name": "Graceful Takedown",
+          "target": {
+            "groups": [
+              [],
+              [
+                "Bear Cub"
+              ],
+              [
+                "Indomitable Ancients"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Graceful Takedown",
+          "count": 1,
+          "targetCount": 2
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Bear Cub"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Indomitable Ancients"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -76,8 +85,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, ancient, 2)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Indomitable Ancients",
+          "damage": 2
         }
       ]
     },
@@ -217,21 +228,17 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertRejectedProposal",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Graceful Takedown"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Bear Cub^Goblin Piker"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Indomitable Ancients"
+          "name": "Graceful Takedown",
+          "targets": [
+            "Bear Cub",
+            "Goblin Piker",
+            "Indomitable Ancients"
+          ],
+          "reason": "targeting requirements|too many targets|invalid targets"
         },
         {
           "op": "setStopAt",
@@ -239,8 +246,13 @@ registerPortedMageTests({
           "phase": "END_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"PlayerA - Targets list was setup by addTarget\")) { Assert.fail(\"must throw error about target setup not right, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Graceful Takedown",
+          "count": 1
         }
       ]
     }

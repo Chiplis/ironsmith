@@ -35,15 +35,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertNoSpellObjectTarget",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Lightning Bolt"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
+          "name": "Lightning Bolt",
+          "controller": 1,
           "target": "Eager Cadet"
         },
         {
@@ -52,8 +49,13 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"setup good targets\")) { Assert.fail(\"must throw error about bad targets, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerB, \"Eager Cadet\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Eager Cadet",
+          "count": 1
         }
       ]
     },

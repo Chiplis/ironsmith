@@ -28,15 +28,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"tester\", playerA, Storyweave.makeAbility())"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: The next time one or more enchantment creatures you control enter this turn, each enters with two additional +1/+1 counters on it."
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{0}"
+          "ability": "{0}:"
         },
         {
           "op": "waitStackResolved",
@@ -50,6 +56,12 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Fang of Shigeki"
+        },
+        {
+          "op": "waitStackResolved",
+          "player": null,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -128,15 +140,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"tester\", playerA, Storyweave.makeAbility())"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: The next time one or more enchantment creatures you control enter this turn, each enters with two additional +1/+1 counters on it."
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{0}"
+          "ability": "{0}:"
         },
         {
           "op": "waitStackResolved",
@@ -155,6 +173,36 @@ registerPortedMageTests({
           "op": "addTarget",
           "player": 0,
           "target": "Elite Vanguard"
+        },
+        {
+          "op": "waitStackResolved",
+          "player": null,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Centaur Token",
+            "token": true
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Enchantment",
+              "expected": true
+            },
+            {
+              "property": "counter",
+              "value": "P1P1",
+              "expected": 2
+            }
+          ],
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -181,12 +229,6 @@ registerPortedMageTests({
           "name": "Fang of Shigeki",
           "counter": "P1P1",
           "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Centaur Token",
-          "count": 2
         }
       ]
     },
@@ -232,15 +274,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"tester\", playerA, Storyweave.makeAbility())"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: The next time one or more enchantment creatures you control enter this turn, each enters with two additional +1/+1 counters on it."
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{0}"
+          "ability": "{0}:"
         },
         {
           "op": "waitStackResolved",
@@ -287,10 +335,26 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Centaur Token",
-          "count": 2
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Centaur Token",
+            "token": true
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Enchantment",
+              "expected": true
+            },
+            {
+              "property": "counter",
+              "value": "P1P1",
+              "expected": 0
+            }
+          ]
         }
       ]
     }

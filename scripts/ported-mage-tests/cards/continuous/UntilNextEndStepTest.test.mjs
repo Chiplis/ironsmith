@@ -7,8 +7,17 @@ registerPortedMageTests({
       "name": "testSameTurnTrue",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until your next end step.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "activateAbility",
@@ -33,8 +42,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -42,8 +51,17 @@ registerPortedMageTests({
       "name": "testSameTurnFalse",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until your next end step.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "activateAbility",
@@ -68,8 +86,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "false ? 2 : 1",
-          "toughness": "false ? 2 : 1"
+          "power": 1,
+          "toughness": 1
         }
       ]
     },
@@ -77,8 +95,17 @@ registerPortedMageTests({
       "name": "testNextTurnTrue",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until your next end step.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "activateAbility",
@@ -103,8 +130,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -112,8 +139,17 @@ registerPortedMageTests({
       "name": "testNextTurnFalse",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until your next end step.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "activateAbility",
@@ -138,8 +174,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "false ? 2 : 1",
-          "toughness": "false ? 2 : 1"
+          "power": 1,
+          "toughness": 1
         }
       ]
     },
@@ -147,8 +183,17 @@ registerPortedMageTests({
       "name": "testTurnCycleTrue",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until your next end step.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "activateAbility",
@@ -173,8 +218,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -182,8 +227,17 @@ registerPortedMageTests({
       "name": "testTurnCycleFalse",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until your next end step.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "activateAbility",
@@ -208,8 +262,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "false ? 2 : 1",
-          "toughness": "false ? 2 : 1"
+          "power": 1,
+          "toughness": 1
         }
       ]
     },
@@ -217,8 +271,17 @@ registerPortedMageTests({
       "name": "testOpponentTurnTrue",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until your next end step.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "activateAbility",
@@ -243,8 +306,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "true ? 2 : 1",
-          "toughness": "true ? 2 : 1"
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -252,8 +315,17 @@ registerPortedMageTests({
       "name": "testOpponentTurnFalse",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "typeLine": "Creature",
+          "manaCost": "",
+          "oracleText": "{0}: This creature gets +1/+1 until your next end step.",
+          "fixtureSource": true,
+          "power": "1",
+          "toughness": "1"
         },
         {
           "op": "activateAbility",
@@ -278,8 +350,8 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "tester",
-          "power": "false ? 2 : 1",
-          "toughness": "false ? 2 : 1"
+          "power": 1,
+          "toughness": 1
         }
       ]
     }

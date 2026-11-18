@@ -65,6 +65,10 @@ registerPortedMageTests({
       "name": "testGainEmerge",
       "operations": [
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -102,11 +106,38 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
+          "value": "Sacrifice Air Elemental"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
           "value": "Air Elemental"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Vastwood Gorger",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Air Elemental",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Herigast, Erupting Nullkite",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

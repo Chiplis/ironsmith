@@ -28,8 +28,14 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"before\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Woodland Champion\", CounterType.P1P1, 0)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Woodland Champion",
+          "counter": "P1P1",
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -47,8 +53,14 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after\", 1, PhaseStep.BEGIN_COMBAT, playerA, \"Woodland Champion\", CounterType.P1P1, 2)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Woodland Champion",
+          "counter": "P1P1",
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

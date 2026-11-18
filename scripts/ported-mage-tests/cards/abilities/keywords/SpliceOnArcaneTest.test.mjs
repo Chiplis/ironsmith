@@ -260,17 +260,32 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Nourishing Shoal"
+          "name": "Nourishing Shoal",
+          "actionLabel": "Cast Nourishing Shoal (parsed alternative cost)"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": true
+          "description": "Reveal cards to splice onto Nourishing Shoal, in resolution order",
+          "choices": [
+            "Through the Breach"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
+          "kind": "number",
           "player": 0,
-          "value": "Cast with alternative cost: Exile a green card with mana value X from your hand (source: Nourishing Shoal"
+          "description": "Choose value for X",
+          "value": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "description": "Choose the next cost to pay for Nourishing Shoal",
+          "kind": "options",
+          "choices": [
+            "Exile a green card from hand"
+          ]
         },
         {
           "op": "setChoice",
@@ -278,14 +293,35 @@ registerPortedMageTests({
           "value": "Giant Growth"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Nourishing Shoal",
+          "count": 1,
+          "xValue": 1
+        },
+        {
+          "op": "assertExileCount",
           "player": 0,
-          "target": "Through the Breach"
+          "name": "Giant Growth",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 4
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

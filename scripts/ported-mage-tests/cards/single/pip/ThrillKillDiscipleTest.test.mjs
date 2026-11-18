@@ -59,6 +59,46 @@ registerPortedMageTests({
           "value": "Taiga"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Taiga"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thrill-Kill Disciple",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Taiga",
+          "count": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thrill-Kill Disciple",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "BEGIN_COMBAT"

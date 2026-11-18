@@ -56,8 +56,62 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 2, 1)"
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "choices": [
+            "Red",
+            "Red",
+            "Green"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Grand Warlord Radha",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "colors": "R",
+          "amount": 2,
+          "holdStack": true
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "colors": "G",
+          "amount": 1,
+          "holdStack": true
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 2
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
         },
         {
           "op": "castSpell",

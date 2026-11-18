@@ -42,19 +42,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "1"
+          "kind": "modes",
+          "description": "Choose mode for Artful Takedown",
+          "choices": [
+            "Tap target creature.",
+            "Target creature gets -2/-4 until end of turn."
+          ]
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Silvercoat Lion"
+          "kind": "options",
+          "description": "Choose 0-3 modes",
+          "choices": [
+            "Put a +1/+1 counter on Riku. It gains trample until end of turn.",
+            "Create a 1/1 blue Bird creature token with flying."
+          ]
         },
         {
           "op": "castSpell",
@@ -62,17 +67,39 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Artful Takedown",
-          "target": "Grizzly Bears"
+          "target": {
+            "groups": [
+              [
+                "Grizzly Bears"
+              ],
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          }
         },
         {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "2"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Artful Takedown",
+          "count": 1,
+          "targetCount": 2
         },
         {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "3"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Riku of Many Paths",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
         },
         {
           "op": "setStrictChooseMode",
@@ -87,8 +114,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(bear, true)"
+          "op": "assertTapped",
+          "name": "Grizzly Bears",
+          "tapped": true,
+          "player": 0
         },
         {
           "op": "assertGraveyardCount",

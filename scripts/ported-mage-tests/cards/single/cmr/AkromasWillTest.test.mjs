@@ -29,17 +29,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Kitesail Corsair"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kitesail Corsair",
+          "ability": "FlyingAbility.class",
+          "expected": false
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Kitesail Corsair"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kitesail Corsair",
+          "ability": "LifelinkAbility.class",
+          "expected": false
         },
         {
           "op": "castSpell",
@@ -61,17 +65,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Kitesail Corsair"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kitesail Corsair",
+          "ability": "FlyingAbility.class",
+          "expected": true
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Kitesail Corsair"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kitesail Corsair",
+          "ability": "LifelinkAbility.class",
+          "expected": false
         },
         {
           "op": "setStrictChooseMode",
@@ -127,17 +135,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Kitesail Corsair"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kitesail Corsair",
+          "ability": "FlyingAbility.class",
+          "expected": false
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Kitesail Corsair"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kitesail Corsair",
+          "ability": "LifelinkAbility.class",
+          "expected": false
         },
         {
           "op": "activateManaAbility",
@@ -193,17 +205,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Kitesail Corsair"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kitesail Corsair",
+          "ability": "FlyingAbility.class",
+          "expected": true
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Kitesail Corsair"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kitesail Corsair",
+          "ability": "LifelinkAbility.class",
+          "expected": true
         },
         {
           "op": "setStrictChooseMode",

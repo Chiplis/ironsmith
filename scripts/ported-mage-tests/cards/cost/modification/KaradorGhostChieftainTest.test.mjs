@@ -491,11 +491,81 @@ registerPortedMageTests({
           "name": "Karador, Ghost Chieftain"
         },
         {
+          "op": "assertStackObject",
+          "source": "Karador, Ghost Chieftain",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "resolutions": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Karador, Ghost Chieftain",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Gisa and Geralf"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Gisa and Geralf",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "resolutions": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Gisa and Geralf",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gisa and Geralf",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 5
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Accursed Horde",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Carrion Screecher",
+          "count": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -526,12 +596,8 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Accursed Horde"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Gisa and Geralf"
+          "name": "Accursed Horde",
+          "permissionSource": "Gisa and Geralf"
         },
         {
           "op": "waitStackResolved",

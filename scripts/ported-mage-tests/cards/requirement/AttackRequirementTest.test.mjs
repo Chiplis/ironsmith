@@ -21,11 +21,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 2,
           "player": 0,
           "blocker": "Wall of Tanglecord",
-          "attacker": "Juggernaut"
+          "attacker": "Juggernaut",
+          "expected": false
         },
         {
           "op": "setStopAt",
@@ -123,11 +124,49 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT",
+          "source": "Goblin Rabblemaster",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Goblin Token",
+          "player": 1,
+          "count": 1,
+          "turn": 2,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Goblin Rabblemaster",
-          "defender": 1
+          "defender": 0
+        },
+        {
+          "op": "attack",
+          "turn": 2,
+          "player": 1,
+          "attacker": "Boggart Brute",
+          "defender": 0,
+          "expectedLegal": true
+        },
+        {
+          "op": "attack",
+          "turn": 2,
+          "player": 1,
+          "attacker": "Goblin Token",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "setStopAt",

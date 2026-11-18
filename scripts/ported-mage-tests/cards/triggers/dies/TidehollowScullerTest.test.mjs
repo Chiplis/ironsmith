@@ -202,7 +202,8 @@ registerPortedMageTests({
           "phase": "UPKEEP",
           "player": 1,
           "name": "Bloodflow Connoisseur",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -222,7 +223,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 1,
           "name": "Bloodflow Connoisseur",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -230,7 +232,8 @@ registerPortedMageTests({
           "phase": "END_COMBAT",
           "player": 1,
           "name": "Silvercoat Lion",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -250,7 +253,8 @@ registerPortedMageTests({
           "phase": "END_TURN",
           "player": 1,
           "name": "Silvercoat Lion",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -258,7 +262,8 @@ registerPortedMageTests({
           "phase": "UPKEEP",
           "player": 0,
           "name": "Tidehollow Sculler",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -266,7 +271,8 @@ registerPortedMageTests({
           "phase": "UPKEEP",
           "player": 1,
           "name": "Bloodflow Connoisseur",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -282,7 +288,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Tidehollow Sculler",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -290,7 +297,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 1,
           "name": "Bloodflow Connoisseur",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -298,7 +306,8 @@ registerPortedMageTests({
           "phase": "END_COMBAT",
           "player": 0,
           "name": "Tidehollow Sculler",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -306,7 +315,8 @@ registerPortedMageTests({
           "phase": "END_COMBAT",
           "player": 1,
           "name": "Silvercoat Lion",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -322,7 +332,8 @@ registerPortedMageTests({
           "phase": "END_TURN",
           "player": 0,
           "name": "Tidehollow Sculler",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -330,7 +341,8 @@ registerPortedMageTests({
           "phase": "END_TURN",
           "player": 1,
           "name": "Silvercoat Lion",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",
@@ -344,12 +356,22 @@ registerPortedMageTests({
     },
     {
       "name": "test_MultipleRuns",
-      "operations": [
-        {
-          "op": "unsupported",
-          "source": "for (int i = 1; i <= 10; i++) { try { this.reset(); test_CastTwoCardFromHandWillBeExiled(); } catch (Exception e) { } }"
-        }
-      ]
+      "operations": [],
+      "repeat": {
+        "name": "test_CastTwoCardFromHandWillBeExiled",
+        "seeds": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
     }
   ]
 });

@@ -38,7 +38,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Fire // Ice",
+          "name": "Fire // Ice@jaceDiscard",
           "count": 1
         },
         {
@@ -53,13 +53,47 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Draw a card, then discard a card."
+          "ability": "{T}: Draw a card, then discard a card.",
+          "source": "Jace, Vryn's Prodigy"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace, Vryn's Prodigy",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Fire // Ice"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Jace, Telepath Unbound",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Jace, Telepath Unbound",
+          "counter": "LOYALTY",
+          "count": 5
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@jaceDiscard",
+          "count": 1
         },
         {
           "op": "activateAbility",
@@ -67,13 +101,31 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "-3",
-          "target": "Fire // Ice"
+          "target": "@jaceDiscard",
+          "source": "Jace, Telepath Unbound"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace, Telepath Unbound",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated",
+          "targetCount": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Jace, Telepath Unbound",
+          "counter": "LOYALTY",
+          "count": 2
         },
         {
           "op": "castSpell",
@@ -82,6 +134,21 @@ registerPortedMageTests({
           "player": 0,
           "name": "Ice",
           "target": "Memnite"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ice",
+          "count": 1,
+          "onTop": true,
+          "objectTarget": "Memnite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -113,6 +180,12 @@ registerPortedMageTests({
           "name": "Island",
           "tapped": true,
           "count": 2
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 0
         }
       ]
     },
@@ -144,7 +217,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Zof Consumption",
+          "name": "Zof Consumption@jaceDiscard",
           "count": 1
         },
         {
@@ -159,13 +232,47 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Draw a card, then discard a card."
+          "ability": "{T}: Draw a card, then discard a card.",
+          "source": "Jace, Vryn's Prodigy"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace, Vryn's Prodigy",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Zof Consumption"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Jace, Telepath Unbound",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Jace, Telepath Unbound",
+          "counter": "LOYALTY",
+          "count": 5
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@jaceDiscard",
+          "count": 1
         },
         {
           "op": "activateAbility",
@@ -173,7 +280,31 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "-3",
-          "target": "Zof Consumption"
+          "target": "@jaceDiscard",
+          "source": "Jace, Telepath Unbound"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jace, Telepath Unbound",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Jace, Telepath Unbound",
+          "counter": "LOYALTY",
+          "count": 2
         },
         {
           "op": "castSpell",
@@ -181,6 +312,20 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Zof Consumption"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Zof Consumption",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

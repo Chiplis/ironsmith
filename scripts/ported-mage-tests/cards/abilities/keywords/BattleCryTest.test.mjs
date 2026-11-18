@@ -18,21 +18,21 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Signal Pest",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Signal Pest",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Signal Pest",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",
@@ -77,21 +77,21 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Signal Pest",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Signal Pest",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Signal Pest",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",

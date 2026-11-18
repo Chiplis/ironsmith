@@ -28,11 +28,79 @@ registerPortedMageTests({
           "count": 4
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Clone"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Bloodgift Demon"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Bloodgift Demon",
+          "count": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "UPKEEP"
         },
         {
           "op": "setStopAt",
@@ -115,6 +183,22 @@ registerPortedMageTests({
           "count": 4
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
@@ -122,12 +206,59 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Bloodgift Demon"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Bloodgift Demon",
+          "count": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP"
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Diabolic Edict",
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -237,11 +368,37 @@ registerPortedMageTests({
           "target": "Llanowar Elves"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Clone"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Craw Wurm"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Clone",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -315,7 +472,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Clone",
+          "name": "Clone@nightmare-copy",
           "count": 1
         },
         {
@@ -340,9 +497,18 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Nightmare"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Nightmare"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -358,7 +524,13 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Disperse",
-          "target": "Nightmare"
+          "target": {
+            "groups": [
+              [
+                "@nightmare-copy"
+              ]
+            ]
+          }
         },
         {
           "op": "setStopAt",
@@ -394,8 +566,23 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "for (ContinuousEffectsList effectsList : currentGame.getContinuousEffects().allEffectsLists) { for (Object anEffectsList : effectsList) { ContinuousEffect effect = (ContinuousEffect) anEffectsList; Logger.getLogger(CloneTest.class).debug(\"- \" + effect.toString()); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "name": "Clone"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 0
+            },
+            {
+              "property": "toughness",
+              "expected": 0
+            }
+          ]
         }
       ]
     },
@@ -413,14 +600,14 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Clone",
+          "name": "Clone@white-lion",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Vesuvan Doppelganger",
+          "name": "Vesuvan Doppelganger@blue-lion",
           "count": 1
         },
         {
@@ -452,16 +639,31 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Silvercoat Lion"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Silvercoat Lion"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
+          "source": "Phyrexian Vault",
           "ability": "{2}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -471,9 +673,21 @@ registerPortedMageTests({
           "name": "Vesuvan Doppelganger"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Silvercoat Lion"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            {
+              "description": "Enter as a copy of Silvercoat Lion",
+              "object": "@white-lion"
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -511,6 +725,46 @@ registerPortedMageTests({
           "op": "assertHandCount",
           "player": 1,
           "count": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@white-lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "calculatedName",
+              "expected": "Silvercoat Lion"
+            },
+            {
+              "property": "color",
+              "value": "White",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@blue-lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "calculatedName",
+              "expected": "Silvercoat Lion"
+            },
+            {
+              "property": "color",
+              "value": "Blue",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -553,9 +807,18 @@ registerPortedMageTests({
           "name": "Adaptive Automaton"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Elf"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Elf"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -565,23 +828,27 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Adaptive Automaton"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "Adaptive Automaton"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Goblin"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Goblin"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -602,6 +869,48 @@ registerPortedMageTests({
           "player": 1,
           "name": "Adaptive Automaton",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Adaptive Automaton"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Elf",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Goblin",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Adaptive Automaton"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Goblin",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Elf",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -626,14 +935,14 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Terastodon",
+          "name": "Terastodon@face-original",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Clone",
+          "name": "Clone@face-copy",
           "count": 1
         },
         {
@@ -644,6 +953,11 @@ registerPortedMageTests({
           "name": "Ixidron"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
@@ -651,18 +965,21 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            {
+              "description": "Enter as a copy of Face-down creature",
+              "object": "@face-original"
+            }
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -692,17 +1009,79 @@ registerPortedMageTests({
           "toughness": 1
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 2
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@face-original"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            }
+          ]
         },
         {
-          "op": "assertPowerToughness",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@face-copy"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            },
+            {
+              "property": "calculatedName",
+              "expected": ""
+            },
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "manaValue",
+              "expected": 0
+            }
+          ]
+        },
+        {
+          "op": "assertAbilityKindCount",
           "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "power": 2,
-          "toughness": 2
+          "name": "@face-copy",
+          "kind": "activated",
+          "count": 0
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "@face-copy",
+          "kind": "triggered",
+          "count": 0
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "@face-copy",
+          "kind": "static",
+          "count": 0
         }
       ]
     }

@@ -81,56 +81,77 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Wind Zendikon",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Wind Zendikon",
           "target": "Dryad Arbor"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Wind Zendikon",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Dryad Arbor"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dryad Arbor",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Dryad Arbor",
-          "power": 2,
-          "toughness": 2
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(\"Dryad Arbor\", CardType.CREATURE, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(\"Dryad Arbor\", CardType.LAND, true)"
-        },
-        {
-          "op": "assertAbilities",
-          "player": 0,
-          "name": "Dryad Arbor",
-          "abilities": [
-            "new AbilitiesImpl<>(FlyingAbility.getInstance())"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Dryad Arbor"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Land"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Elemental"
+            },
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "flying"
+            },
+            {
+              "property": "colorCount",
+              "expected": 1
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "blue"
+            },
+            {
+              "property": "color",
+              "expected": false,
+              "value": "green"
+            }
           ]
-        },
-        {
-          "op": "unsupported",
-          "source": "assertColor(playerA, \"Dryad Arbor\", \"U\", true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertColor(playerA, \"Dryad Arbor\", \"WBGR\", false)"
         }
       ]
     },
@@ -160,60 +181,77 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Deep Freeze",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Deep Freeze",
           "target": "Dryad Arbor"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Deep Freeze",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Dryad Arbor"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Dryad Arbor",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Dryad Arbor",
-          "power": 0,
-          "toughness": 4
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(\"Dryad Arbor\", CardType.CREATURE, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(\"Dryad Arbor\", CardType.LAND, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(\"Dryad Arbor\", CardType.LAND, SubType.WALL)"
-        },
-        {
-          "op": "assertAbilities",
-          "player": 0,
-          "name": "Dryad Arbor",
-          "abilities": [
-            "new AbilitiesImpl<>(DefenderAbility.getInstance())"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Dryad Arbor"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 0
+            },
+            {
+              "property": "toughness",
+              "expected": 4
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Land"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Wall"
+            },
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "defender"
+            },
+            {
+              "property": "colorCount",
+              "expected": 2
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "blue"
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "green"
+            }
           ]
-        },
-        {
-          "op": "unsupported",
-          "source": "assertColor(playerA, \"Dryad Arbor\", \"UG\", true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertColor(playerA, \"Dryad Arbor\", \"WBR\", false)"
         }
       ]
     }

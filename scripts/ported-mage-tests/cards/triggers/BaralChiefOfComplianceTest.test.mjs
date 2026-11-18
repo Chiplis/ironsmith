@@ -8,6 +8,16 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "addCard",
+          "zone": "LIBRARY",
+          "name": "Swamp",
+          "player": 1,
+          "count": 1
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Plains",
@@ -56,22 +66,70 @@ registerPortedMageTests({
           "name": "Silvercoat Lion"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Silvercoat Lion",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Ojutai's Command",
-          "target": "mode=1Baral, Chief of Compliance^mode=3Silvercoat Lion"
+          "target": {
+            "groups": [
+              [
+                "Baral, Chief of Compliance"
+              ],
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          }
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "1"
+          "description": "Choose mode for Ojutai's Command",
+          "kind": "modes",
+          "choices": [
+            "Return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+            "Counter target creature spell."
+          ]
         },
         {
-          "op": "setModeChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ojutai's Command",
+          "count": 1,
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Baral, Chief of Compliance",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setChoice",
           "player": 1,
-          "value": "3"
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -102,6 +160,12 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Baral, Chief of Compliance",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Swamp",
           "count": 1
         }
       ]

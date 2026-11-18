@@ -9,7 +9,7 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
+          "player": 1,
           "name": "Cosi's Trickster",
           "count": 1
         },
@@ -32,7 +32,31 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}, Pay 1 life"
+          "ability": "{T}, Pay 1 life",
+          "source": "Arid Mesa"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Arid Mesa",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "boolean",
+          "description": "Put a +1/+1 counter on this creature",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -72,7 +96,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Cosi's Trickster",
           "counter": "P1P1",
           "count": 1

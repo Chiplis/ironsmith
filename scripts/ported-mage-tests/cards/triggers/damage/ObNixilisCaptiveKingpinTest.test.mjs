@@ -46,6 +46,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 0
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -530,16 +536,54 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "playerC"
-        },
-        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{B}, {T}"
+          "ability": "{1}{B}, {T}",
+          "source": "Acolyte of Xathrid",
+          "target": {
+            "groups": [
+              [
+                2
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Acolyte of Xathrid",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ob Nixilis, Captive Kingpin",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 2,
+          "life": 19,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

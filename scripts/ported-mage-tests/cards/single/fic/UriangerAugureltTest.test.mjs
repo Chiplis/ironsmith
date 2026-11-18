@@ -19,8 +19,14 @@ registerPortedMageTests({
           "zone": "library"
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"Untap creatures\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Untap Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Untap each creature you control."
         },
         {
           "op": "addCard",
@@ -87,7 +93,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "untap all"
+          "ability": "Untap all creatures you control"
         },
         {
           "op": "waitStackResolved",
@@ -113,7 +119,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "untap all"
+          "ability": "Untap all creatures you control"
         },
         {
           "op": "waitStackResolved",
@@ -139,7 +145,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "untap all"
+          "ability": "Untap all creatures you control"
         },
         {
           "op": "waitStackResolved",
@@ -237,7 +243,7 @@ registerPortedMageTests({
         {
           "op": "assertLife",
           "player": 0,
-          "life": "20 + 2 * 4"
+          "life": 28
         }
       ]
     }

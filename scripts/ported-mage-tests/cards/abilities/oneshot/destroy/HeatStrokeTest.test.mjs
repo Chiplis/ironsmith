@@ -24,22 +24,37 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Pillarfield Ox",
+          "name": "Pillarfield Ox@attacking",
           "count": 1
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
-          "attacker": "Pillarfield Ox",
-          "defender": 1
+          "attacker": "Pillarfield Ox@attacking.1",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
           "turn": 2,
           "player": 0,
           "blocker": "Pillarfield Ox",
-          "attacker": "Pillarfield Ox"
+          "attacker": "Pillarfield Ox@attacking.1"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "source": "Heat Stroke",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

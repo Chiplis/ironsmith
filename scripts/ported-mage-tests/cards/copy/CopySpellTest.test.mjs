@@ -50,19 +50,45 @@ registerPortedMageTests({
           "target": "Pillarfield Ox"
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 1,
-          "target": "Island"
+          "kind": "boolean",
+          "description": "Sacrifice a land of their choice. If the player does, they may copy this spell and may choose a new target for that copy",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 1,
-          "value": true
+          "description": "Sacrifice exactly 1 land",
+          "choices": [
+            "Island"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 1,
-          "value": true
+          "kind": "select_options",
+          "description": "Copy this spell and may choose a new target for that copy"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "boolean",
+          "description": "Copy this spell and may choose a new target for that copy",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "boolean",
+          "description": "Choose new targets for Chain of Vapor?",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "addTarget",
@@ -70,19 +96,45 @@ registerPortedMageTests({
           "target": "Silvercoat Lion"
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 0,
-          "target": "Island"
+          "kind": "boolean",
+          "description": "Sacrifice a land of their choice. If the player does, they may copy this spell and may choose a new target for that copy",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": true
+          "description": "Sacrifice exactly 1 land",
+          "choices": [
+            "Island"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "value": true
+          "kind": "select_options",
+          "description": "Copy this spell and may choose a new target for that copy"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Copy this spell and may choose a new target for that copy",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Choose new targets for Chain of Vapor?",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "addTarget",
@@ -90,9 +142,13 @@ registerPortedMageTests({
           "target": "Pillarfield Ox"
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 1,
-          "target": "TestPlayer.TARGET_SKIP"
+          "kind": "boolean",
+          "description": "Sacrifice a land of their choice. If the player does, they may copy this spell and may choose a new target for that copy",
+          "choices": [
+            "No"
+          ]
         },
         {
           "op": "setStopAt",
@@ -406,42 +462,81 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "UPKEEP",
           "player": 0,
-          "name": "Barkshell Blessing"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
+          "name": "Barkshell Blessing",
           "target": "Bonecrusher Giant"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Grizzly Bears"
+          "kind": "options",
+          "description": "Choose optional costs for Barkshell Blessing",
+          "choices": [
+            "Conspire: special"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Savannah Lions"
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 1 of Barkshell Blessing",
+          "choices": [
+            "{W} (White mana)"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "When you pay"
+          "description": "Choose two untapped creatures to conspire",
+          "choices": [
+            "Grizzly Bears",
+            "Savannah Lions"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "trigger_order",
+          "description": "Order triggered abilities. The leftmost item becomes the top of your stack.",
+          "choices": [
+            "Barkshell Blessing\nWhen you cast this spell\nTarget creature gets +2/+2 until end of turn",
+            "Bonecrusher Giant\nWhenever this permanent becomes the target of a spell\nWhenever this creature becomes the target of a spell, this creature deals 2 damage to that creature's controller"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Choose new targets for Barkshell Blessing?",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "source": "Barkshell Blessing",
+          "count": 1,
+          "objectTarget": "Bonecrusher Giant"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "source": "Barkshell Blessing",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
         },
         {
           "op": "setStrictChooseMode",
@@ -1287,14 +1382,13 @@ registerPortedMageTests({
           "name": "Spark Double"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Imoti, Celebrant of Bounty"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Imoti, Celebrant of Bounty"
+          ]
         },
         {
           "op": "waitStackResolved",
@@ -1451,8 +1545,12 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after copy resolve\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Seasons Past\", 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Seasons Past",
+          "count": 2
         },
         {
           "op": "waitStackResolved",
@@ -1580,9 +1678,11 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "value": "X=2"
+          "kind": "number",
+          "descriptionPrefix": "Choose value for X",
+          "value": 2
         },
         {
           "op": "setChoice",
@@ -1595,14 +1695,52 @@ registerPortedMageTests({
           "value": false
         },
         {
+          "op": "assertStackObject",
+          "source": "Banefire",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "xValue": 2,
+          "targetCount": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Riku of Two Reflections",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": null,
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after spell copy\", 1, PhaseStep.PRECOMBAT_MAIN, playerB, 20 - 2 * 2)"
+          "op": "assertStackObject",
+          "source": "Banefire",
+          "count": 2,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "xValue": 2,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "life": "20 - 2 * 2",
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -1612,9 +1750,11 @@ registerPortedMageTests({
           "name": "Capricopian"
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "value": "X=1"
+          "kind": "number",
+          "descriptionPrefix": "Choose value for X",
+          "value": 1
         },
         {
           "op": "setChoice",
@@ -1716,14 +1856,6 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {G}",
-          "count": 3
-        },
-        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -1736,20 +1868,12 @@ registerPortedMageTests({
           "value": "X=2"
         },
         {
-          "op": "activateManaAbility",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {G}",
-          "count": 1
-        },
-        {
-          "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {U}",
-          "count": 1
+          "source": "Capricopian",
+          "count": 1,
+          "xValue": 2
         },
         {
           "op": "castSpell",
@@ -1760,34 +1884,64 @@ registerPortedMageTests({
           "target": "Capricopian"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Double Major",
+          "count": 1
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
-          "op": "activateManaAbility",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {G}",
-          "count": 2
+          "source": "Capricopian",
+          "count": 2,
+          "xValue": 2
         },
         {
-          "op": "activateManaAbility",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {B}",
-          "count": 1
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {R}",
-          "count": 1
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Capricopian",
+            "token": false
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "P1P1",
+              "expected": 2
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Capricopian",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "P1P1",
+              "expected": 2
+            }
+          ]
         },
         {
           "op": "castSpell",
@@ -1802,20 +1956,12 @@ registerPortedMageTests({
           "value": "X=2"
         },
         {
-          "op": "activateManaAbility",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {G}",
-          "count": 1
-        },
-        {
-          "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {U}",
-          "count": 1
+          "source": "Grenzo, Dungeon Warden",
+          "count": 1,
+          "xValue": 2
         },
         {
           "op": "castSpell",
@@ -1826,26 +1972,64 @@ registerPortedMageTests({
           "target": "Grenzo, Dungeon Warden"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Double Major",
+          "count": 1
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Capricopian",
-          "count": 2
+          "source": "Grenzo, Dungeon Warden",
+          "count": 2,
+          "xValue": 2
         },
         {
-          "op": "assertPermanentCount",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Grenzo, Dungeon Warden",
-          "count": 2
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Grenzo, Dungeon Warden",
+            "token": false
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "P1P1",
+              "expected": 2
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Grenzo, Dungeon Warden",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "P1P1",
+              "expected": 2
+            }
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -1863,19 +2047,757 @@ registerPortedMageTests({
     },
     {
       "name": "test_SimpleCopy_Card",
-      "operations": []
+      "operations": [
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Free Card Copy Fixture",
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Exile target nonland card from your graveyard and copy it. You may cast the copy without paying its mana cost."
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "GRAVEYARD",
+          "name": "Grizzly Bears"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "ability": "{0}",
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertStackCardCopy",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "original": "Grizzly Bears",
+          "originalZone": "exile",
+          "name": "Grizzly Bears",
+          "manaCost": "{1}{G}",
+          "typeLine": "Creature - Bear",
+          "rulesText": []
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Grizzly Bears",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            }
+          ]
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
+        }
+      ]
     },
     {
       "name": "test_SimpleCopy_SplitCard",
-      "operations": []
+      "operations": [
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Free Card Copy Fixture",
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Exile target nonland card from your graveyard and copy it. You may cast the copy without paying its mana cost."
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "GRAVEYARD",
+          "name": "Alive // Well"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Grizzly Bears"
+        },
+        {
+          "op": "saveRuntimeCheckpoint",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "ability": "{0}",
+          "target": "Alive"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Alive",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Alive"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertStackCardCopy",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "original": "Alive",
+          "originalZone": "exile",
+          "name": "Alive",
+          "manaCost": "{3}{G}",
+          "typeLine": "Sorcery",
+          "rulesText": [
+            "Create a 3/3 green Centaur creature token."
+          ],
+          "originalText": [
+            "Create a 3/3 green Centaur creature token.",
+            "You gain 2 life for each creature you control."
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Centaur Token",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 3
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            }
+          ]
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Alive",
+          "count": 1
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "ability": "{0}",
+          "target": "Alive"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Alive",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Well"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertStackCardCopy",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "original": "Alive",
+          "originalZone": "exile",
+          "name": "Well",
+          "manaCost": "{W}",
+          "typeLine": "Sorcery",
+          "rulesText": [
+            "You gain 2 life for each creature you control."
+          ],
+          "originalText": [
+            "Create a 3/3 green Centaur creature token.",
+            "You gain 2 life for each creature you control."
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 22
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Centaur Token",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Alive",
+          "count": 1
+        }
+      ]
     },
     {
       "name": "test_SimpleCopy_AdventureCard",
-      "operations": []
+      "operations": [
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Free Card Copy Fixture",
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Exile target nonland card from your graveyard and copy it. You may cast the copy without paying its mana cost."
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "GRAVEYARD",
+          "name": "Animating Faerie"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Sol Ring"
+        },
+        {
+          "op": "saveRuntimeCheckpoint",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "ability": "{0}",
+          "target": "Animating Faerie"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Animating Faerie",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Animating Faerie"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertStackCardCopy",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "original": "Animating Faerie",
+          "originalZone": "exile",
+          "name": "Animating Faerie",
+          "manaCost": "{2}{U}",
+          "typeLine": "Creature - Faerie",
+          "rulesText": [
+            "Flying"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Animating Faerie",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "ability",
+              "value": "Flying",
+              "kind": "static",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Animating Faerie",
+          "count": 1
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "ability": "{0}",
+          "target": "Animating Faerie"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Animating Faerie",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Bring to Life"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Sol Ring"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertStackCardCopy",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "original": "Animating Faerie",
+          "originalZone": "exile",
+          "name": "Bring to Life",
+          "manaCost": "{2}{U}",
+          "typeLine": "Sorcery - Adventure",
+          "rulesText": [
+            "Target noncreature artifact you control becomes a 0/0 artifact creature. Put four +1/+1 counters on it."
+          ],
+          "originalText": [
+            "Flying"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Sol Ring",
+          "counter": "P1P1",
+          "count": 4
+        },
+        {
+          "op": "assertPermanentCharacteristics",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Sol Ring",
+          "expected": {
+            "basePower": 0,
+            "baseToughness": 0,
+            "power": 4,
+            "toughness": 4
+          }
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Animating Faerie",
+          "count": 1
+        }
+      ]
     },
     {
       "name": "test_SimpleCopy_MDFC",
-      "operations": []
+      "operations": [
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Free Card Copy Fixture",
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Exile target nonland card from your graveyard and copy it. You may cast the copy without paying its mana cost."
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Land or Spell Copy Fixture",
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Exile target card from your graveyard and copy it. You may play the copy."
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "GRAVEYARD",
+          "name": "Agadeem's Awakening"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "GRAVEYARD",
+          "name": "Memnite"
+        },
+        {
+          "op": "saveRuntimeCheckpoint",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "ability": "{0}",
+          "target": "Agadeem's Awakening"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Free Card Copy Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Agadeem's Awakening",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Memnite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertStackCardCopy",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "original": "Agadeem's Awakening",
+          "originalZone": "exile",
+          "name": "Agadeem's Awakening",
+          "manaCost": "{X}{B}{B}{B}",
+          "typeLine": "Sorcery",
+          "rulesText": [
+            "Return from your graveyard to the battlefield any number of target creature cards that each have a different mana value X or less."
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Agadeem's Awakening",
+          "count": 1
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Land or Spell Copy Fixture",
+          "ability": "{0}",
+          "target": "Agadeem's Awakening"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Land or Spell Copy Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Agadeem's Awakening",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Agadeem, the Undercrypt"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Agadeem's Awakening",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Agadeem, the Undercrypt",
+          "count": 1
+        }
+      ]
     },
     {
       "name": "copySpellWithKicker",
@@ -1927,6 +2849,24 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Forest",
+          "ability": "{T}: Add {G}",
+          "count": 2
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Island",
+          "ability": "{T}: Add {U}",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -1934,14 +2874,26 @@ registerPortedMageTests({
           "name": "Thieving Skydiver"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Yes"
+          "kind": "options",
+          "description": "Choose optional costs for Thieving Skydiver",
+          "choices": [
+            "Kicker: 0"
+          ]
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "X=1"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thieving Skydiver",
+          "count": 1,
+          "xValue": 1
         },
         {
           "op": "castSpell",
@@ -1950,6 +2902,27 @@ registerPortedMageTests({
           "player": 0,
           "name": "Double Major",
           "target": "Thieving Skydiver"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Double Major",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thieving Skydiver",
+          "count": 2,
+          "xValue": 1
         },
         {
           "op": "addTarget",
@@ -2047,12 +3020,12 @@ registerPortedMageTests({
           "value": "X=2"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Double Major",
-          "target": "Neverwinter Hydra"
+          "source": "Neverwinter Hydra",
+          "count": 1,
+          "xValue": 2
         },
         {
           "op": "unsupported",
@@ -2077,6 +3050,49 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "setDieRollResult(playerA, 1)"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Double Major",
+          "target": "Neverwinter Hydra"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Double Major",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Neverwinter Hydra",
+          "count": 2,
+          "xValue": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Neverwinter Hydra",
+          "count": 2,
+          "xValue": 2
         },
         {
           "op": "setStrictChooseMode",
@@ -2118,7 +3134,13 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "Hydradoodle",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Creature — Hydra Dog",
+          "oracleText": "As this creature enters, roll X six-sided dice. This creature enters with a number of +1/+1 counters on it equal to the total of those results.\nReach\nTrample",
+          "manaCost": "{X}{X}{G}{G}",
+          "power": 0,
+          "toughness": 0
         },
         {
           "op": "addCard",
@@ -2128,6 +3150,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertChoiceMenu",
+          "kind": "number",
+          "description": "Choose value for X",
+          "player": 0,
+          "value": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -2135,9 +3164,13 @@ registerPortedMageTests({
           "name": "Hydradoodle"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "X=1"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Hydradoodle",
+          "xValue": 1,
+          "onTop": true
         },
         {
           "op": "castSpell",
@@ -2148,6 +3181,15 @@ registerPortedMageTests({
           "target": "Hydradoodle"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Double Major",
+          "objectTarget": "Hydradoodle",
+          "onTop": true
+        },
+        {
           "op": "unsupported",
           "source": "setDieRollResult(playerA, 5)"
         },
@@ -2156,22 +3198,64 @@ registerPortedMageTests({
           "source": "setDieRollResult(playerA, 1)"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 2,
+          "source": "Hydradoodle",
+          "xValue": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Hydradoodle",
           "count": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Hydradoodle",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "P1P1",
+              "expected": 5
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Hydradoodle",
+            "token": false
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "P1P1",
+              "expected": 1
+            }
+          ]
         }
       ]
     },
@@ -2304,34 +3388,42 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": 0,
-          "count": "Bird Token"
+          "op": "setStrictChooseMode",
+          "value": true
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Grizzly Bears"
+          "seatIndependent": true,
+          "name": "Bird Token",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": 1,
-          "count": "Augmenting Automaton"
+          "player": 1,
+          "seatIndependent": true,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "seatIndependent": true,
+          "name": "Augmenting Automaton",
+          "count": 1
         },
         {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Mountain",
           "ability": "{T}: Add {R}",
           "count": 3
         },
@@ -2346,19 +3438,25 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Lightning Bolt"
+          "name": "Lightning Bolt",
+          "target": "Grizzly Bears"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "target": "Grizzly Bears"
+          "text": "Cast Lightning Bolt",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
         },
         {
           "op": "setChoice",
@@ -2374,18 +3472,32 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"on copy\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Lightning Bolt\", 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 1,
+          "objectTarget": "Augmenting Automaton"
         },
         {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Island",
           "ability": "{T}: Add {U}",
           "count": 1
         },
@@ -2398,6 +3510,16 @@ registerPortedMageTests({
           "target": "Lightning Bolt[only copy]"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Swan Song",
+          "count": 1,
+          "objectTarget": "Lightning Bolt",
+          "objectTargetKind": "spell copy"
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": false
@@ -2406,43 +3528,77 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Swan Song",
+          "count": 2,
+          "objectTarget": "Lightning Bolt",
+          "objectTargetKind": "spell copy"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 0,
-          "count": "Bird Token"
+          "seatIndependent": true,
+          "name": "Bird Token",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 2
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Grizzly Bears"
+          "seatIndependent": true,
+          "name": "Bird Token",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": 1,
-          "count": "Augmenting Automaton"
+          "player": 1,
+          "seatIndependent": true,
+          "name": "Grizzly Bears",
+          "count": 0
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertPermanentCount",
           "turn": 1,
-          "phase": "END_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "seatIndependent": true,
+          "name": "Augmenting Automaton",
+          "count": 1
         }
       ]
     },
@@ -2450,8 +3606,14 @@ registerPortedMageTests({
       "name": "testAbilityCantBeCopied",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"activator\", playerA, new SimpleActivatedAbility(new GainLifeEffect(1), new TapSourceCost()).withCanBeCopied(false))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Life Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{T}: You gain 1 life. This ability can't be copied."
         },
         {
           "op": "addCard",
@@ -2472,15 +3634,15 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}"
+          "ability": "You gain 1 life"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}",
-          "target": "stack ability ({T"
+          "ability": "Copy target activated or triggered ability",
+          "target": "Life Fixture"
         },
         {
           "op": "setStrictChooseMode",
@@ -2495,8 +3657,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(engine, true)"
+          "op": "assertTappedCount",
+          "name": "Lithoform Engine",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "assertLife",
@@ -2537,6 +3701,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Mountain",
+          "count": 2
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -2552,6 +3723,58 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": "Balduvian Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Transpose",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered",
+          "text": "Casualty"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Transpose",
+          "count": 2,
+          "onTop": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -2570,6 +3793,23 @@ registerPortedMageTests({
           "player": 0,
           "name": "Wizard Token",
           "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Mountain",
+          "count": 2
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Transpose",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
         }
       ]
     }

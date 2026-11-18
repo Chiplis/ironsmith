@@ -362,7 +362,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Darksteel Relic",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -370,7 +371,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Rafter Demon",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -382,12 +384,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Rafter Demon"
+          "value": "Enter as a copy of Rafter Demon"
         },
         {
           "op": "setStopAt",

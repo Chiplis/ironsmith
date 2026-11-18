@@ -7,8 +7,10 @@ registerPortedMageTests({
       "name": "testEmblemOfGriselbrand",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addEmblem(playerA, new EmblemOfCard( CardRepository.instance.findCard(\"Griselbrand\", true).createMockCard() ))"
+          "op": "addEmblem",
+          "player": 0,
+          "abilitySource": "Griselbrand",
+          "name": "Griselbrand Emblem"
         },
         {
           "op": "setLife",
@@ -25,7 +27,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Pay 7 life: Draw"
+          "ability": "Pay 7 life: Draw",
+          "source": "Griselbrand Emblem"
         },
         {
           "op": "setStopAt",
@@ -46,8 +49,10 @@ registerPortedMageTests({
           "life": 13
         },
         {
-          "op": "unsupported",
-          "source": "assertEmblemCount(playerA, 1)"
+          "op": "assertEmblemCount",
+          "player": 0,
+          "name": "Griselbrand Emblem",
+          "count": 1
         }
       ]
     },
@@ -55,8 +60,10 @@ registerPortedMageTests({
       "name": "testEmblemOfYurlok",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addEmblem(playerA, new EmblemOfCard( CardRepository.instance.findCard(\"Yurlok of Scorch Thrash\", true).createMockCard() ))"
+          "op": "addEmblem",
+          "player": 0,
+          "abilitySource": "Yurlok of Scorch Thrash",
+          "name": "Yurlok of Scorch Thrash Emblem"
         },
         {
           "op": "setLife",
@@ -71,6 +78,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertEmblemCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Yurlok of Scorch Thrash Emblem",
+          "count": 1
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -79,8 +94,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"after tapping Mountain\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 1)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -96,15 +115,22 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"takes 1 point of mana burn\", 1, PhaseStep.BEGIN_COMBAT, playerA, 19)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "colors": "R",
+          "amount": 0
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "life": 19
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertEmblemCount(playerA, 1)"
         }
       ]
     },
@@ -116,8 +142,10 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addEmblem(playerA, new EmblemOfCard( CardRepository.instance.findCard(\"Omniscience\", true).createMockCard() ))"
+          "op": "addEmblem",
+          "player": 0,
+          "abilitySource": "Omniscience",
+          "name": "Omniscience Emblem"
         },
         {
           "op": "addCard",
@@ -153,8 +181,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertEmblemCount(playerA, 1)"
+          "op": "assertEmblemCount",
+          "player": 0,
+          "name": "Omniscience Emblem",
+          "count": 1
         }
       ]
     },
@@ -162,8 +192,10 @@ registerPortedMageTests({
       "name": "testEmblemOfParadoxEngine",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addEmblem(playerA, new EmblemOfCard( CardRepository.instance.findCard(\"Paradox Engine\", true).createMockCard() ))"
+          "op": "addEmblem",
+          "player": 0,
+          "abilitySource": "Paradox Engine",
+          "name": "Paradox Engine Emblem"
         },
         {
           "op": "addCard",
@@ -278,8 +310,10 @@ registerPortedMageTests({
           "life": 14
         },
         {
-          "op": "unsupported",
-          "source": "assertEmblemCount(playerA, 1)"
+          "op": "assertEmblemCount",
+          "player": 0,
+          "name": "Paradox Engine Emblem",
+          "count": 1
         }
       ]
     },
@@ -287,8 +321,10 @@ registerPortedMageTests({
       "name": "testEmblemOfDoublingSeason",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addEmblem(playerA, new EmblemOfCard( CardRepository.instance.findCard(\"Doubling Season\", true).createMockCard() ))"
+          "op": "addEmblem",
+          "player": 0,
+          "abilitySource": "Doubling Season",
+          "name": "Doubling Season Emblem"
         },
         {
           "op": "addCard",
@@ -318,8 +354,13 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters( \"Elspeth's loyalty is doubled\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Elspeth, Sun's Champion\", CounterType.LOYALTY, 8 )"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Elspeth, Sun's Champion",
+          "counter": "LOYALTY",
+          "count": 8
         },
         {
           "op": "activateAbility",
@@ -343,8 +384,13 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters( \"+1 is not doubled\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Elspeth, Sun's Champion\", CounterType.LOYALTY, 9 )"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Elspeth, Sun's Champion",
+          "counter": "LOYALTY",
+          "count": 9
         },
         {
           "op": "assertPermanentCount",
@@ -358,8 +404,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertEmblemCount(playerA, 1)"
+          "op": "assertEmblemCount",
+          "player": 0,
+          "name": "Doubling Season Emblem",
+          "count": 1
         }
       ]
     },
@@ -371,8 +419,10 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addEmblem(playerA, new EmblemOfCard( CardRepository.instance.findCard(\"Maelstrom Nexus\", true).createMockCard() ))"
+          "op": "addEmblem",
+          "player": 0,
+          "abilitySource": "Maelstrom Nexus",
+          "name": "Maelstrom Nexus Emblem"
         },
         {
           "op": "addCard",
@@ -437,8 +487,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertEmblemCount(playerA, 1)"
+          "op": "assertEmblemCount",
+          "player": 0,
+          "name": "Maelstrom Nexus Emblem",
+          "count": 1
         }
       ]
     }

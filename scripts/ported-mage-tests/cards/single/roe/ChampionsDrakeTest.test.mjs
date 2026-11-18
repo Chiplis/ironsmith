@@ -28,8 +28,14 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"0 level counters\", 1, PhaseStep.UPKEEP, playerA, wavewatch, CounterType.LEVEL, 0)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Halimar Wavewatch",
+          "counter": "LEVEL",
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -48,8 +54,14 @@ registerPortedMageTests({
           "ability": "Level up"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"1 level counter\", 1, PhaseStep.BEGIN_COMBAT, playerA, wavewatch, CounterType.LEVEL, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Halimar Wavewatch",
+          "counter": "LEVEL",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -68,8 +80,14 @@ registerPortedMageTests({
           "ability": "Level up"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"2 level counters\", 1, PhaseStep.END_TURN, playerA, wavewatch, CounterType.LEVEL, 2)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Halimar Wavewatch",
+          "counter": "LEVEL",
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -88,8 +106,14 @@ registerPortedMageTests({
           "ability": "Level up"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"3 level counters\", 3, PhaseStep.BEGIN_COMBAT, playerA, wavewatch, CounterType.LEVEL, 3)"
+          "op": "assertCounterCount",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Halimar Wavewatch",
+          "counter": "LEVEL",
+          "count": 3,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
@@ -108,8 +132,14 @@ registerPortedMageTests({
           "ability": "Level up"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"4 level counters\", 3, PhaseStep.END_TURN, playerA, wavewatch, CounterType.LEVEL, 4)"
+          "op": "assertCounterCount",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Halimar Wavewatch",
+          "counter": "LEVEL",
+          "count": 4,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",

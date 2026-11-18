@@ -137,13 +137,34 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "{X}{U}{R}, {T}: {this} deals X damage to target creature",
-          "target": "Crypt Ghast"
+          "ability": "{X}{U}{R}, {T}: Nin deals X damage to target creature",
+          "target": "Crypt Ghast",
+          "source": "Nin, the Pain Artist"
         },
         {
           "op": "setChoice",
           "player": 1,
           "value": "X=2"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Nin, the Pain Artist",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Crypt Ghast"
+        },
+        {
+          "op": "waitStackResolved",
+          "resolutions": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPlayableAbility",
@@ -152,11 +173,6 @@ registerPortedMageTests({
           "player": 0,
           "label": "Cast Erebos's",
           "expected": false
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
         },
         {
           "op": "setStrictChooseMode",
@@ -171,13 +187,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Nin, the Pain Artist\", true)"
+          "op": "assertTapped",
+          "player": 1,
+          "name": "Nin, the Pain Artist",
+          "tapped": true
         },
         {
           "op": "assertExileCount",
           "name": "Crypt Ghast",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertHandCount",

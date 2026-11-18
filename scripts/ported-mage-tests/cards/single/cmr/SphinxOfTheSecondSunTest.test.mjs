@@ -21,16 +21,47 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "source": "Agent of Masks",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "resolutions": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 21
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 19
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Sphinx of the Second Sun",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertLife",

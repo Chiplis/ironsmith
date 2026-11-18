@@ -139,8 +139,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Kilnmouth Dragon",
-          "count": 2
+          "name": "Kilnmouth Dragon@original",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "HAND",
+          "name": "Kilnmouth Dragon@reveal",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -172,72 +179,90 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Kilnmouth Dragon",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Kilnmouth Dragon"
+          "objectAlias": "@original"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "source": "Kilnmouth Dragon",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "addTarget",
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Kilnmouth Dragon"
+          "description": "Choose any number of cards from your hand that share a creature type with this creature to reveal for amplify",
+          "choices": [
+            "Kilnmouth Dragon"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@original",
+          "counter": "+1/+1",
+          "count": 3
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@original",
+          "power": 8,
+          "toughness": 8
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "@reveal",
+          "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Clone",
+          "player": 1,
           "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Clone"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Kilnmouth Dragon"
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": true
-        },
-        {
-          "op": "addTarget",
-          "player": 1,
-          "target": "Phantasmal Dragon"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Clone",
+          "count": 1,
           "turn": 2,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "setOptionChoices",
+          "player": 1,
+          "description": "Choose what to copy as this permanent enters",
+          "kind": "options",
+          "choices": [
+            {
+              "description": "Enter as a copy of Kilnmouth Dragon",
+              "object": "@original"
+            }
+          ]
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Kilnmouth Dragon",
-          "count": 1
+          "op": "setObjectChoices",
+          "player": 1,
+          "description": "Choose any number of cards from your hand that share a creature type with this creature to reveal for amplify",
+          "choices": [
+            "Phantasmal Dragon"
+          ]
         },
         {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Kilnmouth Dragon",
-          "power": 8,
-          "toughness": 8
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -246,11 +271,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "Kilnmouth Dragon",
+          "counter": "+1/+1",
+          "count": 3
+        },
+        {
           "op": "assertPowerToughness",
           "player": 1,
           "name": "Kilnmouth Dragon",
           "power": 8,
           "toughness": 8
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Phantasmal Dragon",
+          "count": 1
         }
       ]
     },

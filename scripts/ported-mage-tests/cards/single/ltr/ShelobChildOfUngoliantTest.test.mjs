@@ -94,23 +94,60 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Prey Upon",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Prey Upon",
-          "target": "Shelob, Child of Ungoliant^Feral Abomination"
+          "target": {
+            "groups": [
+              [
+                "Shelob, Child of Ungoliant"
+              ],
+              [
+                "Feral Abomination"
+              ]
+            ]
+          }
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Prey Upon",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 2,
+          "objectTarget": "Feral Abomination"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Shelob, Child of Ungoliant",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Feral Abomination",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Shelob, Child of Ungoliant",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -119,24 +156,42 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTokenCount(playerA, \"Feral Abomination\", 1)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Feral Abomination",
+            "token": true
+          },
+          "count": 1,
+          "checks": []
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Feral Abomination\", CardType.ARTIFACT, true)"
+          "op": "assertType",
+          "name": "Feral Abomination",
+          "player": 0,
+          "cardType": "ARTIFACT"
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Feral Abomination\", SubType.FOOD)"
+          "op": "assertType",
+          "name": "Feral Abomination",
+          "player": 0,
+          "cardType": "CREATURE",
+          "extra": "false"
         },
         {
-          "op": "unsupported",
-          "source": "assertNotType(\"Feral Abomination\", CardType.CREATURE)"
+          "op": "assertSubtype",
+          "name": "Feral Abomination",
+          "player": 0,
+          "subtype": "Food",
+          "extra": "true"
         },
         {
-          "op": "unsupported",
-          "source": "assertNotSubtype(\"Feral Abomination\", SubType.THRULL)"
+          "op": "assertSubtype",
+          "name": "Feral Abomination",
+          "player": 0,
+          "subtype": "Thrull",
+          "extra": "false"
         }
       ]
     },
@@ -177,7 +232,16 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Prey Upon",
-          "target": "Shelob, Child of Ungoliant^Lizard Blades"
+          "target": {
+            "groups": [
+              [
+                "Shelob, Child of Ungoliant"
+              ],
+              [
+                "Lizard Blades"
+              ]
+            ]
+          }
         },
         {
           "op": "setStopAt",
@@ -192,34 +256,52 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Lizard Blades",
+          "count": 1
+        },
+        {
+          "op": "assertTokenCount",
           "player": 0,
           "name": "Lizard Blades",
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTokenCount(playerA, \"Lizard Blades\", 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(\"Lizard Blades\", CardType.ARTIFACT, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Lizard Blades\", SubType.FOOD)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNotType(\"Lizard Blades\", CardType.CREATURE)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNotSubtype(\"Lizard Blades\", SubType.LIZARD)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Lizard Blades\", SubType.EQUIPMENT)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Lizard Blades",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Artifact",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Food",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Lizard",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Equipment",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -417,12 +499,37 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Aradara Express",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            }
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Bite Down",
-          "target": "Shelob, Child of Ungoliant^Aradara Express"
+          "target": {
+            "groups": [
+              [
+                "Shelob, Child of Ungoliant"
+              ],
+              [
+                "Aradara Express"
+              ]
+            ]
+          }
         },
         {
           "op": "setStopAt",
@@ -437,26 +544,52 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Aradara Express",
+          "count": 1
+        },
+        {
+          "op": "assertTokenCount",
           "player": 0,
           "name": "Aradara Express",
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTokenCount(playerA, \"Aradara Express\", 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(\"Aradara Express\", CardType.ARTIFACT, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Aradara Express\", SubType.FOOD)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Aradara Express\", SubType.VEHICLE)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Aradara Express",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Artifact",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Food",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Lizard",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Vehicle",
+              "expected": false
+            }
+          ]
         }
       ]
     },

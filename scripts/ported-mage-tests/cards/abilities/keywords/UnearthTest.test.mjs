@@ -150,36 +150,72 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Dregscape Zombie",
+          "name": "Dregscape Zombie@zombie",
           "count": 1
         },
         {
           "op": "activateAbility",
+          "source": "Dregscape Zombie",
+          "ability": "Unearth",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Dregscape Zombie",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Unearth"
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@zombie"
+          },
+          "count": 1,
+          "checks": []
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "Dregscape Zombie",
+          "attacker": "@zombie",
           "defender": 1
         },
         {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN"
+          "op": "assertStackObject",
+          "source": "Teferi's Veil",
+          "count": 1,
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Dregscape Zombie",
-          "count": 0
+          "op": "assertStackObject",
+          "source": "Teferi's Veil",
+          "count": 1,
+          "turn": 1,
+          "phase": "END_COMBAT",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_COMBAT"
         },
         {
           "op": "assertLife",
@@ -187,15 +223,60 @@ registerPortedMageTests({
           "life": 18
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@zombie"
+          },
+          "count": 0,
+          "checks": []
+        },
+        {
           "op": "assertExileCount",
-          "name": "Dregscape Zombie",
+          "player": 0,
+          "name": "@zombie",
           "count": 0
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertStackObject",
+          "source": "Dregscape Zombie",
+          "count": 1,
+          "turn": 1,
+          "phase": "END_TURN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertExileCount",
           "player": 0,
-          "name": "Dregscape Zombie",
-          "count": 1
+          "name": "@zombie",
+          "count": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@zombie"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@zombie",
+          "count": 0
         }
       ]
     }

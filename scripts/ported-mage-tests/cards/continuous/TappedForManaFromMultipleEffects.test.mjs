@@ -204,7 +204,7 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "checkManaPool(\"max mana\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"G\", Integer.MAX_VALUE)"
+          "source": "checkManaPool(\"after thirty tripling effects\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"G\", 205891132094649)"
         },
         {
           "op": "setChoice",
@@ -437,25 +437,49 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}, Sacrifice a Fo",
-          "count": 1
-        },
-        {
           "op": "setChoice",
           "player": 0,
           "value": "Forest"
         },
         {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 0, 3)"
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add three mana in any combination of {R} and/or {G}",
+          "choices": [
+            "Green",
+            "Green",
+            "Green"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"must produce green\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"G\", 3)"
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}, Sacrifice a Fo",
+          "count": 1,
+          "source": "Goblin Clearcutter"
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Goblin Clearcutter",
+          "tapped": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": "3"
         },
         {
           "op": "setStrictChooseMode",
@@ -496,25 +520,49 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}, Sacrifice a Fo",
-          "count": 1
-        },
-        {
           "op": "setChoice",
           "player": 0,
           "value": "Forest"
         },
         {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 0, 3)"
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add three mana in any combination of {R} and/or {G}",
+          "choices": [
+            "Green",
+            "Green",
+            "Green"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"must produce green\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"G\", 3 * 2)"
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}, Sacrifice a Fo",
+          "count": 1,
+          "source": "Goblin Clearcutter"
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Goblin Clearcutter",
+          "tapped": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": "3 * 2"
         },
         {
           "op": "setStrictChooseMode",

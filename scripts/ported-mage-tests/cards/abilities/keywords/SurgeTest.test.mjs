@@ -337,7 +337,8 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 1,
           "name": "Silvercoat Lion",
-          "count": 1
+          "count": 1,
+          "tapped": true
         },
         {
           "op": "castSpell",

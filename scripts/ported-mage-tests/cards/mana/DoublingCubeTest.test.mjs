@@ -124,26 +124,50 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}"
+          ],
+          "exact": true,
+          "prefundManaCosts": true,
+          "interchangeableSources": [
+            "Forest",
+            "Mountain"
+          ]
         }
       ]
     },
     {
       "name": "test_AvailableMana2",
       "operations": [
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "LIBRARY",
+          "name": "Mountain",
+          "count": 1
+        },
+        {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "player": 1,
+          "zone": "LIBRARY",
+          "name": "Mountain",
+          "count": 1
+        },
         {
           "op": "setStrictChooseMode",
           "value": true
@@ -185,220 +209,435 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}{C}{C}{C}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{U}{U}{U}{U}{R}{R}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{G}{G}{U}{U}{R}{R}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{G}{G}{G}{G}{U}{U}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{G}{G}{U}{U}{U}{U}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{G}{G}{G}{G}{U}{U}{U}{U}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{G}{G}{G}{G}{G}{G}{U}{U}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{G}{G}{G}{G}{G}{G}{G}{G}{U}{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{G}{G}{G}{G}{G}{G}{U}{U}{U}{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{B}{B}{R}{R}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{U}{U}{B}{B}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{B}{B}{B}{B}{R}{R}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{U}{U}{B}{B}{B}{B}{R}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{B}{B}{R}{R}{R}{R}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{B}{B}{R}{R}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{U}{U}{B}{B}{R}{R}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{G}{G}{G}{G}{U}{U}{U}{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{B}{B}{B}{B}{R}{R}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{G}{G}{G}{G}{U}{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{G}{G}{U}{U}{U}{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{G}{G}{G}{G}{G}{G}{U}{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{U}{U}{U}{U}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": 0,
+          "exact": true,
+          "branchLimit": 200000,
+          "prefundManaCosts": true,
+          "interchangeableSources": [
+            "Doubling Cube",
+            "Castle Sengir",
+            "Forest",
+            "Mountain"
+          ],
+          "options": [
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}",
+            "{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}{C}{C}",
+            "{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}",
+            "{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}{C}{C}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{C}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{U}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{U}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{U}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{U}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{U}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{U}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{U}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{U}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{U}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}",
+            "{U}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}",
+            "{U}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}{C}{C}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}{C}{C}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{U}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{U}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{U}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{U}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{U}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{U}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{U}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{U}{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{U}{U}{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{U}{U}{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}{C}{C}",
+            "{U}{U}{U}{U}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{U}{U}{U}{U}{R}{R}{R}{R}{R}{R}{G}{G}{C}{C}",
+            "{U}{U}{U}{U}{R}{R}{R}{R}{R}{R}{C}{C}{C}{C}",
+            "{U}{U}{U}{U}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{U}{U}{R}{R}{R}{R}{G}{G}{G}{G}{C}{C}",
+            "{U}{U}{U}{U}{R}{R}{R}{R}{G}{G}{C}{C}{C}{C}",
+            "{U}{U}{U}{U}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{U}{U}{R}{R}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{U}{U}{U}{R}{R}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{U}{U}{U}{U}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{U}{U}{G}{G}{G}{G}{G}{G}{G}{G}{C}{C}",
+            "{U}{U}{U}{U}{G}{G}{G}{G}{G}{G}{C}{C}{C}{C}",
+            "{B}{B}{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}",
+            "{B}{B}{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}",
+            "{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{U}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{G}",
+            "{U}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{U}{B}{B}{B}{B}{R}{R}{R}{R}{R}{G}{G}{G}",
+            "{U}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{B}{R}{R}{R}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{B}{R}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{U}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}",
+            "{U}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{U}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}",
+            "{U}{B}{B}{B}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{U}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}",
+            "{U}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{U}{B}{B}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}",
+            "{U}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{U}{B}{B}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{U}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}",
+            "{U}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{U}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}",
+            "{U}{B}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{U}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}",
+            "{U}{B}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}",
+            "{U}{U}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}",
+            "{U}{U}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}",
+            "{U}{U}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{U}{U}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{U}{U}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{U}{U}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{U}{U}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}",
+            "{U}{U}{B}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{U}{U}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}",
+            "{U}{U}{B}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{U}{U}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}",
+            "{U}{U}{B}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{B}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{U}{U}{B}{B}{B}{B}{R}{R}",
+            "{U}{U}{U}{U}{B}{B}{B}{B}{G}{G}",
+            "{U}{U}{U}{U}{B}{B}{R}{R}{R}{R}",
+            "{U}{U}{U}{U}{B}{B}{R}{R}{G}{G}",
+            "{U}{U}{U}{U}{B}{B}{G}{G}{G}{G}",
+            "{U}{U}{U}{U}{B}{R}{R}{R}{R}{R}",
+            "{U}{U}{U}{U}{B}{R}{R}{R}{R}{G}",
+            "{U}{U}{U}{U}{B}{R}{R}{R}{G}{G}",
+            "{U}{U}{U}{U}{B}{R}{R}{G}{G}{G}",
+            "{U}{U}{U}{U}{B}{R}{G}{G}{G}{G}",
+            "{U}{U}{U}{U}{B}{G}{G}{G}{G}{G}",
+            "{U}{U}{U}{B}{R}{R}{R}{R}{R}{R}",
+            "{U}{U}{U}{B}{R}{R}{R}{R}{G}{G}",
+            "{U}{U}{U}{B}{R}{R}{G}{G}{G}{G}",
+            "{U}{U}{U}{B}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{U}{U}{U}{R}{R}{R}{R}",
+            "{U}{U}{U}{U}{U}{R}{R}{R}{G}",
+            "{U}{U}{U}{U}{U}{R}{R}{G}{G}",
+            "{U}{U}{U}{U}{U}{R}{G}{G}{G}",
+            "{U}{U}{U}{U}{U}{G}{G}{G}{G}",
+            "{U}{U}{U}{U}{U}{U}{R}{R}",
+            "{U}{U}{U}{U}{U}{U}{G}{G}"
+          ],
+          "reachableOptions": [
+            "{B}{B}{B}{B}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}",
+            "{B}{B}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{B}{B}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{B}{B}{B}{B}{G}{G}{G}{G}{U}{U}",
+            "{B}{B}{B}{B}{G}{G}{U}{U}{U}{U}",
+            "{B}{B}{G}{G}{G}{G}{G}{G}{U}{U}",
+            "{B}{B}{G}{G}{G}{G}{U}{U}{U}{U}",
+            "{C}{C}{C}{C}{B}{B}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{C}{C}{C}{C}{B}{B}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{C}{C}{C}{C}{B}{B}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{C}{C}{C}{C}{C}{C}{C}{C}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{C}{C}{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{C}{C}{C}{C}{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{C}{C}{C}{C}{G}{G}{G}{G}{G}{G}{G}{G}{U}{U}",
+            "{C}{C}{C}{C}{G}{G}{G}{G}{G}{G}{U}{U}{R}{R}",
+            "{C}{C}{C}{C}{G}{G}{G}{G}{G}{G}{U}{U}{U}{U}",
+            "{C}{C}{C}{C}{G}{G}{G}{G}{U}{U}{R}{R}{R}{R}",
+            "{C}{C}{C}{C}{G}{G}{G}{G}{U}{U}{U}{U}{R}{R}",
+            "{C}{C}{C}{C}{G}{G}{U}{U}{R}{R}{R}{R}{R}{R}",
+            "{C}{C}{C}{C}{G}{G}{U}{U}{U}{U}{R}{R}{R}{R}",
+            "{C}{C}{C}{C}{U}{U}{R}{R}{R}{R}{R}{R}{R}{R}",
+            "{C}{C}{C}{C}{U}{U}{U}{U}{R}{R}{R}{R}{R}{R}",
+            "{C}{C}{R}{R}{R}{R}{R}{R}{R}{R}{R}{R}{G}{G}{G}{G}{G}{G}{G}{G}{G}{G}",
+            "{U}{U}{B}{B}{B}{B}{R}{R}{G}{G}",
+            "{U}{U}{B}{B}{B}{B}{R}{R}{R}{R}",
+            "{U}{U}{B}{B}{R}{R}{G}{G}{G}{G}",
+            "{U}{U}{B}{B}{R}{R}{R}{R}{G}{G}",
+            "{U}{U}{B}{B}{R}{R}{R}{R}{R}{R}",
+            "{U}{U}{U}{U}{B}{B}{B}{B}{R}{R}",
+            "{U}{U}{U}{U}{B}{B}{R}{R}{G}{G}",
+            "{U}{U}{U}{U}{B}{B}{R}{R}{R}{R}",
+            "{U}{U}{U}{U}{U}{U}"
+          ]
         }
       ]
     }

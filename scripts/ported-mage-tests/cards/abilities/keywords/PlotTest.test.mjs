@@ -134,12 +134,26 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Plot"
+          "ability": "Plot Longhorn Sharpshooter"
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Longhorn Sharpshooter",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -212,14 +226,49 @@ registerPortedMageTests({
           "name": "Kellan Joins Up"
         },
         {
-          "op": "addTarget",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Longhorn Sharpshooter"
+          "description": "choose a card to exile and imprint",
+          "choices": [
+            "Longhorn Sharpshooter"
+          ]
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Longhorn Sharpshooter",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Longhorn Sharpshooter",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -629,7 +678,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Wear // Tear",
+          "name": "Wear // Tear@fixture.split",
           "count": 1
         },
         {
@@ -691,12 +740,9 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "saveRuntimeCheckpoint",
           "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Tear using Plot",
-          "expected": true
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -704,7 +750,9 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Wear using Plot",
-          "target": "Memnite"
+          "target": "Memnite",
+          "objectAlias": "@fixture.split",
+          "actionLabel": "Cast Wear (plot, from exile)"
         },
         {
           "op": "setStopAt",
@@ -731,6 +779,17 @@ registerPortedMageTests({
           "player": 0,
           "name": "Wear // Tear",
           "count": 1
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Tear using Plot",
+          "expected": true
         }
       ]
     },
@@ -773,7 +832,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Wear // Tear",
+          "name": "Wear // Tear@fixture.split",
           "count": 1
         },
         {
@@ -848,7 +907,9 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Tear using Plot",
-          "target": "Glorious Anthem"
+          "target": "Glorious Anthem",
+          "objectAlias": "@fixture.split",
+          "actionLabel": "Cast Tear (plot, from exile)"
         },
         {
           "op": "setStopAt",

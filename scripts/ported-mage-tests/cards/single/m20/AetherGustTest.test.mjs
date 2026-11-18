@@ -127,19 +127,80 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "activateManaAbility",
+          "source": "Forest",
+          "ability": "Add {G}",
           "player": 0,
-          "name": "Barkhide Troll"
+          "count": 2,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Barkhide Troll",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Barkhide Troll",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Barkhide Troll",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Barkhide Troll"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "green",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Island",
+          "ability": "Add {U}",
+          "player": 0,
+          "count": 2,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "name": "Aether Gust",
+          "player": 0,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Aether Gust",
           "target": "Barkhide Troll"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Aether Gust",
+          "count": 1,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "objectTarget": "Barkhide Troll",
+          "targetCount": 1
         },
         {
           "op": "setChoice",
@@ -147,16 +208,9 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "execute"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -173,6 +227,7 @@ registerPortedMageTests({
         {
           "op": "assertLibraryCount",
           "player": 0,
+          "name": "Barkhide Troll",
           "count": 1
         }
       ]

@@ -35,11 +35,26 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Alania, Divergent Storm"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Alania, Divergent Storm",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -49,23 +64,54 @@ registerPortedMageTests({
           "name": "Coruscation Mage"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "No"
+          "kind": "options",
+          "description": "Choose optional costs for Coruscation Mage",
+          "choices": []
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Yes"
+          "kind": "boolean",
+          "description": "Have target opponent draw a card",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Perform the effect",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -133,11 +179,26 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Alania, Divergent Storm"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Alania, Divergent Storm",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -149,12 +210,45 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Yes"
+          "kind": "boolean",
+          "description": "Have target opponent draw a card",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Perform the effect",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -164,13 +258,25 @@ registerPortedMageTests({
           "name": "Coruscation Mage"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "No"
+          "kind": "options",
+          "description": "Choose optional costs for Coruscation Mage",
+          "choices": []
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 0,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -244,11 +350,26 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Alania, Divergent Storm"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Alania, Divergent Storm",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -260,12 +381,45 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Yes"
+          "kind": "boolean",
+          "description": "Have target opponent draw a card",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Perform the effect",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -275,50 +429,82 @@ registerPortedMageTests({
           "name": "Coruscation Mage"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "No"
+          "kind": "options",
+          "description": "Choose optional costs for Coruscation Mage",
+          "choices": []
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 0,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Blow Off Steam"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Whenever you cast an instant"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Whenever you cast a noncreature"
+          "name": "Blow Off Steam",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Yes"
+          "kind": "boolean",
+          "description": "Have target opponent draw a card",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 0,
-          "target": 1
+          "kind": "boolean",
+          "description": "Perform the effect",
+          "choices": [
+            "No"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "No"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "completeTargets": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -335,11 +521,23 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Frolicking Familiar",
-          "power": 3,
-          "toughness": 3
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Frolicking Familiar"
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 3
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            }
+          ]
         },
         {
           "op": "assertPermanentCount",
@@ -411,6 +609,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -418,47 +620,100 @@ registerPortedMageTests({
           "name": "Alania, Divergent Storm"
         },
         {
-          "op": "castSpell",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Acrobatic Leap"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "addTarget",
+          "op": "assertPermanentCount",
           "player": 0,
-          "target": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Yes"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Alania, Divergent Storm"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "No"
+          "name": "Alania, Divergent Storm",
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ancestral Recall"
+          "name": "Acrobatic Leap",
+          "target": {
+            "groups": [
+              [
+                "Alania, Divergent Storm"
+              ]
+            ]
+          }
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": 0
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Have target opponent draw a card",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Perform the effect",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ancestral Recall",
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 0,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -533,6 +788,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -540,47 +799,100 @@ registerPortedMageTests({
           "name": "Alania, Divergent Storm"
         },
         {
-          "op": "castSpell",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Gift of the Fae"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "addTarget",
+          "op": "assertPermanentCount",
           "player": 0,
-          "target": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Yes"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Alania, Divergent Storm"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "No"
+          "name": "Alania, Divergent Storm",
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Maximize Velocity"
+          "name": "Gift of the Fae",
+          "target": {
+            "groups": [
+              [
+                "Alania, Divergent Storm"
+              ]
+            ]
+          }
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Alania, Divergent Storm"
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Have target opponent draw a card",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Perform the effect",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Maximize Velocity",
+          "target": {
+            "groups": [
+              [
+                "Alania, Divergent Storm"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 0,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -657,11 +969,29 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Memnite"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 0,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -671,6 +1001,20 @@ registerPortedMageTests({
           "name": "Arcane Signet"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 0,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -678,8 +1022,18 @@ registerPortedMageTests({
           "name": "Ajani's Welcome"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 0,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -753,11 +1107,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Blossoming Calm"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -767,13 +1130,25 @@ registerPortedMageTests({
           "name": "Coruscation Mage"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "No"
+          "kind": "options",
+          "description": "Choose optional costs for Coruscation Mage",
+          "choices": []
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alania, Divergent Storm",
+          "abilityKind": "Triggered",
+          "count": 0,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

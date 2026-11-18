@@ -288,6 +288,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "{G}"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "{G}"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -295,12 +305,54 @@ registerPortedMageTests({
           "name": "Noxious Hatchling"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Noxious Hatchling",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Noxious Hatchling",
+          "count": 4,
+          "counter": "M1M1"
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "{B}"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 1,
           "name": "Fate Transfer",
-          "target": "Noxious Hatchling^Ruin Processor"
+          "target": {
+            "groups": [
+              [
+                "Noxious Hatchling"
+              ],
+              [
+                "Ruin Processor"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "source": "Fate Transfer",
+          "count": 1,
+          "targetCount": 2
         },
         {
           "op": "setStopAt",
@@ -376,7 +428,25 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "ability": "{U},",
-          "target": "Leech Bonder"
+          "target": {
+            "groups": [
+              [
+                "Leech Bonder"
+              ],
+              [
+                "Ley Druid"
+              ]
+            ]
+          },
+          "source": "Leech Bonder"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Leech Bonder",
+          "count": 1,
+          "targetCount": 2
         },
         {
           "op": "setStopAt",

@@ -378,7 +378,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -486,7 +486,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Pillarfield Ox",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -610,7 +610,8 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Pillarfield Ox",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -620,12 +621,41 @@ registerPortedMageTests({
           "attacker": "Pillarfield Ox"
         },
         {
+          "op": "assertDamageReceived",
+          "name": "Pillarfield Ox",
+          "player": 1,
+          "damage": 3,
+          "seatIndependent": true,
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "COMBAT_DAMAGE",
           "player": 0,
           "name": "Unsummon",
           "target": "Pillarfield Ox"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Unsummon",
+          "count": 1,
+          "objectTarget": "Pillarfield Ox"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertHandCount",
+          "name": "Pillarfield Ox",
+          "player": 1,
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -638,7 +668,23 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
-          "player": null
+          "player": null,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Pillarfield Ox",
+          "player": 1,
+          "count": 1,
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertDamageReceived",
+          "name": "Pillarfield Ox",
+          "player": 1,
+          "damage": 0,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -647,6 +693,20 @@ registerPortedMageTests({
           "player": 0,
           "name": "Terminate",
           "target": "Pillarfield Ox"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Terminate",
+          "count": 1,
+          "objectTarget": "Pillarfield Ox"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -700,7 +760,8 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "name": "Pillarfield Ox",
-          "count": 0
+          "count": 0,
+          "player": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -996,7 +1057,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Jace, Telepath Unbound",
           "counter": "LOYALTY",
           "count": 6
@@ -1025,7 +1086,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Skyraker Giant",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",

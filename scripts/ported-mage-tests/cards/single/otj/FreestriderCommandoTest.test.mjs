@@ -311,6 +311,14 @@ registerPortedMageTests({
           "name": "Freestrider Commando"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Freestrider Commando",
+          "count": 1,
+          "onTop": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -319,10 +327,27 @@ registerPortedMageTests({
           "target": "Freestrider Commando"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Double Major",
+          "count": 1,
+          "onTop": true,
+          "objectTarget": "Freestrider Commando"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 2
+          "resolutions": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Freestrider Commando",
+          "count": 1,
+          "onTop": true
         },
         {
           "op": "assertPowerToughness",
@@ -332,6 +357,26 @@ registerPortedMageTests({
           "name": "Freestrider Commando",
           "power": 5,
           "toughness": 5
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Freestrider Commando",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 5
+            },
+            {
+              "property": "toughness",
+              "expected": 5
+            }
+          ]
         },
         {
           "op": "setStopAt",

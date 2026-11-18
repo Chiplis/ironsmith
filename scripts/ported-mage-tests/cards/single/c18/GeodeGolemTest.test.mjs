@@ -67,8 +67,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after 1\", 1, PhaseStep.COMBAT_DAMAGE, playerA, \"Forest\", true, 0)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "seatIndependent": true,
+          "name": "Forest",
+          "tapped": true,
+          "count": 0
         },
         {
           "op": "activateAbility",
@@ -115,8 +121,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after 2\", 3, PhaseStep.COMBAT_DAMAGE, playerA, \"Forest\", true, 2)"
+          "op": "assertTappedCount",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "seatIndependent": true,
+          "name": "Forest",
+          "tapped": true,
+          "count": 2
         },
         {
           "op": "activateAbility",
@@ -163,8 +175,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after 3\", 5, PhaseStep.COMBAT_DAMAGE, playerA, \"Forest\", true, 2 * 2)"
+          "op": "assertTappedCount",
+          "turn": 5,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "seatIndependent": true,
+          "name": "Forest",
+          "tapped": true,
+          "count": 4
         },
         {
           "op": "setStrictChooseMode",
@@ -250,8 +268,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after 1\", 1, PhaseStep.COMBAT_DAMAGE, playerA, \"Mountain\", true, 0)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "seatIndependent": true,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 0
         },
         {
           "op": "activateAbility",
@@ -298,8 +322,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after 2\", 3, PhaseStep.COMBAT_DAMAGE, playerA, \"Mountain\", true, 2)"
+          "op": "assertTappedCount",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "seatIndependent": true,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 2
         },
         {
           "op": "activateAbility",
@@ -346,8 +376,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after 3\", 5, PhaseStep.COMBAT_DAMAGE, playerA, \"Mountain\", true, 2 * 2)"
+          "op": "assertTappedCount",
+          "turn": 5,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "seatIndependent": true,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 4
         },
         {
           "op": "setStrictChooseMode",
@@ -398,8 +434,15 @@ registerPortedMageTests({
           "source": "addCustomEffect_TargetDamage(playerA, 3)"
         },
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "target destroy",
+          "count": 1,
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Destroy target permanent."
         },
         {
           "op": "unsupported",
@@ -442,8 +485,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after 1\", 1, PhaseStep.COMBAT_DAMAGE, playerA, \"Mountain\", true, 0)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "seatIndependent": true,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 0
         },
         {
           "op": "activateAbility",
@@ -495,8 +544,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after 2\", 3, PhaseStep.COMBAT_DAMAGE, playerA, \"Mountain\", true, 2)"
+          "op": "assertTappedCount",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "seatIndependent": true,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 2
         },
         {
           "op": "activateAbility",
@@ -548,8 +603,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after 3\", 5, PhaseStep.COMBAT_DAMAGE, playerA, \"Mountain\", true, 2 * 2)"
+          "op": "assertTappedCount",
+          "turn": 5,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "seatIndependent": true,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 4
         },
         {
           "op": "activateAbility",
@@ -601,8 +662,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after 4\", 7, PhaseStep.COMBAT_DAMAGE, playerA, \"Mountain\", true, 2 * 3)"
+          "op": "assertTappedCount",
+          "turn": 7,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 6,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

@@ -44,22 +44,19 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Abstruse Appropriation",
-          "target": "Darkheart Sliver"
+          "target": "Darkheart Sliver",
+          "resolve": true
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Darkheart Sliver",
-          "expected": true
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Darkheart Sliver"
+          "kind": "cast_spell",
+          "label": "Darkheart Sliver",
+          "sourceZone": "exile",
+          "checkPayment": true,
+          "sourceOwner": 1
         },
         {
           "op": "setStopAt",
@@ -67,8 +64,7 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"should have failed to execute on cast\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Can't find ability to activate command: Cast Darkheart Sliver\")) { Assert.fail(\"Should have thrown error about not being able to cast Darkheart Sliver, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
         }
       ]
     },
@@ -120,15 +116,19 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Abstruse Appropriation",
-          "target": "Darkheart Sliver"
+          "target": "Darkheart Sliver",
+          "resolve": true
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Darkheart Sliver",
-          "expected": false
+          "kind": "cast_spell",
+          "label": "Darkheart Sliver",
+          "sourceZone": "exile",
+          "sourceOwner": 1,
+          "checkPayment": true
         },
         {
           "op": "playLand",

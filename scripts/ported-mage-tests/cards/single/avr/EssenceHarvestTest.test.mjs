@@ -35,12 +35,34 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertSpellTargetRequirements",
+          "player": 0,
+          "name": "Essence Harvest",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Essence Harvest",
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Essence Harvest",
+          "count": 1,
+          "targetCount": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -119,12 +141,34 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertSpellTargetRequirements",
+          "player": 0,
+          "name": "Essence Harvest",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Essence Harvest",
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Essence Harvest",
+          "count": 1,
+          "targetCount": 1
         },
         {
           "op": "setStrictChooseMode",

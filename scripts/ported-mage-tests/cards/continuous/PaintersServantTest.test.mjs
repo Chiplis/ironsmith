@@ -89,8 +89,108 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : playerA.getLibrary().getCards(currentGame)) { Assert.assertEquals(card.getName() + \" should be blue\", true, card.getColor(currentGame).isBlue()); } for (Card card : playerB.getLibrary().getCards(currentGame)) { Assert.assertEquals(card.getName() + \" should be blue\", true, card.getColor(currentGame).isBlue()); } for (Card card : playerA.getHand().getCards(currentGame)) { Assert.assertEquals(true, card.getColor(currentGame).isRed()); Assert.assertEquals(true, card.getColor(currentGame).isBlue()); } for (Card card : playerB.getHand().getCards(currentGame)) { Assert.assertEquals(true, card.getColor(currentGame).isRed()); Assert.assertEquals(true, card.getColor(currentGame).isBlue()); } for (Card card : playerA.getGraveyard().getCards(currentGame)) { Assert.assertEquals(true, card.getColor(currentGame).isWhite()); Assert.assertEquals(true, card.getColor(currentGame).isBlue()); } for (Card card : playerB.getGraveyard().getCards(currentGame)) { Assert.assertEquals(true, card.getColor(currentGame).isWhite()); Assert.assertEquals(true, card.getColor(currentGame).isBlue()); }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 1
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "red",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 1
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "red",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "white",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 1
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "white",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -195,8 +295,110 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : playerA.getLibrary().getCards(currentGame)) { Assert.assertEquals(card.getName() + \" should not be blue\", false, card.getColor(currentGame).isBlue()); } for (Card card : playerB.getLibrary().getCards(currentGame)) { Assert.assertEquals(card.getName() + \" should not be blue\", false, card.getColor(currentGame).isBlue()); } for (Card card : playerA.getHand().getCards(currentGame)) { Assert.assertEquals(true, card.getColor(currentGame).isRed()); Assert.assertEquals(false, card.getColor(currentGame).isBlue()); } for (Card card : playerB.getHand().getCards(currentGame)) { Assert.assertEquals(true, card.getColor(currentGame).isRed()); Assert.assertEquals(false, card.getColor(currentGame).isBlue()); } for (Card card : playerA.getGraveyard().getCards(currentGame)) { if (card.getName().equals(\"Silvercoat Lion\")) { Assert.assertEquals(true, card.getColor(currentGame).isWhite()); Assert.assertEquals(false, card.getColor(currentGame).isBlue()); } } for (Card card : playerB.getGraveyard().getCards(currentGame)) { if (card.getName().equals(\"Silvercoat Lion\")) { Assert.assertEquals(true, card.getColor(currentGame).isWhite()); Assert.assertEquals(false, card.getColor(currentGame).isBlue()); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 1
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "red",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 1
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "red",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "white",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 1,
+            "name": "Silvercoat Lion"
+          },
+          "checks": [
+            {
+              "property": "color",
+              "value": "white",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "blue",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -394,10 +596,6 @@ registerPortedMageTests({
       "name": "testColorSpellEnds",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -424,11 +622,6 @@ registerPortedMageTests({
           "player": 1,
           "name": "Green Sun's Zenith",
           "count": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 1,
-          "target": "Ambush Viper"
         },
         {
           "op": "addCard",
@@ -460,10 +653,18 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Painter's Servant",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Painter's Servant",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Painter's Servant"
+          "isSpell": true
         },
         {
           "op": "setChoice",
@@ -471,11 +672,15 @@ registerPortedMageTests({
           "value": "Blue"
         },
         {
-          "op": "castSpell",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Green Sun's Zenith"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Painter's Servant",
+          "count": 1
         },
         {
           "op": "setChoice",
@@ -484,50 +689,75 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Green Sun's Zenith",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Green Sun's Zenith",
+          "count": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Pyroblast",
-          "target": "Green Sun's Zenith"
+          "isSpell": true,
+          "xValue": 2
         },
         {
           "op": "setModeChoice",
           "player": 0,
-          "value": "1"
+          "value": 1
         },
         {
           "op": "castSpell",
+          "name": "Pyroblast",
+          "player": 0,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
+          "holdStack": true,
+          "target": "Green Sun's Zenith"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Pyroblast",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Green Sun's Zenith"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Green Sun's Zenith",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "castSpell",
           "name": "Altar's Light",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "holdStack": true,
           "target": "Painter's Servant"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Altar's Light",
+          "count": 1,
           "turn": 2,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Painter's Servant",
+          "onTop": true
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Pyroblast",
-          "count": 1
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 1,
-          "name": "Altar's Light",
-          "count": 1
-        },
-        {
-          "op": "assertLibraryCount",
-          "player": 1,
-          "name": "Green Sun's Zenith",
-          "count": 1
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertExileCount",
@@ -536,9 +766,61 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Altar's Light",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Pyroblast",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Pyroblast",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Green Sun's Zenith",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "onTop": true
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Ambush Viper"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Ambush Viper",
+          "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "name": "Green Sun's Zenith",
           "count": 1
         }
       ]

@@ -33,8 +33,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTopCardRevealed(playerA, true)"
+          "op": "assertTopCardRevealed",
+          "player": 0,
+          "expected": true
         }
       ]
     },
@@ -174,8 +175,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, \"Conspicuous Snoop\", ActivatedAbility.class, 2)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Conspicuous Snoop",
+          "kind": "activated",
+          "count": 1
         }
       ]
     }

@@ -48,12 +48,24 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"untapped\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Archelos, Lagoon Mystic\", false, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Archelos, Lagoon Mystic",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"untapped\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Grizzly Bears\", false, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "attack",
@@ -63,8 +75,14 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"tapped\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Archelos, Lagoon Mystic\", true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Archelos, Lagoon Mystic",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -80,12 +98,24 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"tapped\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Archelos, Lagoon Mystic\", true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Archelos, Lagoon Mystic",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"tapped\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Deranged Outcast\", true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Deranged Outcast",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

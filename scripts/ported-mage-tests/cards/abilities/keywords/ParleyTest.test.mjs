@@ -99,26 +99,48 @@ registerPortedMageTests({
           "name": "Selvala, Explorer Returned"
         },
         {
-          "op": "activateManaAbility",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "<i>Parley",
-          "count": 1
-        },
-        {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Selvala, Explorer Returned",
-          "count": 1
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "activateAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Selvala, Explorer Returned",
+          "ability": "Parley"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Selvala, Explorer Returned",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 2
         },
         {
           "op": "assertLife",

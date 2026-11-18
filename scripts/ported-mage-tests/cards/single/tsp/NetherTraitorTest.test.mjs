@@ -183,6 +183,10 @@ registerPortedMageTests({
       "name": "testNetherTraitorGraveyardGhoulDies",
       "operations": [
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -215,7 +219,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Sacrifice"
+          "ability": "Sacrifice",
+          "source": "Goblin Bombardment"
         },
         {
           "op": "setChoice",
@@ -228,13 +233,44 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Nether Traitor",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "setChoice",
+          "player": 0,
+          "value": "Nether Traitor"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Goblin Bombardment",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -267,8 +303,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Swamp\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "count": 1,
+          "tapped": true
         }
       ]
     },

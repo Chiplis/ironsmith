@@ -385,7 +385,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Brago, King Eternal",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "addTarget",
@@ -539,8 +539,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, cmb, soltari, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "targetPlayer": 0,
+          "attachment": "Cho-Manno's Blessing",
+          "target": "Soltari Visionary",
+          "expected": true
         }
       ]
     }

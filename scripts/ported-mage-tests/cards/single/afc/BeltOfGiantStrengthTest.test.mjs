@@ -48,8 +48,18 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, belt, gigantosauras, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Belt of Giant Strength",
+          "target": "Gigantosaurus",
+          "expected": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 10,
+          "tapped": false
         }
       ]
     },

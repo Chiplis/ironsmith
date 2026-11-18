@@ -243,9 +243,26 @@ registerPortedMageTests({
           "name": "Silvercoat Lion"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast without paying its mana cost (source: Omniscience"
+          "op": "setOptionChoices",
+          "description": "Choose casting method for Silvercoat Lion",
+          "choices": [
+            "Cast without paying mana cost: Free"
+          ],
+          "kind": "options",
+          "player": 0
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -272,18 +289,17 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Plains\", false)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Plains",
+          "tapped": true,
+          "count": 0
         }
       ]
     },
     {
       "name": "testCastingSplitCards",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -309,33 +325,38 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Fire // Ice",
+          "name": "Fire // Ice@split",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Fire",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Fire",
+          "objectAlias": "@split",
+          "priceSource": "Omniscience",
           "target": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast without paying its mana cost (source: Omniscience"
-        },
-        {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, playerB, 2)"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Fire",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@split",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -354,12 +375,16 @@ registerPortedMageTests({
           "life": 18
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Island\", false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Island",
+          "tapped": false
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Mountain\", false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": false
         }
       ]
     },
@@ -406,9 +431,13 @@ registerPortedMageTests({
           "name": "Shrapnel Blast"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast without paying its mana cost (source: Omniscience"
+          "op": "setOptionChoices",
+          "description": "Choose casting method for Shrapnel Blast",
+          "choices": [
+            "Cast without paying mana cost: Free"
+          ],
+          "kind": "options",
+          "player": 0
         },
         {
           "op": "setChoice",
@@ -418,7 +447,33 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Shrapnel Blast",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Ornithopter",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -445,8 +500,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Mountain\", false)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 0
         }
       ]
     },
@@ -559,7 +617,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Far // Away",
+          "name": "Far // Away@split.original",
           "count": 1
         },
         {
@@ -567,22 +625,19 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "fused Far // Away"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast without paying its mana cost (source: Omniscience"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Silvercoat Lion"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "name": "fused Far // Away",
+          "objectAlias": "@split.original",
+          "castingMethod": "fuse",
+          "target": {
+            "groups": [
+              [
+                "Silvercoat Lion"
+              ],
+              [
+                1
+              ]
+            ]
+          }
         },
         {
           "op": "setChoice",
@@ -1030,11 +1085,45 @@ registerPortedMageTests({
           "name": "Jeleva, Nephalia's Scourge"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jeleva, Nephalia's Scourge",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jeleva, Nephalia's Scourge",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Savage Beating",
+          "count": 2
+        },
+        {
           "op": "attack",
           "turn": 3,
           "player": 0,
           "attacker": "Jeleva, Nephalia's Scourge",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "setChoice",
@@ -1042,19 +1131,55 @@ registerPortedMageTests({
           "value": "Savage Beating"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "setOptionChoices",
+          "description": "Choose mode for Savage Beating",
+          "choices": [
+            "Creatures you control gain double strike until end of turn."
+          ],
+          "kind": "options",
+          "player": 0
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
+          "op": "setOptionChoices",
+          "description": "Choose optional costs for Savage Beating",
+          "choices": [],
+          "kind": "options",
+          "player": 0
         },
         {
-          "op": "setModeChoice",
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Jeleva, Nephalia's Scourge",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Savage Beating",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertTapped",
           "player": 0,
-          "value": "1"
+          "name": "Jeleva, Nephalia's Scourge",
+          "tapped": true,
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
           "op": "setStopAt",
@@ -1071,8 +1196,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(jeleva, true)"
+          "op": "assertTapped",
+          "name": "Jeleva, Nephalia's Scourge",
+          "tapped": true,
+          "player": 0
         },
         {
           "op": "assertLife",

@@ -40,7 +40,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip",
-          "target": "Fugitive Wizard"
+          "target": "Fugitive Wizard",
+          "source": "Short Sword"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Short Sword",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Fugitive Wizard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Short Sword",
+          "target": "Fugitive Wizard",
+          "expected": true
         },
         {
           "op": "attack",
@@ -55,6 +78,34 @@ registerPortedMageTests({
           "player": 1,
           "blocker": "Fugitive Wizard",
           "attacker": "Corrosive Ooze"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -125,7 +176,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip",
-          "target": "Fugitive Wizard"
+          "target": "Fugitive Wizard",
+          "source": "Short Sword"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Short Sword",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Fugitive Wizard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Short Sword",
+          "target": "Fugitive Wizard",
+          "expected": true
         },
         {
           "op": "attack",
@@ -140,6 +214,34 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Corrosive Ooze",
           "attacker": "Fugitive Wizard"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -210,7 +312,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip",
-          "target": "Kraken Hatchling"
+          "target": "Kraken Hatchling",
+          "source": "Short Sword"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Short Sword",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Kraken Hatchling"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Short Sword",
+          "target": "Kraken Hatchling",
+          "expected": true
         },
         {
           "op": "attack",
@@ -225,6 +350,34 @@ registerPortedMageTests({
           "player": 1,
           "blocker": "Kraken Hatchling",
           "attacker": "Corrosive Ooze"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -295,7 +448,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip",
-          "target": "Kraken Hatchling"
+          "target": "Kraken Hatchling",
+          "source": "Short Sword"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Short Sword",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Kraken Hatchling"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Short Sword",
+          "target": "Kraken Hatchling",
+          "expected": true
         },
         {
           "op": "attack",
@@ -310,6 +486,34 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Corrosive Ooze",
           "attacker": "Kraken Hatchling"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -380,7 +584,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip",
-          "target": "Centaur Courser"
+          "target": "Centaur Courser",
+          "source": "Short Sword"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Short Sword",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Centaur Courser"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Short Sword",
+          "target": "Centaur Courser",
+          "expected": true
         },
         {
           "op": "attack",
@@ -395,6 +622,34 @@ registerPortedMageTests({
           "player": 1,
           "blocker": "Centaur Courser",
           "attacker": "Corrosive Ooze"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -465,7 +720,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip",
-          "target": "Centaur Courser"
+          "target": "Centaur Courser",
+          "source": "Short Sword"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Short Sword",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Centaur Courser"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Short Sword",
+          "target": "Centaur Courser",
+          "expected": true
         },
         {
           "op": "attack",
@@ -480,6 +758,34 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Corrosive Ooze",
           "attacker": "Centaur Courser"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -550,7 +856,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip",
-          "target": "Acolyte of Xathrid"
+          "target": "Acolyte of Xathrid",
+          "source": "Short Sword"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Short Sword",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Acolyte of Xathrid"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Short Sword",
+          "target": "Acolyte of Xathrid",
+          "expected": true
         },
         {
           "op": "attack",
@@ -565,6 +894,34 @@ registerPortedMageTests({
           "player": 1,
           "blocker": "Acolyte of Xathrid",
           "attacker": "Corrosive Ooze"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -635,7 +992,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "Equip",
-          "target": "Acolyte of Xathrid"
+          "target": "Acolyte of Xathrid",
+          "source": "Short Sword"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Short Sword",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Acolyte of Xathrid"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Short Sword",
+          "target": "Acolyte of Xathrid",
+          "expected": true
         },
         {
           "op": "attack",
@@ -650,6 +1030,34 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Corrosive Ooze",
           "attacker": "Acolyte of Xathrid"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "source": "Corrosive Ooze",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",

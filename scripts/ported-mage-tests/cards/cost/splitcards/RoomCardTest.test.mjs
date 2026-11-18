@@ -42,7 +42,54 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Bottomless Pool",
+          "count": 1
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Bottomless Pool",
+          "cardType": "ENCHANTMENT",
+          "extra": "true"
+        },
+        {
+          "op": "assertSubtype",
+          "player": 0,
+          "name": "Bottomless Pool",
+          "subtype": "ROOM"
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Bottomless Pool",
+          "kind": "triggered",
+          "count": 1
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Bottomless Pool",
+          "kind": "activated",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Bottomless Pool",
+          "expected": {
+            "manaValue": 1,
+            "manaCost": "{U}"
+          }
         }
       ]
     },
@@ -80,7 +127,54 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Locker Room",
+          "count": 1
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Locker Room",
+          "cardType": "ENCHANTMENT",
+          "extra": "true"
+        },
+        {
+          "op": "assertSubtype",
+          "player": 0,
+          "name": "Locker Room",
+          "subtype": "ROOM"
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Locker Room",
+          "kind": "triggered",
+          "count": 1
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Locker Room",
+          "kind": "activated",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Locker Room",
+          "expected": {
+            "manaValue": 5,
+            "manaCost": "{4}{U}"
+          }
         }
       ]
     },
@@ -122,7 +216,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}{U}: Unlock the right half."
+          "ability": "Unlock Locker Room"
         },
         {
           "op": "waitStackResolved",
@@ -136,7 +230,70 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Bottomless Pool // Locker Room",
+          "count": 1
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Bottomless Pool // Locker Room",
+          "cardType": "ENCHANTMENT",
+          "extra": "true"
+        },
+        {
+          "op": "assertSubtype",
+          "player": 0,
+          "name": "Bottomless Pool // Locker Room",
+          "subtype": "ROOM"
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Bottomless Pool // Locker Room",
+          "kind": "triggered",
+          "count": 2
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Bottomless Pool // Locker Room",
+          "kind": "activated",
+          "count": 0
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Unlock Bottomless Pool",
+          "expected": false
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Unlock Locker Room",
+          "expected": false
+        },
+        {
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Bottomless Pool // Locker Room",
+          "expected": {
+            "manaValue": 6,
+            "manaCost": "{U}{4}{U}"
+          }
         }
       ]
     },
@@ -167,7 +324,70 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Fully Locked Room",
+          "count": 1
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Fully Locked Room",
+          "cardType": "ENCHANTMENT",
+          "extra": "true"
+        },
+        {
+          "op": "assertSubtype",
+          "player": 0,
+          "name": "Fully Locked Room",
+          "subtype": "ROOM"
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Fully Locked Room",
+          "kind": "triggered",
+          "count": 0
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Fully Locked Room",
+          "kind": "activated",
+          "count": 0
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Unlock Bottomless Pool",
+          "expected": true
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Unlock Locker Room",
+          "expected": true
+        },
+        {
+          "op": "assertPermanentCharacteristics",
+          "player": 0,
+          "name": "Fully Locked Room",
+          "expected": {
+            "manaValue": 0,
+            "manaCost": null
+          }
         }
       ]
     },
@@ -249,12 +469,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertType(bottomlessPool, CardType.ENCHANTMENT, true)"
+          "op": "assertType",
+          "name": "Bottomless Pool",
+          "player": 0,
+          "cardType": "ENCHANTMENT",
+          "extra": "true"
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(bottomlessPool, SubType.ROOM)"
+          "op": "assertSubtype",
+          "name": "Bottomless Pool",
+          "subtype": "ROOM"
         }
       ]
     },
@@ -318,11 +542,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "COMBAT_DAMAGE",
           "player": 0,
-          "count": 2
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Locker Room trigger must be correct\", 1, PhaseStep.COMBAT_DAMAGE, playerA, \"Whenever a creature you control deals combat damage to an opponent, draw a card.\", 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "count": 1,
+          "source": "Locker Room",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setStopAt",
@@ -339,12 +568,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertType(lockerRoom, CardType.ENCHANTMENT, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(lockerRoom, SubType.ROOM)"
+          "op": "assertType",
+          "player": 0,
+          "name": "Locker Room",
+          "cardType": "ENCHANTMENT",
+          "extra": "SubType.ROOM"
         },
         {
           "op": "assertPermanentCount",
@@ -363,7 +591,12 @@ registerPortedMageTests({
           "op": "assertHandCount",
           "player": 0,
           "name": "Plains",
-          "count": 2
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 18
         }
       ]
     },
@@ -412,7 +645,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "{U}: Unlock the left half.",
+          "label": "Unlock Bottomless Pool",
           "expected": true
         },
         {
@@ -420,12 +653,27 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}: Unlock the left half."
+          "ability": "Unlock Bottomless Pool"
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Memnite"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Locker Room // Bottomless Pool",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -454,16 +702,21 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "Bottomless Pool // Locker Room",
+          "name": "Locker Room // Bottomless Pool",
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertType(bottomlessPoolLockerRoom, CardType.ENCHANTMENT, true)"
+          "op": "assertType",
+          "player": 0,
+          "name": "Locker Room // Bottomless Pool",
+          "cardType": "ENCHANTMENT",
+          "extra": "true"
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(bottomlessPoolLockerRoom, SubType.ROOM)"
+          "op": "assertSubtype",
+          "player": 0,
+          "name": "Locker Room // Bottomless Pool",
+          "subtype": "ROOM"
         }
       ]
     },
@@ -509,17 +762,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Bottomless Pool"
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
         },
         {
           "op": "addTarget",
@@ -529,8 +780,13 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
+          "name": "Memnite",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -540,26 +796,20 @@ registerPortedMageTests({
           "name": "Felidar Guardian"
         },
         {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Yes"
-        },
-        {
           "op": "addTarget",
           "player": 0,
-          "target": "Bottomless Pool"
+          "target": {
+            "groups": [
+              [
+                "Bottomless Pool"
+              ]
+            ]
+          }
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -567,37 +817,43 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "execute"
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "Memnite",
+          "player": 0,
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "EmptyNames.FULLY_LOCKED_ROOM.getTestCommand()",
+          "player": 0,
           "count": 1
         },
         {
           "op": "assertPermanentCount",
+          "name": "Bottomless Pool",
           "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
           "name": "Felidar Guardian",
+          "player": 0,
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertType(EmptyNames.FULLY_LOCKED_ROOM.getTestCommand(), CardType.ENCHANTMENT, true)"
+          "op": "assertType",
+          "name": "EmptyNames.FULLY_LOCKED_ROOM.getTestCommand()",
+          "player": 0,
+          "cardType": "ENCHANTMENT",
+          "extra": "true"
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(EmptyNames.FULLY_LOCKED_ROOM.getTestCommand(), SubType.ROOM)"
+          "op": "assertSubtype",
+          "name": "EmptyNames.FULLY_LOCKED_ROOM.getTestCommand()",
+          "subtype": "ROOM"
         }
       ]
     },
@@ -657,10 +913,11 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "source": "Bottomless Pool",
+          "count": 1
         },
         {
           "op": "addTarget",
@@ -671,7 +928,22 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bottomless Pool",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Memnite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "castSpell",
@@ -681,10 +953,11 @@ registerPortedMageTests({
           "name": "Felidar Guardian"
         },
         {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "source": "Felidar Guardian",
+          "count": 1
         },
         {
           "op": "setChoice",
@@ -700,14 +973,29 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Felidar Guardian",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Bottomless Pool"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "{U}: Unlock the left half.",
+          "label": "Unlock Bottomless Pool",
           "expected": true
         },
         {
@@ -715,12 +1003,28 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}: Unlock the left half."
+          "ability": "Unlock Bottomless Pool"
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Black Knight"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bottomless Pool",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "objectTarget": "Black Knight"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -821,7 +1125,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}{U}: Unlock the right half."
+          "ability": "Unlock Locker Room"
         },
         {
           "op": "waitStackResolved",
@@ -904,6 +1208,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -911,11 +1219,25 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bottomless Pool",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "See Double"
+          "name": "See Double",
+          "target": {
+            "groups": [
+              [
+                "Bottomless Pool"
+              ]
+            ]
+          }
         },
         {
           "op": "setModeChoice",
@@ -923,15 +1245,32 @@ registerPortedMageTests({
           "value": "1"
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 0,
-          "target": "Bottomless Pool"
+          "kind": "boolean",
+          "description": "Perform the effect",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "See Double",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 3
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 2
         },
         {
           "op": "addTarget",
@@ -942,7 +1281,30 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Bottomless Pool",
+          "abilityKind": "Triggered",
+          "objectTarget": "Memnite",
+          "targetCount": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertHandCount",
+          "name": "Memnite",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "addTarget",
@@ -950,33 +1312,41 @@ registerPortedMageTests({
           "target": "Ornithopter"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_TURN"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
         },
         {
           "op": "execute"
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "Memnite",
+          "player": 0,
           "count": 1
         },
         {
           "op": "assertHandCount",
-          "player": 0,
           "name": "Ornithopter",
+          "player": 0,
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Bottomless Pool",
+          "player": 0,
           "count": 2
         }
       ]
@@ -1030,15 +1400,15 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Memnite"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Memnite"
         },
         {
           "op": "waitStackResolved",
@@ -1054,33 +1424,34 @@ registerPortedMageTests({
           "name": "Clever Impersonator"
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Bottomless Pool"
+          ]
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Yes"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Bottomless Pool"
-        },
-        {
-          "op": "waitStackResolved",
+          "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "label": "Unlock Bottomless Pool",
+          "player": 0,
+          "expected": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}: Unlock the left half."
+          "ability": "Unlock Bottomless Pool"
         },
         {
           "op": "addTarget",
@@ -1168,22 +1539,33 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Twiddle"
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "name": "Twiddle",
+          "target": {
+            "groups": [
+              [
+                "Mindreaver"
+              ]
+            ]
+          }
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Mindreaver"
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          }
         },
         {
           "op": "setChoice",
@@ -1191,15 +1573,21 @@ registerPortedMageTests({
           "value": "No"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 0
-        },
-        {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Bottomless Pool // Locker Room",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Plains",
+          "player": 0,
+          "count": 2
         },
         {
           "op": "castSpell",
@@ -1209,16 +1597,31 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bottomless Pool",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}{U}, Sacrifice {this}:"
+          "source": "Mindreaver",
+          "ability": "{U}{U}, Sacrifice",
+          "target": {
+            "groups": [
+              [
+                "Bottomless Pool"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Bottomless Pool"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -1226,11 +1629,19 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "execute"
         },
         {
-          "op": "execute"
+          "op": "assertGraveyardCount",
+          "name": "Bottomless Pool // Locker Room",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Bottomless Pool",
+          "player": 0,
+          "count": 0
         }
       ]
     },
@@ -1290,15 +1701,15 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "waitStackResolved",
@@ -1327,15 +1738,15 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "waitStackResolved",
@@ -1348,7 +1759,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}{U}: Unlock the right half."
+          "ability": "Unlock Locker Room"
         },
         {
           "op": "waitStackResolved",
@@ -1366,13 +1777,25 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Bottomless Pool // Locker Room"
+          "target": {
+            "groups": [
+              [
+                "Bottomless Pool // Locker Room"
+              ]
+            ]
+          }
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "EmptyNames.FULLY_LOCKED_ROOM.getTestCommand()",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -1384,7 +1807,13 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "EmptyNames.FULLY_LOCKED_ROOM.getTestCommand()"
+          "target": {
+            "groups": [
+              [
+                "EmptyNames.FULLY_LOCKED_ROOM.getTestCommand()"
+              ]
+            ]
+          }
         },
         {
           "op": "setStopAt",
@@ -1507,15 +1936,15 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "waitStackResolved",
@@ -1544,15 +1973,15 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "waitStackResolved",
@@ -1565,7 +1994,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}{U}: Unlock the right half."
+          "ability": "Unlock Locker Room"
         },
         {
           "op": "waitStackResolved",
@@ -1583,13 +2012,25 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Bottomless Pool // Locker Room"
+          "target": {
+            "groups": [
+              [
+                "Bottomless Pool // Locker Room"
+              ]
+            ]
+          }
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "EmptyNames.FULLY_LOCKED_ROOM.getTestCommand()",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -1601,7 +2042,13 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Locker Room"
+          "target": {
+            "groups": [
+              [
+                "Locker Room"
+              ]
+            ]
+          }
         },
         {
           "op": "setStopAt",
@@ -1725,15 +2172,15 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "waitStackResolved",
@@ -1762,15 +2209,15 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "waitStackResolved",
@@ -1783,7 +2230,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}{U}: Unlock the right half."
+          "ability": "Unlock Locker Room"
         },
         {
           "op": "waitStackResolved",
@@ -1801,13 +2248,25 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Bottomless Pool // Locker Room"
+          "target": {
+            "groups": [
+              [
+                "Bottomless Pool // Locker Room"
+              ]
+            ]
+          }
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "EmptyNames.FULLY_LOCKED_ROOM.getTestCommand()",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -1819,7 +2278,13 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Bottomless Pool // Locker Room"
+          "target": {
+            "groups": [
+              [
+                "Bottomless Pool // Locker Room"
+              ]
+            ]
+          }
         },
         {
           "op": "setStopAt",
@@ -2003,18 +2468,24 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "EmptyNames.FULLY_LOCKED_ROOM.getTestCommand()",
-          "count": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(EmptyNames.FULLY_LOCKED_ROOM.getTestCommand(), CardType.ENCHANTMENT, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(EmptyNames.FULLY_LOCKED_ROOM.getTestCommand(), SubType.ROOM)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "cardType": "Enchantment"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Room",
+              "expected": true
+            },
+            {
+              "property": "manaValue",
+              "expected": 0
+            }
+          ]
         },
         {
           "op": "assertGraveyardCount",
@@ -2079,15 +2550,15 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "waitStackResolved",
@@ -2150,7 +2621,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}{U}: Unlock the right half."
+          "ability": "Unlock Locker Room"
         },
         {
           "op": "waitStackResolved",
@@ -2235,15 +2706,15 @@ registerPortedMageTests({
           "name": "Bottomless Pool"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": null
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "waitStackResolved",
@@ -2256,7 +2727,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}{U}: Unlock the right half."
+          "ability": "Unlock Locker Room"
         },
         {
           "op": "waitStackResolved",
@@ -2282,7 +2753,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}: {this} becomes a copy"
+          "ability": "{2}: This artifact becomes a copy",
+          "source": "Mirage Mirror"
         },
         {
           "op": "addTarget",
@@ -2296,11 +2768,19 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "label": "Unlock Locker Room",
+          "player": 0,
+          "expected": true
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}{U}: Unlock the right half."
+          "ability": "Unlock Locker Room"
         },
         {
           "op": "setStopAt",
@@ -2312,7 +2792,8 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}: {this} becomes a copy"
+          "ability": "{2}: This artifact becomes a copy",
+          "source": "Mirage Mirror"
         },
         {
           "op": "addTarget",
@@ -2405,17 +2886,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Bottomless Pool"
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
         },
         {
           "op": "addTarget",
@@ -2425,8 +2904,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -2436,14 +2914,18 @@ registerPortedMageTests({
           "name": "Sakashima the Impostor"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Yes"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Bottomless Pool"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Bottomless Pool"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -2451,22 +2933,18 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "execute"
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Sakashima the Impostor",
+          "player": 0,
           "count": 0
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Sakashima the Impostor",
+          "player": 0,
           "count": 1
         }
       ]

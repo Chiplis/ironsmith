@@ -127,6 +127,17 @@ registerPortedMageTests({
           "name": "Coveted Falcon using Disguise"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Face-down Creature",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -136,24 +147,26 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ],
+              [
+                "Grizzly Bears"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Grizzly Bears"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
-        },
-        {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "source": "Coveted Falcon",
+          "count": 1,
+          "targetCount": 2,
+          "objectTarget": "Grizzly Bears",
+          "abilityKind": "Triggered"
         },
         {
           "op": "castSpell",
@@ -234,6 +247,17 @@ registerPortedMageTests({
           "name": "Coveted Falcon using Disguise"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Face-down Creature",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -243,24 +267,26 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ],
+              [
+                "Putrid Goblin"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Putrid Goblin"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
-        },
-        {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "source": "Coveted Falcon",
+          "count": 1,
+          "targetCount": 2,
+          "objectTarget": "Putrid Goblin",
+          "abilityKind": "Triggered"
         },
         {
           "op": "castSpell",
@@ -341,6 +367,17 @@ registerPortedMageTests({
           "name": "Coveted Falcon using Disguise"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Face-down Creature",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -350,24 +387,26 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ],
+              [
+                "Treacherous Pit-Dweller"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Treacherous Pit-Dweller"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
-        },
-        {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "source": "Coveted Falcon",
+          "count": 1,
+          "targetCount": 2,
+          "objectTarget": "Treacherous Pit-Dweller",
+          "abilityKind": "Triggered"
         },
         {
           "op": "castSpell",
@@ -467,6 +506,17 @@ registerPortedMageTests({
           "name": "Coveted Falcon using Disguise"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Face-down Creature",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -476,17 +526,55 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ],
+              [
+                "Darksteel Relic",
+                "Grizzly Bears"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Darksteel Relic^Grizzly Bears"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Coveted Falcon",
+          "count": 1,
+          "targetCount": 3,
+          "objectTarget": "Darksteel Relic",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "addTarget",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "name": "Guardian Beast",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Darksteel Relic",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "castSpell",

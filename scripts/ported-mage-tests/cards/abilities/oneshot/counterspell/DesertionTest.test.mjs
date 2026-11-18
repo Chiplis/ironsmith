@@ -49,12 +49,59 @@ registerPortedMageTests({
           "name": "Kozilek, Butcher of Truth"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Kozilek, Butcher of Truth",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Kozilek, Butcher of Truth",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "assertSpellTargetRequirements",
+          "player": 1,
+          "name": "Desertion",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Desertion",
-          "target": "Kozilek, Butcher of Truth"
+          "target": {
+            "groups": [
+              [
+                "Kozilek, Butcher of Truth"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Desertion",
+          "count": 1,
+          "targetCount": 1,
+          "objectTarget": "Kozilek, Butcher of Truth",
+          "onTop": true
         },
         {
           "op": "setStopAt",

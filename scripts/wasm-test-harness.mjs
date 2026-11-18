@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { selectObjectSyncMetadataForCommand } from "../web/ui/src/lib/sync-commands.js";
 
 export const DEFAULT_PLAYER_NAMES = ["Alice", "Bob"];
 
@@ -111,7 +112,7 @@ function instrumentWasmGameClass(WasmGame) {
 export function packageBase(pkg = "root") {
   // Keep regression runs on an immutable build when other local tasks rebuild
   // the shared browser package concurrently.
-  if (pkg === "demo" && process.env.IRONSMITH_TEST_WASM_PKG) {
+  if ((pkg === "root" || pkg === "demo") && process.env.IRONSMITH_TEST_WASM_PKG) {
     return pathToFileURL(path.resolve(process.env.IRONSMITH_TEST_WASM_PKG)).href;
   }
   if (pkg === "root") return "../pkg";
@@ -186,17 +187,28 @@ export function getState(game) {
   return game.uiState();
 }
 
+export function selectObjectsCommand(decision, objectIds) {
+  const command = { type: "select_objects", object_ids: objectIds };
+  const { stableIds, hiddenRefs } = selectObjectSyncMetadataForCommand(command, decision);
+  if (stableIds.some(id => id != null)) command.object_stable_ids = stableIds;
+  if (hiddenRefs.some(ref => ref != null)) command.object_hidden_refs = hiddenRefs;
+  return command;
+}
+
 // Local assertion data only: no executable programs or recovery importer.
-export function getInspectionState(game) {
+export function getInspectionState(game, { includeLibraryDetails = true } = {}) {
   const metadata = game.getHiddenCardState();
   const audit = game.exportPublicAuditCheckpoint();
   const ui = game.uiState();
   const publicObjects = new Map(audit.objects.map(object => [Number(object.id), object]));
   const objects = metadata.objects.map(object => {
-    const details = game.objectDetails(BigInt(object.id));
     const publicObject = publicObjects.get(Number(object.id));
+    // Name, identity and order are enough for library fixture assertions.
+    if (object.zone === "library" && !includeLibraryDetails) return { ...publicObject, ...object };
+    const details = game.objectDetails(BigInt(object.id));
     const types = parseTypeLine(details.type_line || '');
     return { ...publicObject, ...details, ...object,
+      name: object.zone === 'battlefield' ? details.name || object.name : object.name,
       controller: details.controller ?? object.controller ?? publicObject?.controller, owner: details.owner ?? object.owner ?? publicObject?.owner,
       cardTypes: types.cardTypes, subtypes: types.subtypes, supertypes: types.supertypes,
       oracleText: details.oracle_text, compiledText: details.compiled_text,
@@ -207,8 +219,12 @@ export function getInspectionState(game) {
     battlefield: objects.filter(object => object.zone === 'battlefield').map(object => object.id),
     exile: metadata.exile,
     command: objects.filter(object => object.zone === 'command').map(object => object.id),
-    stack: (ui.stack_objects || []).map(object => ({ ...object, objectId: object.object_id ?? object.id })),
+    stack: getStackSnapshot(ui),
   };
+}
+
+export function getStackSnapshot(state) {
+  return (state.stack_objects || []).map(object => ({ ...object, objectId: object.object_id ?? object.id }));
 }
 
 export function getGame(game) {

@@ -32,7 +32,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Llanowar Elves",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",

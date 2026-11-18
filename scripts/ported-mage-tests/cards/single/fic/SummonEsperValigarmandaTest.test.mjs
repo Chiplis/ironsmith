@@ -67,17 +67,25 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"T3: after bolt life\", 3, PhaseStep.POSTCOMBAT_MAIN, playerB, 20 - 2)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "life": "20 - 2",
+          "seatIndependent": true
         },
         {
-          "op": "setChoice",
+          "op": "addTarget",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "target": "TestPlayer.TARGET_SKIP"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"T5: no cast\", 5, PhaseStep.POSTCOMBAT_MAIN, playerB, 20 - 2)"
+          "op": "assertLife",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "life": "20 - 2",
+          "seatIndependent": true
         },
         {
           "op": "setChoice",

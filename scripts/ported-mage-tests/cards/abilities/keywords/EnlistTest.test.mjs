@@ -30,11 +30,6 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": "Silvercoat Lion"
         },
         {
@@ -308,11 +303,6 @@ registerPortedMageTests({
           "player": 0,
           "attacker": "Barkweave Crusher",
           "defender": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
         },
         {
           "op": "setChoice",

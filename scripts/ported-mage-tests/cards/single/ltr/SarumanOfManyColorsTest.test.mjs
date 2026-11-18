@@ -40,7 +40,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Saruman of Many Colors"
+          "target": "Saruman of Many Colors",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -48,7 +49,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Saruman of Many Colors"
+          "target": "Saruman of Many Colors",
+          "resolve": true
         },
         {
           "op": "setStopAt",
@@ -136,7 +138,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Saruman of Many Colors"
+          "name": "Saruman of Many Colors",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -147,20 +150,24 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Bolt Check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast your second spell each turn\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast your second spell each turn",
+          "count": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Lightning Bolt"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": null,
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -168,7 +175,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Lightning Bolt",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertGraveyardCount",
@@ -176,17 +184,23 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Mountain",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Mill check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"When one or more cards are milled this way\", 1)"
-        },
-        {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": 0,
+          "count": 1,
+          "source": "Saruman of Many Colors",
+          "abilityKind": "Triggered",
+          "objectTarget": "Lightning Bolt"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
         },
         {
           "op": "addTarget",
@@ -194,8 +208,28 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Final check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast \" + bolt, 2)"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null,
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "seatIndependent": true,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 2
         },
         {
           "op": "setStopAt",
@@ -284,7 +318,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Saruman of Many Colors"
+          "name": "Saruman of Many Colors",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -295,20 +330,19 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Bolt Check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast your second spell each turn\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast your second spell each turn",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": null,
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -316,7 +350,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Lightning Helix",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertGraveyardCount",
@@ -324,11 +359,17 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Mountain",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Mill check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"When one or more cards are milled this way\", 0)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 0,
+          "source": "Saruman of Many Colors",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setStopAt",
@@ -425,7 +466,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Saruman of Many Colors"
+          "name": "Saruman of Many Colors",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -436,8 +478,12 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Bolt Check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast your second spell each turn\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast your second spell each turn",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -448,16 +494,16 @@ registerPortedMageTests({
           "target": "Lightning Bolt"
         },
         {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 2
+          "op": "addTarget",
+          "player": 0,
+          "target": "Lightning Bolt"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": null,
+          "resolutions": 2
         },
         {
           "op": "assertGraveyardCount",
@@ -465,7 +511,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Lightning Bolt",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertGraveyardCount",
@@ -473,17 +520,23 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Mountain",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Mill check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"When one or more cards are milled this way\", 1)"
-        },
-        {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": 0,
+          "count": 1,
+          "source": "Saruman of Many Colors",
+          "abilityKind": "Triggered",
+          "objectTarget": "Lightning Bolt"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
         },
         {
           "op": "addTarget",
@@ -491,8 +544,28 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Final check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast \" + bolt, 1)"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null,
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "seatIndependent": true,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Lightning Bolt",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -583,7 +656,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Saruman of Many Colors"
+          "name": "Saruman of Many Colors",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -594,20 +668,19 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Bolt Check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast your second spell each turn\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast your second spell each turn",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": null,
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -615,7 +688,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Lightning Bolt",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertGraveyardCount",
@@ -623,11 +697,17 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Mountain",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Mill check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"When one or more cards are milled this way\", 0)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 0,
+          "source": "Saruman of Many Colors",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setStopAt",

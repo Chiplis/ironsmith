@@ -203,68 +203,105 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Riveteers Decoy",
+          "name": "Riveteers Decoy@blitzed",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Clone",
+          "name": "Clone@clone",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Riveteers Decoy using Blitz",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Riveteers Decoy with Blitz"
+          "objectAlias": "@blitzed"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Riveteers Decoy",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Clone",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Clone"
+          "objectAlias": "@clone"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Riveteers Decoy"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Clone",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "setOptionChoices",
+          "player": 0,
+          "description": "Choose what to copy as this permanent enters",
+          "kind": "options",
+          "choices": [
+            {
+              "description": "Enter as a copy of Riveteers Decoy",
+              "object": "@blitzed"
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Riveteers Decoy",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "source": "@blitzed",
+          "count": 1,
+          "turn": 1,
+          "phase": "END_TURN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "@clone",
+          "count": 0,
+          "turn": 1,
+          "phase": "END_TURN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@clone",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "name": "Riveteers Decoy",
+          "name": "@blitzed",
           "count": 1
         },
         {
@@ -342,11 +379,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tenacious Underdog"
+          "name": "Tenacious Underdog",
+          "methods": [],
+          "zone": "graveyard"
         },
         {
           "op": "setStrictChooseMode",
@@ -358,8 +397,13 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { Assert.assertEquals( \"Shouldn't be able to cast normally from graveyard\", \"Can't find ability to activate command: Cast Tenacious Underdog\", e.getMessage() ); } assertGraveyardCount(playerA, underdog, 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Tenacious Underdog",
+          "count": 1
         },
         {
           "op": "assertLife",

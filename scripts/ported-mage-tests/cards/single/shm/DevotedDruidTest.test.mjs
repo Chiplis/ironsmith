@@ -22,8 +22,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after mana tapped\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Devoted Druid\", true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Devoted Druid",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -39,8 +45,14 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after untap\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Devoted Druid\", false, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Devoted Druid",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",
@@ -105,8 +117,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after mana tapped\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Devoted Druid\", true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Devoted Druid",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -122,8 +140,14 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after untap\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Devoted Druid\", false, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Devoted Druid",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",

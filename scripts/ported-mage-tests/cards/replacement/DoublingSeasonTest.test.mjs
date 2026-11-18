@@ -81,29 +81,87 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Pallid Mycoderm",
           "player": 0,
-          "name": "Pallid Mycoderm"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Pallid Mycoderm",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Pallid Mycoderm",
+          "count": 0,
+          "counter": "spore"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Pallid Mycoderm",
+          "count": 2,
+          "counter": "spore"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Pallid Mycoderm",
+          "count": 4,
+          "counter": "spore"
         },
         {
           "op": "activateAbility",
+          "source": "Pallid Mycoderm",
+          "ability": "Create a 1/1 green Saproling",
+          "player": 0,
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Pallid Mycoderm",
+          "count": 1,
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertCounterCount",
           "player": 0,
-          "ability": "Remove three spore counters from {this}: Create"
+          "name": "Pallid Mycoderm",
+          "count": 1,
+          "counter": "spore"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 5,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Saproling Token",
+          "count": 2
         },
         {
           "op": "assertLife",
@@ -114,19 +172,6 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Saproling Token",
-          "count": 2
-        },
-        {
-          "op": "assertCounterCount",
-          "player": 0,
-          "name": "Pallid Mycoderm",
-          "counter": "SPORE",
-          "count": 1
         }
       ]
     },
@@ -478,7 +523,8 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Lightning Rager",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": false
         },
         {
           "op": "setStrictChooseMode",
@@ -490,8 +536,13 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Can't find available command - attack:Lightning Rager\")) { Assert.fail(\"Should have thrown error about cannot attack, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerA, \"Rite of the Raging Storm\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Rite of the Raging Storm",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
@@ -525,8 +576,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"etb counters\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Tibalt, the Fiend-Blooded\", CounterType.LOYALTY, onEtbCount)"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Tibalt, the Fiend-Blooded",
+          "count": 2,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -577,15 +633,45 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"etb counters\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Tibalt, the Fiend-Blooded\", CounterType.LOYALTY, onEtbCount)"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Tibalt, the Fiend-Blooded",
+          "count": 4,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Draw a card, then discard a card at random."
+          "ability": "+1: Draw a card, then discard a card at random.",
+          "source": "Tibalt, the Fiend-Blooded"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tibalt, the Fiend-Blooded",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Tibalt, the Fiend-Blooded",
+          "count": 5,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "holdStack": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -614,7 +700,7 @@ registerPortedMageTests({
           "player": 0,
           "name": "Tibalt, the Fiend-Blooded",
           "counter": "LOYALTY",
-          "count": "onEtbCount + onCostCount"
+          "count": 5
         }
       ]
     },
@@ -636,15 +722,45 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"etb counters\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Tibalt, the Fiend-Blooded\", CounterType.LOYALTY, onEtbCount)"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Tibalt, the Fiend-Blooded",
+          "count": 3,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Draw a card, then discard a card at random."
+          "ability": "+1: Draw a card, then discard a card at random.",
+          "source": "Tibalt, the Fiend-Blooded"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tibalt, the Fiend-Blooded",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Tibalt, the Fiend-Blooded",
+          "count": 5,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "holdStack": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -696,26 +812,87 @@ registerPortedMageTests({
         },
         {
           "op": "addCard",
-          "zone": "BATTLEFIELD",
+          "zone": "HAND",
           "player": 0,
           "name": "Chandra, Fire Artisan",
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "value": "Doubling Season"
+          "name": "Mountain",
+          "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"etb counters\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Chandra, Fire Artisan\", CounterType.LOYALTY, onEtbCount)"
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Chandra, Fire Artisan"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Doubling Season"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chandra, Fire Artisan",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Chandra, Fire Artisan",
+          "count": 9,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1"
+          "ability": "+1",
+          "source": "Chandra, Fire Artisan"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chandra, Fire Artisan",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Chandra, Fire Artisan",
+          "count": 13,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "holdStack": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -734,7 +911,7 @@ registerPortedMageTests({
           "player": 0,
           "name": "Chandra, Fire Artisan",
           "counter": "LOYALTY",
-          "count": "4 * 2 + 1(1 + 1) * 2"
+          "count": 13
         }
       ]
     },
@@ -757,26 +934,87 @@ registerPortedMageTests({
         },
         {
           "op": "addCard",
-          "zone": "BATTLEFIELD",
+          "zone": "HAND",
           "player": 0,
           "name": "Chandra, Fire Artisan",
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "value": "Pir, Imaginative Rascal"
+          "name": "Mountain",
+          "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"etb counters\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Chandra, Fire Artisan\", CounterType.LOYALTY, onEtbCount)"
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Chandra, Fire Artisan"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Pir, Imaginative Rascal"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chandra, Fire Artisan",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Chandra, Fire Artisan",
+          "count": 10,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1"
+          "ability": "+1",
+          "source": "Chandra, Fire Artisan"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chandra, Fire Artisan",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Chandra, Fire Artisan",
+          "count": 14,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "holdStack": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -795,7 +1033,7 @@ registerPortedMageTests({
           "player": 0,
           "name": "Chandra, Fire Artisan",
           "counter": "LOYALTY",
-          "count": "(4 + 1) * 2(1 + 1) * 2"
+          "count": 14
         }
       ]
     }

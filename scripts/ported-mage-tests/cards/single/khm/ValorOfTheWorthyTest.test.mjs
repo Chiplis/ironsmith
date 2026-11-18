@@ -73,8 +73,12 @@ registerPortedMageTests({
           "player": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"must trigger on destroy\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"When enchanted creature leaves the battlefield\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "When enchanted creature leaves the battlefield",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -164,8 +168,12 @@ registerPortedMageTests({
           "player": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"must trigger on destroy\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"When enchanted creature leaves the battlefield\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "When enchanted creature leaves the battlefield",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",

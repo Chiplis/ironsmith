@@ -199,6 +199,33 @@ registerPortedMageTests({
           "name": "Whitesun's Passage"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Whitesun's Passage",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Nykthos Paragon",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
@@ -206,17 +233,38 @@ registerPortedMageTests({
           "name": "Whitesun's Passage"
         },
         {
-          "op": "waitStackResolved",
-          "turn": 1,
+          "op": "assertStackObject",
+          "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "source": "Whitesun's Passage",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Nykthos Paragon",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "assertStackSize",
-          "turn": "second turn trigger",
-          "phase": 2,
-          "player": "PRECOMBAT_MAIN",
-          "count": 0
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

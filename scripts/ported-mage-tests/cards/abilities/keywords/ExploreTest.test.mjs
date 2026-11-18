@@ -1272,9 +1272,13 @@ registerPortedMageTests({
           "name": "Merfolk Branchwalker"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Topography Tracker"
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Topography Tracker"
+          ]
         },
         {
           "op": "addTarget",

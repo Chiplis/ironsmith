@@ -94,16 +94,22 @@ registerPortedMageTests({
           "name": "Cavern of Souls"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Human"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Human"
+          ]
         },
         {
-          "op": "castSpell",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Abuna Acolyte"
+          "name": "Abuna Acolyte",
+          "methods": [],
+          "zone": "hand"
         },
         {
           "op": "setStopAt",
@@ -111,8 +117,19 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Abuna Acolyte\")) { Assert.fail(\"Should have had error playerA having too many actions, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Abuna Acolyte",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Cavern of Souls",
+          "count": 1
         }
       ]
     },
@@ -241,38 +258,87 @@ registerPortedMageTests({
           "value": "Drake"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Blue"
-        },
-        {
           "op": "playLand",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Cavern of Souls"
+          "name": "Cavern of Souls",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Cavern of Souls",
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color",
+          "choices": [
+            "Blue"
+          ]
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Cavern of Souls",
+          "ability": "Add one mana of any color",
+          "player": 0,
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "U",
+          "amount": 1
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Azure Drake",
           "player": 0,
-          "name": "Azure Drake"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Azure Drake",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Remove Soul",
           "player": 1,
-          "name": "Remove Soul"
-        },
-        {
-          "op": "setStopAt",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "target": "Azure Drake"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Remove Soul",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Azure Drake"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Remove Soul",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -426,100 +492,21 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "playLand",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Cavern of Souls"
-        },
-        {
           "op": "setChoice",
           "player": 0,
           "value": "Elf"
         },
         {
-          "op": "activateManaAbility",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "playLand",
           "player": 0,
-          "ability": "{T}: Add one mana of ",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Green"
-        },
-        {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Boomerang",
-          "target": "Cavern of Souls"
+          "name": "Cavern of Souls",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "waitStackResolved",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Gladecover Scout"
-        },
-        {
-          "op": "playLand",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Cavern of Souls"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Horror"
-        },
-        {
-          "op": "activateManaAbility",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add one mana of ",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Black"
-        },
-        {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Fume Spitter"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 1,
-          "name": "Boomerang",
-          "count": 1
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -528,15 +515,163 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Cavern of Souls",
+          "ability": "Add one mana of any color",
+          "player": 0,
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
+        },
+        {
+          "op": "castSpell",
+          "name": "Boomerang",
+          "player": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "target": "Cavern of Souls"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Boomerang",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Cavern of Souls"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Cavern of Souls",
+          "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
+        },
+        {
+          "op": "castSpell",
+          "name": "Gladecover Scout",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Gladecover Scout",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gladecover Scout",
           "count": 1
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Horror"
+        },
+        {
+          "op": "playLand",
+          "player": 0,
+          "name": "Cavern of Souls",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Cavern of Souls",
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color",
+          "choices": [
+            "Black"
+          ]
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Cavern of Souls",
+          "ability": "Add one mana of any color",
+          "player": 0,
+          "count": 1,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "B",
+          "amount": 1
+        },
+        {
+          "op": "castSpell",
+          "name": "Fume Spitter",
+          "player": 0,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Fume Spitter",
+          "count": 1,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Fume Spitter",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Boomerang",
           "count": 1
         }
       ]
@@ -753,7 +888,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Runeclaw Bear",
+          "name": "Runeclaw Bear@bear",
           "count": 1
         },
         {
@@ -778,87 +913,168 @@ registerPortedMageTests({
           "count": 5
         },
         {
-          "op": "playLand",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Cavern of Souls"
-        },
-        {
           "op": "setChoice",
           "player": 0,
           "value": "Bear"
         },
         {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "playLand",
           "player": 0,
-          "name": "Runeclaw Bear"
+          "name": "Cavern of Souls",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Cavern of Souls",
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add one mana of any color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
+          "op": "activateManaAbility",
+          "source": "Cavern of Souls",
+          "ability": "Add one mana of any color",
+          "player": 0,
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
         },
         {
           "op": "castSpell",
+          "name": "Runeclaw Bear",
+          "player": 0,
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
+          "objectAlias": "@bear"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Runeclaw Bear",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "name": "Counterspell",
           "player": 1,
-          "name": "Counterspell"
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "target": "Runeclaw Bear"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Counterspell",
+          "count": 1,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Runeclaw Bear"
         },
         {
           "op": "waitStackResolved",
           "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Runeclaw Bear",
+          "name": "@bear",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Unsummon",
+          "player": 1,
           "turn": 3,
           "phase": "BEGIN_COMBAT",
-          "player": 1,
-          "name": "Unsummon",
           "target": "Runeclaw Bear"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Unsummon",
+          "count": 1,
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "objectTarget": "Runeclaw Bear"
         },
         {
           "op": "waitStackResolved",
           "turn": 3,
-          "phase": "BEGIN_COMBAT",
-          "player": null
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "@bear",
+          "count": 1
         },
         {
           "op": "playLand",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Forest"
+          "name": "Forest",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Runeclaw Bear",
+          "player": 0,
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Runeclaw Bear"
+          "objectAlias": "@bear"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Runeclaw Bear",
+          "count": 1,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "castSpell",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
+          "name": "Counterspell",
           "player": 1,
-          "name": "Counterspell"
-        },
-        {
-          "op": "setStopAt",
           "turn": 3,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "target": "Runeclaw Bear"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Counterspell",
+          "count": 1,
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "objectTarget": "Runeclaw Bear"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -869,7 +1085,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "name": "Runeclaw Bear",
+          "name": "@bear",
           "count": 1
         },
         {

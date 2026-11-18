@@ -42,6 +42,13 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Ring of Evos Isle",
+          "target": "Merfolk Spy",
+          "expected": true
         }
       ]
     },

@@ -71,7 +71,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Living Lore",
+          "name": "Living Lore@lore",
           "count": 1
         },
         {
@@ -82,23 +82,62 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Lightning Bolt"
-        },
-        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Living Lore"
+          "name": "Living Lore",
+          "objectAlias": "@lore"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Living Lore",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Lightning Bolt"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@lore",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "attack",
           "turn": 3,
           "player": 0,
-          "attacker": "Living Lore",
+          "attacker": "@lore",
           "defender": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Living Lore",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 19
         },
         {
           "op": "setChoice",
@@ -116,22 +155,28 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 3,
-          "phase": "END_COMBAT"
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Lightning Bolt",
+          "count": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 0,
           "name": "Living Lore",
-          "count": 0
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",

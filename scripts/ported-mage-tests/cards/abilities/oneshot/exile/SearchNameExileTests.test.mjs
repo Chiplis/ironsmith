@@ -17,8 +17,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 1,
-          "name": "Breaking // Entering",
-          "count": 2
+          "name": "Breaking // Entering@first",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 1,
+          "name": "Breaking // Entering@second",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -35,44 +42,61 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 1 of Surgical Extraction",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
         },
         {
           "op": "castSpell",
+          "name": "Surgical Extraction",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Surgical Extraction",
-          "target": "Breaking // Entering"
+          "target": "@first"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Yes"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Breaking // Entering^Breaking // Entering"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Breaking // Entering"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Breaking // Entering"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Surgical Extraction",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 1,
+          "objectTarget": "Breaking"
         },
         {
-          "op": "execute"
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Breaking // Entering"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Breaking // Entering"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Breaking // Entering"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Breaking // Entering"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -373,7 +397,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Ready // Willing",
+          "name": "Ready // Willing@split.original",
           "count": 2
         },
         {
@@ -405,11 +429,26 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Ready // Willing",
+          "objectAlias": "@split.original",
+          "methods": [
+            "normal",
+            "split_other_half",
+            "fuse"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "fused Ready // Willing"
+          "name": "fused Ready // Willing",
+          "objectAlias": "@split.original",
+          "castingMethod": "fuse"
         },
         {
           "op": "castSpell",

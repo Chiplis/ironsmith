@@ -202,12 +202,33 @@ registerPortedMageTests({
           "name": "Thraben Inspector"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thraben Inspector",
+          "count": 1,
+          "onTop": true
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thraben Inspector",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
@@ -230,9 +251,28 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "count": 508
+          "count": 737
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Clue Token",
+          "count": 243
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Food Token",
+          "count": 243
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Treasure Token",
+          "count": 243
         }
-      ]
+      ],
+      "deferredPriorityAnalysis": true
     },
     {
       "name": "testGingerbruteToken",

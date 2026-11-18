@@ -10,7 +10,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Tale of Tinuviel",
+          "name": "Tale of Tinúviel",
           "count": 1
         },
         {
@@ -39,7 +39,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tale of Tinuviel"
+          "name": "Tale of Tinúviel"
         },
         {
           "op": "addTarget",
@@ -48,10 +48,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Grizzly Bears"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "ability": "IndestructibleAbility.class",
+          "expected": true
         },
         {
           "op": "addTarget",
@@ -60,10 +62,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": "before III, Grizzly Bears indestructible",
-          "name": 5,
-          "ability": "UPKEEP",
-          "expected": 0
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "ability": "IndestructibleAbility.class",
+          "expected": true
         },
         {
           "op": "addTarget",
@@ -77,24 +81,30 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": "after III, Grizzly Bears not indestructible",
-          "name": 5,
-          "ability": "POSTCOMBAT_MAIN",
-          "expected": 0
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "ability": "IndestructibleAbility.class",
+          "expected": false
         },
         {
           "op": "assertAbility",
-          "player": "after III, Grizzly Bears lifelink",
-          "name": 5,
-          "ability": "POSTCOMBAT_MAIN",
-          "expected": 0
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "ability": "LifelinkAbility.class",
+          "expected": true
         },
         {
           "op": "assertAbility",
-          "player": "after III, Memnite lifelink",
-          "name": 5,
-          "ability": "POSTCOMBAT_MAIN",
-          "expected": 0
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "ability": "LifelinkAbility.class",
+          "expected": true
         },
         {
           "op": "setStrictChooseMode",

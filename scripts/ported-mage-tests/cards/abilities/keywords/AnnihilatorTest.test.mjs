@@ -39,7 +39,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Emrakul, the Aeons Torn",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",
@@ -131,7 +131,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "It That Betrays",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",

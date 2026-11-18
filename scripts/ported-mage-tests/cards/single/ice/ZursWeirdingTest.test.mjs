@@ -14,21 +14,42 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "clearZone",
+          "zone": "library",
+          "player": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Forest",
+          "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "name": "Forest",
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Pay 2 life",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertActivePlayer",
+          "player": 1,
           "turn": 2,
-          "phase": "END_TURN"
+          "phase": "DRAW"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DRAW"
         },
         {
           "op": "assertLife",
@@ -36,13 +57,30 @@ registerPortedMageTests({
           "life": 18
         },
         {
-          "op": "assertGraveyardCount",
+          "op": "assertLife",
           "player": 1,
-          "count": 1
+          "life": 20
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "name": "Forest",
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 1,
+            "name": "Forest"
+          },
+          "count": 1,
+          "checks": []
         },
         {
           "op": "assertHandCount",
           "player": 1,
+          "name": "Forest",
           "count": 0
         }
       ]
@@ -58,21 +96,42 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "clearZone",
+          "zone": "library",
+          "player": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Forest",
+          "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "name": "Forest",
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": false
+          "kind": "boolean",
+          "description": "Pay 2 life",
+          "choices": [
+            "No"
+          ]
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertActivePlayer",
+          "player": 1,
           "turn": 2,
-          "phase": "END_TURN"
+          "phase": "DRAW"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DRAW"
         },
         {
           "op": "assertLife",
@@ -80,13 +139,20 @@ registerPortedMageTests({
           "life": 20
         },
         {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
+        },
+        {
           "op": "assertGraveyardCount",
           "player": 1,
+          "name": "Forest",
           "count": 0
         },
         {
           "op": "assertHandCount",
           "player": 1,
+          "name": "Forest",
           "count": 1
         }
       ]

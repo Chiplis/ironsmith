@@ -50,10 +50,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Memnite"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "ability": "FirstStrikeAbility.class",
+          "expected": true
         },
         {
           "op": "assertPowerToughness",
@@ -66,10 +68,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": "Memnite doesn't have first strike turn 2",
-          "name": 2,
-          "ability": "PRECOMBAT_MAIN",
-          "expected": 0
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "ability": "FirstStrikeAbility.class",
+          "expected": false
         },
         {
           "op": "setStopAt",

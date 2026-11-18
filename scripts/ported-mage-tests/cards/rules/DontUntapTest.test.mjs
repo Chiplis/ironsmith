@@ -35,18 +35,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
-          "turn": 4,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: You gain 1 life"
-        },
-        {
           "op": "attack",
           "turn": 4,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "castSpell",
@@ -57,11 +50,64 @@ registerPortedMageTests({
           "target": "Soulmender"
         },
         {
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Triton Tactics",
+          "count": 1,
+          "onTop": true,
+          "objectTarget": "Soulmender"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
           "op": "block",
           "turn": 4,
           "player": 0,
           "blocker": "Soulmender",
           "attacker": "Silvercoat Lion"
+        },
+        {
+          "op": "assertLife",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": 20,
+          "seatIndependent": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}: You gain 1 life",
+          "source": "Soulmender"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Soulmender",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -92,8 +138,11 @@ registerPortedMageTests({
           "toughness": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Silvercoat Lion\", true)"
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1,
+          "tapped": true
         },
         {
           "op": "assertLife",
@@ -217,11 +266,68 @@ registerPortedMageTests({
           "target": 0
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Exhaustion",
+          "count": 1,
+          "onTop": true,
+          "controller": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Exhaustion",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "tapped": true,
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 2,
           "phase": "END_TURN",
           "player": 0,
-          "ability": "{1}{B}:"
+          "ability": "{1}{B}:",
+          "source": "Reassembling Skeleton"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Reassembling Skeleton"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_TURN",
+          "source": "Reassembling Skeleton",
+          "abilityKind": "Activated",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_TURN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Reassembling Skeleton",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -236,16 +342,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Silvercoat Lion\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "unsupported",
           "source": "assertTapped(\"Reassembling Skeleton\", true)"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Swamp\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": true,
+          "count": 2
         }
       ]
     },
@@ -289,6 +401,27 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
@@ -301,6 +434,28 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Mana Vapors",
+          "count": 1,
+          "onTop": true,
+          "controller": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Mana Vapors",
+          "count": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN"
@@ -309,8 +464,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Mountain\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 1
         }
       ]
     },
@@ -372,7 +530,35 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "END_TURN",
           "player": 0,
-          "ability": "{1}{B}:"
+          "ability": "{1}{B}:",
+          "source": "Reassembling Skeleton"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Reassembling Skeleton"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_TURN",
+          "source": "Reassembling Skeleton",
+          "abilityKind": "Activated",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_TURN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Reassembling Skeleton",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -393,6 +579,13 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Reassembling Skeleton\", true)"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": false,
+          "count": 2
         }
       ]
     },
@@ -476,26 +669,77 @@ registerPortedMageTests({
           "name": "Pollen Lullaby"
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": "PlayerA"
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": false
-        },
-        {
-          "op": "setChoice",
+          "op": "addTarget",
           "player": 0,
-          "value": false
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Pollen Lullaby",
+          "count": 1,
+          "onTop": true,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Pollen Lullaby",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "END_TURN",
           "player": 0,
-          "ability": "{1}{B}:"
+          "ability": "{1}{B}:",
+          "source": "Reassembling Skeleton"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Reassembling Skeleton"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_TURN",
+          "source": "Reassembling Skeleton",
+          "abilityKind": "Activated",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_TURN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Reassembling Skeleton",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -510,8 +754,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Silvercoat Lion\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "unsupported",
@@ -521,6 +768,13 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": false,
+          "count": 2
         }
       ]
     },
@@ -600,7 +854,35 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "END_TURN",
           "player": 0,
-          "ability": "{1}{B}:"
+          "ability": "{1}{B}:",
+          "source": "Reassembling Skeleton"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Reassembling Skeleton"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_TURN",
+          "source": "Reassembling Skeleton",
+          "abilityKind": "Activated",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_TURN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Reassembling Skeleton",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -625,6 +907,13 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Reassembling Skeleton\", true)"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": false,
+          "count": 2
         }
       ]
     }

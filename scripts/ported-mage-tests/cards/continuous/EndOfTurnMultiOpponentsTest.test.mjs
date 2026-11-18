@@ -7,120 +7,375 @@ registerPortedMageTests({
       "name": "test_EndOfTurnMulti",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"boost1\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.EndOfTurn)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "boost1",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Creatures get +1/+1 until end of turn."
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": "playerC",
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": "playerD",
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "boost1",
+          "ability": "Creatures get +1/+1",
+          "resolve": true
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 3,
           "player": "playerC",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 5,
           "player": 0,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 6,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 7,
           "player": "playerC",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 8,
           "player": 1,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 9,
           "player": 0,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 10,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 11,
           "player": "playerC",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 12,
           "player": 1,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 0,
+          "expectedLegal": true
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 5,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 6,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 7,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 8,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 9,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 10,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 11,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 12,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
         },
         {
           "op": "setStopAt",
@@ -140,120 +395,375 @@ registerPortedMageTests({
       "name": "test_UntilYourNextTurnMulti",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"boost1\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.UntilYourNextTurn)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "boost1",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Creatures get +1/+1 until your next turn."
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": "playerC",
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": "playerD",
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "boost1",
+          "ability": "Creatures get +1/+1",
+          "resolve": true
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 3,
           "player": "playerC",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 5,
           "player": 0,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 6,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 7,
           "player": "playerC",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 8,
           "player": 1,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 9,
           "player": 0,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 10,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 11,
           "player": "playerC",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 12,
           "player": 1,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 0,
+          "expectedLegal": true
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 5,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 6,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 7,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 8,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 9,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 10,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 11,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 12,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
         },
         {
           "op": "setStopAt",
@@ -273,120 +783,375 @@ registerPortedMageTests({
       "name": "test_UntilEndOfYourNextTurnMulti",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"boost1\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.UntilEndOfYourNextTurn)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "boost1",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Creatures get +1/+1 until the end of your next turn."
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": "playerC",
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": "playerD",
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "boost1",
+          "ability": "Creatures get +1/+1",
+          "resolve": true
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 3,
           "player": "playerC",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 5,
           "player": 0,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 6,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 7,
           "player": "playerC",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 8,
           "player": 1,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 9,
           "player": 0,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 10,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 11,
           "player": "playerC",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 12,
           "player": 1,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 0,
+          "expectedLegal": true
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 5,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 6,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 7,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 8,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 9,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 10,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 11,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
+        },
+        {
+          "op": "assertPowerToughnessEachPhase",
+          "turn": 12,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phases": [
+            "PRECOMBAT_MAIN",
+            "BEGIN_COMBAT",
+            "DECLARE_ATTACKERS",
+            "DECLARE_BLOCKERS",
+            "COMBAT_DAMAGE",
+            "END_COMBAT",
+            "POSTCOMBAT_MAIN",
+            "END_TURN"
+          ]
         },
         {
           "op": "setStopAt",
@@ -406,35 +1171,41 @@ registerPortedMageTests({
       "name": "test_UntilYourNextTurnMulti_Leaved",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"boost1\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.UntilYourNextTurn)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "boost1",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Creatures get +1/+1 until your next turn."
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": "playerC",
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": "playerD",
-          "name": "EndOfTurnOneOpponentTest.cardBear2",
+          "name": "Balduvian Bears",
           "count": 1
         },
         {
@@ -452,45 +1223,309 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"A must plays in 1\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, playerA, true)"
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "boost1",
+          "ability": "Creatures get +1/+1",
+          "resolve": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayerState",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "BEGIN_COMBAT"
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"A must plays in 2\", 2, PhaseStep.PRECOMBAT_MAIN, playerD, playerA, true)"
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "DECLARE_BLOCKERS"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "END_COMBAT"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "player": "playerA",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayerState",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "BEGIN_COMBAT"
         },
         {
           "op": "attack",
           "turn": 2,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"A must plays in 3 before\", 3, PhaseStep.PRECOMBAT_MAIN, playerC, playerA, true)"
+          "op": "assertPowerToughness",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "DECLARE_BLOCKERS"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "END_COMBAT"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 2,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": "playerC",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": false
+        },
+        {
+          "op": "concede",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "BEGIN_COMBAT"
         },
         {
           "op": "attack",
           "turn": 3,
           "player": "playerC",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 1,
+          "expectedLegal": true
         },
         {
-          "op": "unsupported",
-          "source": "concede(3, PhaseStep.PRECOMBAT_MAIN, playerA)"
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"A must leaved in 3 after\", 3, PhaseStep.POSTCOMBAT_MAIN, playerC, playerA, false)"
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "DECLARE_BLOCKERS"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "END_COMBAT"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayerState",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": "playerC",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
         },
         {
           "op": "castSpell",
@@ -501,40 +1536,222 @@ registerPortedMageTests({
         },
         {
           "op": "addTarget",
-          "player": "playerC",
-          "target": "EndOfTurnOneOpponentTest.cardBear2"
+          "player": 2,
+          "target": "Balduvian Bears"
         },
         {
           "op": "addTarget",
           "player": 1,
-          "target": "EndOfTurnOneOpponentTest.cardBear2"
+          "target": "Balduvian Bears"
         },
         {
           "op": "addTarget",
-          "player": "playerD",
-          "target": "EndOfTurnOneOpponentTest.cardBear2"
+          "player": 3,
+          "target": "Balduvian Bears"
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"A must leaved in 4\", 4, PhaseStep.POSTCOMBAT_MAIN, playerB, playerA, false)"
+          "op": "assertPowerToughness",
+          "turn": 3,
+          "player": "playerC",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "BEGIN_COMBAT"
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPlayerInGame(\"A must leaved in 5\", 5, PhaseStep.POSTCOMBAT_MAIN, playerD, playerA, false)"
+          "op": "assertPowerToughness",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "DECLARE_BLOCKERS"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "END_COMBAT"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayerState",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 4,
+          "player": "playerB",
+          "name": "Balduvian Bears",
+          "power": 3,
+          "toughness": 3,
+          "seatIndependent": true,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 5,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 5,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phase": "BEGIN_COMBAT"
         },
         {
           "op": "attack",
           "turn": 5,
           "player": "playerD",
-          "attacker": "EndOfTurnOneOpponentTest.cardBear2",
-          "defender": 1
+          "attacker": "Balduvian Bears",
+          "defender": 2,
+          "expectedLegal": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 5,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 5,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phase": "DECLARE_BLOCKERS"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 5,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 5,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phase": "END_COMBAT"
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 5,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertPlayerState",
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": "playerD",
+          "targetPlayer": 0,
+          "property": "hasLeftGame",
+          "expected": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 5,
+          "player": "playerD",
+          "name": "Balduvian Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true,
+          "phase": "END_TURN"
         },
         {
           "op": "setStopAt",
@@ -550,5 +1767,11 @@ registerPortedMageTests({
         }
       ]
     }
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
   ]
 });

@@ -57,6 +57,34 @@ registerPortedMageTests({
           "value": "Balduvian Bears"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Balduvian Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Nahiri's Sacrifice",
+          "count": 1,
+          "onTop": true,
+          "xValue": 2,
+          "targetCount": 1,
+          "objectTarget": "Balduvian Bears"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_TURN"

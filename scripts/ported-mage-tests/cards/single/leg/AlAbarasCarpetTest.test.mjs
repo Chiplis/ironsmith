@@ -43,14 +43,14 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Balduvian Bears",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Storm Crow",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "activateAbility",

@@ -188,11 +188,54 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 1,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "ICE",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Grizzly Bears",
+          "expected": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "permissionSource": "Draugr Necromancer"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Grizzly Bears",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -267,11 +310,34 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "methods": [],
+          "zone": "exile",
+          "owner": 1
         },
         {
           "op": "setStopAt",
@@ -279,12 +345,17 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Grizzly Bears\")) { Assert.fail(\"Needed error about PlayerA having too many actions, but got:\\n\" + e.getMessage()); } } assertExileCount(playerB, bear, 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Grizzly Bears",
+          "count": 1
         },
         {
           "op": "unsupported",
-          "source": "assertCounterOnExiledCardCount(bear, CounterType.ICE, 1)"
+          "source": "assertCounterOnExiledCardCount(\"Grizzly Bears\", CounterType.ICE, 1)"
         },
         {
           "op": "assertPermanentCount",
@@ -505,11 +576,54 @@ registerPortedMageTests({
           "target": "Curious Pair"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Curious Pair",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 1,
+            "name": "Curious Pair"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "ICE",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Curious Pair",
+          "expected": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Curious Pair"
+          "name": "Curious Pair",
+          "permissionSource": "Draugr Necromancer"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Curious Pair",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -584,11 +698,54 @@ registerPortedMageTests({
           "target": "Curious Pair"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Curious Pair",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 1,
+            "name": "Curious Pair"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "ICE",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Treats to Share",
+          "expected": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Treats to Share"
+          "name": "Treats to Share",
+          "permissionSource": "Draugr Necromancer"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Treats to Share",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -866,11 +1023,54 @@ registerPortedMageTests({
           "target": "Birgi, God of Storytelling"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Birgi, God of Storytelling",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 1,
+            "name": "Birgi, God of Storytelling"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "ICE",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Birgi, God of Storytelling",
+          "expected": true
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Birgi, God of Storytelling"
+          "name": "Birgi, God of Storytelling",
+          "permissionSource": "Draugr Necromancer"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Birgi, God of Storytelling",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -958,11 +1158,54 @@ registerPortedMageTests({
           "target": "Birgi, God of Storytelling"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Birgi, God of Storytelling",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 1,
+            "name": "Birgi, God of Storytelling"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "ICE",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Harnfel, Horn of Bounty",
+          "expected": true
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Harnfel, Horn of Bounty"
+          "name": "Harnfel, Horn of Bounty",
+          "permissionSource": "Draugr Necromancer"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Harnfel, Horn of Bounty",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",

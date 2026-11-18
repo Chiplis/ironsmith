@@ -45,6 +45,11 @@ registerPortedMageTests({
           "value": "Kuro's Taken"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Kuro's Taken"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -186,6 +191,11 @@ registerPortedMageTests({
           "value": "Akki Drillmaster"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Akki Drillmaster"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -246,6 +256,11 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Boros Recruit"
         },
         {
           "op": "setChoice",
@@ -334,6 +349,11 @@ registerPortedMageTests({
           "value": "Boggart Ram-Gang"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Boggart Ram-Gang"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -401,6 +421,11 @@ registerPortedMageTests({
           "value": "Ancient Den"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Ancient Den"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -416,6 +441,12 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Blast-Furnace Hellkite",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Ancient Den",
           "count": 1
         }
       ]

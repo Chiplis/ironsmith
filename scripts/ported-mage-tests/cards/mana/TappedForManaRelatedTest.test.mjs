@@ -50,8 +50,32 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}\", manaOptions)"
+          "op": "activateManaAbility",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "source": "Gaea's Cradle",
+          "ability": "{G}"
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "source": "Forest",
+          "ability": "{G}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "WUBRGC",
+          "amount": 1
         }
       ]
     },
@@ -109,8 +133,32 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}{G}{G}\", manaOptions)"
+          "op": "activateManaAbility",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "source": "Gaea's Cradle",
+          "ability": "{G}"
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "source": "Forest",
+          "ability": "{G}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 4
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "WUBRGC",
+          "amount": 4
         }
       ]
     },
@@ -161,8 +209,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}\", manaOptions)"
+          "op": "activateManaAbility",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "source": "Forest",
+          "ability": "{G}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 2
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "WUBRGC",
+          "amount": 2
         }
       ]
     },
@@ -185,8 +249,24 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}\", manaOptions)"
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Calciform Pools",
+          "ability": "{C}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "C",
+          "amount": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "WUBRGC",
+          "amount": 1
         }
       ]
     },
@@ -220,20 +300,16 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{W}{W}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{W}{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{W}{W}",
+            "{W}{U}",
+            "{U}{U}",
+            "{C}"
+          ],
+          "exact": true,
+          "prefundManaCosts": true
         }
       ]
     },
@@ -283,20 +359,16 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{W}{W}{W}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{W}{W}{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{W}{W}{W}",
+            "{W}{W}{U}",
+            "{U}{U}",
+            "{C}"
+          ],
+          "exact": true,
+          "prefundManaCosts": true
         }
       ]
     },
@@ -330,12 +402,14 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{R}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{C}{R}",
+            "{B}"
+          ],
+          "exact": true,
+          "prefundManaCosts": true
         }
       ]
     },
@@ -369,20 +443,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{W}{W}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{W}{B}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{C}{W}{W}",
+            "{W}{B}",
+            "{U}",
+            "{R}"
+          ],
+          "exact": true,
+          "prefundManaCosts": true
         }
       ]
     },
@@ -445,8 +515,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{U}{U}{U}{U}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{U}{U}{U}{U}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -473,8 +547,24 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}{C}{C}{C}\", manaOptions)"
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "source": "Chromatic Orrery",
+          "ability": "{T}: Add {C}{C}{C}{C}{C}"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "C",
+          "amount": 5
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "WUBRGC",
+          "amount": 5
         }
       ]
     },
@@ -550,8 +640,12 @@ registerPortedMageTests({
           "toughness": 5
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{G}{G}{G}{G}{G}{G}{G}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -599,8 +693,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{B}{B}{B}{B}{B}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{B}{B}{B}{B}{B}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -653,8 +751,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{Any}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{Any}"
+          ],
+          "exact": true
         }
       ]
     }

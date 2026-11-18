@@ -216,7 +216,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Bear Cub",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",
@@ -275,25 +275,56 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertGraveyardCount",
+          "name": "Dirgur Island Dragon",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "label": "Cast Skimming Strike",
+          "expected": true,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
+          "name": "Skimming Strike",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Skimming Strike",
           "target": "Bear Cub"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Skimming Strike",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Bear Cub"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLibraryCount",
-          "player": 0,
           "name": "Dirgur Island Dragon",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Bear Cub",
+          "tapped": true,
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
           "count": 1
         }
       ]

@@ -248,9 +248,25 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "source": "Rambling Possum",
+          "description": "Choose creature that saddled it this turn",
+          "options": [
+            "Grizzly Bears",
+            "Silvercoat Lion"
+          ],
+          "player": 0
+        },
+        {
           "op": "setChoice",
           "player": 0,
-          "value": "Arbor Elf"
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "setStrictChooseMode",
@@ -262,20 +278,40 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { if (!e.getMessage().contains(\"Select creatures that saddled it this turn (selected 0)\")) { Assert.fail(\"Lion can't be targeted, but catch another error:\\n\" + e.getMessage()); } } assertTapped(bear, true)"
+          "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(lion, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(elf, false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Arbor Elf",
+          "tapped": false
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(possum, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Rambling Possum",
+          "tapped": true
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Rambling Possum"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "saddled",
+              "expected": true
+            }
+          ]
         }
       ]
     }

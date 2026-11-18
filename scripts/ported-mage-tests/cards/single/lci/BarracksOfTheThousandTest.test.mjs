@@ -576,7 +576,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 1,
           "name": "Remand",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -584,7 +585,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Arcbound Worker",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertPermanentCount",
@@ -592,7 +594,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Gnome Soldier Token",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "playLand",

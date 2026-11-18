@@ -44,8 +44,14 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Age counters\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Phobian Phantasm\", CounterType.AGE, 1)"
+          "op": "assertCounterCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Phobian Phantasm",
+          "counter": "AGE",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -60,8 +66,14 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Age counters\", 5, PhaseStep.PRECOMBAT_MAIN, playerA, \"Phobian Phantasm\", CounterType.AGE, 2)"
+          "op": "assertCounterCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Phobian Phantasm",
+          "counter": "AGE",
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -188,8 +200,14 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Age counters\", 5, PhaseStep.PRECOMBAT_MAIN, playerB, \"Illusions of Grandeur\", CounterType.AGE, 2)"
+          "op": "assertCounterCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Illusions of Grandeur",
+          "counter": "AGE",
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",

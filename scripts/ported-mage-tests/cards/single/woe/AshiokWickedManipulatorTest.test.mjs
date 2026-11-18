@@ -131,8 +131,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": "false ? 5 : 0"
+          "count": 0
         },
         {
           "op": "assertLibraryCount",
@@ -234,8 +233,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": "false ? 5 : 0"
+          "count": 0
         },
         {
           "op": "assertLibraryCount",
@@ -337,8 +335,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": "true ? 5 : 0"
+          "count": 5
         },
         {
           "op": "assertLibraryCount",
@@ -440,8 +437,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0,
-          "name": "true ? 5 : 0"
+          "count": 5
         },
         {
           "op": "assertLibraryCount",
@@ -541,23 +537,9 @@ registerPortedMageTests({
       "name": "ReplacementLurkingEvil",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "skipInitShuffling"
-        },
-        {
           "op": "clearZone",
           "player": 0,
           "zone": "library"
-        },
-        {
-          "op": "addCard",
-          "zone": "LIBRARY",
-          "player": 0,
-          "name": "Silvercoat Lion",
-          "count": 18
         },
         {
           "op": "addCard",
@@ -565,6 +547,13 @@ registerPortedMageTests({
           "player": 0,
           "name": "Ashiok, Wicked Manipulator",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 18
         },
         {
           "op": "addCard",
@@ -578,15 +567,34 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "UPKEEP",
           "player": 0,
+          "source": "Lurking Evil",
           "ability": "Pay half your life, rounded up:"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "UPKEEP",
+          "source": "Lurking Evil",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Lurking Evil",
+          "cardType": "CREATURE"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Lurking Evil",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "assertLife",
@@ -596,72 +604,113 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0
+          "name": "Silvercoat Lion",
+          "count": 10
         },
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 18
+          "count": 8
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 0,
+          "source": "Lurking Evil",
           "ability": "Pay half your life, rounded up:"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "BEGIN_COMBAT",
+          "source": "Lurking Evil",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Lurking Evil",
+          "cardType": "CREATURE"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Lurking Evil",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "assertLife",
           "player": 0,
-          "life": 20
+          "life": 10
         },
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0
+          "name": "Silvercoat Lion",
+          "count": 10
         },
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 18
+          "count": 8
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "END_TURN",
           "player": 0,
+          "source": "Lurking Evil",
           "ability": "Pay half your life, rounded up:"
         },
         {
-          "op": "setStopAt",
-          "turn": 2,
-          "phase": "UPKEEP"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "source": "Lurking Evil",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Lurking Evil",
+          "cardType": "CREATURE"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Lurking Evil",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "assertLife",
           "player": 0,
-          "life": 20
+          "life": 10
         },
         {
           "op": "assertExileCount",
           "player": 0,
-          "count": 0
+          "name": "Silvercoat Lion",
+          "count": 15
         },
         {
           "op": "assertLibraryCount",
           "player": 0,
-          "count": 18
+          "count": 3
         }
       ]
     },
@@ -737,16 +786,16 @@ registerPortedMageTests({
       "name": "TokensTrigger",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "skipInitShuffling"
-        },
-        {
           "op": "clearZone",
           "player": 0,
           "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -756,105 +805,385 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "counter": "LOYALTY",
+          "count": 5
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Ashiok, Wicked Manipulator",
           "ability": "-2:"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ashiok, Wicked Manipulator",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertPowerToughness",
+          "op": "assertCounterCount",
           "player": 0,
-          "name": "Nightmare Token",
-          "power": 1,
-          "toughness": 1
+          "name": "Ashiok, Wicked Manipulator",
+          "counter": "LOYALTY",
+          "count": 3
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "source": "Nightmare Token",
+          "count": 0,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Nightmare Token",
+            "token": true
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "counter",
+              "value": "+1/+1",
+              "expected": 0
+            }
+          ]
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Ashiok, Wicked Manipulator",
           "ability": "+1:"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Arrogant Poet"
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ashiok, Wicked Manipulator",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "At the beginning of combat on your turn,"
+          "value": "Arrogant Poet"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 3,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertPowerToughness",
+          "op": "assertExileCount",
           "player": 0,
-          "name": "Nightmare Token",
-          "power": 2,
-          "toughness": 2
+          "name": "Arrogant Poet",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "source": "Nightmare Token",
+          "count": 2,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Nightmare Token",
+            "token": true
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "counter",
+              "value": "+1/+1",
+              "expected": 1
+            }
+          ]
         },
         {
           "op": "activateAbility",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Ashiok, Wicked Manipulator",
           "ability": "+1:"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Silvercoat Lion"
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ashiok, Wicked Manipulator",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "At the beginning of combat on your turn,"
+          "value": "Silvercoat Lion"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 5,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertPowerToughness",
+          "op": "assertExileCount",
           "player": 0,
-          "name": "Nightmare Token",
-          "power": 3,
-          "toughness": 3
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "BEGIN_COMBAT",
+          "source": "Nightmare Token",
+          "count": 2,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Nightmare Token",
+            "token": true
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 3
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            },
+            {
+              "property": "counter",
+              "value": "+1/+1",
+              "expected": 2
+            }
+          ]
+        },
+        {
+          "op": "assertStackObject",
           "turn": 7,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "BEGIN_COMBAT",
+          "source": "Nightmare Token",
+          "count": 0,
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Nightmare Token",
-          "power": 3,
-          "toughness": 3
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Nightmare Token",
+            "token": true
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 3
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            },
+            {
+              "property": "counter",
+              "value": "+1/+1",
+              "expected": 2
+            }
+          ]
         }
       ]
     },
@@ -862,16 +1191,16 @@ registerPortedMageTests({
       "name": "Ultimate",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "skipInitShuffling"
-        },
-        {
           "op": "clearZone",
           "player": 0,
           "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -881,61 +1210,304 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "counter": "LOYALTY",
+          "count": 5
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Ashiok, Wicked Manipulator",
           "ability": "+1:"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ashiok, Wicked Manipulator",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "target": "Silvercoat Lion"
+          "value": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "counter": "LOYALTY",
+          "count": 6
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Ashiok, Wicked Manipulator",
           "ability": "+1:"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ashiok, Wicked Manipulator",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "target": "Lurking Evil"
+          "value": "Lurking Evil"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "counter": "LOYALTY",
+          "count": 7
         },
         {
           "op": "activateAbility",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Ashiok, Wicked Manipulator",
           "ability": "+1:"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ashiok, Wicked Manipulator",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "target": "Lurking Evil"
+          "value": "Lurking Evil"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Lurking Evil",
+          "count": 2
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "counter": "LOYALTY",
+          "count": 8
         },
         {
           "op": "activateAbility",
           "turn": 7,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Ashiok, Wicked Manipulator",
           "ability": "-7:",
           "target": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 7,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ashiok, Wicked Manipulator",
+          "count": 1,
+          "abilityKind": "Activated",
+          "targetCount": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
           "player": 1,
+          "name": null,
           "count": 8
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "counter": "LOYALTY",
+          "count": 1
         }
       ]
     }

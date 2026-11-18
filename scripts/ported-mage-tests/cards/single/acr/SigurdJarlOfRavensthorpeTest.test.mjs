@@ -62,12 +62,24 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Saga entering counter\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, saga, CounterType.LORE, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Urza's Saga",
+          "counter": "LORE",
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Bear cub single counter\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, bear, CounterType.P1P1, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Bear Cub",
+          "counter": "P1P1",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "attack",
@@ -106,12 +118,24 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Saga boast counter\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, saga, CounterType.LORE, 2)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Urza's Saga",
+          "counter": "LORE",
+          "count": 2,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Bear cub two counters\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, bear, CounterType.P1P1, 2)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Bear Cub",
+          "counter": "P1P1",
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",

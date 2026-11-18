@@ -242,7 +242,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Memnite",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",
@@ -282,7 +282,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Memnite",
+          "name": "Memnite@attacking",
           "count": 1
         },
         {
@@ -296,15 +296,16 @@ registerPortedMageTests({
           "op": "attack",
           "turn": 2,
           "player": 1,
-          "attacker": "Memnite",
-          "defender": 1
+          "attacker": "Memnite@attacking.1",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
           "turn": 2,
           "player": 0,
           "blocker": "Memnite",
-          "attacker": "Memnite"
+          "attacker": "Memnite@attacking.1"
         },
         {
           "op": "setStopAt",

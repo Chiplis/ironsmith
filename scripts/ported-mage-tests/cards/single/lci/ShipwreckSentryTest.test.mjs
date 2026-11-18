@@ -25,7 +25,8 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Shipwreck Sentry",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": false
         },
         {
           "op": "setStrictChooseMode",
@@ -37,8 +38,7 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { Assert.assertTrue(\"No artifact entered\", e.getMessage().contains(\"Can't find available command - attack:Shipwreck Sentry$defendingPlayer=PlayerB\")); }"
+          "op": "execute"
         }
       ]
     },

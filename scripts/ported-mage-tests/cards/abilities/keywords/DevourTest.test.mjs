@@ -67,61 +67,84 @@ registerPortedMageTests({
           "name": "Gorger Wurm"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Gorger Wurm",
+          "counter": "P1P1",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -194,61 +217,89 @@ registerPortedMageTests({
           "name": "Gorger Wurm"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Gorger Wurm",
+          "counter": "P1P1",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -321,61 +372,89 @@ registerPortedMageTests({
           "name": "Gorger Wurm"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Gorger Wurm",
+          "counter": "P1P1",
+          "count": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -448,61 +527,89 @@ registerPortedMageTests({
           "name": "Gorger Wurm"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute^Silvercoat Lion"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Gorger Wurm",
+          "counter": "P1P1",
+          "count": 3
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -568,18 +675,20 @@ registerPortedMageTests({
           "name": "Gorger Wurm"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
           "op": "addTarget",
           "player": 0,
-          "target": "Darksteel Relic"
+          "target": {
+            "unavailable": "Darksteel Relic",
+            "reason": "devour"
+          }
         },
         {
-          "op": "unsupported",
-          "source": "try { setStopAt(1, PhaseStep.BEGIN_COMBAT); execute(); } catch (AssertionError e) { if (e.getMessage().startsWith(\"PlayerA - Targets list was setup by addTarget with [\" + \"Darksteel Relic\" + \"], but not used\")) { legal = false; } } finally { assert !legal; }"
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -647,61 +756,83 @@ registerPortedMageTests({
           "name": "Thromok the Insatiable"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
+          "name": "Thromok the Insatiable",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -774,61 +905,89 @@ registerPortedMageTests({
           "name": "Thromok the Insatiable"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Thromok the Insatiable",
+          "counter": "P1P1",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -901,61 +1060,89 @@ registerPortedMageTests({
           "name": "Thromok the Insatiable"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Thromok the Insatiable",
+          "counter": "P1P1",
+          "count": 4
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -1028,61 +1215,89 @@ registerPortedMageTests({
           "name": "Thromok the Insatiable"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute^Silvercoat Lion"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Thromok the Insatiable",
+          "counter": "P1P1",
+          "count": 9
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -1148,18 +1363,20 @@ registerPortedMageTests({
           "name": "Thromok the Insatiable"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
           "op": "addTarget",
           "player": 0,
-          "target": "Darksteel Relic"
+          "target": {
+            "unavailable": "Darksteel Relic",
+            "reason": "devour"
+          }
         },
         {
-          "op": "unsupported",
-          "source": "try { setStopAt(1, PhaseStep.BEGIN_COMBAT); execute(); } catch (AssertionError e) { if (e.getMessage().startsWith(\"PlayerA - Targets list was setup by addTarget with [\" + \"Darksteel Relic\" + \"], but not used\")) { legal = false; } } finally { assert !legal; }"
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -1227,61 +1444,84 @@ registerPortedMageTests({
           "name": "Feasting Hobbit"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Feasting Hobbit",
+          "counter": "P1P1",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -1354,61 +1594,89 @@ registerPortedMageTests({
           "name": "Feasting Hobbit"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Gingerbrute"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Feasting Hobbit",
+          "counter": "P1P1",
+          "count": 3
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -1474,18 +1742,20 @@ registerPortedMageTests({
           "name": "Feasting Hobbit"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
           "op": "addTarget",
           "player": 0,
-          "target": "Enatu Golem"
+          "target": {
+            "unavailable": "Enatu Golem",
+            "reason": "devour"
+          }
         },
         {
-          "op": "unsupported",
-          "source": "try { setStopAt(1, PhaseStep.BEGIN_COMBAT); execute(); } catch (AssertionError e) { if (e.getMessage().startsWith(\"PlayerA - Targets list was setup by addTarget with [\" + \"Enatu Golem\" + \"], but not used\")) { legal = false; } } finally { assert !legal; }"
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -1553,61 +1823,84 @@ registerPortedMageTests({
           "name": "Caprichrome"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Caprichrome",
+          "counter": "P1P1",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -1680,61 +1973,89 @@ registerPortedMageTests({
           "name": "Caprichrome"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Caprichrome",
+          "counter": "P1P1",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -1807,61 +2128,89 @@ registerPortedMageTests({
           "name": "Caprichrome"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Caprichrome",
+          "counter": "P1P1",
+          "count": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -1934,61 +2283,89 @@ registerPortedMageTests({
           "name": "Caprichrome"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute^Darksteel Relic"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Caprichrome",
+          "counter": "P1P1",
+          "count": 3
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -2054,18 +2431,20 @@ registerPortedMageTests({
           "name": "Caprichrome"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
           "op": "addTarget",
           "player": 0,
-          "target": "Silvercoat Lion"
+          "target": {
+            "unavailable": "Silvercoat Lion",
+            "reason": "devour"
+          }
         },
         {
-          "op": "unsupported",
-          "source": "try { setStopAt(1, PhaseStep.BEGIN_COMBAT); execute(); } catch (AssertionError e) { if (e.getMessage().startsWith(\"PlayerA - Targets list was setup by addTarget with [\" + \"Silvercoat Lion\" + \"], but not used\")) { legal = false; } } finally { assert !legal; }"
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -2133,61 +2512,84 @@ registerPortedMageTests({
           "name": "Hellkite Hatchling"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Hellkite Hatchling",
+          "counter": "P1P1",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -2274,61 +2676,89 @@ registerPortedMageTests({
           "name": "Hellkite Hatchling"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Hellkite Hatchling",
+          "counter": "P1P1",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -2415,61 +2845,89 @@ registerPortedMageTests({
           "name": "Hellkite Hatchling"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Hellkite Hatchling",
+          "counter": "P1P1",
+          "count": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -2556,61 +3014,89 @@ registerPortedMageTests({
           "name": "Hellkite Hatchling"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute^Silvercoat Lion"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Hellkite Hatchling",
+          "counter": "P1P1",
+          "count": 3
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -2690,18 +3176,20 @@ registerPortedMageTests({
           "name": "Hellkite Hatchling"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
           "op": "addTarget",
           "player": 0,
-          "target": "Darksteel Relic"
+          "target": {
+            "unavailable": "Darksteel Relic",
+            "reason": "devour"
+          }
         },
         {
-          "op": "unsupported",
-          "source": "try { setStopAt(1, PhaseStep.BEGIN_COMBAT); execute(); } catch (AssertionError e) { if (e.getMessage().startsWith(\"PlayerA - Targets list was setup by addTarget with [\" + \"Darksteel Relic\" + \"], but not used\")) { legal = false; } } finally { assert !legal; }"
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -2769,61 +3257,84 @@ registerPortedMageTests({
           "name": "Marrow Chomper"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Marrow Chomper",
+          "counter": "P1P1",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -2896,61 +3407,94 @@ registerPortedMageTests({
           "name": "Marrow Chomper"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "When {this} dies, you gain 4 life"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Marrow Chomper",
+          "counter": "P1P1",
+          "count": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -3023,61 +3567,94 @@ registerPortedMageTests({
           "name": "Marrow Chomper"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "When {this} dies, you gain 4 life"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Marrow Chomper",
+          "counter": "P1P1",
+          "count": 4
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -3150,61 +3727,94 @@ registerPortedMageTests({
           "name": "Marrow Chomper"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute^Silvercoat Lion"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "When {this} dies, you gain 4 life"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Marrow Chomper",
+          "counter": "P1P1",
+          "count": 6
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -3270,18 +3880,20 @@ registerPortedMageTests({
           "name": "Marrow Chomper"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
           "op": "addTarget",
           "player": 0,
-          "target": "Darksteel Relic"
+          "target": {
+            "unavailable": "Darksteel Relic",
+            "reason": "devour"
+          }
         },
         {
-          "op": "unsupported",
-          "source": "try { setStopAt(1, PhaseStep.BEGIN_COMBAT); execute(); } catch (AssertionError e) { if (e.getMessage().startsWith(\"PlayerA - Targets list was setup by addTarget with [\" + \"Darksteel Relic\" + \"], but not used\")) { legal = false; } } finally { assert !legal; }"
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -3349,61 +3961,84 @@ registerPortedMageTests({
           "name": "Devouring Hellion"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Devouring Hellion",
+          "counter": "P1P1",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -3476,61 +4111,89 @@ registerPortedMageTests({
           "name": "Devouring Hellion"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Angrath, Captain of Chaos"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Devouring Hellion",
+          "counter": "P1P1",
+          "count": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertLife",
@@ -3603,61 +4266,89 @@ registerPortedMageTests({
           "name": "Devouring Hellion"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Angrath, Captain of Chaos"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Devouring Hellion",
+          "counter": "P1P1",
+          "count": 4
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertLife",
@@ -3730,61 +4421,89 @@ registerPortedMageTests({
           "name": "Devouring Hellion"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Enatu Golem^Gingerbrute^Angrath, Captain of Chaos"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Devouring Hellion",
+          "counter": "P1P1",
+          "count": 6
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Enatu Golem",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Gingerbrute",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 1 : 0"
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Darksteel Relic",
-          "count": "true ? 0 : 1"
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "false ? 1 : 0"
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Angrath, Captain of Chaos",
-          "count": "false ? 0 : 1"
+          "count": 1
         },
         {
           "op": "assertLife",
@@ -3857,11 +4576,18 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Darksteel Relic"
+          "target": {
+            "unavailable": "Darksteel Relic",
+            "reason": "creatures or planeswalkers"
+          }
         },
         {
-          "op": "unsupported",
-          "source": "try { setStopAt(1, PhaseStep.BEGIN_COMBAT); execute(); } catch (AssertionError e) { if (e.getMessage().startsWith(\"PlayerA - Targets list was setup by addTarget with [\" + \"Darksteel Relic\" + \"], but not used\")) { legal = false; } } finally { assert !legal; }"
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
         }
       ]
     }

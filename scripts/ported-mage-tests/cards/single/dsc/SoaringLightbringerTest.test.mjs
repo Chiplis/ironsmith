@@ -39,6 +39,39 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Soaring Lightbringer",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "player": 0,
+          "name": "Glimmer Token",
+          "tapped": true,
+          "count": 1
+        },
+        {
+          "op": "assertAttacking",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "player": 0,
+          "name": "Glimmer Token",
+          "expected": true,
+          "defenders": [
+            1
+          ]
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_COMBAT"
@@ -57,6 +90,12 @@ registerPortedMageTests({
           "player": 1,
           "life": 14
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -88,7 +127,7 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Memnite",
-          "defender": "playerD"
+          "defender": 3
         },
         {
           "op": "setChoice",
@@ -98,6 +137,40 @@ registerPortedMageTests({
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Soaring Lightbringer",
+          "count": 2,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "player": 0,
+          "name": "Glimmer Token",
+          "tapped": true,
+          "count": 2
+        },
+        {
+          "op": "assertAttacking",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "player": 0,
+          "name": "Glimmer Token",
+          "expected": true,
+          "defenders": [
+            1,
+            3
+          ]
         },
         {
           "op": "setStopAt",
@@ -120,9 +193,15 @@ registerPortedMageTests({
         },
         {
           "op": "assertLife",
-          "player": "playerD",
+          "player": 3,
           "life": 18
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -194,6 +273,12 @@ registerPortedMageTests({
           "counter": "LOYALTY",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -226,13 +311,69 @@ registerPortedMageTests({
           "value": "Whenever"
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 0,
-          "target": "playerC"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Charlie"
+          ]
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Soaring Lightbringer",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Falconer Adept",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "player": 0,
+          "name": "Glimmer Token",
+          "tapped": true,
+          "count": 1
+        },
+        {
+          "op": "assertAttacking",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "player": 0,
+          "name": "Bird Token",
+          "expected": true,
+          "defenders": [
+            2
+          ]
+        },
+        {
+          "op": "assertAttacking",
+          "turn": 1,
+          "phase": "DECLARE_BLOCKERS",
+          "player": 0,
+          "name": "Glimmer Token",
+          "expected": true,
+          "defenders": [
+            1
+          ]
         },
         {
           "op": "setStopAt",
@@ -261,9 +402,15 @@ registerPortedMageTests({
         },
         {
           "op": "assertLife",
-          "player": "playerC",
+          "player": 2,
           "life": 19
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

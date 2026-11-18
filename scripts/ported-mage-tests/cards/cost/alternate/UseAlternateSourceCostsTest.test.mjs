@@ -188,17 +188,32 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Gray Ogre"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast with alternative cost: Discard a card that shares a color with that spell (source: Dream Halls"
+          "name": "Gray Ogre",
+          "castingMethod": "alternative_price"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Lightning Bolt"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gray Ogre",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -209,8 +224,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Mountain\", false)"
+          "op": "assertTapped",
+          "name": "Mountain",
+          "tapped": false,
+          "player": 0
         },
         {
           "op": "assertPermanentCount",

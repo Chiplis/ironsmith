@@ -39,12 +39,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Activate Goblin Roughrider: its mana cost, Exile this source: Put counters.",
+          "expected": true
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Scavenge",
-          "target": "Goblin Roughrider"
+          "ability": "its mana cost, Exile this source: Put counters.",
+          "target": "Goblin Roughrider",
+          "source": "Goblin Roughrider"
         },
         {
           "op": "setStopAt",

@@ -25,7 +25,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Mephidross Vampire",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",

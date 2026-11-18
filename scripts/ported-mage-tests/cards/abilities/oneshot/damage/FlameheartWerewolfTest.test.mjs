@@ -25,7 +25,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Kalitas, Traitor of Ghet",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -183,10 +183,17 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "addCard",
-          "zone": "BATTLEFIELD",
+          "zone": "HAND",
           "player": 0,
           "name": "Kessig Forgemaster",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "name": "Mountain",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "count": 2
         },
         {
           "op": "addCard",
@@ -232,17 +239,67 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Explosive Apparatus",
           "player": 0,
-          "name": "Explosive Apparatus"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Explosive Apparatus",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kessig Forgemaster",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Kessig Forgemaster",
+          "count": 1,
+          "isSpell": true,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "name": "Explosive Apparatus",
           "player": 1,
-          "name": "Explosive Apparatus"
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Explosive Apparatus",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Kessig Forgemaster",
+          "count": 1
         },
         {
           "op": "attack",
@@ -266,14 +323,48 @@ registerPortedMageTests({
           "attacker": "Kessig Forgemaster"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Kessig Forgemaster",
+          "count": 2,
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Wily Bandar",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Stern Constable",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Kessig Forgemaster",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Kessig Forgemaster",
+          "count": 0
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "execute"
-        },
-        {
           "op": "assertLife",
           "player": 0,
           "life": 20
@@ -294,30 +385,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Kessig Forgemaster",
           "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Wily Bandar",
-          "count": 0
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 1,
-          "name": "Wily Bandar",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Stern Constable",
-          "count": 0
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 1,
-          "name": "Stern Constable",
-          "count": 1
         }
       ]
     }

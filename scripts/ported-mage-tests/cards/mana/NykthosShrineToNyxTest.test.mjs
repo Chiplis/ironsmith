@@ -42,17 +42,22 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose a color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, {T}: Choose a color. Add an amount of mana of that color equal to your devotion to that color.",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Green"
+          "ability": "{2}, {T}: You choose a color.",
+          "count": 1,
+          "source": "Nykthos, Shrine to Nyx"
         },
         {
           "op": "setStopAt",
@@ -61,6 +66,14 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 6
         },
         {
           "op": "assertPowerToughness",
@@ -110,17 +123,22 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose a color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, {T}: Choose a color. Add an amount of mana of that color equal to your devotion to that color.",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Green"
+          "ability": "{2}, {T}: You choose a color.",
+          "count": 1,
+          "source": "Nykthos, Shrine to Nyx"
         },
         {
           "op": "activateAbility",
@@ -131,17 +149,22 @@ registerPortedMageTests({
           "target": "Nykthos, Shrine to Nyx"
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose a color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, {T}: Choose a color. Add an amount of mana of that color equal to your devotion to that color.",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Green"
+          "ability": "{2}, {T}: You choose a color.",
+          "count": 1,
+          "source": "Nykthos, Shrine to Nyx"
         },
         {
           "op": "setStopAt",
@@ -150,6 +173,14 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 10
         },
         {
           "op": "assertPowerToughness",
@@ -199,17 +230,22 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose a color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, {T}: Choose a color. Add an amount of mana of that color equal to your devotion to that color.",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Green"
+          "ability": "{2}, {T}: You choose a color.",
+          "count": 1,
+          "source": "Nykthos, Shrine to Nyx"
         },
         {
           "op": "activateAbility",
@@ -220,17 +256,22 @@ registerPortedMageTests({
           "target": "Nykthos, Shrine to Nyx"
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose a color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, {T}: Choose a color. Add an amount of mana of that color equal to your devotion to that color.",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Green"
+          "ability": "{2}, {T}: You choose a color.",
+          "count": 1,
+          "source": "Nykthos, Shrine to Nyx"
         },
         {
           "op": "setStopAt",
@@ -239,6 +280,14 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "colors": "C",
+          "amount": 10
         },
         {
           "op": "assertPowerToughness",
@@ -295,6 +344,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Island",
+          "ability": "{T}: Add {U}",
+          "count": 3
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -307,17 +365,22 @@ registerPortedMageTests({
           "target": "Simic Guildmage"
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose a color",
+          "choices": [
+            "Green"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 0,
-          "ability": "{2}, {T}: Choose a color. Add an amount of mana of that color equal to your devotion to that color.",
-          "count": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Green"
+          "ability": "{2}, {T}: You choose a color.",
+          "count": 1,
+          "source": "Nykthos, Shrine to Nyx"
         },
         {
           "op": "setStopAt",
@@ -326,6 +389,14 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "colors": "G",
+          "amount": 5
         },
         {
           "op": "assertPermanentCount",
@@ -388,17 +459,30 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose a color",
+          "choices": [
+            "Black"
+          ]
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, {T}: Choose a color. Add an amount of mana of that color equal to your devotion to that color.",
-          "count": 1
+          "ability": "{2}, {T}: You choose a color.",
+          "count": 1,
+          "source": "Nykthos, Shrine to Nyx"
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": "Black"
+          "colors": "B",
+          "amount": 4
         },
         {
           "op": "castSpell",

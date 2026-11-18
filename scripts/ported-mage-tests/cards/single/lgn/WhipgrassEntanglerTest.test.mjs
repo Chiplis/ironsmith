@@ -42,6 +42,16 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Finish activating mana abilities"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
           "value": true
         },
         {
@@ -61,7 +71,7 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Plains",
           "tapped": true,
-          "count": "2 * 11 * 1"
+          "count": 3
         }
       ]
     },
@@ -112,6 +122,21 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Finish activating mana abilities"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
           "value": "Whipgrass Entangler"
         },
         {
@@ -141,7 +166,7 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Plains",
           "tapped": true,
-          "count": "2 * 21 * 2"
+          "count": 6
         }
       ]
     },
@@ -199,6 +224,31 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Finish activating mana abilities"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
           "value": true
         },
         {
@@ -230,7 +280,7 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Plains",
           "tapped": true,
-          "count": "2 * 22 * 2"
+          "count": 8
         }
       ]
     },
@@ -317,6 +367,31 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Activate Plains"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Finish activating mana abilities"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
           "value": "Akroma's Devoted"
         },
         {
@@ -346,7 +421,7 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Plains",
           "tapped": true,
-          "count": "2 * 2 + 2 * 2 + 3 + 1"
+          "count": 12
         }
       ]
     },
@@ -449,6 +524,31 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
+          "value": "Activate Tundra"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Activate Tundra"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Activate Tundra"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Activate Tundra"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Finish activating mana abilities"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
           "value": "Akroma's Devoted"
         },
         {
@@ -478,7 +578,7 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Tundra",
           "tapped": true,
-          "count": "2 * 2 + 2 * 2 + 4 + 1"
+          "count": 13
         }
       ]
     }

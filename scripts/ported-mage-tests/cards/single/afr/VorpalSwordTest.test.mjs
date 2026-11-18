@@ -58,12 +58,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertWonTheGame(playerA)"
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "hasWon",
+          "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "assertLostTheGame(playerB)"
+          "op": "assertPlayerState",
+          "player": 1,
+          "property": "hasLost",
+          "expected": true
         }
       ]
     }

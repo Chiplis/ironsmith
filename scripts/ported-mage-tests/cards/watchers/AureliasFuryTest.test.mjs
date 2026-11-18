@@ -68,32 +68,64 @@ registerPortedMageTests({
           "value": "X=3"
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, hatchling, 2)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Kraken Hatchling",
+          "amount": 2
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, glimmerbell, 1)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Glimmerbell",
+          "amount": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkDamage(\"first cast\", 1, PhaseStep.BEGIN_COMBAT, playerA, hatchling, 2)"
+          "op": "assertDamageReceived",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "damage": 2,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkDamage(\"first cast\", 1, PhaseStep.BEGIN_COMBAT, playerB, glimmerbell, 1)"
+          "op": "assertDamageReceived",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "name": "Glimmerbell",
+          "damage": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"first cast\", 1, PhaseStep.BEGIN_COMBAT, playerA, hatchling, true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"first cast\", 1, PhaseStep.BEGIN_COMBAT, playerB, glimmerbell, true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "name": "Glimmerbell",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"first cast\", 1, PhaseStep.BEGIN_COMBAT, playerB, crab, false, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "name": "Fortress Crab",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -133,12 +165,16 @@ registerPortedMageTests({
           "value": "X=2"
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, crab, 1)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Fortress Crab",
+          "amount": 1
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, playerB, 1)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": 1,
+          "amount": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -153,16 +189,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, hatchling, 2)"
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "damage": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, glimmerbell, 1)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Glimmerbell",
+          "damage": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, crab, 1)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Fortress Crab",
+          "damage": 1
         },
         {
           "op": "assertLife",
@@ -175,16 +217,19 @@ registerPortedMageTests({
           "life": 19
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(hatchling, true)"
+          "op": "assertTapped",
+          "name": "Kraken Hatchling",
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(glimmerbell, false)"
+          "op": "assertTapped",
+          "name": "Glimmerbell",
+          "tapped": false
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(crab, true)"
+          "op": "assertTapped",
+          "name": "Fortress Crab",
+          "tapped": true
         }
       ]
     }

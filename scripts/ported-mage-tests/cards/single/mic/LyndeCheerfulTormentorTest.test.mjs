@@ -68,7 +68,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 2
+          "player": null,
+          "resolutions": 2
         },
         {
           "op": "assertPermanentCount",
@@ -76,7 +77,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Curse of Bloodletting",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertGraveyardCount",
@@ -84,7 +86,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Curse of Bloodletting",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "playLand",
@@ -102,7 +105,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": null,
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -110,7 +114,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Curse of Bloodletting",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -118,17 +123,25 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Curse of Bloodletting",
-          "count": 1
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"at end step\", 2, PhaseStep.END_TURN, playerA, \"At the beginning of the next end step, return it to the battlefield attached to you\", 1)"
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 1,
+          "seatIndependent": true,
+          "source": "Lynde, Cheerful Tormentor",
+          "abilityKind": "Triggered"
         },
         {
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "END_TURN",
-          "player": 1
+          "player": null,
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -209,7 +222,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "setChoice",
@@ -217,8 +231,12 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Turn 2 Upkeep\", 2, PhaseStep.PRECOMBAT_MAIN, playerB, 20 - 1)"
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "seatIndependent": true,
+          "life": 19
         },
         {
           "op": "castSpell",
@@ -228,47 +246,56 @@ registerPortedMageTests({
           "name": "Clever Impersonator"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "value": true
+          "text": "Clever Impersonator",
+          "count": 1
         },
         {
           "op": "setChoice",
           "player": 1,
-          "value": "Curse of the Pierced Heart"
+          "value": "Enter as a copy of Curse of the Pierced Heart"
         },
         {
           "op": "setChoice",
           "player": 1,
-          "value": "playerA.getName()"
+          "value": "Alice"
         },
         {
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": 1,
+          "resolutions": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertAttachedTo",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Curse of the Pierced Heart",
-          "count": 1
+          "seatIndependent": true,
+          "attachment": "Curse of the Pierced Heart",
+          "attachedPlayer": 1,
+          "expected": true
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertAttachedTo",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Curse of the Pierced Heart",
-          "count": 1
+          "seatIndependent": true,
+          "attachment": "Curse of the Pierced Heart",
+          "attachedPlayer": 0,
+          "expected": true
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
+          "source": "Claws of Gix",
           "ability": "{1}, Sacrifice a permanent"
         },
         {
@@ -277,24 +304,50 @@ registerPortedMageTests({
           "value": "Curse of the Pierced Heart"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"After sac\", 2, PhaseStep.PRECOMBAT_MAIN, playerB, \"Whenever a Curse is put into your graveyard from the battlefield\", 1)"
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "text": "Whenever a Curse is put into your graveyard from the battlefield",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 2
+          "player": 1,
+          "resolutions": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_TURN",
+          "player": 1,
+          "count": 1,
+          "source": "Lynde, Cheerful Tormentor",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
           "player": 1,
-          "value": true
+          "value": "Enter as a copy of Curse of the Pierced Heart"
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_TURN",
           "player": 1,
-          "value": "Curse of the Pierced Heart"
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "turn": 2,
+          "phase": "END_TURN",
+          "player": 1,
+          "seatIndependent": true,
+          "attachment": "Curse of the Pierced Heart",
+          "attachedPlayer": 1,
+          "expected": true
         },
         {
           "op": "setChoice",

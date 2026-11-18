@@ -28,40 +28,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "castSpell",
+          "name": "Live Fast",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Live Fast",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Live Fast"
+          "isSpell": true
         },
         {
-          "op": "activateAbility",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT",
-          "player": 0,
-          "ability": "{6}"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 0
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -70,22 +54,57 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
+        },
+        {
           "op": "assertCounterCount",
           "player": 0,
           "name": 0,
-          "counter": "ENERGY",
-          "count": 2
+          "count": 2,
+          "counter": "energy"
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": 1,
-          "counter": "ENERGY",
-          "count": 0
+          "count": 0,
+          "counter": "energy"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(soulConduit, true)"
+          "op": "activateAbility",
+          "source": "Soul Conduit",
+          "ability": "Two target players exchange life totals",
+          "player": 0,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "target": 0
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Soul Conduit",
+          "count": 1,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "abilityKind": "Activated",
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Soul Conduit",
+          "tapped": true
         },
         {
           "op": "assertLife",

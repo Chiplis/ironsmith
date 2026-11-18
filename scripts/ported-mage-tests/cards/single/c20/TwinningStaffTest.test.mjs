@@ -49,9 +49,28 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "name": "Giant Growth",
+          "target": "Zada, Hedron Grinder"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Giant Growth",
+          "count": 1,
+          "objectTarget": "Zada, Hedron Grinder"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Zada, Hedron Grinder",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -64,24 +83,46 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "castSpell",
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Giant Growth",
-          "target": "Zada, Hedron Grinder"
+          "resolutions": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Giant Growth",
+          "count": 4
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Giant Growth",
+          "count": 2,
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Giant Growth",
+          "count": 1,
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Giant Growth",
+          "count": 1,
+          "objectTarget": "Zada, Hedron Grinder"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPowerToughness",
@@ -152,11 +193,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Grizzly Bears"
-        },
-        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -165,12 +201,82 @@ registerPortedMageTests({
           "target": "Zada, Hedron Grinder"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Giant Growth",
+          "count": 1,
+          "objectTarget": "Zada, Hedron Grinder"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Zada, Hedron Grinder",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Giant Growth",
+          "count": 5
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Giant Growth",
+          "count": 3,
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Giant Growth",
+          "count": 1,
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Giant Growth",
+          "count": 1,
+          "objectTarget": "Zada, Hedron Grinder"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPowerToughness",
@@ -249,14 +355,12 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Scalebane's Elite"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disfigure",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
         },
         {
           "op": "castSpell",
@@ -267,16 +371,66 @@ registerPortedMageTests({
           "target": "Disfigure"
         },
         {
-          "op": "setStrictChooseMode",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fork",
+          "count": 1,
+          "objectTarget": "Disfigure"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
           "value": true
         },
         {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
+          "op": "setChoice",
+          "player": 0,
+          "value": true
         },
         {
-          "op": "execute"
+          "op": "addTarget",
+          "player": 0,
+          "target": "Scalebane's Elite"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Scalebane's Elite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disfigure",
+          "count": 3
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disfigure",
+          "count": 2,
+          "objectTarget": "Scalebane's Elite"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disfigure",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",

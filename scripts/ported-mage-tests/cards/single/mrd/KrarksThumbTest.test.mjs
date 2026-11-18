@@ -18,32 +18,84 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"Test Trigger\", playerA, new KrarksThumbTestTriggeredAbility())"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Completed Flip Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "Whenever you win a coin flip, you gain 1 life.\nWhenever you lose a coin flip, you gain 1 life."
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Goblin Traprunner",
-          "defender": 1
+          "defender": 1,
+          "coinFaces": [
+            "heads",
+            "tails",
+            "heads"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Whenever you flip a coin, you gain 1 life"
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "You gain 1 life"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "You gain 1 life"
         },
         {
           "op": "setStopAt",
@@ -88,44 +140,183 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"Test Trigger\", playerA, new KrarksThumbTestTriggeredAbility())"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Completed Flip Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "Whenever you win a coin flip, you gain 1 life.\nWhenever you lose a coin flip, you gain 1 life."
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Goblin Traprunner",
-          "defender": 1
+          "defender": 1,
+          "coinFaces": [
+            "heads",
+            "heads",
+            "tails",
+            "heads",
+            "tails",
+            "tails"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Heads (win)",
+            "Keep Heads (win)"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Tails (loss)",
+            "Keep Heads (win)"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Tails (loss)",
+            "Keep Tails (loss)"
+          ],
+          "player": 0
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Whenever you flip a coin, you gain 2 life"
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Tails"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "You gain 1 life"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "You gain 1 life"
         },
         {
           "op": "setStopAt",
@@ -138,7 +329,7 @@ registerPortedMageTests({
         {
           "op": "assertLife",
           "player": 0,
-          "life": "20 + 3 * 2"
+          "life": 23
         },
         {
           "op": "assertPermanentCount",
@@ -177,71 +368,381 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"Test Trigger\", playerA, new KrarksThumbTestTriggeredAbility())"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
-        },
-        {
-          "op": "setChoice",
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "value": "Krark's Thumb"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Krark's Thumb"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Krark's Thumb"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, false)"
+          "name": "Completed Flip Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "Whenever you win a coin flip, you gain 1 life.\nWhenever you lose a coin flip, you gain 1 life."
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Goblin Traprunner",
-          "defender": 1
+          "defender": 1,
+          "coinFaces": [
+            "heads",
+            "tails",
+            "tails",
+            "tails",
+            "tails",
+            "tails",
+            "tails",
+            "tails",
+            "heads",
+            "heads",
+            "tails",
+            "tails"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Heads",
+            "Tails"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Heads (win)",
+            "Keep Tails (loss)"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Tails (loss)",
+            "Keep Tails (loss)"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Tails (loss)",
+            "Keep Tails (loss)"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Tails (loss)",
+            "Keep Tails (loss)"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Heads (win)",
+            "Keep Heads (win)"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Tails (loss)",
+            "Keep Tails (loss)"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Heads (win)",
+            "Keep Tails (loss)"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Tails (loss)",
+            "Keep Tails (loss)"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Goblin Traprunner",
+          "description": "Choose one",
+          "options": [
+            "Keep Heads (win)",
+            "Keep Tails (loss)"
+          ],
+          "player": 0
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Whenever you flip a coin, you gain 3 life"
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Tails"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Tails"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Tails"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Tails"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Tails"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Keep Heads"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "You gain 1 life"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "You gain 1 life"
         },
         {
           "op": "setStopAt",
@@ -254,7 +755,7 @@ registerPortedMageTests({
         {
           "op": "assertLife",
           "player": 0,
-          "life": "20 + 3 * 3"
+          "life": 23
         },
         {
           "op": "assertPermanentCount",

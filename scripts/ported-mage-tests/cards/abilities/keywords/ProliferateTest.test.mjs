@@ -144,6 +144,61 @@ registerPortedMageTests({
           "target": "Silvercoat Lion"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Grim Affliction",
+          "count": 1,
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "proliferate",
+          "choices": [
+            "Permanent: Sporeback Troll"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Silvercoat Lion",
+          "count": 0,
+          "player": 0,
+          "counter": "P1P1",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Silvercoat Lion",
+          "count": 0,
+          "player": 0,
+          "counter": "M1M1",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_options",
+          "description": "Choose permanents and/or players to proliferate",
+          "options": [
+            "Permanent: Sporeback Troll"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "proliferate",
+          "choices": []
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
@@ -185,7 +240,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Sporeback Troll",
           "counter": "P1P1",
           "count": 3

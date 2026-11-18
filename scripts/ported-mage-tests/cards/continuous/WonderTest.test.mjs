@@ -78,8 +78,21 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : playerA.getGraveyard().getCards(currentGame)) { if (card.getName().equals(\"Runeclaw Bear\")) { Assert.assertFalse(card.hasAbility(FlyingAbility.getInstance(), currentGame)); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "name": "Runeclaw Bear"
+          },
+          "checks": [
+            {
+              "property": "ability",
+              "expected": false,
+              "value": "Flying",
+              "kind": "static"
+            }
+          ],
+          "count": 1
         }
       ]
     },

@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "test_Vigilance",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -33,33 +29,92 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Ocular Halo",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Ocular Halo",
           "target": "Elite Vanguard"
         },
         {
+          "op": "assertStackObject",
+          "source": "Ocular Halo",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Elite Vanguard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Ocular Halo",
+          "target": "Elite Vanguard",
+          "expected": true
+        },
+        {
           "op": "activateAbility",
+          "source": "Ocular Halo",
+          "ability": "gains vigilance",
+          "player": 0,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Ocular Halo",
+          "count": 1,
           "turn": 1,
           "phase": "BEGIN_COMBAT",
-          "player": 0,
-          "ability": "{W}"
+          "abilityKind": "Activated"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "execute"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Elite Vanguard"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "vigilance"
+            }
+          ]
         },
         {
-          "op": "assertAbility",
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Elite Vanguard",
+          "defender": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_COMBAT"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 18
+        },
+        {
+          "op": "assertTappedCount",
           "player": 0,
           "name": "Elite Vanguard",
-          "ability": "Vigilance",
-          "expected": true
+          "count": 1,
+          "tapped": false
         }
       ]
     }

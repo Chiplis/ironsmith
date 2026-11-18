@@ -128,13 +128,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Spider-Islanders with Mayhem"
-        },
-        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -144,8 +137,13 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { Assert.assertEquals( \"Should fail to be able to cast \" + islanders + \" with mayhem as it wasn't discarded this turn\", \"Can't find ability to activate command: Cast \" + islanders + \" with Mayhem\", e.getMessage() ); }"
+          "op": "assertNoAction",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "kind": "cast_spell",
+          "label": "Spider-Islanders with Mayhem",
+          "inGraveyard": "Spider-Islanders"
         }
       ]
     },
@@ -186,13 +184,6 @@ registerPortedMageTests({
           "value": "Spider-Islanders"
         },
         {
-          "op": "castSpell",
-          "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Spider-Islanders with Mayhem"
-        },
-        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -202,8 +193,13 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { Assert.assertEquals( \"Should fail to be able to cast \" + islanders + \" with mayhem as it wasn't discarded this turn\", \"Can't find ability to activate command: Cast \" + islanders + \" with Mayhem\", e.getMessage() ); }"
+          "op": "assertNoAction",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "kind": "cast_spell",
+          "label": "Spider-Islanders with Mayhem",
+          "inGraveyard": "Spider-Islanders"
         }
       ]
     }

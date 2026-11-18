@@ -141,20 +141,33 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Boggart Ram-Gang",
-          "expected": true
+          "name": "Boggart Ram-Gang",
+          "methods": [
+            "normal"
+          ]
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "kind": "cast_spell",
           "label": "Cast Deus of Calamity",
-          "expected": false
+          "sourceZone": "hand",
+          "checkPayment": true
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Swamp",
+          "ability": "{T}: Add {B}",
+          "count": 3
         },
         {
           "op": "setChoice",
@@ -170,6 +183,42 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": "Green"
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Shire Scarecrow",
+          "ability": "Add one mana of any color",
+          "count": 3
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "R",
+          "amount": 2
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "{R}"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "{R}"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "{G}"
         },
         {
           "op": "castSpell",
@@ -196,7 +245,8 @@ registerPortedMageTests({
           "name": "Boggart Ram-Gang",
           "count": 1
         }
-      ]
+      ],
+      "deferredPriorityAnalysis": true
     }
   ]
 });

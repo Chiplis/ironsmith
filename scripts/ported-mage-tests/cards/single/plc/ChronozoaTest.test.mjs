@@ -82,8 +82,31 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (final Permanent creature : creatures) { Assert.assertEquals(\"Chronozoa\", creature.getName()); Assert.assertEquals(\"Chronozoa has to be a token\", true, creature instanceof PermanentToken); final Counters counters = creature.getCounters(currentGame); Assert.assertEquals(1, counters.size()); for(final Counter counter : counters.values()) { Assert.assertEquals(CounterType.TIME.getName(), counter.getName()); Assert.assertEquals(2, counter.getCount()); } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "cardType": "Creature"
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "name",
+              "expected": "Chronozoa"
+            },
+            {
+              "property": "token",
+              "expected": true
+            },
+            {
+              "property": "counterKinds",
+              "expected": 1
+            },
+            {
+              "property": "counter",
+              "value": "time",
+              "expected": 2
+            }
+          ]
         }
       ]
     }

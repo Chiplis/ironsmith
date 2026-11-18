@@ -26,9 +26,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "count": 0
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -39,19 +41,27 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 1,
-          "name": "END_TURN",
-          "count": 0
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Initial life\", 1, PhaseStep.END_TURN, playerA, 20)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "life": 20,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": "Did not draw on 1st upkeep",
-          "name": 3,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 3,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -62,13 +72,19 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": "Did not draw on 1st upkeep (2)",
-          "name": 3,
-          "count": "END_TURN"
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 2,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Initial life\", 3, PhaseStep.END_TURN, playerA, 21)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 0,
+          "life": 21,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -133,9 +149,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "count": 0
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -146,13 +164,19 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": 1,
-          "name": "END_TURN",
-          "count": 0
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Initial life\", 1, PhaseStep.END_TURN, playerA, 20)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "life": 20,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -163,14 +187,20 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Post-spear 1\", 2, PhaseStep.END_TURN, playerA, 19)"
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "END_TURN",
+          "player": 0,
+          "life": 19,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": "Did not draw on 1st upkeep",
-          "name": 3,
-          "count": "PRECOMBAT_MAIN"
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -181,13 +211,19 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": "Did not draw on 1st upkeep (2)",
-          "name": 3,
-          "count": "END_TURN"
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Post-splendors\", 3, PhaseStep.END_TURN, playerA, 20)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "END_TURN",
+          "player": 0,
+          "life": 20,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -198,8 +234,12 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"Post-spear 2\", 4, PhaseStep.END_TURN, playerA, 19)"
+          "op": "assertLife",
+          "turn": 4,
+          "phase": "END_TURN",
+          "player": 0,
+          "life": 19,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",

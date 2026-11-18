@@ -80,14 +80,14 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Pillarfield Ox",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Pillarfield Ox",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -166,7 +166,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Silvercoat Lion",
+          "name": "Silvercoat Lion@attacking",
           "count": 2
         },
         {
@@ -202,22 +202,24 @@ registerPortedMageTests({
           "op": "attack",
           "turn": 2,
           "player": 1,
-          "attacker": "Silvercoat Lion",
-          "defender": 1
+          "attacker": "Silvercoat Lion@attacking.1",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
-          "attacker": "Silvercoat Lion",
-          "defender": 1
+          "attacker": "Silvercoat Lion@attacking.2",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
           "turn": 2,
           "player": 0,
           "blocker": "Silvercoat Lion",
-          "attacker": "Silvercoat Lion"
+          "attacker": "Silvercoat Lion@attacking.1"
         },
         {
           "op": "setStopAt",
@@ -376,7 +378,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",

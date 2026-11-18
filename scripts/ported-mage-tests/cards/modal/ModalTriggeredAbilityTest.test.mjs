@@ -32,7 +32,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Blizzard Specter",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setModeChoice",
@@ -100,12 +100,17 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Blizzard Specter",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "2"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "That player discards a card."
+          ]
         },
         {
           "op": "setStopAt",

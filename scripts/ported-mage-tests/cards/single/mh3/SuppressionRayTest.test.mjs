@@ -74,6 +74,42 @@ registerPortedMageTests({
           "name": "Aethertide Whale"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Aethertide Whale",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Aethertide Whale",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": 0,
+          "count": 6,
+          "player": 0,
+          "counter": "ENERGY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -82,18 +118,50 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 3)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Suppression Ray",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Zodiac Pig^Zodiac Rabbit"
+          "kind": "boolean",
+          "description": "Pay any amount of {E}",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "kind": "number",
+          "description": "Choose how much {E} to pay",
+          "value": 3
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 0,
+          "kind": "select_objects",
+          "description": "Choose up to 3 creatures",
+          "options": [
+            "Zodiac Goat",
+            "Zodiac Horse",
+            "Zodiac Rabbit",
+            "Zodiac Pig"
+          ]
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Zodiac Pig^Zodiac Rabbit"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -104,24 +172,34 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Zodiac Dog\", false)"
+          "op": "assertTapped",
+          "name": "Zodiac Dog",
+          "tapped": false,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Zodiac Goat\", true)"
+          "op": "assertTapped",
+          "name": "Zodiac Goat",
+          "tapped": true,
+          "player": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Zodiac Horse\", true)"
+          "op": "assertTapped",
+          "name": "Zodiac Horse",
+          "tapped": true,
+          "player": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Zodiac Rabbit\", true)"
+          "op": "assertTapped",
+          "name": "Zodiac Rabbit",
+          "tapped": true,
+          "player": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Zodiac Pig\", true)"
+          "op": "assertTapped",
+          "name": "Zodiac Pig",
+          "tapped": true,
+          "player": 1
         },
         {
           "op": "assertCounterCount",

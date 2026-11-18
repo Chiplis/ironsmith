@@ -104,15 +104,36 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Reconfigure",
-          "target": "Silvercoat Lion"
+          "ability": "Reconfigure {5}",
+          "target": "Silvercoat Lion",
+          "source": "Bronzeplate Boar",
+          "abilityIndex": 4
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Bronzeplate Boar",
+          "target": "Silvercoat Lion",
+          "expected": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{5}:"
+          "ability": "Reconfigure {5}",
+          "source": "Bronzeplate Boar",
+          "abilityIndex": 5
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -127,12 +148,25 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(boar, CardType.CREATURE, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(boar, SubType.EQUIPMENT)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Bronzeplate Boar"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Equipment",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
@@ -274,8 +308,15 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Equip",
-          "target": "Silvercoat Lion"
+          "ability": "{0}: Choose objects attach.",
+          "target": "Silvercoat Lion",
+          "source": "Bronzeplate Boar",
+          "abilityIndex": 6
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",

@@ -28,20 +28,36 @@ registerPortedMageTests({
           "name": "Gray Merchant of Asphodel"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"\", 1, PhaseStep.BEGIN_COMBAT, playerB, 18)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "life": "18",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"\", 1, PhaseStep.BEGIN_COMBAT, playerC, 20)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 2,
+          "life": "20",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"\", 1, PhaseStep.BEGIN_COMBAT, playerD, 18)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 3,
+          "life": "18",
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"\", 1, PhaseStep.BEGIN_COMBAT, playerA, 24)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "life": "24",
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -88,7 +104,8 @@ registerPortedMageTests({
           "name": "Gray Merchant of Asphodel",
           "count": 2
         }
-      ]
+      ],
+      "rangeOfInfluence": 1
     }
   ]
 });

@@ -46,7 +46,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Lightning Bolt"
+          "name": "Lightning Bolt",
+          "target": 1
         },
         {
           "op": "castSpell",
@@ -57,12 +58,46 @@ registerPortedMageTests({
           "target": "Lightning Bolt"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Counterlash",
+          "onTop": true,
+          "objectTarget": "Lightning Bolt"
         },
         {
-          "op": "execute"
+          "op": "setChoice",
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "value": "Beacon of Immortality"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Beacon of Immortality",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertLife",
@@ -83,6 +118,20 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "player": 1,
           "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Counterlash",
+          "count": 1,
+          "seatIndependent": true
         }
       ]
     }

@@ -35,6 +35,10 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -42,52 +46,129 @@ registerPortedMageTests({
           "name": "Grizzly Bears"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "text": "Cast Grizzly Bears"
+        },
+        {
+          "op": "assertSpellTargetRequirements",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Desertion",
-          "target": "Grizzly Bears"
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Desertion",
-          "target": "Grizzly Bears"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkStackObject(\"before resolve\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Grizzly Bears\", 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkStackObject(\"before resolve\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Desertion\", 2)"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Grizzly Bears",
           "count": 1
         },
         {
-          "op": "assertGraveyardCount",
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Desertion",
-          "count": 2
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "text": "Cast Desertion",
+          "objectTarget": "Grizzly Bears",
+          "onTop": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Desertion",
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 2,
+          "text": "Cast Desertion",
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 3
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 0,
+          "text": "Cast Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "text": "Cast Desertion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Desertion",
+          "count": 2,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Grizzly Bears",
+          "count": 0,
+          "player": 0
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 0
         }
       ]
     }

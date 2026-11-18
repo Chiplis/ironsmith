@@ -148,16 +148,64 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Gravecrawler"
-        },
-        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Cryptoplasm"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cryptoplasm",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                "Gravecrawler"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "source": "Cryptoplasm",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "objectTarget": "Gravecrawler"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Gravecrawler",
+          "player": 0,
+          "count": 1,
+          "turn": 3,
+          "phase": "UPKEEP"
         },
         {
           "op": "attack",
@@ -167,25 +215,27 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 3,
           "player": 1,
+          "attacker": "Elite Vanguard",
           "blocker": "Gravecrawler",
-          "attacker": "Elite Vanguard"
+          "expected": false
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
           "attacker": "Llanowar Elves",
-          "defender": 1
+          "defender": 0
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 4,
           "player": 0,
+          "attacker": "Llanowar Elves",
           "blocker": "Gravecrawler",
-          "attacker": "Llanowar Elves"
+          "expected": false
         },
         {
           "op": "setStopAt",
@@ -294,11 +344,12 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 3,
           "player": 1,
           "blocker": "Gravecrawler",
-          "attacker": "Elite Vanguard"
+          "attacker": "Elite Vanguard",
+          "expected": false
         },
         {
           "op": "setStopAt",

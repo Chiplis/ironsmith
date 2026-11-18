@@ -28,6 +28,20 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertBlockDeclarationRejected",
+          "turn": 3,
+          "player": 1,
+          "reason": "requires 1 blockers",
+          "declarations": []
+        },
+        {
+          "op": "block",
+          "turn": 3,
+          "player": 1,
+          "blocker": "Scryb Sprites",
+          "attacker": "Canopy Stalker"
+        },
+        {
           "op": "setStopAt",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN"
@@ -70,6 +84,20 @@ registerPortedMageTests({
           "player": 0,
           "attacker": "Canopy Stalker",
           "defender": 1
+        },
+        {
+          "op": "assertBlockDeclarationRejected",
+          "turn": 3,
+          "player": 1,
+          "reason": "requires 1 blockers",
+          "declarations": []
+        },
+        {
+          "op": "block",
+          "turn": 3,
+          "player": 1,
+          "blocker": "Grizzly Bears",
+          "attacker": "Canopy Stalker"
         },
         {
           "op": "setStopAt",

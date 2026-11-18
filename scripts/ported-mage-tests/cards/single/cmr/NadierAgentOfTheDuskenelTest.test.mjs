@@ -7,8 +7,15 @@ registerPortedMageTests({
       "name": "test_DieAnother",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "target destroy",
+          "count": 1,
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{0}: Destroy target permanent."
         },
         {
           "op": "addCard",
@@ -57,14 +64,24 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target destroy",
-          "target": "The Hive"
+          "ability": "{0}: Destroy target permanent",
+          "target": "The Hive",
+          "source": "target destroy"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "target destroy",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "The Hive"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -86,8 +103,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target destroy",
-          "target": "Wasp"
+          "ability": "{0}: Destroy target permanent",
+          "target": "Wasp",
+          "source": "target destroy"
         },
         {
           "op": "waitStackResolved",
@@ -104,8 +122,14 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"on token - must trigger\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Nadier, Agent of the Duskenel\", CounterType.P1P1, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Nadier, Agent of the Duskenel",
+          "counter": "P1P1",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

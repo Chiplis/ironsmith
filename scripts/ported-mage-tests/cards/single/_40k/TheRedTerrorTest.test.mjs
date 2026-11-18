@@ -421,6 +421,33 @@ registerPortedMageTests({
           "name": "Pyroclasm"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Pyroclasm",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Red Terror",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_TURN"
@@ -440,12 +467,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, earthElemental, 2)"
+          "op": "assertDamageReceived",
+          "name": "Earth Elemental",
+          "damage": 2,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, terror, 2)"
+          "op": "assertDamageReceived",
+          "name": "The Red Terror",
+          "damage": 2,
+          "player": 0
         },
         {
           "op": "assertGraveyardCount",
@@ -454,8 +485,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, earthElemental, 2)"
+          "op": "assertDamageReceived",
+          "name": "Earth Elemental",
+          "damage": 2,
+          "player": 1
         }
       ]
     },

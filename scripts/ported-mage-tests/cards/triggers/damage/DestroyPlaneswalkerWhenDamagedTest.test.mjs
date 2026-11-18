@@ -7,8 +7,16 @@ registerPortedMageTests({
       "name": "nullFilterTest",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"nullFilterDPwD\", playerA, new DestroyPlaneswalkerWhenDamagedTriggeredAbility(), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "nullFilterDPwD",
+          "typeLine": "Creature",
+          "custom": true,
+          "fixtureSource": true,
+          "oracleText": "Whenever this creature deals damage to a planeswalker, destroy that planeswalker.",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "addCard",

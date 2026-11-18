@@ -74,17 +74,48 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}"
+          "ability": "{3}",
+          "source": "Whetstone"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Whetstone",
+          "count": 1
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "The Wise Mothman^Grizzly Bears"
+          "target": {
+            "groups": [
+              [
+                "The Wise Mothman",
+                "Grizzly Bears"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Wise Mothman",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

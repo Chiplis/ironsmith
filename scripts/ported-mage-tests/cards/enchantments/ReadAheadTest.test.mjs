@@ -95,14 +95,63 @@ registerPortedMageTests({
           "name": "The Elder Dragon War"
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "value": "X=2"
+          "kind": "select_options",
+          "description": "Choose one",
+          "options": [
+            "Chapter I",
+            "Chapter II",
+            "Chapter III"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Chapter II"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Elder Dragon War",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "The Elder Dragon War",
+          "counter": "Lore",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Elder Dragon War",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Ancestral Recall"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -172,9 +221,58 @@ registerPortedMageTests({
           "name": "The Elder Dragon War"
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "value": "X=3"
+          "kind": "select_options",
+          "description": "Choose one",
+          "options": [
+            "Chapter I",
+            "Chapter II",
+            "Chapter III"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Chapter III"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Elder Dragon War",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "The Elder Dragon War",
+          "counter": "Lore",
+          "count": 3
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Elder Dragon War",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -357,9 +455,51 @@ registerPortedMageTests({
           "name": "Rite of Belzenlok"
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "value": "X=2"
+          "kind": "select_options",
+          "description": "Choose one",
+          "options": [
+            "Chapter I",
+            "Chapter II",
+            "Chapter III"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Chapter II"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Rite of Belzenlok",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Rite of Belzenlok",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -455,9 +595,58 @@ registerPortedMageTests({
           "name": "Rite of Belzenlok"
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "value": "X=3"
+          "kind": "select_options",
+          "description": "Choose one",
+          "options": [
+            "Chapter I",
+            "Chapter II",
+            "Chapter III"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Chapter III"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Rite of Belzenlok",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Rite of Belzenlok",
+          "counter": "Lore",
+          "count": 3
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Rite of Belzenlok",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

@@ -52,10 +52,6 @@ registerPortedMageTests({
       "name": "testBecomesCreatureAttachedEffect",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -78,54 +74,98 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Frogify",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Frogify",
           "target": "Dryad Arbor"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Frogify",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Dryad Arbor"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertAbilities",
-          "player": 0,
-          "name": "Dryad Arbor",
-          "abilities": [
-            "Collections.emptyList()"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Dryad Arbor"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            },
+            {
+              "property": "cardType",
+              "expected": true,
+              "value": "Creature"
+            },
+            {
+              "property": "cardType",
+              "expected": false,
+              "value": "Land"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Frog"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Dryad"
+            },
+            {
+              "property": "colorCount",
+              "expected": 1
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "Blue"
+            },
+            {
+              "property": "color",
+              "expected": false,
+              "value": "Green"
+            }
           ]
         },
         {
-          "op": "assertPowerToughness",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Dryad Arbor",
-          "power": 1,
-          "toughness": 1
+          "count": 0,
+          "kind": "activated"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(dryadArbor, CardType.CREATURE, SubType.FROG)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Dryad Arbor",
+          "count": 0,
+          "kind": "static"
         },
         {
-          "op": "unsupported",
-          "source": "assertNotSubtype(dryadArbor, SubType.DRYAD)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNotType(dryadArbor, CardType.LAND)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertColor(playerA, dryadArbor, ObjectColor.BLUE, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertColor(playerA, dryadArbor, ObjectColor.GREEN, false)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Dryad Arbor",
+          "count": 0,
+          "kind": "triggered"
         }
       ]
     }

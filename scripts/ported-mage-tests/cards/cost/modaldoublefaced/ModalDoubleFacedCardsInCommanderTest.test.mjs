@@ -160,12 +160,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"prepare\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Grizzly Bears\", 5)"
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 5
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"after upkeep 1\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Grizzly Bears\", 5 - 1)"
+          "op": "assertLibraryCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 4
         },
         {
           "op": "assertPermanentCount",
@@ -176,8 +184,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLibraryCount(\"after upkeep 2\", 5, PhaseStep.PRECOMBAT_MAIN, playerA, \"Grizzly Bears\", 5 - 2)"
+          "op": "assertLibraryCount",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 3
         },
         {
           "op": "assertPermanentCount",
@@ -235,7 +247,8 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "startingLife": 40
     }
   ]
 });

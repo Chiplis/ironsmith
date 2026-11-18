@@ -43,6 +43,32 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Aggravate",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Craw Wurm",
+          "damage": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Goblin Roughrider",
+          "damage": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 2,
           "phase": "DECLARE_BLOCKERS"
@@ -51,12 +77,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttacking(\"Craw Wurm\", true)"
+          "op": "assertAttacking",
+          "player": 1,
+          "name": "Craw Wurm",
+          "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "assertAttacking(\"Goblin Roughrider\", true)"
+          "op": "assertAttacking",
+          "player": 1,
+          "name": "Goblin Roughrider",
+          "expected": true
         }
       ]
     },
@@ -114,6 +144,32 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "source": "Aggravate",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "resolutions": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Craw Wurm",
+          "damage": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Goblin Roughrider",
+          "damage": 1
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
@@ -129,16 +185,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttacking(\"Craw Wurm\", true)"
+          "op": "assertAttacking",
+          "player": 1,
+          "name": "Craw Wurm",
+          "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "assertAttacking(\"Goblin Roughrider\", true)"
+          "op": "assertAttacking",
+          "player": 1,
+          "name": "Goblin Roughrider",
+          "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "assertAttacking(\"Raging Goblin\", false)"
+          "op": "assertAttacking",
+          "player": 1,
+          "name": "Raging Goblin",
+          "expected": false
         }
       ]
     }

@@ -300,10 +300,6 @@ registerPortedMageTests({
       "name": "test_MagmaPummeler_KilledByMore",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -337,10 +333,24 @@ registerPortedMageTests({
           "value": "X=5"
         },
         {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "source": "Magma Pummeler",
+          "count": 1,
+          "xValue": 5
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Magma Pummeler",
+          "counter": "+1/+1",
+          "count": 5
         },
         {
           "op": "castSpell",
@@ -351,23 +361,43 @@ registerPortedMageTests({
           "target": "Magma Pummeler"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Shivan Meteor",
+          "count": 1,
+          "objectTarget": "Magma Pummeler"
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": 1
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Magma Pummeler",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Magma Pummeler",
           "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -385,10 +415,6 @@ registerPortedMageTests({
     {
       "name": "test_MagmaPummeler_DoubleBlocked_And_Die",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -430,6 +456,26 @@ registerPortedMageTests({
           "value": "X=5"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Magma Pummeler",
+          "count": 1,
+          "xValue": 5
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Magma Pummeler",
+          "counter": "+1/+1",
+          "count": 5
+        },
+        {
           "op": "attack",
           "turn": 3,
           "player": 0,
@@ -453,7 +499,12 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "CHOICE_SKIP"
+          "value": 3
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": 2
         },
         {
           "op": "addTarget",
@@ -461,18 +512,25 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 3,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "COMBAT_DAMAGE",
+          "source": "Magma Pummeler",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Magma Pummeler",
           "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "END_COMBAT"
         },
         {
           "op": "assertLife",
@@ -484,10 +542,6 @@ registerPortedMageTests({
     {
       "name": "test_UndergrowthChampion_DoubleBlocked",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -524,6 +578,33 @@ registerPortedMageTests({
           "name": "Plains"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 0
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Undergrowth Champion",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Undergrowth Champion",
+          "counter": "+1/+1",
+          "count": 1
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
@@ -547,24 +628,42 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "CHOICE_SKIP"
+          "value": 2
         },
         {
-          "op": "setStopAt",
+          "op": "setChoice",
+          "player": 0,
+          "value": 1
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "END_COMBAT"
         },
         {
-          "op": "execute"
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Grizzly Bears",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
           "player": 1,
-          "count": 2
+          "name": "Elite Vanguard",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, \"Undergrowth Champion\", 0)"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Undergrowth Champion",
+          "counter": "+1/+1",
+          "count": 0
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Undergrowth Champion",
+          "damage": 0
         },
         {
           "op": "assertPowerToughness",

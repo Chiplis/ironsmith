@@ -47,12 +47,34 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Disrupting Shoal",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "actionLabel": "Cast Disrupting Shoal"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "X=2"
+          "kind": "options",
+          "description": "Choose casting method for Disrupting Shoal",
+          "choices": [
+            "Normal: {X}{U}{U}"
+          ],
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 1,
+          "kind": "number",
+          "description": "Choose value for X",
+          "value": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disrupting Shoal",
+          "count": 1,
+          "xValue": 2,
+          "objectTarget": "Silvercoat Lion"
         },
         {
           "op": "setStrictChooseMode",
@@ -124,12 +146,34 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Disrupting Shoal",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "actionLabel": "Cast Disrupting Shoal"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "X=1"
+          "kind": "options",
+          "description": "Choose casting method for Disrupting Shoal",
+          "choices": [
+            "Normal: {X}{U}{U}"
+          ],
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 1,
+          "kind": "number",
+          "description": "Choose value for X",
+          "value": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disrupting Shoal",
+          "count": 1,
+          "xValue": 1,
+          "objectTarget": "Silvercoat Lion"
         },
         {
           "op": "setStrictChooseMode",
@@ -222,12 +266,25 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Disrupting Shoal",
-          "target": "Pillarfield Ox"
+          "target": "Pillarfield Ox",
+          "actionLabel": "Cast Disrupting Shoal (parsed alternative cost)"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "Cast with alternative cost: Exile a blue card with mana value X from your hand (source: Disrupting Shoal"
+          "kind": "options",
+          "description": "Choose casting method for Disrupting Shoal",
+          "choices": [
+            "Parsed alternative cost: Exile a blue card with a constrained mana value from your hand, Exile those cards"
+          ],
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 1,
+          "kind": "number",
+          "description": "Choose value for X",
+          "value": 4
         },
         {
           "op": "setChoice",
@@ -235,12 +292,22 @@ registerPortedMageTests({
           "value": "Mistfire Adept"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disrupting Shoal",
+          "count": 1,
+          "xValue": 4,
+          "objectTarget": "Pillarfield Ox"
+        },
+        {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Cast Spell Snare",
-          "expected": false
+          "expected": false,
+          "holdStack": true
         },
         {
           "op": "setStrictChooseMode",
@@ -273,7 +340,8 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 1,
-          "count": 1
+          "count": 1,
+          "name": "Mistfire Adept"
         },
         {
           "op": "assertHandCount",
@@ -339,17 +407,39 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Disrupting Shoal",
-          "target": "Grizzly Bears"
+          "target": "Grizzly Bears",
+          "actionLabel": "Cast Disrupting Shoal (parsed alternative cost)"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "Cast with alternative cost: Exile a blue card with mana value X from your hand (source: Disrupting Shoal"
+          "kind": "options",
+          "description": "Choose casting method for Disrupting Shoal",
+          "choices": [
+            "Parsed alternative cost: Exile a blue card with a constrained mana value from your hand, Exile those cards"
+          ],
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 1,
+          "kind": "number",
+          "description": "Choose value for X",
+          "value": 5
         },
         {
           "op": "setChoice",
           "player": 1,
           "value": "Far // Away"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disrupting Shoal",
+          "count": 1,
+          "xValue": 5,
+          "objectTarget": "Grizzly Bears"
         },
         {
           "op": "setStrictChooseMode",
@@ -366,7 +456,8 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 1,
-          "count": 1
+          "count": 1,
+          "name": "Far // Away"
         },
         {
           "op": "assertGraveyardCount",
@@ -432,17 +523,39 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Disrupting Shoal",
-          "target": "Centaur Courser"
+          "target": "Centaur Courser",
+          "actionLabel": "Cast Disrupting Shoal (parsed alternative cost)"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "Cast with alternative cost: Exile a blue card with mana value X from your hand (source: Disrupting Shoal"
+          "kind": "options",
+          "description": "Choose casting method for Disrupting Shoal",
+          "choices": [
+            "Parsed alternative cost: Exile a blue card with a constrained mana value from your hand, Exile those cards"
+          ],
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 1,
+          "kind": "number",
+          "description": "Choose value for X",
+          "value": 5
         },
         {
           "op": "setChoice",
           "player": 1,
           "value": "Far // Away"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disrupting Shoal",
+          "count": 1,
+          "xValue": 5,
+          "objectTarget": "Centaur Courser"
         },
         {
           "op": "setStrictChooseMode",
@@ -459,7 +572,8 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 1,
-          "count": 1
+          "count": 1,
+          "name": "Far // Away"
         },
         {
           "op": "assertGraveyardCount",
@@ -525,17 +639,39 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Disrupting Shoal",
-          "target": "Air Elemental"
+          "target": "Air Elemental",
+          "actionLabel": "Cast Disrupting Shoal (parsed alternative cost)"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "Cast with alternative cost: Exile a blue card with mana value X from your hand (source: Disrupting Shoal"
+          "kind": "options",
+          "description": "Choose casting method for Disrupting Shoal",
+          "choices": [
+            "Parsed alternative cost: Exile a blue card with a constrained mana value from your hand, Exile those cards"
+          ],
+          "optional": true
+        },
+        {
+          "op": "assertChoiceMenu",
+          "player": 1,
+          "kind": "number",
+          "description": "Choose value for X",
+          "value": 5
         },
         {
           "op": "setChoice",
           "player": 1,
           "value": "Far // Away"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Disrupting Shoal",
+          "count": 1,
+          "xValue": 5,
+          "objectTarget": "Air Elemental"
         },
         {
           "op": "setStrictChooseMode",
@@ -552,7 +688,8 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 1,
-          "count": 1
+          "count": 1,
+          "name": "Far // Away"
         },
         {
           "op": "assertGraveyardCount",

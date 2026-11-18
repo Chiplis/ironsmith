@@ -53,7 +53,11 @@ registerPortedMageTests({
           "turn": 3,
           "player": 1,
           "blocker": "Silvercoat Lion",
-          "attacker": "Two-Headed Sliver"
+          "attacker": "Two-Headed Sliver",
+          "expectedRejection": {
+            "rule": "minimum",
+            "count": 2
+          }
         },
         {
           "op": "setStopAt",
@@ -61,8 +65,7 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); fail(\"Expected exception not thrown\"); } catch (UnsupportedOperationException e) { assertEquals(\"Two-Headed Sliver is blocked by 1 creature(s). It has to be blocked by 2 or more.\", e.getMessage()); }"
+          "op": "execute"
         }
       ]
     },

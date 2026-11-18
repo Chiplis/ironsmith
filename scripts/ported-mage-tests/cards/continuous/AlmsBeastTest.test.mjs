@@ -25,7 +25,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -91,7 +91,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Alms Beast",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",

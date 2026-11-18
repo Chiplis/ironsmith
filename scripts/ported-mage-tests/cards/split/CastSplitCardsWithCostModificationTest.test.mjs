@@ -7,14 +7,20 @@ registerPortedMageTests({
       "name": "test_Playable_Left",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"reduce\", playerA, new SimpleStaticAbility( new SpellsCostReductionAllEffect(filter, 3)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Reduction Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Spells named Armed cost {3} less to cast."
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Armed // Dangerous",
+          "name": "Armed // Dangerous@cast.split",
           "count": 1
         },
         {
@@ -32,36 +38,25 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Armed",
-          "expected": true
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Dangerous",
-          "expected": false
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast fused Armed // Dangerous",
-          "expected": false
+          "name": "Armed // Dangerous",
+          "methods": [
+            "normal"
+          ],
+          "objectAlias": "@cast.split"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Armed",
-          "target": "Balduvian Bears"
+          "name": "Armed // Dangerous",
+          "target": "Balduvian Bears",
+          "castingMethod": "normal",
+          "objectAlias": "@cast.split"
         },
         {
           "op": "setStrictChooseMode",
@@ -87,14 +82,20 @@ registerPortedMageTests({
       "name": "test_Playable_Right",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"reduce\", playerA, new SimpleStaticAbility( new SpellsCostReductionAllEffect(filter, 3)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Reduction Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Spells named Dangerous cost {3} less to cast."
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Armed // Dangerous",
+          "name": "Armed // Dangerous@cast.split",
           "count": 1
         },
         {
@@ -112,36 +113,25 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Armed",
-          "expected": false
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Dangerous",
-          "expected": true
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast fused Armed // Dangerous",
-          "expected": false
+          "name": "Armed // Dangerous",
+          "methods": [
+            "split_other_half"
+          ],
+          "objectAlias": "@cast.split"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Dangerous",
-          "target": "Balduvian Bears"
+          "name": "Armed // Dangerous",
+          "target": "Balduvian Bears",
+          "castingMethod": "split_other_half",
+          "objectAlias": "@cast.split"
         },
         {
           "op": "setStrictChooseMode",
@@ -167,14 +157,20 @@ registerPortedMageTests({
       "name": "test_Playable_Fused_Left",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"reduce\", playerA, new SimpleStaticAbility( new SpellsCostReductionAllEffect(filter, 4)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Reduction Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Spells named Armed cost {4} less to cast."
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Armed // Dangerous",
+          "name": "Armed // Dangerous@fuse",
           "count": 1
         },
         {
@@ -199,45 +195,35 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Armed",
-          "expected": true
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Dangerous",
-          "expected": false
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast fused Armed // Dangerous",
-          "expected": true
+          "name": "Armed // Dangerous",
+          "methods": [
+            "normal",
+            "fuse"
+          ],
+          "objectAlias": "@fuse"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "fused Armed // Dangerous"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Balduvian Bears"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Balduvian Bears"
+          "name": "Armed // Dangerous",
+          "castingMethod": "fuse",
+          "objectAlias": "@fuse",
+          "target": {
+            "groups": [
+              [
+                "Balduvian Bears"
+              ],
+              [
+                "Balduvian Bears"
+              ]
+            ]
+          }
         },
         {
           "op": "setStrictChooseMode",
@@ -263,14 +249,20 @@ registerPortedMageTests({
       "name": "test_Playable_Fused_Right",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"reduce\", playerA, new SimpleStaticAbility( new SpellsCostReductionAllEffect(filter, 4)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Reduction Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "Spells named Dangerous cost {4} less to cast."
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Armed // Dangerous",
+          "name": "Armed // Dangerous@fuse",
           "count": 1
         },
         {
@@ -295,45 +287,36 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPlayableAbility",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Armed",
-          "expected": true
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast Dangerous",
-          "expected": true
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Cast fused Armed // Dangerous",
-          "expected": true
+          "name": "Armed // Dangerous",
+          "methods": [
+            "normal",
+            "split_other_half",
+            "fuse"
+          ],
+          "objectAlias": "@fuse"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "fused Armed // Dangerous"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Balduvian Bears"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Balduvian Bears"
+          "name": "Armed // Dangerous",
+          "castingMethod": "fuse",
+          "objectAlias": "@fuse",
+          "target": {
+            "groups": [
+              [
+                "Balduvian Bears"
+              ],
+              [
+                "Balduvian Bears"
+              ]
+            ]
+          }
         },
         {
           "op": "setStrictChooseMode",

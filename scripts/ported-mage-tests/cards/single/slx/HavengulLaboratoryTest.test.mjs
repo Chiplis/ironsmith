@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "test_LeavesAndTransform",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerA)"
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -46,9 +42,17 @@ registerPortedMageTests({
           "count": "3 * 2"
         },
         {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Target Destroy Fixture",
+          "fixtureSource": true,
+          "manaCost": "{0}",
+          "typeLine": "Instant",
+          "oracleText": "Destroy target permanent."
+        },
+        {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Havengul Laboratory",
           "count": 1
@@ -61,29 +65,57 @@ registerPortedMageTests({
           "name": "Deduce"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Deduce"
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Deduce"
+          "source": "Deduce",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "name": "Deduce"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Deduce",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Deduce"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Deduce",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Clue Token",
           "count": 3
@@ -93,21 +125,81 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Clue Token",
           "ability": "{2}, Sacrifice"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Clue Token",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Clue Token",
+          "count": 2
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Clue Token",
           "ability": "{2}, Sacrifice"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Clue Token",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Clue Token",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Clue Token",
           "ability": "{2}, Sacrifice"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Clue Token",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Clue Token",
+          "count": 0
         },
         {
           "op": "addTarget",
@@ -117,90 +209,70 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN",
-          "player": null
+          "phase": "END_TURN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "END_TURN",
           "player": 0,
           "name": "Havengul Laboratory",
           "count": 0
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "END_TURN",
           "player": 0,
           "name": "Havengul Mystery",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "END_TURN",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "target destroy",
+          "name": "Target Destroy Fixture",
           "target": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Target Destroy Fixture",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
         },
         {
           "op": "waitStackResolved",
           "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Havengul Laboratory",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Havengul Mystery",
           "count": 0
         },
         {
           "op": "assertPermanentCount",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 0
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 1
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 2,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
         }
       ]
     }

@@ -147,13 +147,6 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
-          "name": "Grizzly Bears",
-          "count": 2
-        },
-        {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
           "player": 1,
           "name": "Liliana, Dreadhorde General",
           "count": 1
@@ -166,30 +159,61 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Grizzly Bears@attacker1",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Grizzly Bears@attacker2",
+          "count": 1
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "Grizzly Bears",
+          "attacker": "@attacker1",
           "defender": "Liliana, Dreadhorde General"
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "Grizzly Bears",
+          "attacker": "@attacker2",
           "defender": "Vivien, Champion of the Wilds"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Oath of Kaya",
+          "count": 2,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "DECLARE_ATTACKERS",
+          "abilityKind": "Triggered",
+          "controller": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 16
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 24
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_COMBAT"
         },
         {
           "op": "assertCounterCount",
@@ -204,16 +228,6 @@ registerPortedMageTests({
           "name": "Vivien, Champion of the Wilds",
           "counter": "LOYALTY",
           "count": 2
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 18
-        },
-        {
-          "op": "assertLife",
-          "player": 1,
-          "life": 22
         }
       ]
     }

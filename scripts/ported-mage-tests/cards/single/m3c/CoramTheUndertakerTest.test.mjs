@@ -311,6 +311,32 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertStackObject",
+          "source": "Coram, the Undertaker",
+          "count": 1,
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "resolutions": 1,
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Bear Cub",
+          "count": 1
+        },
+        {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",

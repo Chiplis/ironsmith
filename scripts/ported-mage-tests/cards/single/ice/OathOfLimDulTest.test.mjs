@@ -14,7 +14,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Oath of Lim-Dul",
+          "name": "Oath of Lim-Dûl",
           "count": 1
         },
         {
@@ -108,7 +108,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Oath of Lim-Dul",
+          "name": "Oath of Lim-Dûl",
           "count": 1
         },
         {
@@ -141,9 +141,37 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Oath of Lim-Dûl",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
           "player": 0,
-          "value": true
+          "description": "Discard 1 card or Choose 1 another permanent you control",
+          "includes": [
+            "Swamp"
+          ]
         },
         {
           "op": "setChoice",
@@ -153,7 +181,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Swamp"
         },
         {
           "op": "setChoice",
@@ -161,14 +189,10 @@ registerPortedMageTests({
           "value": "Swamp"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Swamp"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -202,7 +226,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Oath of Lim-Dul",
+          "name": "Oath of Lim-Dûl",
           "count": 1
         },
         {
@@ -235,9 +259,37 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Oath of Lim-Dûl",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
           "player": 0,
-          "value": true
+          "description": "Discard 1 card or Choose 1 another permanent you control",
+          "includes": [
+            "Swamp"
+          ]
         },
         {
           "op": "setChoice",
@@ -248,6 +300,12 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": "Mountain"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -287,7 +345,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Oath of Lim-Dul",
+          "name": "Oath of Lim-Dûl",
           "count": 1
         },
         {
@@ -355,7 +413,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "Oath of Lim-Dul",
+          "name": "Oath of Lim-Dûl",
           "count": 1
         },
         {

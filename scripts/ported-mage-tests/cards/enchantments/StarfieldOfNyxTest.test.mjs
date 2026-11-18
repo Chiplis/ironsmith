@@ -182,8 +182,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "if (enchantment != null && enchantment.getAttachedTo() != null) { Permanent enchanted = currentGame.getPermanent(enchantment.getAttachedTo()); Assert.assertEquals(\"Silumgar was enchanted\", \"Silumgar, the Drifting Death\", enchanted.getName()); } else { Assert.fail(\"Singing Bell Strike not on the battlefield\"); }"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Singing Bell Strike",
+          "targetPlayer": 1,
+          "target": "Silumgar, the Drifting Death",
+          "expected": true
         }
       ]
     },
@@ -223,7 +227,11 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Crusade",
-          "count": 4
+          "count": 4,
+          "fixtureSource": true,
+          "typeLine": "Enchantment",
+          "oracleText": "White creatures get +1/+1.",
+          "manaCost": "{W}{W}"
         },
         {
           "op": "setStopAt",
@@ -237,22 +245,54 @@ registerPortedMageTests({
           "op": "assertPowerToughness",
           "player": 0,
           "name": "Master of the Feast",
-          "power": 3,
-          "toughness": 3
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "Humility",
-          "power": 4,
-          "toughness": 4
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "Emrakul, the Aeons Torn",
-          "power": 15,
-          "toughness": 15
+          "power": 1,
+          "toughness": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Emrakul, the Aeons Torn"
+          },
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Flying",
+              "expected": false
+            }
+          ],
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Humility"
+          },
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "creature",
+              "expected": true
+            }
+          ],
+          "count": 1
         }
       ]
     },

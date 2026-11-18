@@ -99,32 +99,56 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Fire // Ice",
+          "name": "Fire // Ice@split",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Ice",
+          "player": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Ice",
-          "target": "Silvercoat Lion"
+          "objectAlias": "@split",
+          "target": "Silvercoat Lion",
+          "castingMethod": "split_other_half"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Ice",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1,
+          "objectTarget": "Silvercoat Lion",
+          "isSpell": true
         },
         {
           "op": "castSpell",
+          "name": "Time Stop",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Time Stop",
-          "target": "TestPlayer.NO_TARGET"
+          "holdStack": true
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Time Stop",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 2,
           "phase": "UPKEEP"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertHandCount",
@@ -141,12 +165,20 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 1,
+          "name": "@split",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
           "name": "Fire // Ice",
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Silvercoat Lion\", false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "tapped": false
         },
         {
           "op": "assertHandCount",

@@ -58,8 +58,12 @@ registerPortedMageTests({
           "ability": "Cast Hook-Haunt Drifter using Disturb"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"on stack\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Hook-Haunt Drifter using Disturb\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Hook-Haunt Drifter using Disturb",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
@@ -172,8 +176,12 @@ registerPortedMageTests({
           "ability": "Cast Waildrifter using Disturb"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"on stack\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Waildrifter using Disturb\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Waildrifter using Disturb",
+          "count": 1
         },
         {
           "op": "waitStackResolved",

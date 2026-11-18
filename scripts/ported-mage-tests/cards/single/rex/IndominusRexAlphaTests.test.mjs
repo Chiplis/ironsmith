@@ -117,6 +117,33 @@ registerPortedMageTests({
           "value": "Ornithopter^Rograkh, Son of Rohgahh^Adorned Pouncer^Ankle Biter^Gladecover Scout^Banehound^Bontu the Glorified^Aerial Responder^Stonecoil Serpent^Codespell Cleric"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Indominus Rex, Alpha",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Indominus Rex, Alpha",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_TURN"
@@ -127,6 +154,66 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Ornithopter",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Rograkh, Son of Rohgahh",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Adorned Pouncer",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Ankle Biter",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Gladecover Scout",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Banehound",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Bontu the Glorified",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Aerial Responder",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Stonecoil Serpent",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Codespell Cleric",
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertCounterCount",
@@ -270,6 +357,33 @@ registerPortedMageTests({
           "value": "Eradicator Valkyrie"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Indominus Rex, Alpha",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Indominus Rex, Alpha",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_TURN"
@@ -280,6 +394,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Eradicator Valkyrie",
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertCounterCount",
@@ -299,7 +419,7 @@ registerPortedMageTests({
           "op": "assertCounterCount",
           "player": 0,
           "name": "Indominus Rex, Alpha",
-          "counter": "HexproofFromPlaneswalkersAbility.getInstance().getRule()",
+          "counter": "Hexproof from planeswalkers",
           "count": 1
         },
         {
@@ -437,6 +557,33 @@ registerPortedMageTests({
           "value": "Ornithopter^Rograkh, Son of Rohgahh^Adorned Pouncer^Ankle Biter^Gladecover Scout^Banehound^Bontu the Glorified^Aerial Responder^Stonecoil Serpent^Codespell Cleric"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Indominus Rex, Alpha",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Indominus Rex, Alpha",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_TURN"
@@ -447,6 +594,66 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Ornithopter",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Rograkh, Son of Rohgahh",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Adorned Pouncer",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Ankle Biter",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Gladecover Scout",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Banehound",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Bontu the Glorified",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Aerial Responder",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Stonecoil Serpent",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Codespell Cleric",
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertCounterCount",
@@ -537,7 +744,8 @@ registerPortedMageTests({
           "player": 0,
           "count": 12
         }
-      ]
+      ],
+      "deferredPriorityAnalysis": true
     },
     {
       "name": "testIndominusRexAlphaSubset",
@@ -639,6 +847,33 @@ registerPortedMageTests({
           "value": "Ornithopter^Rograkh, Son of Rohgahh^Adorned Pouncer^Ankle Biter^Banehound^Bontu the Glorified^Aerial Responder^Codespell Cleric"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Indominus Rex, Alpha",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Indominus Rex, Alpha",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_TURN"
@@ -649,6 +884,54 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Ornithopter",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Rograkh, Son of Rohgahh",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Adorned Pouncer",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Ankle Biter",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Banehound",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Bontu the Glorified",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Aerial Responder",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Codespell Cleric",
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertCounterCount",

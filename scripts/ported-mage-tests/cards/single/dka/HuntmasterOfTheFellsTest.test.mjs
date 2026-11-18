@@ -104,6 +104,31 @@ registerPortedMageTests({
           "name": "Huntmaster of the Fells"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Huntmaster of the Fells",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                1
+              ],
+              []
+            ]
+          }
+        },
+        {
           "op": "setStopAt",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN"
@@ -185,6 +210,31 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Huntmaster of the Fells"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Huntmaster of the Fells",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                1
+              ],
+              []
+            ]
+          }
         },
         {
           "op": "castSpell",

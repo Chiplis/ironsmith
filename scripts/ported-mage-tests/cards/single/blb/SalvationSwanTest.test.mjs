@@ -122,18 +122,47 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}{R}{R}, {T}: If you both own and control"
+          "ability": "{3}{R}{R}, {T}: If you both own and control",
+          "source": "Hanweir Battlements"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Hanweir Garrison"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Hanweir Battlements",
+          "count": 1,
+          "abilityKind": "Activated",
+          "onTop": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Hanweir Battlements",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Hanweir Garrison",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Hanweir, the Writhing Township",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -143,9 +172,45 @@ registerPortedMageTests({
           "name": "Salvation Swan"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Salvation Swan",
+          "count": 1,
+          "onTop": true
+        },
+        {
           "op": "addTarget",
           "player": 0,
-          "target": "Hanweir, the Writhing Township"
+          "target": {
+            "groups": [
+              [
+                "Hanweir, the Writhing Township"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Salvation Swan",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "objectTarget": "Hanweir, the Writhing Township"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertExileCount",

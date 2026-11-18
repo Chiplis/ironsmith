@@ -46,21 +46,24 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Akron Legionnaire",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": false
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Myr Enforcer",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
@@ -82,8 +85,12 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerB must have 0 actions but found 1\")) { Assert.fail(\"Should have thrown error about not being able to attack, but got:\\n\" + e.getMessage()); } } assertLife(playerA, 8)"
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 8
         },
         {
           "op": "assertLife",
@@ -149,14 +156,15 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Harbor Serpent",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": false
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "playLand",
@@ -170,7 +178,8 @@ registerPortedMageTests({
           "turn": 3,
           "player": 0,
           "attacker": "Harbor Serpent",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
@@ -185,8 +194,12 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerB must have 0 actions but found 1\")) { Assert.fail(\"Should have thrown error about not being able to attack, but got:\\n\" + e.getMessage()); } } assertLife(playerB, 13)"
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 13
         },
         {
           "op": "assertLife",
@@ -231,14 +244,16 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Pillarfield Ox",
-          "defender": "Ajani Goldmane"
+          "defender": "Ajani Goldmane",
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 0
+          "defender": 0,
+          "expectedLegal": false
         },
         {
           "op": "setStopAt",
@@ -246,8 +261,24 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerB must have 0 actions but found 1\")) { Assert.fail(\"Should have thrown error about not being able to attack, but got:\\n\" + e.getMessage()); } } assertLife(playerA, 20)"
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Silvercoat Lion",
+          "tapped": false,
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Pillarfield Ox",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "unsupported",
@@ -377,14 +408,16 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": false
         },
         {
           "op": "setStopAt",
@@ -392,8 +425,13 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerB must have 0 actions but found 1\")) { Assert.fail(\"Should have thrown error about not being able to attack, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerA, \"Orzhov Advokist\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Orzhov Advokist",
+          "count": 1
         },
         {
           "op": "assertPowerToughness",
@@ -406,6 +444,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 0,
           "life": 18
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Silvercoat Lion",
+          "tapped": false,
+          "count": 1
         },
         {
           "op": "unsupported",
@@ -490,7 +534,8 @@ registerPortedMageTests({
           "turn": 2,
           "player": 0,
           "attacker": "Medomai the Ageless",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": false
         },
         {
           "op": "setStopAt",
@@ -498,8 +543,12 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerA must have 0 actions but found 1\")) { Assert.fail(\"Should have thrown error about not being able to attack, but got:\\n\" + e.getMessage()); } } assertLife(playerB, 16)"
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 16
         },
         {
           "op": "assertGraveyardCount",
@@ -556,14 +605,16 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Medomai the Ageless",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 0,
           "attacker": "Medomai the Ageless",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": false
         },
         {
           "op": "castSpell",
@@ -579,8 +630,12 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerA must have 0 actions but found 1\")) { Assert.fail(\"Should have thrown error about not being able to attack, but got:\\n\" + e.getMessage()); } } assertLife(playerB, 12)"
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 12
         },
         {
           "op": "assertGraveyardCount",
@@ -686,12 +741,8 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Memnite",
-          "defender": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
+          "defender": 1,
+          "declineDeclarationPayment": true
         },
         {
           "op": "setStopAt",
@@ -713,8 +764,17 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Forest\", false)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 1,
+          "tapped": false
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Memnite",
+          "tapped": false
         }
       ]
     },
@@ -822,12 +882,8 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Memnite",
-          "defender": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
+          "defender": 1,
+          "declineDeclarationPayment": true
         },
         {
           "op": "setStopAt",
@@ -849,8 +905,17 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Forest\", false)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 1,
+          "tapped": false
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Memnite",
+          "tapped": false
         }
       ]
     },
@@ -946,12 +1011,8 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Memnite",
-          "defender": 1
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
+          "defender": 1,
+          "declineDeclarationPayment": true
         },
         {
           "op": "setStopAt",
@@ -973,8 +1034,17 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Forest\", false)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 2,
+          "tapped": false
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Memnite",
+          "tapped": false
         }
       ]
     },
@@ -1026,7 +1096,8 @@ registerPortedMageTests({
           "turn": 3,
           "player": 0,
           "attacker": "Admiral Beckett Brass",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": false
         },
         {
           "op": "setStopAt",
@@ -1034,8 +1105,13 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerA must have 0 actions but found 1\")) { Assert.fail(\"Should have thrown error about not being able to attack, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerA, \"Opportunistic Dragon\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Opportunistic Dragon",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
@@ -1131,7 +1207,8 @@ registerPortedMageTests({
           "turn": 3,
           "player": 0,
           "attacker": "Admiral Beckett Brass",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": false
         },
         {
           "op": "castSpell",
@@ -1146,7 +1223,8 @@ registerPortedMageTests({
           "turn": 4,
           "player": 1,
           "attacker": "Admiral Beckett Brass",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "setStopAt",
@@ -1154,8 +1232,13 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerA must have 0 actions but found 1\")) { Assert.fail(\"Should have thrown error about not being able to attack, but got:\\n\" + e.getMessage()); } } assertGraveyardCount(playerB, \"Terror\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Terror",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",

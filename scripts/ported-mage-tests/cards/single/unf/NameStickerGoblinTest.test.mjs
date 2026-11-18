@@ -15,7 +15,13 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "\"Name Sticker\" Goblin",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Creature — Goblin Guest",
+          "oracleText": "When this creature enters from anywhere other than a graveyard or exile, if it’s on the battlefield and you control nine or fewer creatures named “Name Sticker” Goblin, roll a d20.\n1–6 | Add {R}{R}{R}{R}.\n7–14 | Add {R}{R}{R}{R}{R}.\n15–20 | Add {R}{R}{R}{R}{R}{R}.",
+          "manaCost": "{2}{R}",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "addCard",
@@ -61,7 +67,13 @@ registerPortedMageTests({
           "zone": "GRAVEYARD",
           "player": 0,
           "name": "\"Name Sticker\" Goblin",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Creature — Goblin Guest",
+          "oracleText": "When this creature enters from anywhere other than a graveyard or exile, if it’s on the battlefield and you control nine or fewer creatures named “Name Sticker” Goblin, roll a d20.\n1–6 | Add {R}{R}{R}{R}.\n7–14 | Add {R}{R}{R}{R}{R}.\n15–20 | Add {R}{R}{R}{R}{R}{R}.",
+          "manaCost": "{2}{R}",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "addCard",
@@ -78,12 +90,45 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "unsupported",
+          "source": "setDieRollResult(playerA, 1)"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Unearth",
           "target": "\"Name Sticker\" Goblin"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Unearth",
+          "objectTarget": "\"Name Sticker\" Goblin",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "\"Name Sticker\" Goblin",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 0,
+          "source": "\"Name Sticker\" Goblin",
+          "abilityKind": "Triggered"
         },
         {
           "op": "unsupported",
@@ -111,7 +156,13 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "\"Name Sticker\" Goblin",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Creature — Goblin Guest",
+          "oracleText": "When this creature enters from anywhere other than a graveyard or exile, if it’s on the battlefield and you control nine or fewer creatures named “Name Sticker” Goblin, roll a d20.\n1–6 | Add {R}{R}{R}{R}.\n7–14 | Add {R}{R}{R}{R}{R}.\n15–20 | Add {R}{R}{R}{R}{R}{R}.",
+          "manaCost": "{2}{R}",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "addCard",
@@ -128,12 +179,45 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "unsupported",
+          "source": "setDieRollResult(playerA, 1)"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Cloudshift",
           "target": "\"Name Sticker\" Goblin"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Cloudshift",
+          "objectTarget": "\"Name Sticker\" Goblin",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "\"Name Sticker\" Goblin",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 0,
+          "source": "\"Name Sticker\" Goblin",
+          "abilityKind": "Triggered"
         },
         {
           "op": "unsupported",
@@ -161,14 +245,26 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "\"Name Sticker\" Goblin",
-          "count": 8
+          "count": 8,
+          "fixtureSource": true,
+          "typeLine": "Creature — Goblin Guest",
+          "oracleText": "When this creature enters from anywhere other than a graveyard or exile, if it’s on the battlefield and you control nine or fewer creatures named “Name Sticker” Goblin, roll a d20.\n1–6 | Add {R}{R}{R}{R}.\n7–14 | Add {R}{R}{R}{R}{R}.\n15–20 | Add {R}{R}{R}{R}{R}{R}.",
+          "manaCost": "{2}{R}",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
           "name": "\"Name Sticker\" Goblin",
-          "count": 3
+          "count": 3,
+          "fixtureSource": true,
+          "typeLine": "Creature — Goblin Guest",
+          "oracleText": "When this creature enters from anywhere other than a graveyard or exile, if it’s on the battlefield and you control nine or fewer creatures named “Name Sticker” Goblin, roll a d20.\n1–6 | Add {R}{R}{R}{R}.\n7–14 | Add {R}{R}{R}{R}{R}.\n15–20 | Add {R}{R}{R}{R}{R}{R}.",
+          "manaCost": "{2}{R}",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "addCard",

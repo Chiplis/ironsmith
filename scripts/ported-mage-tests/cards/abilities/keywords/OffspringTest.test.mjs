@@ -21,38 +21,72 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "castSpell",
+          "name": "Iridescent Vinelasher",
           "player": 0,
-          "value": false
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Iridescent Vinelasher",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Iridescent Vinelasher"
+          "resolutions": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Iridescent Vinelasher",
+          "count": 0,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Iridescent Vinelasher",
-          "count": "false ? 2 : 1"
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTokenCount(playerA, vinelasher, false ? 1 : 0)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Iridescent Vinelasher",
+            "token": false
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Iridescent Vinelasher",
+            "token": true
+          },
+          "count": 0,
+          "checks": []
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "count": 1,
+          "tapped": true
         }
       ]
     },
@@ -74,38 +108,90 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose optional costs for Iridescent Vinelasher",
+          "choices": [
+            "Offspring: 2"
+          ]
         },
         {
           "op": "castSpell",
+          "name": "Iridescent Vinelasher",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Iridescent Vinelasher",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Iridescent Vinelasher"
+          "resolutions": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Iridescent Vinelasher",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Iridescent Vinelasher",
-          "count": "true ? 2 : 1"
+          "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertTokenCount(playerA, vinelasher, true ? 1 : 0)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Iridescent Vinelasher",
+            "token": false
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Iridescent Vinelasher",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "count": 3,
+          "tapped": true
         }
       ]
     }

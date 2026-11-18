@@ -75,13 +75,49 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "In Garruk's Wake"
+          "op": "assertChoiceMenu",
+          "kind": "select_options",
+          "source": "Glamdring",
+          "description": "Choose one",
+          "options": [
+            "Cast Lightning Bolt",
+            "Cast Healing Salve"
+          ],
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "try { setStopAt(1, PhaseStep.FIRST_COMBAT_DAMAGE); execute(); } catch (AssertionError e) { Assert.assertTrue( \"catch wrong exception: \" + e.getMessage(), e.getMessage().contains(\"Found wrong choice command\") && e.getMessage().contains(\"In Garruk's Wake\") ); return; } fail(\"Was able to pick [[In Garruk's Wake]] but it costs more than 2\")"
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Lightning Bolt"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "In Garruk's Wake",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 15
         }
       ]
     },
@@ -243,14 +279,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Equip {3}",
-          "target": "Blur Sliver"
-        },
-        {
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
@@ -269,7 +297,92 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 1,
           "name": "Elder Deep-Fiend",
-          "count": 2
+          "count": 2,
+          "tapped": true
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Elder Deep-Fiend",
+          "tapped": true,
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Glamdring",
+          "ability": "Equip {3}",
+          "target": "Blur Sliver"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Glamdring",
+          "abilityKind": "Activated",
+          "objectTarget": "Blur Sliver"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "attachment": "Glamdring",
+          "target": "Blur Sliver",
+          "expected": true,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Blur Sliver",
+          "power": 14,
+          "toughness": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 3,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Serum Visions",
+          "count": 7,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Brainstorm",
+          "count": 5,
+          "seatIndependent": true
         },
         {
           "op": "attack",
@@ -279,6 +392,23 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "player": 1,
+          "life": 6,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "player": 0,
+          "count": 1,
+          "source": "Glamdring",
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": "In Garruk's Wake"
@@ -286,26 +416,64 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Yes"
+          "value": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "FIRST_COMBAT_DAMAGE"
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "player": 0,
+          "count": 1,
+          "source": "In Garruk's Wake"
         },
         {
-          "op": "assertLife",
-          "player": 1,
-          "life": "20 - 2 - (7 + 5)"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE",
           "player": 1,
           "name": "Elder Deep-Fiend",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "player": 1,
+          "name": "Elder Deep-Fiend",
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "player": 0,
+          "name": "In Garruk's Wake",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "player": 1,
+          "life": 6,
+          "seatIndependent": true
         }
       ]
     }

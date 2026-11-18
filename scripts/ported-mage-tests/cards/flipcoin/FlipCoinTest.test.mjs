@@ -101,55 +101,80 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}"
+          "ability": "{3}",
+          "source": "Wirefly Hive",
+          "coinFaces": [
+            "heads"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}"
+          "ability": "{3}",
+          "source": "Wirefly Hive",
+          "coinFaces": [
+            "heads"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
         },
         {
           "op": "activateAbility",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}"
+          "ability": "{3}",
+          "source": "Wirefly Hive",
+          "coinFaces": [
+            "heads"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
         },
         {
           "op": "activateAbility",
           "turn": 7,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}"
+          "ability": "{3}",
+          "source": "Wirefly Hive",
+          "coinFaces": [
+            "heads"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
         },
         {
           "op": "activateAbility",
           "turn": 9,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}"
+          "ability": "{3}",
+          "source": "Wirefly Hive",
+          "coinFaces": [
+            "heads"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "setFlipCoinResult(playerA, true)"
+          "op": "setChoice",
+          "player": 0,
+          "value": "Heads"
         },
         {
           "op": "setStrictChooseMode",

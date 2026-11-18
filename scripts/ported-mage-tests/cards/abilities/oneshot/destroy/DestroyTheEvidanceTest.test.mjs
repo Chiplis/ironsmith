@@ -212,8 +212,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Mountain",
-          "count": 2
+          "name": "Mountain@target",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Mountain@other",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -244,42 +251,78 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "skipInitShuffling"
-        },
-        {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
           "name": "Destroy the Evidence",
-          "target": "Mountain"
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": "@target"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Destroy the Evidence",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Mountain",
+          "targetCount": 1,
+          "isSpell": true
         },
         {
           "op": "castSpell",
+          "name": "Ghostly Flicker",
+          "player": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Ghostly Flicker",
-          "target": "Mountain^Island"
+          "holdStack": true,
+          "target": {
+            "groups": [
+              [
+                "@target",
+                "Island"
+              ]
+            ]
+          }
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Ghostly Flicker",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 2,
+          "onTop": true
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Destroy the Evidence",
+          "player": 1,
+          "name": "Ghostly Flicker",
           "count": 1
         },
         {
+          "op": "assertStackObject",
+          "source": "Destroy the Evidence",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "assertGraveyardCount",
-          "player": 1,
-          "name": "Ghostly Flicker",
+          "player": 0,
+          "name": "Destroy the Evidence",
           "count": 1
         },
         {
@@ -297,6 +340,19 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 1,
+          "name": null,
+          "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 2
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "name": "Forest",
           "count": 1
         },
         {

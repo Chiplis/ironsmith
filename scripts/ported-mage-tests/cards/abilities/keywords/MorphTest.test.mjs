@@ -373,7 +373,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Pine Walker",
+          "name": "Pine Walker@original",
           "count": 1
         },
         {
@@ -387,7 +387,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Clever Impersonator",
+          "name": "Clever Impersonator@copy",
           "count": 1
         },
         {
@@ -399,51 +399,96 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Pine Walker using Morph",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "objectAlias": "@original"
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertFaceDownPermanentView",
           "player": 0,
-          "name": "Pine Walker using Morph"
+          "viewer": 1,
+          "visible": false,
+          "originalName": "Pine Walker"
         },
         {
           "op": "castSpell",
+          "name": "Clever Impersonator",
+          "player": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Clever Impersonator"
+          "objectAlias": "@copy"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Clever Impersonator",
+          "count": 1,
           "turn": 2,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "power": 2,
-          "toughness": 2
-        },
-        {
-          "op": "assertPermanentCount",
+          "op": "setOptionChoices",
           "player": 1,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 1
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            {
+              "description": "Enter as a copy of Face-down creature",
+              "object": "@original"
+            }
+          ]
         },
         {
-          "op": "assertPowerToughness",
-          "player": 1,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "power": 2,
-          "toughness": 2
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@copy",
+            "token": false
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            },
+            {
+              "property": "calculatedName",
+              "expected": ""
+            },
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            }
+          ]
+        },
+        {
+          "op": "assertFaceDownPermanentView",
+          "player": 0,
+          "viewer": 0,
+          "visible": true,
+          "originalName": "Pine Walker"
         }
       ]
     },
@@ -971,7 +1016,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Akroma, Angel of Fury",
+          "name": "Akroma, Angel of Fury@original",
           "count": 1
         },
         {
@@ -997,26 +1042,38 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Akroma, Angel of Fury using Morph",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Akroma, Angel of Fury using Morph"
+          "objectAlias": "@original"
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Counterspell",
+          "player": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Counterspell",
-          "target": "Akroma, Angel of Fury"
+          "target": "@original"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Counterspell",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -1032,8 +1089,14 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "name": "Akroma, Angel of Fury",
+          "name": "@original",
           "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@original",
+          "count": 0
         }
       ]
     },
@@ -1082,12 +1145,31 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Face-down Creature",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Swords to Plowshares",
           "target": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Swords to Plowshares",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1,
+          "objectTarget": "Face-down creature"
         },
         {
           "op": "setStopAt",
@@ -1119,8 +1201,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : currentGame.getExile().getAllCards(currentGame)) { if (card.getName().equals(\"Birchlore Rangers\")) { Assert.assertFalse(\"Birchlore Rangers has to be face up in exile\", card.isFaceDown(currentGame)); break; } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "name": "Birchlore Rangers",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -1207,8 +1300,19 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (Card card : playerA.getGraveyard().getCards(currentGame)) { if (card.getName().equals(\"Ashcloud Phoenix\")) { Assert.assertFalse(\"Ashcloud Phoenix has to be face up in graveyard\", card.isFaceDown(currentGame)); break; } }"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "name": "Ashcloud Phoenix"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -1248,7 +1352,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Mirri, Cat Warrior",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -1285,7 +1389,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Akroma, Angel of Fury",
+          "name": "Akroma, Angel of Fury@original",
           "count": 1
         },
         {
@@ -1310,57 +1414,62 @@ registerPortedMageTests({
           "count": 6
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "castSpell",
+          "name": "Akroma, Angel of Fury using Morph",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "objectAlias": "@original"
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertFaceDownPermanentView",
           "player": 0,
-          "name": "Akroma, Angel of Fury using Morph"
+          "viewer": 1,
+          "visible": false,
+          "originalName": "Akroma, Angel of Fury"
         },
         {
           "op": "castSpell",
+          "name": "Supplant Form",
+          "player": 1,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 1,
-          "name": "Supplant Form"
+          "target": "@original"
         },
         {
-          "op": "addTarget",
-          "player": 1,
-          "target": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Supplant Form",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "targetCount": 1
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 1,
-          "life": 20
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "name": "Akroma, Angel of Fury",
+          "name": "@original",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Akroma, Angel of Fury",
+          "name": "@original",
           "count": 0
         },
         {
@@ -1370,23 +1479,36 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertLife",
           "player": 1,
-          "name": "Akroma, Angel of Fury",
-          "count": 0
+          "life": 20
         },
         {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "EmptyNames.FACE_DOWN_TOKEN.getTestCommand()",
-          "count": 1
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 1,
-          "name": "EmptyNames.FACE_DOWN_TOKEN.getTestCommand()",
-          "power": 2,
-          "toughness": 2
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            },
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            },
+            {
+              "property": "calculatedName",
+              "expected": ""
+            }
+          ]
         }
       ]
     },
@@ -1601,11 +1723,49 @@ registerPortedMageTests({
           "target": "Rattleclaw Mystic"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Reflector Mage",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Reflector Mage",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Rattleclaw Mystic"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Rattleclaw Mystic",
+          "count": 1
+        },
+        {
+          "op": "assertCastMethods",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Rattleclaw Mystic"
+          "name": "Rattleclaw Mystic",
+          "methods": [
+            "face_down"
+          ],
+          "zone": "hand"
         },
         {
           "op": "setStopAt",
@@ -1613,8 +1773,13 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Rattleclaw Mystic\")) { Assert.fail(\"Should have gotten an error about not being able to cast Rattleclaw, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerA, \"Reflector Mage\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Reflector Mage",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
@@ -2861,12 +3026,18 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(EmptyNames.FACE_DOWN_CREATURE.getTestCommand(), true)"
+          "op": "assertTapped",
+          "name": "Face-down Creature",
+          "tapped": true,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, \"Tamiyo's Compleation\", EmptyNames.FACE_DOWN_CREATURE.getTestCommand(), true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "targetPlayer": 0,
+          "attachment": "Tamiyo's Compleation",
+          "target": "Face-down Creature",
+          "expected": true
         },
         {
           "op": "assertPowerToughness",
@@ -2946,7 +3117,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "END_TURN",
           "player": 0,
-          "label": "{T}, Sacrifice ",
+          "label": "Activate Face-down creature: {T} Sacrifice this artifact",
           "expected": true
         },
         {
@@ -2962,20 +3133,31 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(EmptyNames.FACE_DOWN_CREATURE.getTestCommand(), SubType.TREASURE)"
+          "op": "assertSubtype",
+          "player": 0,
+          "name": "Face-down Creature",
+          "subtype": "TREASURE"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(EmptyNames.FACE_DOWN_CREATURE.getTestCommand(), CardType.ARTIFACT, true)"
+          "op": "assertType",
+          "player": 0,
+          "name": "Face-down Creature",
+          "cardType": "ARTIFACT",
+          "extra": "true"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(EmptyNames.FACE_DOWN_CREATURE.getTestCommand(), CardType.CREATURE, false)"
+          "op": "assertType",
+          "player": 0,
+          "name": "Face-down Creature",
+          "cardType": "CREATURE",
+          "extra": "false"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, \"Minimus Containment\", EmptyNames.FACE_DOWN_CREATURE.getTestCommand(), true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Minimus Containment",
+          "target": "Face-down Creature",
+          "expected": true
         }
       ]
     },

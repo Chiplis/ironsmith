@@ -39,7 +39,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "label": "{G}:",
+          "label": "Activate Imperious Perfect:",
           "expected": false
         },
         {
@@ -47,7 +47,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "label": "Jagged",
+          "label": "Activate Jagged-Scar Archers:",
           "expected": false
         },
         {

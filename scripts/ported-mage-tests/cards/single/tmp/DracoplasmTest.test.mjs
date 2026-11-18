@@ -42,9 +42,46 @@ registerPortedMageTests({
           "name": "Dracoplasm"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Dracoplasm",
+          "count": 1
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": "Craw Wurm^Elvish Mystic"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Craw Wurm",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Elvish Mystic",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "Dracoplasm",
+          "count": 1,
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",

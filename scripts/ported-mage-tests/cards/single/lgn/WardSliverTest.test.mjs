@@ -64,7 +64,7 @@ registerPortedMageTests({
           "op": "assertAbility",
           "player": 0,
           "name": "Ward Sliver",
-          "ability": "filter",
+          "ability": "ProtectionAbility.from(ObjectColor.WHITE)",
           "expected": true
         },
         {
@@ -153,7 +153,7 @@ registerPortedMageTests({
           "op": "assertAbility",
           "player": 0,
           "name": "Metallic Sliver",
-          "ability": "filter",
+          "ability": "ProtectionAbility.from(ObjectColor.WHITE)",
           "expected": true
         },
         {
@@ -260,7 +260,7 @@ registerPortedMageTests({
           "op": "assertAbility",
           "player": 0,
           "name": "Morophon, the Boundless",
-          "ability": "filter",
+          "ability": "ProtectionAbility.from(ObjectColor.WHITE)",
           "expected": true
         },
         {

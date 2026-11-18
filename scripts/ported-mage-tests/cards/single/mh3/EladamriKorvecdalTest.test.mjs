@@ -288,7 +288,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{G}, {T}"
+          "ability": "{G}, {T}",
+          "source": "Eladamri, Korvecdal"
         },
         {
           "op": "setChoice",
@@ -296,9 +297,24 @@ registerPortedMageTests({
           "value": "Memnite^Ornithopter"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Eladamri, Korvecdal",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
+        },
+        {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -336,6 +352,12 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Mountain",
           "count": 1
         }
       ]
@@ -390,12 +412,33 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{G}, {T}"
+          "ability": "{G}, {T}",
+          "source": "Eladamri, Korvecdal"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Memnite^Ornithopter"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Eladamri, Korvecdal",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Taiga"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -434,6 +477,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Taiga",
           "count": 0
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "Taiga",
+          "count": 1
         }
       ]
     }

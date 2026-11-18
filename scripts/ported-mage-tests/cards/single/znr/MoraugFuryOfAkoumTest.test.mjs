@@ -7,8 +7,16 @@ registerPortedMageTests({
       "name": "testPrecombatLandfall",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Combat Counter\", playerA, new BeginningOfCombatTriggeredAbility( new GainLifeEffect(1) ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Combat Counter",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "At the beginning of combat on your turn, you gain 1 life."
         },
         {
           "op": "addCard",
@@ -114,8 +122,16 @@ registerPortedMageTests({
       "name": "testPostcombatLandfall",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Combat Counter\", playerA, new BeginningOfCombatTriggeredAbility( new GainLifeEffect(1) ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Combat Counter",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "At the beginning of combat on your turn, you gain 1 life."
         },
         {
           "op": "addCard",
@@ -230,8 +246,16 @@ registerPortedMageTests({
       "name": "testDoubleLandfall",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Combat Counter\", playerA, new BeginningOfCombatTriggeredAbility( new GainLifeEffect(1) ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Combat Counter",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "At the beginning of combat on your turn, you gain 1 life."
         },
         {
           "op": "addCard",
@@ -282,6 +306,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 1,
           "turn": 1,
           "player": 0,
           "attacker": "Silvercoat Lion",
@@ -289,6 +314,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 1,
           "turn": 1,
           "player": 0,
           "attacker": "Grizzly Bears",
@@ -296,6 +322,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 1,
           "turn": 1,
           "player": 0,
           "attacker": "Walking Corpse",
@@ -323,6 +350,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 2,
           "turn": 1,
           "player": 0,
           "attacker": "Silvercoat Lion",
@@ -330,6 +358,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 2,
           "turn": 1,
           "player": 0,
           "attacker": "Grizzly Bears",
@@ -337,6 +366,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 2,
           "turn": 1,
           "player": 0,
           "attacker": "Walking Corpse",
@@ -344,6 +374,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 3,
           "turn": 1,
           "player": 0,
           "attacker": "Silvercoat Lion",
@@ -351,6 +382,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 3,
           "turn": 1,
           "player": 0,
           "attacker": "Grizzly Bears",
@@ -358,6 +390,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 3,
           "turn": 1,
           "player": 0,
           "attacker": "Walking Corpse",
@@ -387,8 +420,16 @@ registerPortedMageTests({
       "name": "testDoubleMoraug",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"Combat Counter\", playerA, new BeginningOfCombatTriggeredAbility( new GainLifeEffect(1) ) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Combat Counter",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "At the beginning of combat on your turn, you gain 1 life."
         },
         {
           "op": "addCard",
@@ -439,6 +480,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 1,
           "turn": 1,
           "player": 0,
           "attacker": "Silvercoat Lion",
@@ -446,6 +488,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 1,
           "turn": 1,
           "player": 0,
           "attacker": "Grizzly Bears",
@@ -453,6 +496,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 1,
           "turn": 1,
           "player": 0,
           "attacker": "Walking Corpse",
@@ -467,6 +511,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 2,
           "turn": 1,
           "player": 0,
           "attacker": "Silvercoat Lion",
@@ -474,6 +519,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 2,
           "turn": 1,
           "player": 0,
           "attacker": "Grizzly Bears",
@@ -481,6 +527,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 2,
           "turn": 1,
           "player": 0,
           "attacker": "Walking Corpse",
@@ -488,6 +535,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 3,
           "turn": 1,
           "player": 0,
           "attacker": "Silvercoat Lion",
@@ -495,6 +543,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 3,
           "turn": 1,
           "player": 0,
           "attacker": "Grizzly Bears",
@@ -502,6 +551,7 @@ registerPortedMageTests({
         },
         {
           "op": "attack",
+          "combat": 3,
           "turn": 1,
           "player": 0,
           "attacker": "Walking Corpse",

@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "Test_KrenkosCommand",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
@@ -33,18 +29,71 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Krenko's Command",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Krenko's Command",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "name": "Krenko's Command"
+          "name": "Goblin Token",
+          "count": 2
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Kambal, Profiteering Mayor",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "controller": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Goblin Token",
+          "count": 2
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Goblin Token",
+          "count": 2,
+          "tapped": true
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Kambal, Profiteering Mayor",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -55,28 +104,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 21
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Goblin Token",
-          "count": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Goblin Token",
-          "count": 2
         }
       ]
     },
     {
       "name": "Test_BestialMenace",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -100,18 +133,109 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Bestial Menace",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Bestial Menace",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "name": "Bestial Menace"
+          "name": "Snake Token",
+          "count": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Wolf Token",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Elephant Token",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Kambal, Profiteering Mayor",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "controller": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Snake Token",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Wolf Token",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Elephant Token",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Snake Token",
+          "count": 1,
+          "tapped": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Wolf Token",
+          "count": 1,
+          "tapped": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Elephant Token",
+          "count": 1,
+          "tapped": true
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Kambal, Profiteering Mayor",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -122,52 +246,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 21
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Snake Token",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Wolf Token",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Elephant Token",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Snake Token",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Wolf Token",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Elephant Token",
-          "count": 1
         }
       ]
     },
     {
       "name": "Test_Chatterfang",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -198,18 +282,90 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Krenko's Command",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Krenko's Command",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "name": "Krenko's Command"
+          "name": "Goblin Token",
+          "count": 2
         },
         {
-          "op": "setStopAt",
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Squirrel Token",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Kambal, Profiteering Mayor",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "controller": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Goblin Token",
+          "count": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Squirrel Token",
+          "count": 2
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Goblin Token",
+          "count": 2,
+          "tapped": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Squirrel Token",
+          "count": 2,
+          "tapped": true
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Kambal, Profiteering Mayor",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertLife",
@@ -220,30 +376,6 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 21
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Goblin Token",
-          "count": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Squirrel Token",
-          "count": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Goblin Token",
-          "count": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Squirrel Token",
-          "count": 2
         }
       ]
     }

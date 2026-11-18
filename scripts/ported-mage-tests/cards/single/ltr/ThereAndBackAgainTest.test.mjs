@@ -77,6 +77,20 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "assertBlockDeclarationRejected",
+          "turn": 5,
+          "player": 1,
+          "reason": "requires 1 blockers",
+          "declarations": []
+        },
+        {
+          "op": "block",
+          "turn": 5,
+          "player": 1,
+          "blocker": "Amaranthine Wall",
+          "attacker": "Gaea's Protector"
+        },
+        {
           "op": "setStopAt",
           "turn": 5,
           "phase": "END_TURN"

@@ -513,16 +513,28 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, saga, ColorlessManaAbility.class, 1)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Urza's Saga",
+          "kind": "activated",
+          "count": 1,
+          "textPattern": "^\\{T\\}:\\s*Add\\s+\\{C\\}\\.?$"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, saga, RedManaAbility.class, 1)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Urza's Saga",
+          "kind": "activated",
+          "count": 1,
+          "textPattern": "^\\{T\\}:\\s*Add\\s+\\{R\\}\\.?$"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, saga, SagaAbility.class, 0)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Urza's Saga",
+          "kind": "triggered",
+          "count": 0,
+          "textPattern": "^[IVXLCDM]+(?:\\s*,\\s*[IVXLCDM]+)*\\s*[\u2014\u2013-]"
         },
         {
           "op": "assertPermanentCount",
@@ -599,12 +611,28 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, saga, RedManaAbility.class, 1)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Urza's Saga",
+          "kind": "activated",
+          "count": 1,
+          "textPattern": "^\\{T\\}:\\s*Add\\s+\\{R\\}\\.?$"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, saga, SagaAbility.class, 0)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Urza's Saga",
+          "kind": "activated",
+          "count": 0,
+          "textPattern": "^\\{T\\}:\\s*Add\\s+\\{C\\}\\.?$"
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Urza's Saga",
+          "kind": "triggered",
+          "count": 0,
+          "textPattern": "^[IVXLCDM]+(?:\\s*,\\s*[IVXLCDM]+)*\\s*[\u2014\u2013-]"
         },
         {
           "op": "assertPermanentCount",

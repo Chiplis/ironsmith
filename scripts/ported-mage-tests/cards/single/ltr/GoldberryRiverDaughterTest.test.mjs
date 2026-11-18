@@ -21,60 +21,104 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, island, counter1, 2)"
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "counter": "ACORN",
+          "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, island, counter2, 1)"
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "counter": "AEGIS",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Move a counter of each kind not on {this} from another target permanent you control onto Goldberry.",
-          "target": "Island"
+          "ability": "{T}: Move a counter of each kind not on this creature from another target permanent you control onto this creature.",
+          "target": "Island",
+          "source": "Goldberry, River-Daughter"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"First Ability\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, island, counter1, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "counter": "ACORN",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"First Ability\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, island, counter2, 0)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "counter": "AEGIS",
+          "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"First Ability\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, goldberry, counter1, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Goldberry, River-Daughter",
+          "counter": "ACORN",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"First Ability\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, goldberry, counter2, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Goldberry, River-Daughter",
+          "counter": "AEGIS",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}, {T}: Move one or more counters from Goldberry onto another target permanent you control. If you do, draw a card.",
-          "target": "Island"
+          "ability": "{U}, {T}: Move one or more counters from this creature onto another target permanent you control. If you do, draw a card.",
+          "target": "Island",
+          "source": "Goldberry, River-Daughter"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "number",
+          "player": 0,
+          "description": "Choose how many acorn counters to move from Goldberry, River-Daughter",
+          "value": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "number",
+          "player": 0,
+          "description": "Choose how many aegis counters to move from Goldberry, River-Daughter",
+          "value": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 0, 1)"
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -92,28 +136,28 @@ registerPortedMageTests({
           "op": "assertCounterCount",
           "player": 0,
           "name": "Island",
-          "counter": "counter1",
+          "counter": "ACORN",
           "count": 1
         },
         {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Island",
-          "counter": "counter2",
+          "counter": "AEGIS",
           "count": 1
         },
         {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Goldberry, River-Daughter",
-          "counter": "counter1",
+          "counter": "ACORN",
           "count": 1
         },
         {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Goldberry, River-Daughter",
-          "counter": "counter2",
+          "counter": "AEGIS",
           "count": 0
         },
         {
@@ -141,26 +185,38 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, island, counter, 2)"
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "counter": "ACORN",
+          "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, goldberry, counter, 1)"
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Goldberry, River-Daughter",
+          "counter": "ACORN",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Move a counter of each kind not on {this} from another target permanent you control onto Goldberry.",
-          "target": "Island"
+          "ability": "{T}: Move a counter of each kind not on this creature from another target permanent you control onto this creature.",
+          "target": "Island",
+          "source": "Goldberry, River-Daughter"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -178,14 +234,14 @@ registerPortedMageTests({
           "op": "assertCounterCount",
           "player": 0,
           "name": "Island",
-          "counter": "counter",
+          "counter": "ACORN",
           "count": 2
         },
         {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Goldberry, River-Daughter",
-          "counter": "counter",
+          "counter": "ACORN",
           "count": 1
         }
       ]
@@ -208,26 +264,37 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, goldberry, counter, 1)"
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Goldberry, River-Daughter",
+          "counter": "ACORN",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}, {T}: Move one or more counters from Goldberry onto another target permanent you control. If you do, draw a card.",
-          "target": "Island"
+          "ability": "{U}, {T}: Move one or more counters from this creature onto another target permanent you control. If you do, draw a card.",
+          "target": "Island",
+          "source": "Goldberry, River-Daughter"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "number",
+          "player": 0,
+          "description": "Choose how many acorn counters to move from Goldberry, River-Daughter",
+          "rejectedValue": 0,
+          "value": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 0)"
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -245,14 +312,14 @@ registerPortedMageTests({
           "op": "assertCounterCount",
           "player": 0,
           "name": "Goldberry, River-Daughter",
-          "counter": "counter",
+          "counter": "ACORN",
           "count": 0
         },
         {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Island",
-          "counter": "counter",
+          "counter": "ACORN",
           "count": 1
         },
         {
@@ -284,14 +351,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}, {T}: Move one or more counters from Goldberry onto another target permanent you control. If you do, draw a card.",
-          "target": "Island"
+          "ability": "{U}, {T}: Move one or more counters from this creature onto another target permanent you control. If you do, draw a card.",
+          "target": "Island",
+          "source": "Goldberry, River-Daughter"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -330,22 +399,29 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, island, counter, 1)"
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "counter": "M1M1",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Move a counter of each kind not on {this} from another target permanent you control onto Goldberry.",
-          "target": "Island"
+          "ability": "{T}: Move a counter of each kind not on this creature from another target permanent you control onto this creature.",
+          "target": "Island",
+          "source": "Goldberry, River-Daughter"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -363,7 +439,7 @@ registerPortedMageTests({
           "op": "assertCounterCount",
           "player": 0,
           "name": "Goldberry, River-Daughter",
-          "counter": "counter",
+          "counter": "M1M1",
           "count": 1
         },
         {

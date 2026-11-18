@@ -11,8 +11,10 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addEmblem(playerA, elspethSunChampionEmblem)"
+          "op": "addEmblem",
+          "player": 0,
+          "name": "Elspeth, Sun's Champion Emblem",
+          "oracleText": "Creatures you control get +2/+2 and have flying."
         },
         {
           "op": "addCard",
@@ -44,8 +46,10 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "assertCommandZoneCount(playerA, elspethSunChampionEmblem.getName(), 1)"
+          "op": "assertEmblemCount",
+          "player": 0,
+          "name": "Elspeth, Sun's Champion Emblem",
+          "count": 1
         }
       ]
     },
@@ -57,8 +61,10 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addEmblem(playerA, chandraTorchOfDefianceEmblem)"
+          "op": "addEmblem",
+          "player": 0,
+          "name": "Chandra, Torch of Defiance Emblem",
+          "oracleText": "Whenever you cast a spell, this emblem deals 5 damage to any target."
         },
         {
           "op": "addCard",
@@ -117,8 +123,10 @@ registerPortedMageTests({
           "life": 10
         },
         {
-          "op": "unsupported",
-          "source": "assertCommandZoneCount(playerA, chandraTorchOfDefianceEmblem.getName(), 1)"
+          "op": "assertEmblemCount",
+          "player": 0,
+          "name": "Chandra, Torch of Defiance Emblem",
+          "count": 1
         }
       ]
     }

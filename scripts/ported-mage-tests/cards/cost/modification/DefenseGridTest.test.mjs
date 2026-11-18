@@ -54,12 +54,11 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt",
-          "target": 1
+          "source": "Lightning Bolt",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -68,6 +67,28 @@ registerPortedMageTests({
           "player": 0,
           "name": "Lightning Bolt",
           "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 3
         },
         {
           "op": "castSpell",
@@ -75,12 +96,25 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Mindbreak Trap",
-          "target": "Lightning Bolt^Lightning Bolt^Lightning Bolt"
+          "target": {
+            "groups": [
+              [
+                "Lightning Bolt",
+                "Lightning Bolt",
+                "Lightning Bolt"
+              ]
+            ]
+          },
+          "castingMethod": "alternative"
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Cast with alternative cost: {0} (source: Mindbreak Trap"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Mindbreak Trap",
+          "count": 1,
+          "targetCount": 3,
+          "onTop": true
         },
         {
           "op": "setStopAt",

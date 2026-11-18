@@ -25,7 +25,8 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Bane Alley Blackguard",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -33,6 +34,34 @@ registerPortedMageTests({
           "player": 0,
           "blocker": "Defiant Vanguard",
           "attacker": "Bane Alley Blackguard"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Defiant Vanguard",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "source": "Defiant Vanguard",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_COMBAT",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

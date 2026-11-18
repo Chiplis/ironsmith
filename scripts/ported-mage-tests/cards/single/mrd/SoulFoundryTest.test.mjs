@@ -40,11 +40,29 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Bloodline Keeper",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Bloodline Keeper",
+          "count": 0
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{X}, {T}: Create a token"
+          "ability": "{X}, {T}: Create a token",
+          "source": "Soul Foundry"
         },
         {
           "op": "setStopAt",
@@ -66,10 +84,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Bloodline Keeper",
-          "count": 1
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Bloodline Keeper",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 3
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            }
+          ]
         }
       ]
     }

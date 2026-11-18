@@ -67,86 +67,6 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "UPKEEP",
-          "player": 0,
-          "name": "Hellkite Tyrant",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "UPKEEP",
-          "player": 0,
-          "name": "Mox Sapphire",
-          "count": 10
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "UPKEEP",
-          "player": 0,
-          "name": "Memnite",
-          "count": 10
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "UPKEEP",
-          "player": 1,
-          "name": "Mox Sapphire",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "UPKEEP",
-          "player": 1,
-          "name": "Memnite",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "UPKEEP",
-          "player": 1,
-          "name": "Plains",
-          "count": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "UPKEEP",
-          "player": 1,
-          "name": "Elite Vanguard",
-          "count": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "UPKEEP",
-          "player": "playerC",
-          "name": "Plains",
-          "count": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "UPKEEP",
-          "player": "playerD",
-          "name": "Mox Ruby",
-          "count": 2
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 5,
-          "phase": "UPKEEP",
-          "player": "playerD",
-          "name": "Elite Vanguard",
-          "count": 2
-        },
-        {
           "op": "attack",
           "turn": 1,
           "player": 0,
@@ -154,18 +74,160 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setStopAt",
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "player": 1,
+          "life": 14,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "count": 1,
+          "source": "Hellkite Tyrant",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "name": "Mox Sapphire",
+          "count": 10,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "name": "Memnite",
+          "count": 10,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
           "turn": 5,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Hellkite Tyrant",
+          "count": 1,
+          "seatIndependent": true
         },
         {
-          "op": "execute"
+          "op": "assertPermanentCount",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Mox Sapphire",
+          "count": 10,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "assertWonTheGame(playerA)"
+          "op": "assertPermanentCount",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Memnite",
+          "count": 10,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 1,
+          "name": "Mox Sapphire",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 1,
+          "name": "Memnite",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 1,
+          "name": "Plains",
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 1,
+          "name": "Elite Vanguard",
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": "playerC",
+          "name": "Plains",
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": "playerD",
+          "name": "Mox Ruby",
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": "playerD",
+          "name": "Elite Vanguard",
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 0,
+          "count": 1,
+          "source": "Hellkite Tyrant",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
         }
       ]
     }
-  ]
+  ],
+  "turnOrder": [0, 3, 2, 1]
 });

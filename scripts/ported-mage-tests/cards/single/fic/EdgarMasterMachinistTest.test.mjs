@@ -621,8 +621,14 @@ registerPortedMageTests({
           "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"Memnite entered tapped\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Memnite\", true, 1)"
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",

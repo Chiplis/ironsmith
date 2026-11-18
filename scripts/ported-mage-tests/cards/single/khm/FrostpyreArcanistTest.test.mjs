@@ -7,6 +7,10 @@ registerPortedMageTests({
       "name": "testCanFind",
       "operations": [
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -35,10 +39,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -46,9 +46,61 @@ registerPortedMageTests({
           "name": "Frostpyre Arcanist"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Frostpyre Arcanist",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Frostpyre Arcanist",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
           "player": 0,
-          "target": "Lightning Bolt"
+          "description": "Choose exactly 1 card",
+          "options": [
+            "Lightning Bolt"
+          ]
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Search library (revealed)",
+          "options": [
+            "Lightning Bolt"
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Lightning Bolt"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Lightning Bolt"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -66,6 +118,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 0,
           "name": "Lightning Bolt",
           "count": 1

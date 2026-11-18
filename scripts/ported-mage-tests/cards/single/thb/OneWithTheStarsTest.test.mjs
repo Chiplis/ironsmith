@@ -21,8 +21,121 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (int i = 0; i < 9; i++) { addCustomCardWithAbility( \"Rainbow\", playerA, new AnyColorManaAbility(), null, CardType.LAND, \"\", Zone.BATTLEFIELD ); }"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
         },
         {
           "op": "castSpell",
@@ -37,7 +150,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{W}{U}"
+          "ability": "{W}{U}{B}{R}{G}",
+          "source": "Dragonsoul Knight"
         },
         {
           "op": "setStopAt",
@@ -101,8 +215,56 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (int i = 0; i < 4; i++) { addCustomCardWithAbility( \"Rainbow\", playerA, new AnyColorManaAbility(), null, CardType.LAND, \"\", Zone.BATTLEFIELD ); }"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
         },
         {
           "op": "castSpell",
@@ -160,8 +322,56 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (int i = 0; i < 4; i++) { addCustomCardWithAbility( \"Rainbow\", playerA, new AnyColorManaAbility(), null, CardType.LAND, \"\", Zone.BATTLEFIELD ); }"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
         },
         {
           "op": "castSpell",
@@ -203,8 +413,56 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "for (int i = 0; i < 4; i++) { addCustomCardWithAbility( \"Rainbow\", playerA, new AnyColorManaAbility(), null, CardType.LAND, \"\", Zone.BATTLEFIELD ); }"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rainbow",
+          "custom": true,
+          "typeLine": "Land",
+          "manaCost": "",
+          "oracleText": "{T}: Add one mana of any color.",
+          "fixtureSource": true,
+          "power": null,
+          "toughness": null
         },
         {
           "op": "castSpell",

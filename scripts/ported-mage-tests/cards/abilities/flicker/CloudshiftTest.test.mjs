@@ -108,7 +108,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Clone",
+          "name": "Clone@clone.flicker",
           "count": 1
         },
         {
@@ -126,14 +126,33 @@ registerPortedMageTests({
           "name": "Clone"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Knight of Meadowgrain"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Knight of Meadowgrain"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@clone.flicker"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "calculatedName",
+              "expected": "Knight of Meadowgrain"
+            }
+          ]
         },
         {
           "op": "castSpell",
@@ -141,17 +160,21 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Cloudshift",
-          "target": "Knight of Meadowgrain"
+          "target": "@clone.flicker"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Heirs of Stromkirk"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Heirs of Stromkirk"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -160,6 +183,42 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@clone.flicker"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "calculatedName",
+              "expected": "Heirs of Stromkirk"
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Heirs of Stromkirk",
+          "ability": "IntimidateAbility.class",
+          "expected": true
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Heirs of Stromkirk",
+          "ability": "Lifelink",
+          "expected": false
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Heirs of Stromkirk",
+          "ability": "First strike",
+          "expected": false
         }
       ]
     },
@@ -280,7 +339,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Fervent Cathar",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "castSpell",

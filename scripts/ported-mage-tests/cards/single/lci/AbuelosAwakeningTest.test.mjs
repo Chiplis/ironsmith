@@ -67,8 +67,11 @@ registerPortedMageTests({
           "source": "assertSubtype(talisman, SubType.SPIRIT)"
         },
         {
-          "op": "unsupported",
-          "source": "assertBasePowerToughness(playerA, talisman, 1, 1)"
+          "op": "assertBasePowerToughness",
+          "player": 0,
+          "name": "Talisman of Progress",
+          "power": 1,
+          "toughness": 1
         }
       ]
     },

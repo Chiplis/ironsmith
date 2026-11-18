@@ -33,12 +33,17 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "{T}: Attach target Equipment you control to target creature you control.",
-          "target": "Leonin Scimitar"
-        },
-        {
-          "op": "addTarget",
-          "player": 1,
-          "target": "Silvercoat Lion"
+          "target": {
+            "groups": [
+              [
+                "Leonin Scimitar"
+              ],
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          },
+          "source": "Auriok Windwalker"
         },
         {
           "op": "setStopAt",
@@ -47,6 +52,13 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Leonin Scimitar",
+          "target": "Silvercoat Lion",
+          "expected": true
         }
       ]
     },
@@ -80,12 +92,17 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "{T}: Attach target Equipment you control to target creature you control.",
-          "target": "Konda's Banner"
-        },
-        {
-          "op": "addTarget",
-          "player": 1,
-          "target": "Silvercoat Lion"
+          "target": {
+            "groups": [
+              [
+                "Konda's Banner"
+              ],
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          },
+          "source": "Auriok Windwalker"
         },
         {
           "op": "setStopAt",
@@ -94,6 +111,13 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Konda's Banner",
+          "target": null,
+          "expected": true
         }
       ]
     },

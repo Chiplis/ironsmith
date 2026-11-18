@@ -84,15 +84,22 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.UPKEEP, playerA, \"Gemstone Caverns\", CounterType.LUCK, 1)"
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Gemstone Caverns",
+          "counter": "Luck",
+          "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertCounterCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add"
+          "name": "Gemstone Caverns",
+          "counter": "Luck",
+          "count": 1
         },
         {
           "op": "setChoice",
@@ -100,16 +107,21 @@ registerPortedMageTests({
           "value": "Green"
         },
         {
-          "op": "setStopAt",
+          "op": "activateManaAbility",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Gemstone Caverns",
+          "ability": "Add one mana of any color",
+          "count": 1
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaPool(playerA, ManaType.GREEN, 2)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 2
         }
       ]
     },
@@ -191,20 +203,15 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}{R}{R}{R}{R}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}{R}{R}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{R}{R}{G}{G}{G}{G}{G}{G}\", manaOptions)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{G}{G}{G}{G}{G}{G}{G}{G}\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": "playerA",
+          "options": [
+            "{R}{R}{R}{R}{R}{R}{G}{G}",
+            "{R}{R}{R}{R}{G}{G}{G}{G}",
+            "{R}{R}{G}{G}{G}{G}{G}{G}",
+            "{G}{G}{G}{G}{G}{G}{G}{G}"
+          ],
+          "exact": true
         }
       ]
     },

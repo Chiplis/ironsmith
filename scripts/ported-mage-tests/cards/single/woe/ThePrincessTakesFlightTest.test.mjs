@@ -70,10 +70,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": "after II, flying Bears",
-          "name": 3,
-          "ability": "POSTCOMBAT_MAIN",
-          "expected": 0
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "ability": "FlyingAbility.class",
+          "expected": true
         },
         {
           "op": "assertExileCount",
@@ -94,10 +96,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": "4: back to non-flying Bears",
-          "name": 4,
-          "ability": "POSTCOMBAT_MAIN",
-          "expected": 0
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "ability": "FlyingAbility.class",
+          "expected": false
         },
         {
           "op": "setStrictChooseMode",
@@ -171,15 +175,31 @@ registerPortedMageTests({
           "name": "The Princess Takes Flight"
         },
         {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "source": "The Princess Takes Flight",
+          "count": 1
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Princess Takes Flight",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Grizzly Bears"
         },
         {
           "op": "castSpell",
@@ -190,6 +210,14 @@ registerPortedMageTests({
           "target": "The Princess Takes Flight"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Flicker of Fate",
+          "count": 1,
+          "objectTarget": "The Princess Takes Flight"
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": "Memnite"
@@ -198,20 +226,39 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 2
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Princess Takes Flight",
+          "count": 2,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Princess Takes Flight",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Memnite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Memnite",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 0
@@ -220,38 +267,29 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 5,
           "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertExileCount",
-          "player": 0,
-          "name": "Grizzly Bears",
-          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Grizzly Bears",
           "count": 1
         },
         {
@@ -315,6 +353,13 @@ registerPortedMageTests({
           "name": "The Princess Takes Flight"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Princess Takes Flight",
+          "count": 1
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": "I - "
@@ -335,20 +380,27 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "assertExileCount",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
           "player": 1,
           "name": "Memnite",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 1,
+          "player": 0,
           "name": "Grizzly Bears",
           "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "The Princess Takes Flight",
+          "count": 2
         },
         {
           "op": "castSpell",
@@ -359,26 +411,14 @@ registerPortedMageTests({
           "target": "Ondu Spiritdancer"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "II - "
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "III - "
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 5,
           "phase": "POSTCOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertExileCount",
@@ -459,9 +499,26 @@ registerPortedMageTests({
           "name": "The Princess Takes Flight"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Princess Takes Flight",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "I - "
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": "Memnite"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
         },
         {
           "op": "addTarget",
@@ -469,20 +526,27 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "assertExileCount",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
           "player": 1,
           "name": "Memnite",
           "count": 1
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 1,
+          "player": 0,
           "name": "Grizzly Bears",
           "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "The Princess Takes Flight",
+          "count": 2
         },
         {
           "op": "castSpell",
@@ -493,26 +557,14 @@ registerPortedMageTests({
           "target": "The Sixth Doctor"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "II - "
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "III - "
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 5,
           "phase": "POSTCOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertExileCount",

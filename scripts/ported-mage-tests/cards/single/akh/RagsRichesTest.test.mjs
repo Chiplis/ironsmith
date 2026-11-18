@@ -68,7 +68,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "name": "playerC",
+          "player": "playerC",
           "count": 0
         },
         {

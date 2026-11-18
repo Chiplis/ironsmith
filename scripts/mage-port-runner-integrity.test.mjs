@@ -24,14 +24,18 @@ function nativeInspectionMock(state, extra = {}) {
 }
 
 test("player counter assertions inspect the requested player and reject unavailable counter state", async () => {
-  const checkpoint = { players: [{ id: 0, poisonCounters: 0 }, { id: 1, poisonCounters: 3 }] };
-  const context = { game: nativeInspectionMock(checkpoint) };
+  const checkpoint = { players: [
+    { id: 0, counters: [{ kind: "rad", amount: 4 }] },
+    { id: 1, counters: [{ kind: "poison", amount: 3 }] },
+  ] };
+  const context = { game: { snapshot: () => checkpoint } };
   const operation = { player: 0, name: 1, counter: "POISON", count: 3 };
   await assertCounterCount(context, operation);
+  await assertCounterCount(context, { ...operation, name: 0, counter: "RAD", count: 4 });
+  await assertCounterCount(context, { ...operation, counter: "RAD", count: 0 });
   await assert.rejects(assertCounterCount(context, { ...operation, count: 0 }), /player 1, got 3/);
-  await assert.rejects(assertCounterCount(context, { ...operation, counter: "RAD", count: 0 }), /unsupported player counter/);
+  delete checkpoint.players[1].counters;
   await assert.rejects(assertCounterCount(context, { ...operation, counter: "ENERGY", count: 0 }), /unsupported player counter/);
-  assert.equal(checkpoint.players[1].poisonCounters, 3);
 });
 import { ALLOW_ENGINE_SHIMS, DEFAULT_LIBRARY_CARD, DEFAULT_LIBRARY_SIZE } from "./mage-port-runner/names.mjs";
 import { startEmptyMatch } from "./wasm-test-harness.mjs";
@@ -79,10 +83,10 @@ test("starting-life expressions read the fixture's declared starting life and re
   assert.equal(checkpoint.players[1].life, 28);
 });
 
-test("unsupported color assertions cannot silently pass", async () => {
+test("malformed color assertions cannot silently pass", async () => {
   await assert.rejects(applySupportedJavaHelper({}, {
     source: 'checkColor("fixture", 1, PhaseStep.PRECOMBAT_MAIN, playerA, "Grizzly Bears", "green", true)',
-  }), /unsupported color assertion/);
+  }), /unsupported Java statement/);
 });
 
 test("named token assertions require exact counts including zero", async () => {
@@ -175,5 +179,5 @@ test("prototype color assertions cannot infer calculated colors from mana cost",
       mana_cost: "{2}{R}", abilities: ["Haste"] }),
   }) };
   await assert.rejects(assertBlitzAutomatonPrototypeState(context, { count: 1, prototyped: true }),
-    /unsupported prototype color assertion/);
+    /unsupported color assertion/);
 });

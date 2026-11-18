@@ -113,7 +113,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Copy Enchantment",
+          "name": "Copy Enchantment@copy",
           "count": 1
         },
         {
@@ -127,84 +127,96 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Silvercoat Lion",
-          "count": 3
+          "name": "Silvercoat Lion@lion1",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Silvercoat Lion@lion2",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Silvercoat Lion@lion3",
+          "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Inferno Fist",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Inferno Fist",
           "target": "Geist of the Moors"
         },
         {
+          "op": "assertStackObject",
+          "source": "Inferno Fist",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Geist of the Moors"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Inferno Fist\"",
+          "target": "Geist of the Moors",
+          "expected": true
+        },
+        {
           "op": "castSpell",
+          "name": "Copy Enchantment",
+          "player": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Copy Enchantment"
+          "objectAlias": "@copy"
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Inferno Fist"
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Silvercoat Lion"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Copy Enchantment",
+          "count": 1,
           "turn": 2,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertLife",
-          "player": 0,
-          "life": 20
-        },
-        {
-          "op": "assertLife",
+          "op": "setOptionChoices",
           "player": 1,
-          "life": 20
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Inferno Fist"
+          ]
         },
         {
-          "op": "assertHandCount",
-          "player": 0,
-          "name": "Inferno Fist",
-          "count": 0
-        },
-        {
-          "op": "assertGraveyardCount",
+          "op": "setObjectChoices",
           "player": 1,
-          "name": "Copy Enchantment",
-          "count": 0
+          "description": "Attach Aura to",
+          "choices": [
+            "Silvercoat Lion"
+          ]
         },
         {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Inferno Fist",
-          "count": 1
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertAttachedTo",
           "player": 1,
-          "name": "Inferno Fist",
-          "count": 1
+          "attachment": "\"@copy\"",
+          "target": "@lion1",
+          "expected": true
         },
         {
           "op": "assertPowerToughness",
@@ -216,9 +228,50 @@ registerPortedMageTests({
         {
           "op": "assertPowerToughness",
           "player": 1,
-          "name": "Silvercoat Lion",
+          "name": "@lion1",
           "power": 4,
           "toughness": 2
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 1,
+          "name": "@lion2",
+          "power": 2,
+          "toughness": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Inferno Fist",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Inferno Fist",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Inferno Fist",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "@copy",
+          "count": 0
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
         }
       ]
     }

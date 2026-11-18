@@ -23,14 +23,14 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerD",
+          "player": 3,
           "name": "Agonizing Syphon",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 3,
           "name": "Swamp",
           "count": 4
         },
@@ -45,7 +45,7 @@ registerPortedMageTests({
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerD",
+          "player": 3,
           "name": "Agonizing Syphon",
           "target": 0
         },
@@ -62,12 +62,14 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Aeon Engine\", true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Aeon Engine",
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertActivePlayer(playerD)"
+          "op": "assertActivePlayer",
+          "player": 3
         },
         {
           "op": "assertLife",
@@ -76,9 +78,15 @@ registerPortedMageTests({
         },
         {
           "op": "assertLife",
-          "player": "playerD",
+          "player": 3,
           "life": 23
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

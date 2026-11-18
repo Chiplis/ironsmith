@@ -40,8 +40,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (true) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "power": 2,
+              "toughness": 5
+            },
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "count": 0
+            }
+          ]
         }
       ]
     },
@@ -106,8 +120,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (false) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "count": 0
+            },
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "power": 6,
+              "toughness": 5
+            }
+          ]
         }
       ]
     },
@@ -136,6 +164,21 @@ registerPortedMageTests({
           "name": "Tavern Ruffian"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "assertDayNight(true)"
+        },
+        {
+          "op": "unsupported",
+          "source": "setDayNight(1, PhaseStep.POSTCOMBAT_MAIN, false)"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -149,7 +192,25 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "if (false) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "source": "assertDayNight(false)"
+        },
+        {
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "count": 0
+            },
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "power": 6,
+              "toughness": 5
+            }
+          ]
         }
       ]
     },
@@ -178,6 +239,21 @@ registerPortedMageTests({
           "name": "Tavern Ruffian"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "assertDayNight(false)"
+        },
+        {
+          "op": "unsupported",
+          "source": "setDayNight(1, PhaseStep.POSTCOMBAT_MAIN, true)"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -191,7 +267,25 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "if (true) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "source": "assertDayNight(true)"
+        },
+        {
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "power": 2,
+              "toughness": 5
+            },
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "count": 0
+            }
+          ]
         }
       ]
     },
@@ -246,8 +340,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (true) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "power": 2,
+              "toughness": 5
+            },
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "count": 0
+            }
+          ]
         },
         {
           "op": "assertPermanentCount",
@@ -296,6 +404,21 @@ registerPortedMageTests({
           "name": "Tavern Ruffian"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "assertDayNight(false)"
+        },
+        {
+          "op": "unsupported",
+          "source": "setDayNight(1, PhaseStep.POSTCOMBAT_MAIN, true)"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -306,6 +429,10 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertDayNight(true)"
         },
         {
           "op": "assertPowerToughness",
@@ -361,6 +488,21 @@ registerPortedMageTests({
           "name": "Tavern Ruffian"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "assertDayNight(false)"
+        },
+        {
+          "op": "unsupported",
+          "source": "setDayNight(1, PhaseStep.BEGIN_COMBAT, true)"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -371,6 +513,10 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertDayNight(true)"
         },
         {
           "op": "assertPowerToughness",
@@ -403,7 +549,31 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "if (true) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "source": "assertDayNight(true)"
+        },
+        {
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "power": 2,
+              "toughness": 5
+            },
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "count": 0
+            }
+          ]
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Immerwolf",
+          "count": 1
         }
       ]
     },
@@ -444,8 +614,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (true) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "power": 2,
+              "toughness": 5
+            },
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "count": 0
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -456,8 +640,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (true) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "power": 2,
+              "toughness": 5
+            },
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "count": 0
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -468,8 +666,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (false) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "count": 0
+            },
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "power": 6,
+              "toughness": 5
+            }
+          ]
         }
       ]
     },
@@ -536,8 +748,22 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "if (false) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "count": 0
+            },
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "power": 6,
+              "toughness": 5
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -548,8 +774,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (true) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "power": 2,
+              "toughness": 5
+            },
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "count": 0
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -560,8 +800,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "if (false) { assertPowerToughness(playerA, ruffian, 2, 5); assertPermanentCount(playerA, smasher, 0); } else { assertPermanentCount(playerA, ruffian, 0); assertPowerToughness(playerA, smasher, 6, 5); }"
+          "op": "sequence",
+          "operations": [
+            {
+              "op": "assertPermanentCount",
+              "player": 0,
+              "name": "Tavern Ruffian",
+              "count": 0
+            },
+            {
+              "op": "assertPowerToughness",
+              "player": 0,
+              "name": "Tavern Smasher",
+              "power": 6,
+              "toughness": 5
+            }
+          ]
         }
       ]
     },
@@ -687,6 +941,21 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "assertDayNight(true)"
+        },
+        {
+          "op": "unsupported",
+          "source": "setDayNight(1, PhaseStep.POSTCOMBAT_MAIN, false)"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -697,6 +966,10 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertDayNight(false)"
         },
         {
           "op": "assertPermanentCount",
@@ -743,6 +1016,21 @@ registerPortedMageTests({
           "value": "playerB.getName()"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "assertDayNight(false)"
+        },
+        {
+          "op": "unsupported",
+          "source": "setDayNight(1, PhaseStep.POSTCOMBAT_MAIN, true)"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -755,10 +1043,38 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "unsupported",
+          "source": "assertDayNight(true)"
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Leeching Lurker",
           "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Curse of Leeches",
+          "count": 1
+        },
+        {
+          "op": "setStopAt",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 19
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 21
         }
       ]
     },

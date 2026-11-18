@@ -40,9 +40,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": "before discard",
-          "name": 2,
-          "count": "END_TURN"
+          "turn": 2,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -57,15 +59,19 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": "after discard",
-          "name": 3,
-          "count": "UPKEEP"
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": "before draw",
-          "name": 4,
-          "count": "END_TURN"
+          "turn": 4,
+          "phase": "END_TURN",
+          "player": 0,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "waitStackResolved",
@@ -75,9 +81,11 @@ registerPortedMageTests({
         },
         {
           "op": "assertHandCount",
-          "player": "after draw",
-          "name": 5,
-          "count": "UPKEEP"
+          "turn": 5,
+          "phase": "UPKEEP",
+          "player": 0,
+          "count": 3,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",

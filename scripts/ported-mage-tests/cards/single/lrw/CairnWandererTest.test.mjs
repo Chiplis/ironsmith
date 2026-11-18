@@ -105,29 +105,98 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertAbilities",
-          "player": 0,
-          "name": "Cairn Wanderer",
-          "abilities": [
-            "abilities"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Cairn Wanderer"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "flying",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "fear",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "first strike",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "double strike",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "deathtouch",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "haste",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "plainswalk",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "lifelink",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "protection from everything",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "reach",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "shroud",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "trample",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "vigilance",
+              "expected": true
+            }
           ]
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Cairn Wanderer",
-          "ability": "new PlainswalkAbility()",
-          "expected": true
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Cairn Wanderer",
-          "ability": "everything",
-          "expected": true
         }
       ]
     }

@@ -29,27 +29,47 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Exhume",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Exhume",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Archfiend's Vessel"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "name": "Exhume"
+          "name": "Archfiend's Vessel",
+          "count": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Archfiend's Vessel"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Archfiend's Vessel",
+          "count": 1,
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -185,42 +205,93 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "activateManaAbility",
+          "source": "Swamp",
+          "ability": "Add {B}",
+          "player": 0,
+          "count": 2,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Exhume",
           "player": 0,
-          "name": "Exhume"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "source": "Exhume",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "target": "Archfiend's Vessel"
+          "value": "Archfiend's Vessel"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Archfiend's Vessel",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Archfiend's Vessel",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
           "op": "castSpell",
+          "name": "Fatal Push",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Fatal Push",
           "target": "Archfiend's Vessel"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Fatal Push",
+          "count": 1,
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Archfiend's Vessel"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Archfiend's Vessel",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Archfiend's Vessel",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

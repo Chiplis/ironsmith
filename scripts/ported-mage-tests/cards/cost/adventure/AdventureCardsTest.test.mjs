@@ -650,6 +650,10 @@ registerPortedMageTests({
       "name": "testCastMemoryTheft",
       "operations": [
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -706,6 +710,26 @@ registerPortedMageTests({
           "name": "Treats to Share"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Treats to Share",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Curious Pair",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
@@ -714,8 +738,22 @@ registerPortedMageTests({
           "target": 0
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Memory Theft",
+          "count": 1,
+          "onTop": true,
+          "targetCount": 1
+        },
+        {
           "op": "setChoice",
           "player": 1,
+          "value": "Opt"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
           "value": "Opt"
         },
         {
@@ -724,8 +762,10 @@ registerPortedMageTests({
           "value": "Curious Pair"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -750,6 +790,18 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "player": 0,
           "count": 2
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Opt",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Curious Pair",
+          "count": 1
         }
       ]
     },
@@ -1680,28 +1732,65 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.UPKEEP, playerA, \"Wrenn and Six\", CounterType.LOYALTY, 5)"
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Wrenn and Six",
+          "counter": "LOYALTY",
+          "count": 5
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Wrenn and Six",
+          "counter": "LOYALTY",
+          "count": 8
         },
         {
           "op": "activateAbility",
+          "player": 0,
+          "source": "Wrenn and Six",
+          "ability": "-7: You get an emblem",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Wrenn and Six",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "-7: You get an emblem"
+          "abilityKind": "Activated"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEmblemCount",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertPlayableAbility",
+          "player": 0,
+          "label": "Cast Treats to Share using Retrace",
+          "expected": true,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Treats to Share using Retrace",
           "player": 0,
-          "name": "Treats to Share with retrace"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setChoice",
@@ -1709,16 +1798,16 @@ registerPortedMageTests({
           "value": "Forest"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Treats to Share",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertHandCount",
@@ -1727,37 +1816,33 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Food Token",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Curious Pair",
-          "count": 0
+          "count": 0,
+          "player": 0
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
           "name": "Wrenn and Six",
-          "count": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertEmblemCount(playerA, 1)"
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertExileCount",
-          "player": 0,
           "name": "Curious Pair",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertGraveyardCount",
-          "player": 0,
           "name": "Forest",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertGraveyardCount",

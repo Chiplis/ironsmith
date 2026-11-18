@@ -21,12 +21,172 @@ registerPortedMageTests({
           "count": 6
         },
         {
-          "op": "setStopAt",
-          "turn": 3,
-          "phase": "PRECOMBAT_MAIN"
+          "op": "activateAbility",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Bottle Gnomes",
+          "ability": "Sacrifice"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Coils",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Lightning Coils",
+          "counter": "CHARGE",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Bottle Gnomes",
+          "ability": "Sacrifice"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Coils",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Lightning Coils",
+          "counter": "CHARGE",
+          "count": 2
+        },
+        {
+          "op": "activateAbility",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Bottle Gnomes",
+          "ability": "Sacrifice"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Coils",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Lightning Coils",
+          "counter": "CHARGE",
+          "count": 3
+        },
+        {
+          "op": "activateAbility",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Bottle Gnomes",
+          "ability": "Sacrifice"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Coils",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Lightning Coils",
+          "counter": "CHARGE",
+          "count": 4
+        },
+        {
+          "op": "activateAbility",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Bottle Gnomes",
+          "ability": "Sacrifice"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Coils",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Lightning Coils",
+          "counter": "CHARGE",
+          "count": 5
+        },
+        {
+          "op": "activateAbility",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Bottle Gnomes",
+          "ability": "Sacrifice"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Coils",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Lightning Coils",
+          "counter": "CHARGE",
+          "count": 6
         },
         {
           "op": "assertGraveyardCount",
@@ -39,6 +199,19 @@ registerPortedMageTests({
           "player": 0,
           "name": "Lightning Coils",
           "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "source": "Lightning Coils",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP"
         },
         {
           "op": "assertCounterCount",

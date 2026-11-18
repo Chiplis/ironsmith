@@ -44,6 +44,20 @@ registerPortedMageTests({
           "value": "Silvercoat Lion"
         },
         {
+          "op": "assertBlockDeclarationRejected",
+          "turn": 1,
+          "player": 1,
+          "reason": "requires 1 blockers",
+          "declarations": []
+        },
+        {
+          "op": "block",
+          "turn": 1,
+          "player": 1,
+          "blocker": "Silvercoat Lion",
+          "attacker": "Nacatl War-Pride"
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_COMBAT"

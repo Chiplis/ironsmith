@@ -111,11 +111,39 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Raven's Crime",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Raven's Crime",
           "target": 0
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Raven's Crime",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Arrogant Wurm",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Arrogant Wurm",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -123,16 +151,9 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -151,6 +172,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Arrogant Wurm",
           "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Arrogant Wurm",
+          "count": 0
         },
         {
           "op": "assertHandCount",

@@ -70,9 +70,41 @@ registerPortedMageTests({
           "name": "Nissa, Vastwood Seer"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Nissa, Vastwood Seer",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Nissa, Vastwood Seer",
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "setChoice",
-          "player": 1,
-          "value": "Yes"
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "value": "Forest"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "playLand",
@@ -82,11 +114,48 @@ registerPortedMageTests({
           "name": "Forest"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 1,
+          "source": "Nissa, Vastwood Seer",
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Nissa, Sage Animist",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
           "op": "activateAbility",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "ability": "-2: Create Ashaya, the Awoken World, a legendary 4/4 green Elemental creature token."
+          "ability": "-2:",
+          "source": "Nissa, Sage Animist"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "count": 1,
+          "source": "Nissa, Sage Animist",
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
@@ -103,24 +172,48 @@ registerPortedMageTests({
           "attacker": "Silvercoat Lion"
         },
         {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "number",
+          "description": "Choose value for X",
+          "player": 0,
+          "value": 3
+        },
+        {
           "op": "activateAbility",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "-X: Exile each permanent with mana value X or less that's one or more colors"
+          "ability": "-X: Exile each permanent with mana value X or less that's one or more colors",
+          "source": "Ugin, the Spirit Dragon"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "X=3"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 3,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "count": 1,
+          "source": "Ugin, the Spirit Dragon",
+          "onTop": true,
+          "abilityKind": "Activated"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",

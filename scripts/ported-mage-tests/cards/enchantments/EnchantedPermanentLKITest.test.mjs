@@ -50,10 +50,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Skyrider Trainee"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Skyrider Trainee",
+          "ability": "FlyingAbility.class",
+          "expected": true
         },
         {
           "op": "castSpell",
@@ -140,10 +142,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Skyrider Trainee"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Skyrider Trainee",
+          "ability": "FlyingAbility.class",
+          "expected": true
         },
         {
           "op": "castSpell",
@@ -242,10 +246,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Skyrider Trainee"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Skyrider Trainee",
+          "ability": "FlyingAbility.class",
+          "expected": true
         },
         {
           "op": "activateAbility",
@@ -338,6 +344,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -346,24 +356,57 @@ registerPortedMageTests({
           "target": "Skyrider Trainee"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Dreadful Apathy",
+          "objectTarget": "Skyrider Trainee"
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertAttachedTo",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "attachment": "Dreadful Apathy",
+          "target": "Skyrider Trainee",
+          "expected": true,
+          "seatIndependent": true
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Skyrider Trainee"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Skyrider Trainee",
+          "ability": "Flying",
+          "expected": true,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 0,
-          "ability": "{2}{W}: Exile enchanted creature."
+          "source": "Dreadful Apathy",
+          "ability": "Exile enchanted creature"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "count": 1,
+          "source": "Dreadful Apathy",
+          "abilityKind": "Activated"
         },
         {
           "op": "castSpell",
@@ -371,42 +414,143 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Aura Finesse",
-          "target": "Dreadful Apathy"
+          "target": "Dreadful Apathy^Thran Golem"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Thran Golem"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "count": 1,
+          "source": "Aura Finesse",
+          "objectTarget": "Thran Golem",
+          "onTop": true
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "count": 1,
+          "source": "Aura Finesse",
+          "objectTarget": "Dreadful Apathy"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "count": 1,
+          "source": "Dreadful Apathy",
+          "abilityKind": "Activated",
+          "onTop": true
         },
         {
           "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
           "player": 0,
+          "seatIndependent": true,
           "name": "Aura Finesse",
           "count": 1
         },
         {
-          "op": "assertExileCount",
-          "name": "Thran Golem",
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "seatIndependent": true,
           "count": 1
         },
         {
+          "op": "assertAttachedTo",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "attachment": "Dreadful Apathy",
+          "target": "Thran Golem",
+          "expected": true,
+          "seatIndependent": true
+        },
+        {
           "op": "assertAbility",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Skyrider Trainee",
           "ability": "Flying",
-          "expected": false
+          "expected": false,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertAbility",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Thran Golem",
+          "ability": "Trample",
+          "expected": true,
+          "seatIndependent": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Thran Golem",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Skyrider Trainee",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Dreadful Apathy",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Aura Finesse",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertAbility",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Skyrider Trainee",
+          "ability": "Flying",
+          "expected": false,
+          "seatIndependent": true
         }
       ]
     }

@@ -377,7 +377,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Reassembling Skeleton",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",

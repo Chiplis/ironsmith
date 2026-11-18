@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "attackSinglePlayer",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -44,6 +40,51 @@ registerPortedMageTests({
           "player": "playerD",
           "name": "Devoted Hero",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 2,
+            "name": "Ancient Carp"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 3,
+            "name": "Devoted Hero"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
         },
         {
           "op": "attack",
@@ -65,27 +106,90 @@ registerPortedMageTests({
           "target": "Ancient Carp"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Alela, Cunning Conqueror",
+          "count": 1,
           "turn": 1,
-          "phase": "END_COMBAT"
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered",
+          "completeTargets": true
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Alela, Cunning Conqueror",
+          "count": 1,
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered",
+          "objectTarget": "Ancient Carp"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 2,
+            "name": "Ancient Carp"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 3,
+            "name": "Devoted Hero"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
         },
         {
           "op": "assertLife",
           "player": "playerC",
           "life": 36
         }
+      ],
+      "startingLife": 40,
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
       "name": "attackTwoPlayers",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": false
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -122,6 +226,51 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 2,
+            "name": "Ancient Carp"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 3,
+            "name": "Devoted Hero"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
@@ -136,12 +285,81 @@ registerPortedMageTests({
           "defender": "playerD"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Alela, Cunning Conqueror",
+          "count": 2,
           "turn": 1,
-          "phase": "END_COMBAT"
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered",
+          "completeTargets": true
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Alela, Cunning Conqueror",
+          "count": 1,
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered",
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Alela, Cunning Conqueror",
+          "count": 1,
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered",
+          "objectTarget": "Devoted Hero"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 2,
+            "name": "Ancient Carp"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 3,
+            "name": "Devoted Hero"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertLife",
@@ -153,15 +371,18 @@ registerPortedMageTests({
           "player": "playerD",
           "life": 38
         }
+      ],
+      "startingLife": 40,
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
       "name": "attackWithNotAFaerie",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -198,6 +419,51 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 2,
+            "name": "Ancient Carp"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 3,
+            "name": "Devoted Hero"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
           "op": "attack",
           "turn": 1,
           "player": 0,
@@ -217,12 +483,72 @@ registerPortedMageTests({
           "target": "Grizzly Bears"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Alela, Cunning Conqueror",
+          "count": 1,
           "turn": 1,
-          "phase": "END_COMBAT"
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered",
+          "completeTargets": true
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Alela, Cunning Conqueror",
+          "count": 1,
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered",
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 2,
+            "name": "Ancient Carp"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 3,
+            "name": "Devoted Hero"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
         },
         {
           "op": "assertLife",
@@ -234,6 +560,13 @@ registerPortedMageTests({
           "player": "playerD",
           "life": 39
         }
+      ],
+      "startingLife": 40,
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

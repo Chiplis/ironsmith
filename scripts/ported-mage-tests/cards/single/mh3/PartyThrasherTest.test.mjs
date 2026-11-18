@@ -141,11 +141,14 @@ registerPortedMageTests({
           "value": "Memnite"
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Accorder's Shield"
+          "kind": "cast_spell",
+          "label": "Accorder's Shield",
+          "sourceZone": "exile",
+          "checkPayment": true
         },
         {
           "op": "setStrictChooseMode",
@@ -157,8 +160,25 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"Should have failed to execute, as Accorder's Shield should not be castable\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Can't find ability to activate command: Cast Accorder's Shield\")) { Assert.fail(\"must throw error about missing ability:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Memnarch",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Accorder's Shield",
+          "count": 1
         }
       ]
     },
@@ -217,11 +237,14 @@ registerPortedMageTests({
           "value": "No"
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Memnite"
+          "kind": "cast_spell",
+          "label": "Memnite",
+          "sourceZone": "exile",
+          "checkPayment": true
         },
         {
           "op": "setStrictChooseMode",
@@ -233,8 +256,25 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"Should have failed to execute, as Memnite should not be castable the turn after Party Thrasher Exiled it.\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Can't find ability to activate command: Cast Memnite\")) { Assert.fail(\"must throw error about missing ability:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Memnarch",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Accorder's Shield",
+          "count": 1
         }
       ]
     }

@@ -29,27 +29,51 @@ registerPortedMageTests({
         },
         {
           "op": "activateManaAbility",
-          "turn": 2,
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Exile",
-          "count": 1
+          "count": 1,
+          "source": "Simian Spirit Guide"
         },
         {
-          "op": "castSpell",
-          "turn": 2,
+          "op": "activateManaAbility",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Myr Superion"
+          "source": "Manakin",
+          "ability": "{T}: Add {C}"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "RC",
+          "amount": 2
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Myr Superion",
+          "methods": [],
+          "zone": "hand"
         },
         {
           "op": "setStopAt",
-          "turn": 2,
+          "turn": 1,
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Myr Superion\")) { Assert.fail(\"must not have throw error about bad targets, but got:\\n\" + e.getMessage()); } } assertExileCount(\"Simian Spirit Guide\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Simian Spirit Guide",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",

@@ -25,7 +25,31 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
+        },
+        {
+          "op": "assertTapped",
+          "name": "Silvercoat Lion",
+          "player": 1,
+          "tapped": true,
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
         },
         {
           "op": "attack",
@@ -35,9 +59,44 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Brontotherium",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "block",
+          "turn": 3,
+          "player": 1,
+          "attacker": "Brontotherium",
+          "blocker": "Silvercoat Lion"
+        },
+        {
           "op": "setStopAt",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "distribution",
+          "description": "Assign 5 combat damage from Brontotherium (assign exactly 5 total)",
+          "choices": [
+            "Silvercoat Lion",
+            "Silvercoat Lion",
+            "Bob",
+            "Bob",
+            "Bob"
+          ]
         },
         {
           "op": "execute"
@@ -95,7 +154,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Putrid Imp",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",

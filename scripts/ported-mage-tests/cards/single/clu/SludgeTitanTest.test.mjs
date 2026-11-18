@@ -82,9 +82,9 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setChoice",
+          "op": "addTarget",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "setStopAt",
@@ -99,6 +99,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Goblin Piker",
           "count": 5
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Goblin Piker",
+          "count": 0
         }
       ]
     },
@@ -277,7 +283,12 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Goblin Piker^Savannah"
+          "value": "Goblin Piker"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Savannah"
         },
         {
           "op": "setStopAt",
@@ -340,7 +351,12 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Dryad Arbor^Dryad Arbor"
+          "value": "Dryad Arbor"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Dryad Arbor"
         },
         {
           "op": "setStopAt",

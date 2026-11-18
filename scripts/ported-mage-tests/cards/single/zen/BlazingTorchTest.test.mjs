@@ -33,7 +33,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "source": "Blazing Torch"
         },
         {
           "op": "activateAbility",
@@ -41,7 +42,13 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "ability": "{T},",
-          "target": 1
+          "target": 1,
+          "source": "Silvercoat Lion"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Blazing Torch"
         },
         {
           "op": "setStrictChooseMode",
@@ -126,12 +133,19 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Enter as a copy of Blazing Torch"
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "value": "Blazing Torch"
+          "name": "Blazing Torch",
+          "count": 1
         },
         {
           "op": "activateAbility",
@@ -139,7 +153,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "source": "Blazing Torch"
         },
         {
           "op": "waitStackResolved",
@@ -153,7 +168,13 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "ability": "{T},",
-          "target": 1
+          "target": 1,
+          "source": "Silvercoat Lion"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Blazing Torch"
         },
         {
           "op": "setStrictChooseMode",
@@ -265,7 +286,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "source": "Blazing Torch"
         },
         {
           "op": "activateAbility",
@@ -273,7 +295,13 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "ability": "{T},",
-          "target": 1
+          "target": 1,
+          "source": "Silvercoat Lion"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Blazing Torch"
         },
         {
           "op": "setStrictChooseMode",

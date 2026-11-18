@@ -254,12 +254,26 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Plow Through Reito"
+          "name": "Plow Through Reito",
+          "target": "Raging Goblin"
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Plow Through Reito",
+          "count": 1,
+          "objectTarget": "Raging Goblin"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

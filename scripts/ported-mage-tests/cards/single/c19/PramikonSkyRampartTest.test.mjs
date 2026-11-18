@@ -1,5 +1,6 @@
 import { registerPortedMageTests } from "../../../../mage-port-runner.mjs";
 
+// XMage A, D, C, B occupy clockwise seats 0, 1, 2, 3.
 registerPortedMageTests({
   "sourcePath": "scripts/cards/single/c19/PramikonSkyRampartTest.java",
   "tests": [
@@ -48,21 +49,21 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 1,
+          "player": 3,
           "name": "Bogstomper",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
+          "player": 2,
           "name": "Catacomb Crocodile",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 1,
           "name": "Hulking Devil",
           "count": 1
         },
@@ -76,71 +77,48 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "ModeChoice.LEFT.toString()"
+          "value": "Left"
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left possible\", 1, playerA, ancients, playerD, true)"
+          "op": "assertAttackDefenders",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "attacker": "Indomitable Ancients",
+          "defenders": [
+            1
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 1, playerA, ancients, playerC, false)"
+          "op": "assertAttackDefenders",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 1,
+          "attacker": "Hulking Devil",
+          "defenders": [
+            2
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right impossible\", 1, playerA, ancients, playerB, false)"
+          "op": "assertAttackDefenders",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 2,
+          "attacker": "Catacomb Crocodile",
+          "defenders": [
+            3,
+            1
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 1, playerA, ancients, playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left possible\", 2, playerD, devil, playerC, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 2, playerD, devil, playerB, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right impossible\", 2, playerD, devil, playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 2, playerD, devil, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left possible -- not in range of Pramikon\", 3, playerC, crocodile, playerB, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 3, playerC, crocodile, playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right possible -- not in range of Pramikon\", 3, playerC, crocodile, playerD, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 3, playerC, crocodile, playerC, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left possible\", 4, playerB, bogstomper, playerA, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 4, playerB, bogstomper, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right impossible\", 4, playerB, bogstomper, playerC, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 4, playerB, bogstomper, playerB, false)"
+          "op": "assertAttackDefenders",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 3,
+          "attacker": "Bogstomper",
+          "defenders": [
+            0
+          ]
         },
         {
           "op": "setStopAt",
@@ -197,21 +175,21 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 1,
+          "player": 3,
           "name": "Bogstomper",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
+          "player": 2,
           "name": "Catacomb Crocodile",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 1,
           "name": "Hulking Devil",
           "count": 1
         },
@@ -225,71 +203,48 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "ModeChoice.RIGHT.toString()"
+          "value": "Right"
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left impossible\", 1, playerA, ancients, playerD, false)"
+          "op": "assertAttackDefenders",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "attacker": "Indomitable Ancients",
+          "defenders": [
+            3
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 1, playerA, ancients, playerC, false)"
+          "op": "assertAttackDefenders",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 1,
+          "attacker": "Hulking Devil",
+          "defenders": [
+            0
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right possible\", 1, playerA, ancients, playerB, true)"
+          "op": "assertAttackDefenders",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 2,
+          "attacker": "Catacomb Crocodile",
+          "defenders": [
+            3,
+            1
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 1, playerA, ancients, playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left impossible\", 2, playerD, devil, playerC, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 2, playerD, devil, playerB, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right possible\", 2, playerD, devil, playerA, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 2, playerD, devil, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left possible -- not in range of Pramikon\", 3, playerC, crocodile, playerB, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 3, playerC, crocodile, playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right possible -- not in range of Pramikon\", 3, playerC, crocodile, playerD, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 3, playerC, crocodile, playerC, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left impossible\", 4, playerB, bogstomper, playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 4, playerB, bogstomper, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right possible\", 4, playerB, bogstomper, playerC, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 4, playerB, bogstomper, playerB, false)"
+          "op": "assertAttackDefenders",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 3,
+          "attacker": "Bogstomper",
+          "defenders": [
+            2
+          ]
         },
         {
           "op": "setStopAt",
@@ -318,7 +273,7 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerD",
+          "player": 1,
           "name": "Pramikon, Sky Rampart",
           "count": 1
         },
@@ -346,21 +301,21 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 1,
           "name": "Mountain",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 1,
           "name": "Island",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 1,
           "name": "Plains",
           "count": 1
         },
@@ -374,21 +329,21 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 1,
+          "player": 3,
           "name": "Bogstomper",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
+          "player": 2,
           "name": "Catacomb Crocodile",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 1,
           "name": "Hulking Devil",
           "count": 1
         },
@@ -402,83 +357,55 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "ModeChoice.RIGHT.toString()"
+          "value": "Right"
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerD",
+          "player": 1,
           "name": "Pramikon, Sky Rampart"
         },
         {
           "op": "setChoice",
-          "player": "playerD",
-          "value": "ModeChoice.LEFT.toString()"
+          "player": 1,
+          "value": "Left"
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left impossible\", 2, playerD, devil, playerC, false)"
+          "op": "assertAttackDefenders",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 1,
+          "attacker": "Hulking Devil",
+          "defenders": []
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 2, playerD, devil, playerB, false)"
+          "op": "assertAttackDefenders",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 2,
+          "attacker": "Catacomb Crocodile",
+          "defenders": [
+            3
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right impossible\", 2, playerD, devil, playerA, false)"
+          "op": "assertAttackDefenders",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 3,
+          "attacker": "Bogstomper",
+          "defenders": [
+            2
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 2, playerD, devil, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left possible -- not in range of A's Pramikon\", 3, playerC, crocodile, playerB, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 3, playerC, crocodile, playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right impossible\", 3, playerC, crocodile, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 3, playerC, crocodile, playerC, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left impossible\", 4, playerB, bogstomper, playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 4, playerB, bogstomper, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right possible -- not in range of D's Pramikon\", 4, playerB, bogstomper, playerC, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 4, playerB, bogstomper, playerB, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left impossible\", 5, playerA, ancients, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 5, playerA, ancients, playerC, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right impossible\", 5, playerA, ancients, playerB, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 5, playerA, ancients, playerA, false)"
+          "op": "assertAttackDefenders",
+          "turn": 5,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "attacker": "Indomitable Ancients",
+          "defenders": []
         },
         {
           "op": "setStopAt",
@@ -507,7 +434,7 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerD",
+          "player": 1,
           "name": "Pramikon, Sky Rampart",
           "count": 1
         },
@@ -535,21 +462,21 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 1,
           "name": "Mountain",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 1,
           "name": "Island",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 1,
           "name": "Plains",
           "count": 1
         },
@@ -563,21 +490,21 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 1,
+          "player": 3,
           "name": "Bogstomper",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
+          "player": 2,
           "name": "Catacomb Crocodile",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 1,
           "name": "Hulking Devil",
           "count": 1
         },
@@ -591,83 +518,55 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "ModeChoice.LEFT.toString()"
+          "value": "Left"
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerD",
+          "player": 1,
           "name": "Pramikon, Sky Rampart"
         },
         {
           "op": "setChoice",
-          "player": "playerD",
-          "value": "ModeChoice.RIGHT.toString()"
+          "player": 1,
+          "value": "Right"
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left impossible\", 2, playerD, devil, playerC, false)"
+          "op": "assertAttackDefenders",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 1,
+          "attacker": "Hulking Devil",
+          "defenders": []
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 2, playerD, devil, playerB, false)"
+          "op": "assertAttackDefenders",
+          "turn": 3,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 2,
+          "attacker": "Catacomb Crocodile",
+          "defenders": [
+            1
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right impossible\", 2, playerD, devil, playerA, false)"
+          "op": "assertAttackDefenders",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 3,
+          "attacker": "Bogstomper",
+          "defenders": [
+            0
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 2, playerD, devil, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left impossible\", 3, playerC, crocodile, playerB, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 3, playerC, crocodile, playerA, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right possible -- not in range of A's Pramikon\", 3, playerC, crocodile, playerD, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 3, playerC, crocodile, playerC, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left possible -- not in range of D's Pramikon\", 4, playerB, bogstomper, playerA, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 4, playerB, bogstomper, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right impossible\", 4, playerB, bogstomper, playerC, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 4, playerB, bogstomper, playerB, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack left impossible\", 5, playerA, ancients, playerD, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack out of range impossible\", 5, playerA, ancients, playerC, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack right impossible\", 5, playerA, ancients, playerB, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkMayAttackDefender(\"Attack self impossible\", 5, playerA, ancients, playerA, false)"
+          "op": "assertAttackDefenders",
+          "turn": 5,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 0,
+          "attacker": "Indomitable Ancients",
+          "defenders": []
         },
         {
           "op": "setStopAt",
@@ -679,5 +578,6 @@ registerPortedMageTests({
         }
       ]
     }
-  ]
+  ],
+  "rangeOfInfluence": 1
 });

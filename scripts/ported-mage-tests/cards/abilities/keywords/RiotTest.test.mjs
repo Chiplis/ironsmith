@@ -28,9 +28,13 @@ registerPortedMageTests({
           "name": "Rampaging Rendhorn"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "This creature enters with a +1/+1 counter on it"
+          ]
         },
         {
           "op": "setStopAt",
@@ -59,6 +63,13 @@ registerPortedMageTests({
           "name": "Rampaging Rendhorn",
           "ability": "Haste",
           "expected": false
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Rampaging Rendhorn",
+          "counter": "P1P1",
+          "count": 1
         }
       ]
     },
@@ -87,9 +98,13 @@ registerPortedMageTests({
           "name": "Rampaging Rendhorn"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": false
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "This creature gains haste"
+          ]
         },
         {
           "op": "setStopAt",
@@ -118,6 +133,13 @@ registerPortedMageTests({
           "name": "Rampaging Rendhorn",
           "ability": "Haste",
           "expected": true
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Rampaging Rendhorn",
+          "counter": "P1P1",
+          "count": 0
         }
       ]
     },
@@ -153,9 +175,13 @@ registerPortedMageTests({
           "name": "Silvercoat Lion"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "This creature enters with a +1/+1 counter on it"
+          ]
         },
         {
           "op": "setStopAt",
@@ -190,11 +216,19 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "ability": "new RiotAbility()",
-          "expected": true
+          "kind": "static",
+          "textPattern": "^As this creature enters$",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "counter": "P1P1",
+          "count": 1
         }
       ]
     },
@@ -230,19 +264,31 @@ registerPortedMageTests({
           "name": "Silvercoat Lion"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Rhythm of the Wild"
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Silvercoat Lion"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "This creature enters with a +1/+1 counter on it"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "This creature enters with a +1/+1 counter on it"
+          ]
         },
         {
           "op": "setStopAt",
@@ -277,11 +323,19 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "ability": "new RiotAbility()",
-          "expected": true
+          "kind": "static",
+          "textPattern": "^As this creature enters$",
+          "count": 2
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "counter": "P1P1",
+          "count": 2
         }
       ]
     },
@@ -317,9 +371,13 @@ registerPortedMageTests({
           "name": "Silvercoat Lion"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": false
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "This creature gains haste"
+          ]
         },
         {
           "op": "setStopAt",
@@ -354,11 +412,19 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "ability": "new RiotAbility()",
-          "expected": true
+          "kind": "static",
+          "textPattern": "^As this creature enters$",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "counter": "P1P1",
+          "count": 0
         }
       ]
     },
@@ -401,9 +467,32 @@ registerPortedMageTests({
           "name": "Exhume"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "This creature enters with a +1/+1 counter on it"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Exhume",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Exhume",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -434,11 +523,19 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "ability": "new RiotAbility()",
-          "expected": true
+          "kind": "static",
+          "textPattern": "^As this creature enters$",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "counter": "P1P1",
+          "count": 1
         }
       ]
     },
@@ -481,9 +578,32 @@ registerPortedMageTests({
           "name": "Exhume"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": false
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "This creature gains haste"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Exhume",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Exhume",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -514,11 +634,19 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Silvercoat Lion",
-          "ability": "new RiotAbility()",
-          "expected": true
+          "kind": "static",
+          "textPattern": "^As this creature enters$",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "counter": "P1P1",
+          "count": 0
         }
       ]
     }

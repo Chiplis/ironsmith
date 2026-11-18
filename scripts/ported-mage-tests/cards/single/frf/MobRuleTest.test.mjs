@@ -154,8 +154,10 @@ registerPortedMageTests({
           "toughness": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(merfolk3, true)"
+          "op": "assertTapped",
+          "name": "Coral Commando",
+          "tapped": true,
+          "player": 1
         },
         {
           "op": "assertPowerToughness",
@@ -165,8 +167,10 @@ registerPortedMageTests({
           "toughness": 4
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(serra, false)"
+          "op": "assertTapped",
+          "name": "Serra Angel",
+          "tapped": false,
+          "player": 0
         },
         {
           "op": "assertPowerToughness",
@@ -328,8 +332,10 @@ registerPortedMageTests({
           "toughness": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(merfolk3, false)"
+          "op": "assertTapped",
+          "name": "Coral Commando",
+          "tapped": false,
+          "player": 0
         },
         {
           "op": "assertPowerToughness",

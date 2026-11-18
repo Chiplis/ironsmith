@@ -56,6 +56,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Swamp",
+          "ability": "{T}: Add {B}",
+          "count": 5
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -68,6 +77,26 @@ registerPortedMageTests({
           "value": "Advisor"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Conspiracy",
+          "count": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Plains",
+          "ability": "{T}: Add {W}",
+          "count": 4
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -75,11 +104,67 @@ registerPortedMageTests({
           "name": "Opalescence"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Opalescence",
+          "count": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Island",
+          "ability": "{T}: Add {U}",
+          "count": 5
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 2 of Enchanted Evening",
+          "choices": [
+            "{U} (Blue mana)"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "hybrid_payment",
+          "description": "Choose how to pay pip 3 of Enchanted Evening",
+          "choices": [
+            "{U} (Blue mana)"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Enchanted Evening"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Enchanted Evening",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Enchanted Evening",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -94,8 +179,25 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Swamp\", CardType.LAND, SubType.ADVISOR)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Swamp",
+            "player": 0
+          },
+          "count": 5,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Advisor",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
@@ -105,8 +207,25 @@ registerPortedMageTests({
           "toughness": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Enchanted Evening\", CardType.ENCHANTMENT, SubType.ADVISOR)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Enchanted Evening",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Enchantment",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Advisor",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
@@ -164,55 +283,203 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Humility",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Humility",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Humility"
+          "isSpell": true
         },
         {
-          "op": "castSpell",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "March of the Machines"
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Mycosynth Lattice"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Humility",
-          "count": 0
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "name": "March of the Machines",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "March of the Machines",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "March of the Machines",
-          "count": 0
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "name": "Mycosynth Lattice",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mycosynth Lattice",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Mycosynth Lattice",
-          "count": 0
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Island",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Swamp",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Plains",
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Humility"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "creature",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "artifact",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Humility",
+          "power": 4,
+          "toughness": 4
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Humility",
+          "kind": "static",
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "March of the Machines"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "creature",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "artifact",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "March of the Machines",
+          "power": 4,
+          "toughness": 4
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "March of the Machines",
+          "kind": "static",
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Mycosynth Lattice"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "creature",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "artifact",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Mycosynth Lattice",
+          "power": 6,
+          "toughness": 6
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Mycosynth Lattice",
+          "kind": "static",
           "count": 0
         }
       ]
@@ -648,20 +915,88 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Plains\", CardType.CREATURE, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Plains",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Forest",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Swamp\", CardType.CREATURE, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Swamp",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Forest",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Island\", CardType.CREATURE, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Island",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Forest",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Yavimaya, Cradle of Growth\", CardType.CREATURE, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Yavimaya, Cradle of Growth",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Forest",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
@@ -692,20 +1027,68 @@ registerPortedMageTests({
           "toughness": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertColor(playerA, \"Plains\", ObjectColor.GREEN, true)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Plains",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "Green",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertColor(playerA, \"Swamp\", ObjectColor.GREEN, true)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Swamp",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "Green",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertColor(playerB, \"Island\", ObjectColor.GREEN, true)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Island",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "Green",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertColor(playerA, \"Yavimaya, Cradle of Growth\", ObjectColor.GREEN, true)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Yavimaya, Cradle of Growth",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "Green",
+              "expected": true
+            }
+          ]
         }
       ]
     }

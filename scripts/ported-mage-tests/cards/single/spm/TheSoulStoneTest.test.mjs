@@ -76,8 +76,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, theSoulStone, BeginningOfUpkeepTriggeredAbility.class, 1)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "The Soul Stone",
+          "kind": "triggered",
+          "count": 1,
+          "textPattern": "^(?:\u221e\\s*[\u2014\u2013-]\\s*)?At the beginning of [^,]+upkeep\\b"
         }
       ]
     },
@@ -170,8 +174,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, theSoulStone, BeginningOfUpkeepTriggeredAbility.class, 0)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "The Soul Stone",
+          "kind": "triggered",
+          "count": 0,
+          "textPattern": "^(?:\u221e\\s*[\u2014\u2013-]\\s*)?At the beginning of [^,]+upkeep\\b"
         }
       ]
     },

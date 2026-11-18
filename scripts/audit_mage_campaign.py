@@ -11,7 +11,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from audit_mage_ports import ROOT, completed_files_from_reports, fingerprint, port_inventory
+from audit_mage_ports import ROOT, completed_files_from_reports, fingerprint, port_inventory, test_artifacts
 
 
 def now():
@@ -22,7 +22,7 @@ def bound_inputs():
     sources = [ROOT / 'cards.json', ROOT / 'scripts/audit_mage_ports.py',
                ROOT / 'scripts/mage-port-runner.mjs', ROOT / 'scripts/wasm-test-harness.mjs']
     sources += sorted((ROOT / 'scripts/mage-port-runner').glob('*.mjs'))
-    sources += sorted((ROOT / 'pkg').glob('*.wasm')) + sorted((ROOT / 'pkg').glob('*.js'))
+    sources += test_artifacts()
     return [{key: value for key, value in fingerprint(path).items() if key != 'mtime_ns'}
             for path in sources]
 

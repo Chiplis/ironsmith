@@ -152,7 +152,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Goblin Piker",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "addTarget",
@@ -231,6 +231,34 @@ registerPortedMageTests({
           "target": "Bond Beetle"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bond Beetle",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bond Beetle",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Bond Beetle"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -238,9 +266,57 @@ registerPortedMageTests({
           "name": "Court of Garenbrig"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Court of Garenbrig",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
+        },
+        {
+          "op": "assertMonarch",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "monarch": 0
+        },
+        {
           "op": "addTarget",
           "player": 0,
-          "target": "Grizzly Bears^X=2"
+          "target": {
+            "groups": [
+              [
+                "Grizzly Bears"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Grizzly Bears",
+          "amount": 2,
+          "selectTarget": false
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "source": "Court of Garenbrig",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -321,6 +397,34 @@ registerPortedMageTests({
           "target": "Bond Beetle"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bond Beetle",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bond Beetle",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Bond Beetle"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -328,16 +432,70 @@ registerPortedMageTests({
           "name": "Court of Garenbrig"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Court of Garenbrig",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
+        },
+        {
+          "op": "assertMonarch",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "monarch": 0
+        },
+        {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Goblin Piker",
-          "defender": 1
+          "defender": 0
+        },
+        {
+          "op": "assertMonarch",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "monarch": 1
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Grizzly Bears^X=2"
+          "target": {
+            "groups": [
+              [
+                "Grizzly Bears"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Grizzly Bears",
+          "amount": 2,
+          "selectTarget": false
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "source": "Court of Garenbrig",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -501,9 +659,31 @@ registerPortedMageTests({
           "name": "Bond Beetle"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bond Beetle",
+          "count": 1
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": "Bond Beetle"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Bond Beetle",
+          "count": 1,
+          "counter": "P1P1",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -513,21 +693,62 @@ registerPortedMageTests({
           "name": "Court of Garenbrig"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Court of Garenbrig",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 2
+        },
+        {
+          "op": "assertMonarch",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "monarch": 0
+        },
+        {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Goblin Piker",
-          "defender": 1
+          "defender": 0
+        },
+        {
+          "op": "assertMonarch",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "monarch": 1
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Grizzly Bears^X=1"
+          "target": {
+            "groups": [
+              [
+                "Grizzly Bears",
+                "Bond Beetle"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
+          "op": "addTargetAmount",
           "player": 0,
-          "target": "Bond Beetle^X=1"
+          "target": "Grizzly Bears",
+          "amount": 1,
+          "selectTarget": false
+        },
+        {
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Bond Beetle",
+          "amount": 1,
+          "selectTarget": false
         },
         {
           "op": "setStopAt",

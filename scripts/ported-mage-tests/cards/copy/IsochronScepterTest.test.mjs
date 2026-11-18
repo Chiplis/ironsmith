@@ -185,10 +185,32 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Isochron Scepter",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Isochron Scepter",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Isochron Scepter"
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Isochron Scepter",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -196,29 +218,62 @@ registerPortedMageTests({
           "value": "Lightning Bolt"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
+          "source": "Isochron Scepter",
+          "ability": "copy the exiled card",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Isochron Scepter",
+          "count": 1,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "{2}, {T}:"
+          "abilityKind": "Activated"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Perform the effect",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": false
+          "kind": "boolean",
+          "description": "Cast the copy without paying its mana cost",
+          "choices": [
+            "No"
+          ]
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "isSpell": true
         },
         {
           "op": "assertPermanentCount",
@@ -228,6 +283,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertExileCount",
+          "player": 0,
           "name": "Lightning Bolt",
           "count": 1
         },
@@ -236,6 +292,11 @@ registerPortedMageTests({
           "player": 0,
           "name": "Lightning Bolt",
           "count": 0
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
         },
         {
           "op": "assertLife",
@@ -306,28 +367,28 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Dross Crocodile",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Dross Crocodile",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Dross Crocodile",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Dross Crocodile",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "activateAbility",

@@ -5,7 +5,8 @@ registerPortedMageTests({
   "tests": [
     {
       "name": "testBouncedLand",
-      "operations": []
+      "operations": [],
+      "skip": "upstream body is entirely commented out"
     }
   ]
 });

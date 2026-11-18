@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / "crates/ironsmith-engine/src"
 OUTPUT = ROOT / "reports/audits/semantic-action-ownership-2026-10-05.json"
+PROJECTION_MACRO = ROOT / "crates/ironsmith-engine-macros/src/lib.rs"
 
 
 def mask(source):
@@ -68,6 +69,32 @@ def scalar_projection_facade(source, masked, impl_start, impl_end):
     }
 
 
+def executor_facade(source, masked, start, end, generated):
+    marker = re.search(
+        r"#\[crate::effects::project_effect_outcome\]\s*fn\s+execute_with_outputs\s*\(",
+        masked[start:end],
+    )
+    if marker is None:
+        return scalar_projection_facade(source, masked, start, end)
+    # The retained method body can still contain independent direct dispatches.
+    # Only the generated scalar method belongs to the verified projection.
+    return {
+        **generated,
+        "start": start + marker.start(),
+        "end": start + marker.end(),
+        "line": source.count("\n", 0, start + marker.start()) + 1,
+        "generated_from": str(PROJECTION_MACRO.relative_to(ROOT)),
+    }
+
+
+projector_source = PROJECTION_MACRO.read_text()
+generated_projection = scalar_projection_facade(
+    projector_source, mask(projector_source), 0, len(projector_source)
+)
+if generated_projection is None:
+    raise ValueError("Review the generated scalar execution body before classifying its callers")
+
+
 patterns = {
     "child_gateway": r"execute_effect(?:_with_outputs)?\(|\.execute_child(?:_with_outputs)?\(",
     "keyword_completion": r"\b(?:complete_keyword_action(?:_with_result|_with_outputs)?|publish_keyword_action_completion(?:_receipt|_with_result|_with_outputs)?)\(",
@@ -97,7 +124,7 @@ for path in sorted(BASE.rglob("*.rs")):
             depth += (masked[end] == "{") - (masked[end] == "}")
             end += 1
         body = masked[start:end]
-        facade = scalar_projection_facade(source, masked, start, end)
+        facade = executor_facade(source, masked, start, end, generated_projection)
         signals = {
             name: [
                 source.count("\n", 0, start + hit.start()) + 1
@@ -223,7 +250,7 @@ for path in sorted(BASE.rglob("*.rs")):
 
 engine_source_fingerprint = hashlib.sha256("".join(
     str(path.relative_to(ROOT)) + hashlib.sha256(path.read_bytes()).hexdigest()
-    for path in sorted(BASE.parent.rglob("*.rs"))
+    for path in sorted([*BASE.parent.rglob("*.rs"), PROJECTION_MACRO])
 ).encode()).hexdigest()
 validation_path = OUTPUT.with_name("semantic-action-ownership-validation-2026-10-05.json")
 checked_validation = json.loads(validation_path.read_text()) if validation_path.exists() else {}

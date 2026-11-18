@@ -17,7 +17,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Spark Double",
+          "name": "Spark Double@spark",
           "count": 1
         },
         {
@@ -35,14 +35,13 @@ registerPortedMageTests({
           "name": "Spark Double"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Abbey Griffin"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Abbey Griffin"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -61,6 +60,39 @@ registerPortedMageTests({
           "player": 0,
           "name": "Abbey Griffin",
           "count": 2
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "@spark",
+          "player": 0,
+          "counter": "P1P1",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@spark"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 3
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "@spark",
+          "ability": "Vigilance",
+          "expected": true
         }
       ]
     },
@@ -78,7 +110,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Spark Double",
+          "name": "Spark Double@spark",
           "count": 1
         },
         {
@@ -96,14 +128,13 @@ registerPortedMageTests({
           "name": "Spark Double"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Ajani, the Greathearted"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Ajani, the Greathearted"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -122,6 +153,33 @@ registerPortedMageTests({
           "player": 0,
           "name": "Ajani, the Greathearted",
           "count": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@spark"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "calculatedName",
+              "expected": "Ajani, the Greathearted"
+            },
+            {
+              "property": "supertype",
+              "value": "Legendary",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "@spark",
+          "player": 0,
+          "counter": "LOYALTY",
+          "count": 6
         }
       ]
     },
@@ -146,7 +204,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Spark Double",
+          "name": "Spark Double@spark",
           "count": 1
         },
         {
@@ -164,14 +222,13 @@ registerPortedMageTests({
           "name": "Spark Double"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Abbey Griffin"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Abbey Griffin"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -190,6 +247,39 @@ registerPortedMageTests({
           "player": 0,
           "name": "Abbey Griffin",
           "count": 2
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "@spark",
+          "player": 0,
+          "counter": "P1P1",
+          "count": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@spark"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "expected": 4
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "@spark",
+          "ability": "Vigilance",
+          "expected": true
         }
       ]
     },
@@ -207,7 +297,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Spark Double",
+          "name": "Spark Double@spark",
           "count": 1
         },
         {
@@ -218,19 +308,50 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "checkType(\"planeswalker not creature\", 1, PhaseStep.UPKEEP, playerA, \"Gideon, Ally of Zendikar\", CardType.CREATURE, false)"
+          "op": "assertType",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Gideon, Ally of Zendikar",
+          "cardType": "CREATURE",
+          "extra": "false"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Gideon, Ally of Zendikar",
           "ability": "+1:"
         },
         {
-          "op": "unsupported",
-          "source": "checkType(\"planeswalker is creature\", 1, PhaseStep.BEGIN_COMBAT, playerA, \"Gideon, Ally of Zendikar\", CardType.CREATURE, true)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Gideon, Ally of Zendikar",
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertType",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Gideon, Ally of Zendikar",
+          "cardType": "CREATURE",
+          "extra": "true"
         },
         {
           "op": "castSpell",
@@ -240,9 +361,12 @@ registerPortedMageTests({
           "name": "Spark Double"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "count": 1,
+          "text": "Cast Spark Double"
         },
         {
           "op": "setChoice",
@@ -250,22 +374,85 @@ registerPortedMageTests({
           "value": "Gideon, Ally of Zendikar"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Gideon, Ally of Zendikar",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Gideon, Ally of Zendikar",
+            "cardType": "Planeswalker",
+            "excludeCardType": "Creature"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "supertype",
+              "value": "Legendary",
+              "expected": false
+            },
+            {
+              "property": "counter",
+              "value": "LOYALTY",
+              "expected": 5
+            },
+            {
+              "property": "counter",
+              "value": "P1P1",
+              "expected": 0
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Gideon, Ally of Zendikar",
+            "cardType": "Creature"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "supertype",
+              "value": "Legendary",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "@spark",
+          "player": 0,
+          "counter": "LOYALTY",
+          "count": 5
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "@spark",
+          "player": 0,
+          "counter": "P1P1",
+          "count": 0
         }
       ]
     },
@@ -294,8 +481,13 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "checkType(\"planeswalker is creature\", 1, PhaseStep.UPKEEP, playerA, \"Gideon Blackblade\", CardType.CREATURE, true)"
+          "op": "assertType",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "Gideon Blackblade",
+          "cardType": "CREATURE",
+          "extra": "true"
         },
         {
           "op": "castSpell",
@@ -342,7 +534,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Spark Double",
+          "name": "Spark Double@spark",
           "count": 1
         },
         {
@@ -395,14 +587,13 @@ registerPortedMageTests({
           "name": "Spark Double"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Akroma, Angel of Wrath"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Akroma, Angel of Wrath"
+          ]
         },
         {
           "op": "waitStackResolved",
@@ -428,7 +619,13 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Akroma, Angel of Wrath[only copy]"
+          "target": {
+            "groups": [
+              [
+                "@spark"
+              ]
+            ]
+          }
         },
         {
           "op": "waitStackResolved",
@@ -455,6 +652,23 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Akroma, Angel of Wrath",
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "supertype",
+              "value": "Legendary",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -462,14 +676,20 @@ registerPortedMageTests({
       "name": "test_CopyOfSparksCopy_ByAbility",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"copy\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Replica Fixture",
+          "typeLine": "",
+          "custom": true,
+          "fixtureSource": true,
+          "oracleText": "{0}: Create a token that's a copy of target permanent."
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Spark Double",
+          "name": "Spark Double@copy",
           "count": 1
         },
         {
@@ -510,12 +730,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Akroma, Angel of Wrath"
+          "value": "Enter as a copy of Akroma, Angel of Wrath"
         },
         {
           "op": "waitStackResolved",
@@ -541,7 +756,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Akroma, Angel of Wrath[only copy]"
+          "target": "@copy"
         },
         {
           "op": "waitStackResolved",
@@ -578,7 +793,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Spark Double",
+          "name": "Spark Double@spark",
           "count": 2
         },
         {
@@ -600,17 +815,17 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Spark Double"
+          "name": "Spark Double",
+          "objectAlias": "@spark.1"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Grizzly Bears"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Grizzly Bears"
+          ]
         },
         {
           "op": "waitStackResolved",
@@ -631,17 +846,20 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Spark Double"
+          "name": "Spark Double",
+          "objectAlias": "@spark.2"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Grizzly Bears[only copy]"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            {
+              "description": "Enter as a copy of Grizzly Bears",
+              "object": "@spark.1"
+            }
+          ]
         },
         {
           "op": "waitStackResolved",
@@ -668,6 +886,20 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "@spark.1",
+          "player": 0,
+          "counter": "P1P1",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "@spark.2",
+          "player": 0,
+          "counter": "P1P1",
+          "count": 1
         }
       ]
     }

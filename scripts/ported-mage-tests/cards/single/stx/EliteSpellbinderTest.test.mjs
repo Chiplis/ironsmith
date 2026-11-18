@@ -31,7 +31,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Maelstrom Colossus",
+          "name": "Maelstrom Colossus@colossus",
           "count": 1
         },
         {
@@ -53,10 +53,17 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Elite Spellbinder",
           "player": 0,
-          "name": "Elite Spellbinder"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Elite Spellbinder",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "addTarget",
@@ -64,24 +71,70 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Elite Spellbinder",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "targetCount": 1
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Maelstrom Colossus"
+          "kind": "boolean",
+          "description": "Exile a nonland card from target opponent's hand",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose exactly 1 nonland card",
+          "choices": [
+            "Maelstrom Colossus"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "name": "Maelstrom Colossus",
+          "name": "@colossus",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Maelstrom Colossus",
+          "player": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
+          "objectAlias": "@colossus"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Maelstrom Colossus",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertTappedCount",
           "player": 1,
-          "name": "Maelstrom Colossus"
+          "name": "Wastes",
+          "tapped": true,
+          "count": 10
         },
         {
           "op": "setChoice",
@@ -94,22 +147,29 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 2,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
         },
         {
-          "op": "assertTappedCount",
-          "name": "Wastes",
-          "tapped": true,
-          "count": 10
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Maelstrom Colossus",
+          "count": 1
         },
         {
           "op": "assertLife",

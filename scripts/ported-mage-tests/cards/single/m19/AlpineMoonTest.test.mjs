@@ -7,36 +7,48 @@ registerPortedMageTests({
       "name": "testAlpineMoonAfterUrborg",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
-          "zone": "BATTLEFIELD",
-          "player": 0,
-          "name": "Urborg, Tomb of Yawgmoth",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
-          "player": 1,
+          "zone": "HAND",
           "name": "Alpine Moon",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Mountain",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
-          "name": "Island",
+          "name": "Mountain",
+          "player": 1,
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "name": "Island",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "name": "Urborg, Tomb of Yawgmoth",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Urborg, Tomb of Yawgmoth",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "setChoice",
@@ -44,31 +56,92 @@ registerPortedMageTests({
           "value": "Urborg, Tomb of Yawgmoth"
         },
         {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "op": "castSpell",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Alpine Moon"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "assertNotSubtype(urborg, SubType.SWAMP)"
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Alpine Moon",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Mountain\", SubType.SWAMP)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Urborg, Tomb of Yawgmoth",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": false
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Island\", SubType.SWAMP)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Mountain",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "assertAbility",
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Island",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "name": "Urborg, Tomb of Yawgmoth",
-          "ability": "new AnyColorManaAbility()",
-          "expected": true
+          "value": "Green"
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Urborg, Tomb of Yawgmoth",
+          "ability": "Add one mana of any color",
+          "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
         }
       ]
     },
@@ -76,35 +149,31 @@ registerPortedMageTests({
       "name": "testAlpineMoonBeforeUrborg",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
-          "zone": "BATTLEFIELD",
-          "player": 1,
-          "name": "Urborg, Tomb of Yawgmoth",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
-          "player": 0,
+          "zone": "HAND",
           "name": "Alpine Moon",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Mountain",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 1,
+          "name": "Mountain",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "name": "Island",
+          "player": 1,
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "name": "Urborg, Tomb of Yawgmoth",
+          "player": 1,
           "count": 1
         },
         {
@@ -113,31 +182,107 @@ registerPortedMageTests({
           "value": "Urborg, Tomb of Yawgmoth"
         },
         {
-          "op": "setStopAt",
+          "op": "castSpell",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Alpine Moon"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "assertNotSubtype(urborg, SubType.SWAMP)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Alpine Moon",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Mountain\", SubType.SWAMP)"
+          "op": "playLand",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Urborg, Tomb of Yawgmoth"
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Island\", SubType.SWAMP)"
-        },
-        {
-          "op": "assertAbility",
+          "op": "assertPermanentCount",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Urborg, Tomb of Yawgmoth",
-          "ability": "new AnyColorManaAbility()",
-          "expected": true
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Urborg, Tomb of Yawgmoth",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Mountain",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Island",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Green"
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "source": "Urborg, Tomb of Yawgmoth",
+          "ability": "Add one mana of any color",
+          "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "colors": "G",
+          "amount": 1
         }
       ]
     }

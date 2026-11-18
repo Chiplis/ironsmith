@@ -7,8 +7,16 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_room1",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -36,6 +44,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Cave Entrance"
         },
         {
           "op": "assertPowerToughness",
@@ -71,8 +85,16 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_room2",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -109,7 +131,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
         },
         {
           "op": "setStopAt",
@@ -118,6 +140,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Goblin Lair"
         },
         {
           "op": "assertPowerToughness",
@@ -153,8 +181,16 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_room3",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -191,7 +227,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
         },
         {
           "op": "waitStackResolved",
@@ -209,7 +245,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "setStopAt",
@@ -218,6 +254,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Dark Pool"
         },
         {
           "op": "assertPowerToughness",
@@ -253,8 +295,16 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_room4",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -291,7 +341,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
         },
         {
           "op": "waitStackResolved",
@@ -309,7 +359,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "waitStackResolved",
@@ -331,6 +381,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": null,
+          "room": null
         },
         {
           "op": "assertPowerToughness",
@@ -366,8 +422,16 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_multipleTurns",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "activateAbility",
@@ -391,7 +455,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
         },
         {
           "op": "activateAbility",
@@ -403,7 +467,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "activateAbility",
@@ -419,6 +483,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": null,
+          "room": null
         },
         {
           "op": "assertPermanentCount",
@@ -447,15 +517,25 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_rollback",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{0}:"
+          "ability": "{0}:",
+          "source": "tester",
+          "resolve": true,
+          "player": 0
         },
         {
           "op": "setChoice",
@@ -466,36 +546,58 @@ registerPortedMageTests({
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "{0}:"
+          "ability": "{0}:",
+          "source": "tester",
+          "resolve": true,
+          "player": 0
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Goblin Lair"
+        },
+        {
+          "op": "saveRuntimeCheckpoint",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{0}:"
+          "ability": "{0}:",
+          "source": "tester",
+          "resolve": true,
+          "player": 0
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "{0}:"
-        },
-        {
-          "op": "unsupported",
-          "source": "rollbackTurns(2, PhaseStep.END_TURN, playerA, 0)"
+          "ability": "{0}:",
+          "source": "tester",
+          "resolve": true,
+          "player": 0
         },
         {
           "op": "setStopAt",
@@ -504,6 +606,49 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": null
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 21
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 19
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Goblin Lair"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 2,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Goblin Lair"
         },
         {
           "op": "assertPermanentCount",
@@ -532,8 +677,16 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_rollbackDifferentChoice",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -546,8 +699,10 @@ registerPortedMageTests({
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{0}:"
+          "ability": "{0}:",
+          "source": "tester",
+          "resolve": true,
+          "player": 0
         },
         {
           "op": "setChoice",
@@ -558,61 +713,58 @@ registerPortedMageTests({
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "{0}:"
+          "ability": "{0}:",
+          "source": "tester",
+          "resolve": true,
+          "player": 0
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Goblin Lair"
+        },
+        {
+          "op": "saveRuntimeCheckpoint",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{0}:"
+          "ability": "{0}:",
+          "source": "tester",
+          "resolve": true,
+          "player": 0
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "{0}:"
-        },
-        {
-          "op": "unsupported",
-          "source": "rollbackTurns(2, PhaseStep.END_TURN, playerA, 0)"
-        },
-        {
-          "op": "unsupported",
-          "source": "rollbackAfterActionsStart()"
-        },
-        {
-          "op": "activateAbility",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{0}:"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Silvercoat Lion"
-        },
-        {
-          "op": "unsupported",
-          "source": "rollbackAfterActionsEnd()"
+          "ability": "{0}:",
+          "source": "tester",
+          "resolve": true,
+          "player": 0
         },
         {
           "op": "setStopAt",
@@ -621,6 +773,68 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": null
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 21
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 19
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Goblin Lair"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "ability": "{0}:",
+          "source": "tester",
+          "resolve": true,
+          "player": 0
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Storeroom"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Silvercoat Lion"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 2,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Storeroom"
         },
         {
           "op": "assertPowerToughness",
@@ -663,8 +877,16 @@ registerPortedMageTests({
       "name": "test__Dungeon_multiplePlayers",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -674,8 +896,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerB, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -712,7 +942,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
         },
         {
           "op": "waitStackResolved",
@@ -730,7 +960,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "activateAbility",
@@ -773,7 +1003,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 1,
-          "value": true
+          "value": "Goblin Bazaar"
         },
         {
           "op": "waitStackResolved",
@@ -795,6 +1025,18 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Dark Pool"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 1,
+          "dungeon": "Dungeon of the Mad Mage",
+          "room": "Lost Level"
         },
         {
           "op": "assertPowerToughness",
@@ -848,8 +1090,16 @@ registerPortedMageTests({
       "name": "test__CompletedDungeonCondition_true",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -886,7 +1136,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
         },
         {
           "op": "waitStackResolved",
@@ -904,7 +1154,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "waitStackResolved",
@@ -926,6 +1176,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": null,
+          "room": null
         },
         {
           "op": "assertAbility",
@@ -955,6 +1211,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": null,
+          "room": null
+        },
+        {
           "op": "assertAbility",
           "player": 0,
           "name": "Gloom Stalker",
@@ -967,8 +1229,16 @@ registerPortedMageTests({
       "name": "test__CompletedDungeonCondition_falseThenTrue",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -984,6 +1254,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": null,
+          "room": null
         },
         {
           "op": "assertAbility",
@@ -1020,7 +1296,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
         },
         {
           "op": "waitStackResolved",
@@ -1038,7 +1314,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1062,6 +1338,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": null,
+          "room": null
+        },
+        {
           "op": "assertAbility",
           "player": 0,
           "name": "Gloom Stalker",
@@ -1074,8 +1356,16 @@ registerPortedMageTests({
       "name": "test__CompletedDungeonTriggeredAbility",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -1112,7 +1402,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
         },
         {
           "op": "waitStackResolved",
@@ -1130,7 +1420,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1159,6 +1449,12 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": null,
+          "room": null
+        },
+        {
           "op": "assertHandCount",
           "player": 0,
           "name": "Dungeon Crawler",
@@ -1170,8 +1466,16 @@ registerPortedMageTests({
       "name": "test__HamaPasharRuinSeeker_DoubleController",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -1215,7 +1519,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
         },
         {
           "op": "waitStackResolved",
@@ -1233,7 +1537,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "setStopAt",
@@ -1242,6 +1546,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Dark Pool"
         },
         {
           "op": "assertPowerToughness",
@@ -1277,8 +1587,16 @@ registerPortedMageTests({
       "name": "test__HamaPasharRuinSeeker_DontDoubleOpponent",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Venture into the dungeon."
         },
         {
           "op": "addCard",
@@ -1322,7 +1640,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": true
+          "value": "Goblin Lair"
         },
         {
           "op": "waitStackResolved",
@@ -1340,7 +1658,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": false
+          "value": "Dark Pool"
         },
         {
           "op": "setStopAt",
@@ -1349,6 +1667,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPlayerDungeon",
+          "player": 0,
+          "dungeon": "Lost Mine of Phandelver",
+          "room": "Dark Pool"
         },
         {
           "op": "assertPowerToughness",

@@ -201,9 +201,16 @@ def is_marked_unreleased(card):
 def is_unreleased_card(card, today=None):
     """A paper card Scryfall previews ahead of its release date, while every
     format still reports it as not legal. (Released cards that are legal
-    nowhere, such as playtest cards, stay out.)"""
+    nowhere, such as playtest cards, stay out.)
+
+    Scryfall's "future" pseudo-format lists previewed cards that will be
+    Standard legal on release, so it does not count as a format here."""
     legalities = card.get("legalities") or {}
-    if any(value != "not_legal" for value in legalities.values()):
+    if any(
+        value != "not_legal"
+        for fmt, value in legalities.items()
+        if fmt != "future"
+    ):
         return False
     released_at = str(card.get("released_at") or "").strip()
     try:

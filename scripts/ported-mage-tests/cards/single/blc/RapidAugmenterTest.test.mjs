@@ -245,11 +245,12 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 1,
           "player": 1,
           "blocker": "Alpine Watchdog",
-          "attacker": "Rapid Augmenter"
+          "attacker": "Rapid Augmenter",
+          "expected": false
         },
         {
           "op": "setStrictChooseMode",
@@ -360,11 +361,12 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 1,
           "player": 1,
           "blocker": "Alpine Watchdog",
-          "attacker": "Rapid Augmenter"
+          "attacker": "Rapid Augmenter",
+          "expected": false
         },
         {
           "op": "setStrictChooseMode",

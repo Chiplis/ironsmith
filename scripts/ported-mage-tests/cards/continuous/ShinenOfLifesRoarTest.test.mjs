@@ -28,6 +28,20 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertBlockDeclarationRejected",
+          "turn": 1,
+          "player": 1,
+          "reason": "must block",
+          "declarations": []
+        },
+        {
+          "op": "block",
+          "turn": 1,
+          "player": 1,
+          "blocker": "Balduvian Bears",
+          "attacker": "Shinen of Life's Roar"
+        },
+        {
           "op": "setStopAt",
           "turn": 2,
           "phase": "END_TURN"

@@ -28,11 +28,12 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 3,
           "player": 1,
           "blocker": "Vaporkin",
-          "attacker": "Silvercoat Lion"
+          "attacker": "Silvercoat Lion",
+          "expected": false
         },
         {
           "op": "setStopAt",
@@ -154,11 +155,12 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 3,
           "player": 1,
           "blocker": "Vaporkin",
-          "attacker": "Archetype of Imagination"
+          "attacker": "Archetype of Imagination",
+          "expected": false
         },
         {
           "op": "setStopAt",

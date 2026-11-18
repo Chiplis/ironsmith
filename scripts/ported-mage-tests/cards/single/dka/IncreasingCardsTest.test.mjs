@@ -45,11 +45,24 @@ registerPortedMageTests({
           "name": "Increasing Ambition"
         },
         {
-          "op": "activateAbility",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Swamp",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Flashback {7}{B}"
+          "name": "Increasing Ambition",
+          "castingMethod": "alternative",
+          "actionLabel": "Cast Increasing Ambition (flashback)"
         },
         {
           "op": "setStopAt",
@@ -108,14 +121,63 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Increasing Confusion"
+          "name": "Increasing Confusion",
+          "target": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertChoiceMenu",
+          "kind": "number",
+          "player": 0,
+          "description": "Choose value for X",
+          "value": 3
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Increasing Confusion",
+          "count": 1,
+          "xValue": 3
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "count": 3
+        },
+        {
+          "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Flashback {X}{U}"
+          "name": "Increasing Confusion",
+          "castingMethod": "alternative",
+          "target": 1,
+          "actionLabel": "Cast Increasing Confusion (flashback)"
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "number",
+          "player": 0,
+          "description": "Choose value for X",
+          "value": 3
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Increasing Confusion",
+          "count": 1,
+          "xValue": 3
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -181,11 +243,24 @@ registerPortedMageTests({
           "name": "Increasing Devotion"
         },
         {
-          "op": "activateAbility",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Human Token",
+          "count": 5
+        },
+        {
+          "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Flashback {7}{W}{W}"
+          "name": "Increasing Devotion",
+          "castingMethod": "alternative",
+          "actionLabel": "Cast Increasing Devotion (flashback)"
         },
         {
           "op": "setStopAt",
@@ -252,14 +327,30 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Increasing Savagery"
+          "name": "Increasing Savagery",
+          "target": "Ornithopter"
         },
         {
-          "op": "activateAbility",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ornithopter",
+          "counter": "P1P1",
+          "count": 5
+        },
+        {
+          "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Flashback {5}{G}{G}"
+          "name": "Increasing Savagery",
+          "castingMethod": "alternative",
+          "target": "Ornithopter",
+          "actionLabel": "Cast Increasing Savagery (flashback)"
         },
         {
           "op": "setStopAt",
@@ -331,12 +422,54 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Increasing Vengeance",
           "target": "Lightning Bolt"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Increasing Vengeance",
+          "count": 1,
+          "objectTarget": "Lightning Bolt"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Choose new targets for the copies",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -347,11 +480,56 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Flashback {3}{R}{R}"
+          "name": "Increasing Vengeance",
+          "castingMethod": "alternative",
+          "target": "Lightning Bolt",
+          "actionLabel": "Cast Increasing Vengeance (flashback)"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Increasing Vengeance",
+          "count": 1,
+          "objectTarget": "Lightning Bolt"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Choose new targets for the copies",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 3
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

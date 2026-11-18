@@ -193,15 +193,47 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "saveRuntimeCheckpoint",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "seatIndependent": true
+        },
+        {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Draw a card"
+          "ability": "{T}: Draw a card",
+          "source": "Jace, Vryn's Prodigy",
+          "resolve": true
         },
         {
-          "op": "unsupported",
-          "source": "rollbackTurns(3, PhaseStep.BEGIN_COMBAT, playerA, 0)"
+          "op": "setChoice",
+          "player": 0,
+          "value": "Pillarfield Ox"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Jace, Telepath Unbound",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Pillarfield Ox",
+          "count": 1
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
         },
         {
           "op": "setStopAt",
@@ -239,6 +271,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Jace, Vryn's Prodigy",
           "count": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Jace, Vryn's Prodigy",
+          "tapped": false
         }
       ]
     },

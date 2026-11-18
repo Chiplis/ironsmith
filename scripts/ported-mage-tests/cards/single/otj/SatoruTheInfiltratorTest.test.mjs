@@ -486,10 +486,6 @@ registerPortedMageTests({
       "name": "test_MultipleOtherEnter",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -519,24 +515,48 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Storm of Souls",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Storm of Souls",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Storm of Souls"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Freestrider Commando",
           "count": 3
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Satoru, the Infiltrator",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Satoru, the Infiltrator",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertHandCount",
@@ -548,10 +568,6 @@ registerPortedMageTests({
     {
       "name": "test_Saturo_AndAnother_Enter",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
         {
           "op": "addCard",
           "zone": "GRAVEYARD",
@@ -582,18 +598,23 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Living Death",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Living Death",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Living Death"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
@@ -606,6 +627,19 @@ registerPortedMageTests({
           "player": 0,
           "name": "Satoru, the Infiltrator",
           "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Satoru, the Infiltrator",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertHandCount",

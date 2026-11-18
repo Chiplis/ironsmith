@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { initWasmGame, getLibrary, getInspectionState } from "./wasm-test-harness.mjs";
-import { normalizePhase } from "./mage-port-runner/names.mjs";
+import { normalizePhase, zoneName } from "./mage-port-runner/names.mjs";
 import { initializeLibraryFixtures, planInitialLibraryFixtures } from "./mage-port-runner/library-fixtures.mjs";
 
 test("library fixture planning preserves order and never hoists later gameplay additions", () => {
   const before = { op: "addCard", zone: "LIBRARY", player: 0, name: "Island", count: 2 };
   const later = { ...before, name: "Forest" };
   const records = planInitialLibraryFixtures({}, { operations: [before, { op: "execute" }, later] }, {
-    playerIndex: Number, cardName: String, numericValue: Number,
+    playerIndex: Number, cardName: String, numericValue: Number, zoneName,
   });
   assert.equal(records.length, 1);
   assert.equal(records[0].operation, before);
@@ -20,8 +20,9 @@ test("WASM library fixtures retain top order and run the first upkeep exactly on
   try {
     const island = { op: "addCard", zone: "LIBRARY", player: 0, name: "Lightning Bolt", count: 10 };
     const forest = { op: "addCard", zone: "LIBRARY", player: 0, name: "Forest", count: 1 };
-    const records = planInitialLibraryFixtures({}, { operations: [island, forest] }, {
-      playerIndex: Number, cardName: String, numericValue: Number,
+    const mantra = { op: "addCard", zone: "BATTLEFIELD", player: 0, name: "Ajani's Mantra", count: 1 };
+    const records = planInitialLibraryFixtures({}, { operations: [island, forest, mantra] }, {
+      playerIndex: Number, cardName: String, numericValue: Number, zoneName,
     });
     const mapped = initializeLibraryFixtures(game, ["Alice", "Bob"], records, {
       defaultCard: "Mountain", defaultSize: 71,
@@ -33,7 +34,7 @@ test("WASM library fixtures retain top order and run the first upkeep exactly on
     assert.equal(game.uiState().turn_number, 1);
     const actual = getLibrary(checkpoint, 0, { topFirst: true }).map(card => card.name);
     assert.deepEqual(actual, ["Forest", ...Array(10).fill("Lightning Bolt"), ...Array(71).fill("Mountain")]);
-    game.addCardToZone(0, "Ajani's Mantra", "battlefield", true);
+    assert.ok(checkpoint.battlefield.includes(mapped.get(mantra)[0]));
     let reachedMain = false;
     for (let step = 0; step < 40; step++) {
       const state = game.uiState();
@@ -75,7 +76,7 @@ test("WASM library clears preserve authored add/clear order independently for ea
     const added = { op: "addCard", zone: "LIBRARY", player: 0, name: "Forest", count: 1 };
     const operations = [removed, clear, added];
     const records = planInitialLibraryFixtures({}, { operations }, {
-      playerIndex: Number, cardName: String, numericValue: Number,
+      playerIndex: Number, cardName: String, numericValue: Number, zoneName,
     });
     const mapped = initializeLibraryFixtures(game, ["Alice", "Bob"], records, {
       defaultCard: "Mountain", defaultSize: 71,
@@ -83,11 +84,9 @@ test("WASM library clears preserve authored add/clear order independently for ea
     const checkpoint = getInspectionState(game);
     assert.deepEqual(getLibrary(checkpoint, 0).map(card => card.name), ["Forest"]);
     assert.deepEqual(getLibrary(checkpoint, 1).map(card => card.name), Array(71).fill("Mountain"));
-    assert.equal(mapped.get(removed).length, 2);
-    for (const id of mapped.get(removed)) {
-      const removedCard = checkpoint.objects.find(card => Number(card.id) === id);
-      assert.ok(!removedCard || removedCard.zone === "outside_game", "cleared card must leave the library");
-    }
+    assert.deepEqual(mapped.get(removed), []);
+    assert.ok(!checkpoint.objects.some(card => card.owner === 0 && card.zone === "outside_game"),
+      "library clears must not create wish targets outside the game");
     assert.deepEqual(mapped.get(clear), []);
     assert.equal(mapped.get(added).length, 1);
     assert.equal(game.uiState().turn_number, 1);

@@ -92,7 +92,18 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Konda's Banner^O-Naginata^Aether Tunnel^Reprobation^Indestructibility^Abundant Growth"
+          "target": {
+            "groups": [
+              [
+                "Konda's Banner",
+                "O-Naginata",
+                "Aether Tunnel",
+                "Reprobation",
+                "Indestructibility",
+                "Abundant Growth"
+              ]
+            ]
+          }
         },
         {
           "op": "setChoice",
@@ -104,8 +115,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 0,
-          "name": "Gate Smasher",
-          "count": 0
+          "name": "Konda's Banner",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
@@ -131,7 +142,13 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Gate Smasher^Aether Tunnel"
+          "target": {
+            "groups": [
+              [
+                "Aether Tunnel"
+              ]
+            ]
+          }
         },
         {
           "op": "addTarget",
@@ -151,8 +168,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, \"Konda's Banner\", creature, false)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Konda's Banner",
+          "target": "Skylasher",
+          "expected": false
         },
         {
           "op": "assertPermanentCount",
@@ -161,20 +181,32 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, \"O-Naginata\", creature, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "O-Naginata",
+          "target": "Skylasher",
+          "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, \"Aether Tunnel\", creature, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Aether Tunnel",
+          "target": "Skylasher",
+          "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, \"Reprobation\", creature, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Reprobation",
+          "target": "Skylasher",
+          "expected": true
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, \"Indestructibility\", creature, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Indestructibility",
+          "target": "Skylasher",
+          "expected": true
         },
         {
           "op": "assertPermanentCount",

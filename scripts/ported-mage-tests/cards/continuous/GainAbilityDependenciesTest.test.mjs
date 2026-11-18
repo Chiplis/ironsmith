@@ -5,7 +5,169 @@ registerPortedMageTests({
   "tests": [
     {
       "name": "test_GenerationByFilters",
-      "operations": []
+      "operations": [
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Ability Grant Fixture",
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Enchantment",
+          "oracleText": "Creatures have haste.\nHumans have flying.\nHumans and Orcs have vigilance.\nHuman or Orc creatures named Grizzly Bears have trample.\nCreatures that aren't Humans or Orcs have reach."
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Unnatural Selection",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Island",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Runeclaw Bear",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {"zone": "battlefield", "player": 0, "name": "Grizzly Bears"},
+          "count": 1,
+          "checks": [
+            {"property": "ability", "kind": "static", "value": "haste", "expected": true},
+            {"property": "ability", "kind": "static", "value": "flying", "expected": false},
+            {"property": "ability", "kind": "static", "value": "vigilance", "expected": false},
+            {"property": "ability", "kind": "static", "value": "trample", "expected": false},
+            {"property": "ability", "kind": "static", "value": "reach", "expected": true}
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Human"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Unnatural Selection",
+          "ability": "Choose a creature type other than Wall",
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {"zone": "battlefield", "player": 0, "name": "Grizzly Bears"},
+          "count": 1,
+          "checks": [
+            {"property": "subtype", "value": "Human", "expected": true},
+            {"property": "ability", "kind": "static", "value": "haste", "expected": true},
+            {"property": "ability", "kind": "static", "value": "flying", "expected": true},
+            {"property": "ability", "kind": "static", "value": "vigilance", "expected": true},
+            {"property": "ability", "kind": "static", "value": "trample", "expected": true},
+            {"property": "ability", "kind": "static", "value": "reach", "expected": false}
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Orc"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Unnatural Selection",
+          "ability": "Choose a creature type other than Wall",
+          "target": "Runeclaw Bear"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {"zone": "battlefield", "player": 0, "name": "Runeclaw Bear"},
+          "count": 1,
+          "checks": [
+            {"property": "subtype", "value": "Orc", "expected": true},
+            {"property": "ability", "kind": "static", "value": "haste", "expected": true},
+            {"property": "ability", "kind": "static", "value": "flying", "expected": false},
+            {"property": "ability", "kind": "static", "value": "vigilance", "expected": true},
+            {"property": "ability", "kind": "static", "value": "trample", "expected": false},
+            {"property": "ability", "kind": "static", "value": "reach", "expected": false}
+          ]
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Orc"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Unnatural Selection",
+          "ability": "Choose a creature type other than Wall",
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {"zone": "battlefield", "player": 0, "name": "Grizzly Bears"},
+          "count": 1,
+          "checks": [
+            {"property": "subtype", "value": "Orc", "expected": true},
+            {"property": "ability", "kind": "static", "value": "haste", "expected": true},
+            {"property": "ability", "kind": "static", "value": "flying", "expected": false},
+            {"property": "ability", "kind": "static", "value": "vigilance", "expected": true},
+            {"property": "ability", "kind": "static", "value": "trample", "expected": true},
+            {"property": "ability", "kind": "static", "value": "reach", "expected": false}
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "ability": "reach",
+          "expected": true
+        }
+      ]
     },
     {
       "name": "test_SliverGain",
@@ -88,8 +250,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"must have counter\", 3, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Elephant Token\", CounterType.P1P1, 1)"
+          "op": "assertCounterCount",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Elephant Token",
+          "counter": "P1P1",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",

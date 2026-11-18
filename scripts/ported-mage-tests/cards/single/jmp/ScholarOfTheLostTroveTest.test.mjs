@@ -195,10 +195,6 @@ registerPortedMageTests({
       "name": "test_Target_Split",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -216,20 +212,44 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Fire // Ice",
+          "name": "Fire // Ice@split",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Scholar of the Lost Trove",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Scholar of the Lost Trove",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Scholar of the Lost Trove"
+          "isSpell": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Fire // Ice"
+          "target": "@split"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Scholar of the Lost Trove",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
         },
         {
           "op": "setChoice",
@@ -237,9 +257,13 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Ice"
+          "kind": "options",
+          "description": "Choose which spell to cast",
+          "choices": [
+            "Ice"
+          ]
         },
         {
           "op": "addTarget",
@@ -247,12 +271,31 @@ registerPortedMageTests({
           "target": "Scholar of the Lost Trove"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Ice",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "targetCount": 1,
+          "objectTarget": "Scholar of the Lost Trove"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@split",
+          "count": 1
         },
         {
           "op": "assertExileCount",
@@ -266,10 +309,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertTappedCount",
+          "op": "assertTapped",
+          "player": 0,
           "name": "Scholar of the Lost Trove",
-          "tapped": true,
-          "count": 1
+          "tapped": true
+        },
+        {
+          "op": "execute"
         }
       ]
     }

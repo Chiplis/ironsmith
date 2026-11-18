@@ -42,6 +42,18 @@ registerPortedMageTests({
           "count": 5
         },
         {
+          "op": "addCard",
+          "player": 0,
+          "zone": "HAND",
+          "name": "Mountain"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 3,
+          "name": "Rograkh, Son of Rohgahh",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -49,12 +61,16 @@ registerPortedMageTests({
           "name": "Shield Broker"
         },
         {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
+          "op": "addTarget",
+          "player": 0,
+          "target": "Rograkh, Son of Rohgahh"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 2
         },
         {
           "op": "assertCounterCount",
@@ -68,6 +84,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Rograkh, Son of Rohgahh",
           "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 3,
+          "name": "Rograkh, Son of Rohgahh",
+          "count": 0
         },
         {
           "op": "playLand",
@@ -85,16 +107,15 @@ registerPortedMageTests({
           "target": "Rograkh, Son of Rohgahh"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 3,
           "name": "Rograkh, Son of Rohgahh",
           "counter": "SHIELD",
           "count": 0
@@ -107,6 +128,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
+          "player": 3,
           "name": "Rograkh, Son of Rohgahh",
           "count": 1
         }
@@ -140,8 +162,22 @@ registerPortedMageTests({
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerD",
-          "name": "Rograkh, Son of Rohgahh"
+          "player": 3,
+          "name": "Rograkh, Son of Rohgahh",
+          "fromZone": "COMMAND"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 3,
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 3,
+          "name": "Rograkh, Son of Rohgahh",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -151,16 +187,22 @@ registerPortedMageTests({
           "name": "Shield Broker"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 5,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackSize",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 0
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 3,
           "name": "Rograkh, Son of Rohgahh",
           "counter": "SHIELD",
           "count": 0
@@ -173,10 +215,17 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
+          "player": 3,
           "name": "Rograkh, Son of Rohgahh",
           "count": 1
         }
       ]
     }
+  ],
+  "turnOrder": [
+    0,
+    3,
+    2,
+    1
   ]
 });

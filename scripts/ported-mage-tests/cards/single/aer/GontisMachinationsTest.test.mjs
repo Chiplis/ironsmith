@@ -60,6 +60,20 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Gonti's Machinations",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN"
@@ -68,16 +82,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(memnite, true)"
+          "op": "assertTapped",
+          "name": "Memnite",
+          "tapped": true,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(gBears, true)"
+          "op": "assertTapped",
+          "name": "Grizzly Bears",
+          "tapped": true,
+          "player": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(hGiant, true)"
+          "op": "assertTapped",
+          "name": "Hill Giant",
+          "tapped": true,
+          "player": 0
         },
         {
           "op": "assertLife",

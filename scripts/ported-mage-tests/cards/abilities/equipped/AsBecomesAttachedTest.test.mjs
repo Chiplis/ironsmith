@@ -62,10 +62,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Llanowar Elves"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Llanowar Elves",
+          "ability": "ProtectionAbility.class",
+          "expected": true
         },
         {
           "op": "activateAbility",

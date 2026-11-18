@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "testEaterOfVirtue",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -54,54 +50,135 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "source": "Eater of Virtue",
+          "ability": "Equip {1}",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Equip",
           "target": "Adult Gold Dragon"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Eater of Virtue",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Adult Gold Dragon"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Eater of Virtue",
+          "target": "Adult Gold Dragon",
+          "expected": true
         },
         {
           "op": "castSpell",
+          "name": "Doom Blade",
+          "player": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Doom Blade",
           "target": "Adult Gold Dragon"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Doom Blade",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Adult Gold Dragon"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Adult Gold Dragon",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Eater of Virtue",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Adult Gold Dragon",
+          "count": 1
         },
         {
           "op": "activateAbility",
+          "source": "Eater of Virtue",
+          "ability": "Equip {1}",
+          "player": 0,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "Equip",
           "target": "Balduvian Bears"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Eater of Virtue",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Balduvian Bears"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "assertAbilities",
+          "op": "assertAttachedTo",
           "player": 0,
-          "name": "Balduvian Bears",
-          "abilities": [
-            "Arrays.asList(FlyingAbility.getInstance(), LifelinkAbility.getInstance(), HasteAbility.getInstance())"
+          "attachment": "Eater of Virtue",
+          "target": "Balduvian Bears",
+          "expected": true
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "flying"
+            },
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "lifelink"
+            },
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "haste"
+            }
           ]
         }
       ]

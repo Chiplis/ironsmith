@@ -79,20 +79,35 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Glorious Anthem"
+          "name": "Glorious Anthem",
+          "methods": [
+            "play_from"
+          ],
+          "priceSource": "Demon of Fate's Design",
+          "methodLabel": "pay life equal to mana value"
         },
         {
-          "op": "setChoice",
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
           "player": 0,
-          "value": "TestPlayer.CHOICE_NORMAL_COST"
+          "name": "Glorious Anthem",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "try { setStopAt(1, PhaseStep.BEGIN_COMBAT); execute(); } catch (AssertionError e) { hadError = true; assert e.getMessage().equals(\"Can't find ability to activate command: Cast Glorious Anthem\"); } finally { assert hadError; }"
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
         }
       ]
     },
@@ -540,10 +555,6 @@ registerPortedMageTests({
       "name": "DoubleDemonDoubleCast",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -565,6 +576,20 @@ registerPortedMageTests({
           "count": 4
         },
         {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Glorious Anthem",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Absolute Law",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -572,60 +597,63 @@ registerPortedMageTests({
           "name": "Sakashima the Impostor"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Sakashima the Impostor",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Demon of Fate's Design"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Demon of Fate's Design"
+          ]
         },
         {
-          "op": "addCard",
-          "zone": "HAND",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Sakashima the Impostor",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Demon of Fate's Design",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Glorious Anthem",
+          "castingMethod": "play_from",
+          "priceSource": "Sakashima the Impostor"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Glorious Anthem",
           "count": 1
         },
         {
-          "op": "addCard",
-          "zone": "HAND",
+          "op": "assertLife",
           "player": 0,
-          "name": "Absolute Law",
-          "count": 1
+          "life": 17
         },
         {
-          "op": "castSpell",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Glorious Anthem"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast with alternative cost: Pay 3 life (source: Sakashima the Impostor"
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Absolute Law"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast with alternative cost: Pay 2 life (source: Demon of Fate's Design"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -634,15 +662,47 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Absolute Law",
+          "methods": [
+            "play_from"
+          ],
+          "priceSource": "Demon of Fate's Design"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Absolute Law",
+          "castingMethod": "play_from",
+          "priceSource": "Demon of Fate's Design"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Absolute Law",
           "count": 1
         },
         {
           "op": "assertLife",
           "player": 0,
           "life": 15
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Absolute Law",
+          "count": 1
         }
       ]
     },
@@ -650,10 +710,6 @@ registerPortedMageTests({
       "name": "DoubleDemonDoubleCast2",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -675,6 +731,20 @@ registerPortedMageTests({
           "count": 4
         },
         {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Glorious Anthem",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Absolute Law",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -682,60 +752,63 @@ registerPortedMageTests({
           "name": "Sakashima the Impostor"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Sakashima the Impostor",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Demon of Fate's Design"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Demon of Fate's Design"
+          ]
         },
         {
-          "op": "addCard",
-          "zone": "HAND",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Sakashima the Impostor",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Demon of Fate's Design",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Glorious Anthem",
+          "castingMethod": "play_from",
+          "priceSource": "Demon of Fate's Design"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Glorious Anthem",
           "count": 1
         },
         {
-          "op": "addCard",
-          "zone": "HAND",
+          "op": "assertLife",
           "player": 0,
-          "name": "Absolute Law",
-          "count": 1
+          "life": 17
         },
         {
-          "op": "castSpell",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Glorious Anthem"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast with alternative cost: Pay 3 life (source: Demon of Fate's Design"
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Absolute Law"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast with alternative cost: Pay 2 life (source: Sakashima the Impostor"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -744,15 +817,47 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Absolute Law",
+          "methods": [
+            "play_from"
+          ],
+          "priceSource": "Sakashima the Impostor"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Absolute Law",
+          "castingMethod": "play_from",
+          "priceSource": "Sakashima the Impostor"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Absolute Law",
           "count": 1
         },
         {
           "op": "assertLife",
           "player": 0,
           "life": 15
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Absolute Law",
+          "count": 1
         }
       ]
     },
@@ -809,7 +914,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Glorious Anthem",
+          "name": "Glorious Anthem@anthem",
           "count": 1
         },
         {
@@ -834,39 +939,63 @@ registerPortedMageTests({
           "name": "Yawgmoth's Will"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Glorious Anthem"
+          "source": "Yawgmoth's Will",
+          "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast with alternative cost: Pay 3 life"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "owner": 0,
+          "zone": "graveyard",
+          "name": "Glorious Anthem",
+          "objectAlias": "@anthem",
+          "methods": [
+            "play_from"
+          ],
+          "priceSource": "Demon of Fate's Design"
         },
         {
-          "op": "assertPermanentCount",
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Glorious Anthem",
+          "castingMethod": "play_from",
+          "priceSource": "Demon of Fate's Design",
+          "objectAlias": "@anthem"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Glorious Anthem",
           "count": 1
         },
         {
           "op": "assertLife",
           "player": 0,
           "life": 17
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Glorious Anthem",
+          "count": 1
         }
       ]
     },

@@ -12,15 +12,15 @@ registerPortedMageTests({
           "zone": "hand"
         },
         {
-          "op": "unsupported",
-          "source": "addPlane(playerA, Planes.PLANE_UNDERCITY_REACHES)"
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Balduvian Bears",
           "count": 1
+        },
+        {
+          "op": "assertPlanechase",
+          "plane": "Undercity Reaches"
         },
         {
           "op": "attack",
@@ -56,7 +56,8 @@ registerPortedMageTests({
           "player": 0,
           "count": 1
         }
-      ]
+      ],
+      "seed": 137
     },
     {
       "name": "test_CanTriggerByOther",
@@ -67,10 +68,6 @@ registerPortedMageTests({
           "zone": "hand"
         },
         {
-          "op": "unsupported",
-          "source": "addPlane(playerA, Planes.PLANE_UNDERCITY_REACHES)"
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
@@ -78,11 +75,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPlanechase",
+          "plane": "Undercity Reaches"
+        },
+        {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Balduvian Bears",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",
@@ -111,7 +112,34 @@ registerPortedMageTests({
           "player": 1,
           "count": 2
         }
-      ]
+      ],
+      "seed": 137
     }
+  ],
+  "planarDecks": [
+    [
+      "Llanowar",
+      "Hedron Fields of Agadeem",
+      "Panopticon",
+      "Tazeem",
+      "Gavony",
+      "Krosa",
+      "Naya",
+      "Undercity Reaches",
+      "Goldmeadow",
+      "Turri Island"
+    ],
+    [
+      "Undercity Reaches",
+      "Hedron Fields of Agadeem",
+      "Panopticon",
+      "Tazeem",
+      "Gavony",
+      "Krosa",
+      "Naya",
+      "Llanowar",
+      "Goldmeadow",
+      "Turri Island"
+    ]
   ]
 });

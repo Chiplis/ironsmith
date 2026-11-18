@@ -192,23 +192,56 @@ registerPortedMageTests({
           "count": 3
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Devout Chaplain"
+        },
+        {
           "op": "activateAbility",
+          "source": "Corpse Traders",
+          "ability": "Target opponent reveals",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{2}{B}"
+          "target": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": false
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Corpse Traders",
+          "count": 1,
           "turn": 1,
-          "phase": "END_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
         },
         {
-          "op": "execute"
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Devout Chaplain",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Corpse Traders",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Sigarda, Host of Herons",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Devout Chaplain",
+          "count": 0
         },
         {
           "op": "assertLife",
@@ -219,18 +252,6 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Devout Chaplain",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Corpse Traders",
-          "count": 1
         }
       ]
     },

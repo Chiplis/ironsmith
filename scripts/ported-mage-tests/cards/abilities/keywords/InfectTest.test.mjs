@@ -18,7 +18,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Tine Shrike",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",
@@ -69,7 +69,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Tine Shrike",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStopAt",
@@ -145,18 +145,64 @@ registerPortedMageTests({
           "target": "Melira, Sylvok Outcast"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Virulent Wound",
+          "count": 1,
+          "objectTarget": "Melira, Sylvok Outcast"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "source": "Plains",
+          "ability": "{T}: Add {W}"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "colors": "W",
+          "amount": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "{1}: {this} becomes"
+          "ability": "{1}:",
+          "source": "Inkmoth Nexus"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Inkmoth Nexus",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Inkmoth Nexus",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "setStopAt",
@@ -180,12 +226,16 @@ registerPortedMageTests({
           "toughness": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Plains\", true)"
+          "op": "assertTapped",
+          "name": "Plains",
+          "player": 1,
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Inkmoth Nexus\", true)"
+          "op": "assertTapped",
+          "name": "Inkmoth Nexus",
+          "player": 1,
+          "tapped": true
         },
         {
           "op": "assertCounterCount",
@@ -239,7 +289,34 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}: {this} becomes"
+          "ability": "{1}: This land becomes",
+          "source": "Inkmoth Nexus"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Inkmoth Nexus"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "attack",
@@ -330,7 +407,34 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}: {this} becomes"
+          "ability": "{1}: This land becomes",
+          "source": "Inkmoth Nexus"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Inkmoth Nexus"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "attack",
@@ -358,7 +462,34 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}: {this} becomes"
+          "ability": "{1}: This land becomes",
+          "source": "Inkmoth Nexus"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Inkmoth Nexus"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "attack",
@@ -375,16 +506,32 @@ registerPortedMageTests({
           "name": "Become Immense"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 3,
-          "phase": "END_COMBAT"
+          "phase": "DECLARE_BLOCKERS"
         },
         {
-          "op": "execute"
+          "op": "assertAttacking",
+          "player": 0,
+          "name": "Inkmoth Nexus",
+          "expected": true,
+          "defenders": [
+            1
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Inkmoth Nexus\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Inkmoth Nexus",
+          "tapped": true,
+          "count": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Inkmoth Nexus",
+          "power": 7,
+          "toughness": 7
         },
         {
           "op": "assertGraveyardCount",
@@ -405,11 +552,28 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "END_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
           "op": "assertCounterCount",
-          "player": 0,
           "name": 1,
           "counter": "POISON",
           "count": 12
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "WON"
+        },
+        {
+          "op": "assertResult",
+          "player": 1,
+          "result": "LOST"
         }
       ]
     },

@@ -36,14 +36,31 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Skyhunter Skirmisher",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 19,
+          "seatIndependent": true,
+          "turn": 2,
+          "phase": "FIRST_COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18,
+          "seatIndependent": true,
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "assertPlayableAbility",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Inferno",
+          "label": "Cast Inferno Trap",
           "expected": false
         },
         {
@@ -118,14 +135,14 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Skyhunter Skirmisher",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Silvercoat Lion",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "castSpell",

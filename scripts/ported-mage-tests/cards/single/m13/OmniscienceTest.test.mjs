@@ -33,23 +33,41 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Sen Triplets",
+          "count": 1,
+          "turn": 2,
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertCastMethods",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Balduvian Bears"
+          "owner": 0,
+          "name": "Balduvian Bears",
+          "zone": "hand",
+          "methods": []
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 1
         },
         {
-          "op": "setStopAt",
-          "turn": 2,
-          "phase": "PRECOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Balduvian Bears",
+          "count": 0
         }
       ]
     },
@@ -90,29 +108,78 @@ registerPortedMageTests({
           "target": 0
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Sen Triplets",
+          "count": 1,
+          "turn": 2,
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered",
+          "targetCount": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertCastMethods",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Balduvian Bears"
+          "owner": 0,
+          "name": "Balduvian Bears",
+          "zone": "hand",
+          "methods": [
+            "play_from"
+          ]
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "castSpell",
+          "name": "Balduvian Bears",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "permissionSource": "Sen Triplets"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Balduvian Bears",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0
         },
         {
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Balduvian Bears",
           "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Forest",
+          "count": 2,
+          "tapped": true
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 0
         }
       ]
     }

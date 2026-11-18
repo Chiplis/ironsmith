@@ -371,8 +371,12 @@ registerPortedMageTests({
           "target": "Lightning Bolt"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.BEGIN_COMBAT, playerB, 20)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "life": "20",
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -380,7 +384,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -449,8 +454,12 @@ registerPortedMageTests({
           "target": "Island"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.BEGIN_COMBAT, playerB, 20)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 1,
+          "life": "20",
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
@@ -458,7 +467,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Lightning Bolt",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

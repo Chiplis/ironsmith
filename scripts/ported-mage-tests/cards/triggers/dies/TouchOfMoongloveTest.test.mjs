@@ -56,11 +56,39 @@ registerPortedMageTests({
           "name": "Cleric of the Forward Order"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cleric of the Forward Order",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Cleric of the Forward Order",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Pharika's Disciple",
-          "defender": 1
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
@@ -83,6 +111,31 @@ registerPortedMageTests({
           "player": 1,
           "name": "Touch of Moonglove",
           "target": "Pharika's Disciple"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "source": "Touch of Moonglove",
+          "count": 1,
+          "objectTarget": "Pharika's Disciple"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DECLARE_BLOCKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "distribution",
+          "description": "Assign 3 combat damage from Pharika's Disciple (assign exactly 3 total)",
+          "choices": [
+            "Cleric of the Forward Order",
+            "Guardian Automaton",
+            "Guardian Automaton"
+          ]
         },
         {
           "op": "setStopAt",

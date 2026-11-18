@@ -117,16 +117,42 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {G}. {this} deals 1 damage to you.",
-          "count": 4
+          "ability": "{T}: Add {G}",
+          "count": 4,
+          "source": "Yavimaya Coast"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 4
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 16
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "<i>Delirium</i> &mdash; {2}{G}{G}:",
-          "target": "Grizzly Bears"
+          "ability": "{2}{G}{G}:",
+          "target": "Grizzly Bears",
+          "source": "Shifting Woodland"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
         },
         {
           "op": "attack",
@@ -168,8 +194,19 @@ registerPortedMageTests({
           "source": "assertType(woodland, CardType.LAND, true)"
         },
         {
-          "op": "unsupported",
-          "source": "assertColor(playerA, woodland, \"Green\", false)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Shifting Woodland"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "colorCount",
+              "expected": 0
+            }
+          ]
         }
       ]
     },
@@ -241,16 +278,42 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {G}. {this} deals 1 damage to you.",
-          "count": 4
+          "ability": "{T}: Add {G}",
+          "count": 4,
+          "source": "Yavimaya Coast"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 4
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 16
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "<i>Delirium</i> &mdash; {2}{G}{G}:",
-          "target": "Grizzly Bears"
+          "ability": "{2}{G}{G}:",
+          "target": "Grizzly Bears",
+          "source": "Shifting Woodland"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
         },
         {
           "op": "attack",
@@ -290,6 +353,31 @@ registerPortedMageTests({
           "player": 0,
           "name": "Shifting Woodland",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "name": "Shifting Woodland"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": false
+            },
+            {
+              "property": "colorCount",
+              "expected": 0
+            }
+          ]
         }
       ]
     },
@@ -368,16 +456,42 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {G}. {this} deals 1 damage to you.",
-          "count": 4
+          "ability": "{T}: Add {G}",
+          "count": 4,
+          "source": "Yavimaya Coast"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 4
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 16
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "<i>Delirium</i> &mdash; {2}{G}{G}:",
-          "target": "Anodet Lurker"
+          "ability": "{2}{G}{G}:",
+          "target": "Anodet Lurker",
+          "source": "Shifting Woodland"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Anodet Lurker",
+          "count": 1
         },
         {
           "op": "attack",
@@ -427,6 +541,31 @@ registerPortedMageTests({
           "player": 0,
           "name": "Shifting Woodland",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "name": "Shifting Woodland"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": false
+            },
+            {
+              "property": "colorCount",
+              "expected": 0
+            }
+          ]
         }
       ]
     },
@@ -484,16 +623,42 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {G}. {this} deals 1 damage to you.",
-          "count": 4
+          "ability": "{T}: Add {G}",
+          "count": 4,
+          "source": "Yavimaya Coast"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "G",
+          "amount": 4
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 16
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "<i>Delirium</i> &mdash; {2}{G}{G}:",
-          "target": "Drowner of Truth"
+          "ability": "{2}{G}{G}:",
+          "target": "Drowner of Truth",
+          "source": "Shifting Woodland"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Drowner of Truth",
+          "count": 1
         },
         {
           "op": "setStopAt",

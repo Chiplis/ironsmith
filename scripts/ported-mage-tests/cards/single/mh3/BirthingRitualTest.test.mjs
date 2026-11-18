@@ -66,9 +66,24 @@ registerPortedMageTests({
           "count": 4
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "source": "Birthing Ritual",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "setChoice",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "value": false
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -88,6 +103,12 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Memnite",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Grizzly Bears",
           "count": 0
         }
       ]
@@ -131,14 +152,34 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Grizzly Bears"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "source": "Birthing Ritual",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "value": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -159,6 +200,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Memnite",
           "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
         }
       ]
     },

@@ -10,8 +10,14 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"tester\", playerA, LockeTreasureHunter.makeTestAbility())"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "typeLine": "",
+          "custom": true,
+          "fixtureSource": true,
+          "oracleText": "{0}: Each player mills a card. If a land card was milled this way, create a Treasure token. Until end of turn, you may cast a spell from among those cards."
         },
         {
           "op": "addCard",
@@ -88,6 +94,15 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertCastableNames",
+          "player": 0,
+          "zone": "graveyard",
+          "names": [
+            "Goblin Mountaineer",
+            "Zodiac Goat"
+          ]
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Dwarven Grunt",
@@ -102,8 +117,14 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"tester\", playerA, LockeTreasureHunter.makeTestAbility())"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "tester",
+          "typeLine": "",
+          "custom": true,
+          "fixtureSource": true,
+          "oracleText": "{0}: Each player mills a card. If a land card was milled this way, create a Treasure token. Until end of turn, you may cast a spell from among those cards."
         },
         {
           "op": "addCard",
@@ -191,6 +212,12 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertCastableNames",
+          "player": 0,
+          "zone": "graveyard",
+          "names": []
         },
         {
           "op": "assertPermanentCount",

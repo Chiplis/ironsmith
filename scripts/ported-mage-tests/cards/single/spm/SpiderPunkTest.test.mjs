@@ -11,20 +11,20 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"{T} deal damage\", playerA, ability)"
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Spider-Punk",
-          "count": 1
+          "name": "Damage Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "{T}: Damage Fixture deals 2 damage to target player."
         },
         {
-          "op": "setChoice",
+          "op": "addCardWithEntryChoice",
           "player": 0,
-          "value": "No"
+          "name": "Spider-Punk",
+          "choice": "This creature gains haste"
         },
         {
           "op": "addCard",
@@ -79,7 +79,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "No"
+          "value": "This creature gains haste"
         },
         {
           "op": "attack",
@@ -100,8 +100,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: {this} deals 2 damage",
-          "target": 1
+          "ability": "{T}: This permanent deals 2 damage to target player",
+          "target": 1,
+          "source": "Damage Fixture"
         },
         {
           "op": "castSpell",
@@ -129,8 +130,11 @@ registerPortedMageTests({
           "life": 14
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, giantSpider, RiotAbility.class, 1)"
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Giant Spider",
+          "ability": "RiotAbility.class",
+          "count": 1
         }
       ]
     }

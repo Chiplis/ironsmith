@@ -60,28 +60,48 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Suntail Hawk",
-          "defender": "playerC"
+          "defender": 2
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
           "attacker": "Lantern Kami",
-          "defender": "playerC"
+          "defender": 2
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Storm the Vault",
+          "count": 2,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "COMBAT_DAMAGE",
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Treasure Token",
           "count": 2
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 15
+        },
+        {
+          "op": "assertLife",
+          "player": 2,
+          "life": 18
         }
       ]
     },

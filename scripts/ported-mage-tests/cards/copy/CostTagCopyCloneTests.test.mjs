@@ -252,11 +252,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "assertPermanentCount",
           "player": 0,
-          "name": "Defenders of Humanity"
+          "name": "Astartes Warrior Token",
+          "count": 0
         },
         {
           "op": "setChoice",
@@ -264,47 +263,66 @@ registerPortedMageTests({
           "value": "X=1"
         },
         {
-          "op": "waitStackResolved",
+          "op": "castSpell",
+          "name": "Defenders of Humanity",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Defenders of Humanity",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": false
+          "isSpell": true,
+          "xValue": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Defenders of Humanity",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Astartes Warrior Token",
+          "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Clever Impersonator",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Clever Impersonator",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Clever Impersonator"
+          "isSpell": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Defenders of Humanity"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Defenders of Humanity"
+          ]
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": false
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -341,7 +359,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Overloaded Mage-Ring",
+          "name": "Overloaded Mage-Ring@ring",
           "count": 1
         },
         {
@@ -351,42 +369,72 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Defenders of Humanity"
-        },
-        {
           "op": "setChoice",
           "player": 0,
           "value": "X=1"
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
+          "name": "Defenders of Humanity",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Defenders of Humanity",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "xValue": 1
+        },
+        {
+          "op": "activateAbility",
+          "source": "Overloaded Mage-Ring",
+          "ability": "Copy target spell you control",
           "player": 0,
-          "ability": "{1}, {T}, Sacrifice {this}: Copy target spell you control.",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "target": "Defenders of Humanity"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "@ring",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "targetCount": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Defenders of Humanity",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "xValue": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Defenders of Humanity",
+          "count": 2,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "xValue": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -399,6 +447,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Astartes Warrior Token",
           "count": 2
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@ring",
+          "count": 1
         }
       ]
     }

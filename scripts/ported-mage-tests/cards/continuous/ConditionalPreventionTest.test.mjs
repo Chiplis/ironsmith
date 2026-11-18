@@ -65,8 +65,16 @@ registerPortedMageTests({
       "name": "test_PreventDamageNormal",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"prevent\", playerA, new SimpleStaticAbility(new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT)))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Damage Shield Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "Prevent all damage that would be dealt to all permanents."
         },
         {
           "op": "addCard",
@@ -127,8 +135,16 @@ registerPortedMageTests({
       "name": "test_PreventDamageConditionalActive",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"prevent\", playerA, new SimpleStaticAbility( new ConditionalPreventionEffect( new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT), MyTurnCondition.instance, \"\" ) ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Damage Shield Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "During your turn, prevent all damage that would be dealt to all permanents."
         },
         {
           "op": "addCard",
@@ -189,8 +205,16 @@ registerPortedMageTests({
       "name": "test_PreventDamageConditionalNotActive",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"prevent\", playerA, new SimpleStaticAbility( new ConditionalPreventionEffect( new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT), NotMyTurnCondition.instance, \"\" ) ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Damage Shield Fixture",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "power": null,
+          "toughness": null,
+          "oracleText": "During turns other than yours, prevent all damage that would be dealt to all permanents."
         },
         {
           "op": "addCard",
@@ -251,8 +275,34 @@ registerPortedMageTests({
       "name": "test_PreventDamageConditionalNotActiveWithOtherEffect",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"prevent\", playerA, new SimpleStaticAbility( new ConditionalPreventionEffect( new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT), new PreventAllDamageToPlayersEffect(Duration.WhileOnBattlefield, false), NotMyTurnCondition.instance, \"\" ) ))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Active Player Shield",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "During your turn, prevent all damage that would be dealt to you."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Other Turn Prevention",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "During turns other than yours, prevent all damage that would be dealt to you."
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Other Turn Permanent Prevention",
+          "custom": true,
+          "fixtureSource": true,
+          "typeLine": "",
+          "oracleText": "During turns other than yours, prevent all damage that would be dealt to all permanents."
         },
         {
           "op": "addCard",
@@ -343,7 +393,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Balduvian Bears",
+          "name": "Balduvian Bears@attacking",
           "count": 1
         },
         {
@@ -351,21 +401,23 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Balduvian Bears",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
-          "attacker": "Balduvian Bears",
-          "defender": 0
+          "attacker": "Balduvian Bears@attacking.1",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
           "turn": 4,
           "player": 0,
           "blocker": "Balduvian Bears",
-          "attacker": "Balduvian Bears"
+          "attacker": "Balduvian Bears@attacking.1"
         },
         {
           "op": "setStrictChooseMode",
@@ -431,7 +483,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Balduvian Bears",
+          "name": "Balduvian Bears@attacking",
           "count": 1
         },
         {
@@ -439,21 +491,23 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Balduvian Bears",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": true
         },
         {
           "op": "attack",
           "turn": 4,
           "player": 1,
-          "attacker": "Balduvian Bears",
-          "defender": 0
+          "attacker": "Balduvian Bears@attacking.1",
+          "defender": 0,
+          "expectedLegal": true
         },
         {
           "op": "block",
           "turn": 4,
           "player": 0,
           "blocker": "Balduvian Bears",
-          "attacker": "Balduvian Bears"
+          "attacker": "Balduvian Bears@attacking.1"
         },
         {
           "op": "setStrictChooseMode",
@@ -527,7 +581,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Questing Beast",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setStrictChooseMode",

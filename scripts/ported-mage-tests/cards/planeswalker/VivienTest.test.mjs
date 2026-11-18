@@ -35,8 +35,9 @@ registerPortedMageTests({
           "ability": "+1: Distribute"
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, TestPlayer.TARGET_SKIP)"
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
         },
         {
           "op": "setStrictChooseMode",
@@ -328,19 +329,71 @@ registerPortedMageTests({
           "name": "Vivien, Arkbow Ranger"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Vivien, Arkbow Ranger",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "name": "Vivien, Arkbow Ranger",
+          "count": 4,
+          "player": 0,
+          "counter": "LOYALTY",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Distribute"
+          "ability": "+1: Distribute",
+          "source": "Vivien, Arkbow Ranger",
+          "target": {
+            "groups": [
+              [
+                "Silvercoat Lion",
+                "Pillarfield Ox"
+              ]
+            ]
+          }
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"Silvercoat Lion\", 1)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Silvercoat Lion",
+          "amount": 1,
+          "selectTarget": false
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"Pillarfield Ox\", 1)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Pillarfield Ox",
+          "amount": 1,
+          "selectTarget": false
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Vivien, Arkbow Ranger",
+          "count": 1,
+          "abilityKind": "Activated",
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",

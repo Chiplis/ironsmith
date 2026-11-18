@@ -100,6 +100,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "description": "Choose a cost reduction resource",
+          "choices": [
+            "Tap Grizzly Bears (reduce generic by 2)"
+          ],
+          "kind": "options",
+          "player": 0
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -108,19 +117,18 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Channeled Dragonfire",
+          "count": 1,
+          "targetCount": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Grizzly Bears"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Grizzly Bears"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -135,8 +143,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(bear, true)"
+          "op": "assertTapped",
+          "name": "Grizzly Bears",
+          "tapped": true,
+          "player": 0
         },
         {
           "op": "assertLife",

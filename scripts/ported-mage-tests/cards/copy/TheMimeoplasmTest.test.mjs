@@ -10,14 +10,14 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "The Mimeoplasm",
+          "name": "The Mimeoplasm@mimeo",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Clone",
+          "name": "Clone@clone",
           "count": 1
         },
         {
@@ -57,10 +57,19 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "The Mimeoplasm",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "The Mimeoplasm"
+          "objectAlias": "@mimeo"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "The Mimeoplasm",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
         },
         {
           "op": "setChoice",
@@ -73,30 +82,118 @@ registerPortedMageTests({
           "value": "Silvercoat Lion"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@mimeo"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@mimeo",
+          "power": 4,
+          "toughness": 5
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@mimeo",
+          "count": 2,
+          "counter": "+1/+1"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@mimeo",
+          "count": 3,
+          "counter": "time"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Aven Riftwatcher",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 22
+        },
+        {
           "op": "castSpell",
+          "name": "Clone",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Clone"
+          "objectAlias": "@clone"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Aven Riftwatcher"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Clone",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
         },
         {
-          "op": "execute"
-        },
-        {
-          "op": "assertHandCount",
+          "op": "setOptionChoices",
           "player": 0,
-          "name": "Clone",
-          "count": 0
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Aven Riftwatcher"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@clone"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@clone",
+          "power": 2,
+          "toughness": 3
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@clone",
+          "count": 0,
+          "counter": "+1/+1"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@clone",
+          "count": 3,
+          "counter": "time"
         },
         {
           "op": "assertLife",
@@ -115,22 +212,15 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "assertPowerToughness",
+          "op": "assertHandCount",
           "player": 0,
-          "name": "Aven Riftwatcher",
-          "power": 4,
-          "toughness": 5
-        },
-        {
-          "op": "assertPowerToughness",
-          "player": 0,
-          "name": "Aven Riftwatcher",
-          "power": 2,
-          "toughness": 3
+          "name": "Clone",
+          "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 1,
+          "name": null,
           "count": 0
         }
       ]

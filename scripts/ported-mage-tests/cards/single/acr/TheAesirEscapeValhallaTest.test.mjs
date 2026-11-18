@@ -47,8 +47,19 @@ registerPortedMageTests({
           "value": "Gigantosaurus"
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after I, lifecount\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, 20 + 5)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Aesir Escape Valhalla",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "life": "20 + 5",
+          "seatIndependent": true
         },
         {
           "op": "assertExileCount",
@@ -64,8 +75,13 @@ registerPortedMageTests({
           "target": "Memnite"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"after II, +1/+1 counters\", 3, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Memnite\", CounterType.P1P1, 5)"
+          "op": "assertCounterCount",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Memnite",
+          "counter": "P1P1",
+          "count": 5
         },
         {
           "op": "setStrictChooseMode",

@@ -161,21 +161,37 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}{B}"
+          "ability": "{2}{B}:",
+          "source": "Repeat Offender"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Repeat Offender",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "attack",
           "turn": 2,
           "player": 1,
           "attacker": "Grizzly Bears",
-          "defender": 1
+          "defender": 0
         },
         {
-          "op": "block",
+          "op": "assertBlockerLegality",
           "turn": 2,
           "player": 0,
+          "attacker": "Grizzly Bears",
           "blocker": "Repeat Offender",
-          "attacker": "Grizzly Bears"
+          "expected": false
         },
         {
           "op": "setStrictChooseMode",
@@ -195,8 +211,10 @@ registerPortedMageTests({
           "suspected": true
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(bear, true)"
+          "op": "assertTapped",
+          "name": "Grizzly Bears",
+          "player": 1,
+          "tapped": true
         },
         {
           "op": "assertLife",

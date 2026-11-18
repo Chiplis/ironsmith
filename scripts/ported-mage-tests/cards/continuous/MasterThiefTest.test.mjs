@@ -259,10 +259,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "END_TURN",
-          "ability": 0,
-          "expected": "Bearer of the Heavens"
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "name": "Bearer of the Heavens",
+          "ability": "VigilanceAbility.class",
+          "expected": true
         },
         {
           "op": "activateAbility",

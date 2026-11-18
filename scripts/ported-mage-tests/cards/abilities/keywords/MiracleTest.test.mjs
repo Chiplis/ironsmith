@@ -45,6 +45,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "kind": "options",
+          "description": "Choose a Miracle reveal",
+          "player": 0,
+          "choices": [
+            "Reveal using Miracle ({W})"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "boolean",
+          "description": "Cast Terminus for its miracle cost ({W})?",
+          "player": 0,
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -52,18 +70,60 @@ registerPortedMageTests({
           "name": "Think Twice"
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Think Twice",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Think Twice",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertHandCount",
+          "name": "Terminus",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Terminus",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Terminus",
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertPermanentCount",
-          "player": 1,
           "name": "Elite Vanguard",
-          "count": 0
+          "count": 0,
+          "player": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "name": "Elite Vanguard",
+          "count": 1,
+          "player": 1
         }
       ]
     },
@@ -116,6 +176,24 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "kind": "options",
+          "description": "Choose a Miracle reveal",
+          "player": 0,
+          "choices": [
+            "Reveal using Miracle ({1}{U})"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "boolean",
+          "description": "Cast Temporal Mastery for its miracle cost ({1}{U})?",
+          "player": 0,
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -123,18 +201,95 @@ registerPortedMageTests({
           "name": "Think Twice"
         },
         {
-          "op": "setStopAt",
-          "turn": 2,
-          "phase": "BEGIN_COMBAT"
+          "op": "assertStackObject",
+          "source": "Think Twice",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Think Twice",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertHandCount",
+          "name": "Temporal Mastery",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Temporal Mastery",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Temporal Mastery",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "options",
+          "description": "Choose a Miracle reveal",
+          "player": 0,
+          "choices": [
+            "Reveal using Miracle ({W})"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "boolean",
+          "description": "Cast Terminus for its miracle cost ({W})?",
+          "player": 0,
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "assertActivePlayer",
+          "player": 0,
+          "turn": 2,
+          "phase": "DRAW"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "DRAW"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "Terminus",
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertPermanentCount",
-          "player": 1,
           "name": "Elite Vanguard",
-          "count": 0
+          "count": 0,
+          "player": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "name": "Elite Vanguard",
+          "count": 1,
+          "player": 1
         }
       ]
     },
@@ -187,6 +342,43 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
+          "op": "setOptionChoices",
+          "kind": "options",
+          "description": "Choose a Miracle reveal",
+          "player": 0,
+          "choices": [
+            "Reveal using Miracle ({R})"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "boolean",
+          "description": "Cast Thunderous Wrath for its miracle cost ({R})?",
+          "player": 0,
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose card in your hand",
+          "choices": [
+            "Forest",
+            "Plains"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "order",
+          "description": "Order the selected cards for the top of the library. The first option becomes the topmost card.",
+          "player": 0,
+          "choices": [
+            "Forest",
+            "Plains"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "UPKEEP",
@@ -194,14 +386,11 @@ registerPortedMageTests({
           "name": "Brainstorm"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Forest"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Plains"
+          "op": "assertStackObject",
+          "source": "Brainstorm",
+          "count": 1,
+          "turn": 1,
+          "phase": "UPKEEP"
         },
         {
           "op": "addTarget",
@@ -209,12 +398,35 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "DRAW"
+          "phase": "UPKEEP",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertGraveyardCount",
+          "name": "Brainstorm",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertHandCount",
+          "name": "Thunderous Wrath",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Thunderous Wrath",
+          "count": 1,
+          "turn": 1,
+          "phase": "UPKEEP",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
         },
         {
           "op": "assertGraveyardCount",

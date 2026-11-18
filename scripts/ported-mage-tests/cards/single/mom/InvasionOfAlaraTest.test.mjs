@@ -100,20 +100,28 @@ registerPortedMageTests({
           "player": 1,
           "name": "Bottle Golems",
           "power": 4,
-          "toughness": 4
+          "toughness": 4,
+          "seatIndependent": true
         },
         {
-          "op": "activateAbility",
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Sacrifice"
+          "source": "Composite Golem",
+          "ability": "Add {W}{U}{B}{R}{G}"
         },
         {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "WUBRG",
+          "amount": 5
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Composite Golem",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -121,6 +129,34 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Invasion of Alara"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Invasion of Alara",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Invasion of Alara",
+          "counter": "DEFENSE",
+          "count": 7
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Invasion of Alara",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -133,45 +169,79 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "assertGraveyardCount",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT",
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Vampire Hexmage",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
           "player": 0,
-          "name": "Composite Golem",
+          "name": "Divination",
           "count": 1
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT",
           "player": 0,
-          "name": "Invasion of Alara",
+          "name": "Vampire Hexmage",
           "count": 1
         },
         {
           "op": "assertPowerToughness",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Vampire Hexmage",
           "power": 2,
           "toughness": 1
         },
         {
-          "op": "assertHandCount",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT",
-          "player": 0,
-          "name": "Divination",
-          "count": 1
-        },
-        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "Sacrifice",
+          "source": "Vampire Hexmage",
+          "ability": "Remove all counters",
           "target": "Invasion of Alara"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Vampire Hexmage",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Invasion of Alara"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Vampire Hexmage",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Invasion of Alara",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -189,6 +259,28 @@ registerPortedMageTests({
           "target": "Bottle Golems"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Awaken the Maelstrom",
+          "count": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Awaken the Maelstrom",
+          "count": 1,
+          "objectTarget": "Bottle Golems",
+          "targetCount": 2
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
@@ -204,27 +296,57 @@ registerPortedMageTests({
           "value": "Lone Missionary"
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, meteor, 1)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Meteor Golem",
+          "amount": 1,
+          "selectTarget": false
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, baloth, 1)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Baloth Pup",
+          "amount": 1,
+          "selectTarget": false
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, behemoth, 1)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Kalonian Behemoth",
+          "amount": 1,
+          "selectTarget": false
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "When {this} enters, you gain"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lone Missionary",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Meteor Golem",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Bottle Golems",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "controller": 1
         },
         {
           "op": "addTarget",
@@ -232,16 +354,9 @@ registerPortedMageTests({
           "target": "Glorious Anthem"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "execute"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertLife",

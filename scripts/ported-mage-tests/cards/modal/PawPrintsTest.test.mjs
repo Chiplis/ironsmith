@@ -35,29 +35,44 @@ registerPortedMageTests({
           "name": "Season of Gathering"
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "1"
+          "kind": "modes",
+          "description": "Choose mode for Season of Gathering",
+          "choices": [
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn.",
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn.",
+            "Draw cards equal to the greatest power among creatures you control."
+          ]
         },
         {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "1"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Season of Gathering",
+          "count": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "3"
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
         },
         {
-          "op": "addTarget",
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Memnite"
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Memnite"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -124,49 +139,17 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertRejectedProposal",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Season of Gathering"
-        },
-        {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "1"
-        },
-        {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "2"
-        },
-        {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "3"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Memnite"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Enchantment"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { Assert.assertTrue(\"mode 3 must not be able to choose due total paws cost\", e.getMessage().contains(\"Can't use mode: 3\")); }"
+          "name": "Season of Gathering",
+          "modes": [
+            1,
+            2,
+            3
+          ],
+          "silentRejection": true
         }
       ]
     },
@@ -209,44 +192,62 @@ registerPortedMageTests({
           "name": "Season of Gathering"
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "modes",
+          "description": "Choose mode for Season of Gathering",
+          "choices": [
+            "Choose artifact or enchantment. Destroy all permanents of the chosen type.",
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn.",
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn.",
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn."
+          ]
         },
         {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "1"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Season of Gathering",
+          "count": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "1"
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
         },
         {
-          "op": "setModeChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "1"
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
         },
         {
-          "op": "addTarget",
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Memnite"
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 0,
-          "target": "Memnite"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "enchantment"
+          ]
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Memnite"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Enchantment"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -320,6 +321,72 @@ registerPortedMageTests({
           "name": "Season of Gathering"
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "modes",
+          "description": "Choose mode for Season of Gathering",
+          "choices": [
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn.",
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn.",
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn.",
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn.",
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn."
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Season of Gathering",
+          "count": 1
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "BEGIN_COMBAT"
@@ -382,19 +449,36 @@ registerPortedMageTests({
           "name": "Season of Gathering"
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "3"
+          "kind": "modes",
+          "description": "Choose mode for Season of Gathering",
+          "choices": [
+            "Draw cards equal to the greatest power among creatures you control.",
+            "Choose artifact or enchantment. Destroy all permanents of the chosen type."
+          ]
         },
         {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "2"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Season of Gathering",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Artifact"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "artifact"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -466,34 +550,54 @@ registerPortedMageTests({
           "name": "Season of Gathering"
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "1"
+          "kind": "modes",
+          "description": "Choose mode for Season of Gathering",
+          "choices": [
+            "Put a +1/+1 counter on a creature you control. It gains vigilance and trample until end of turn.",
+            "Choose artifact or enchantment. Destroy all permanents of the chosen type.",
+            "Choose artifact or enchantment. Destroy all permanents of the chosen type."
+          ]
         },
         {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "2"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Season of Gathering",
+          "count": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "2"
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
         },
         {
-          "op": "addTarget",
+          "op": "setOptionChoices",
           "player": 0,
-          "target": "Memnite"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "artifact"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Artifact"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "enchantment"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Enchantment"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",

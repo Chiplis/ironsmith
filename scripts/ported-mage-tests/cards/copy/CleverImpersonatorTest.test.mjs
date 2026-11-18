@@ -118,7 +118,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Clever Impersonator",
+          "name": "Clever Impersonator@copy",
           "count": 1
         },
         {
@@ -150,82 +150,132 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Liliana, Defiant Necromancer",
+          "count": 1
+        },
+        {
           "op": "castSpell",
+          "name": "Clever Impersonator",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Clever Impersonator"
+          "objectAlias": "@copy"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "source": "Clever Impersonator",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Liliana, Defiant Necromancer"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Liliana, Defiant Necromancer"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@copy"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@copy",
+          "count": 3,
+          "counter": "loyalty"
         },
         {
           "op": "activateAbility",
+          "source": "Liliana, Defiant Necromancer",
+          "ability": "+2: Each player discards a card",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Liliana, Defiant Necromancer",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "+2: Each player discards a card"
+          "abilityKind": "Activated"
         },
         {
-          "op": "addTarget",
+          "op": "setChoice",
           "player": 0,
-          "target": "Balduvian Bears"
+          "value": "Balduvian Bears"
         },
         {
-          "op": "addTarget",
+          "op": "setChoice",
           "player": 1,
-          "target": "Balduvian Bears"
+          "value": "Balduvian Bears"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Balduvian Bears",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Liliana, Defiant Necromancer",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Liliana, Defiant Necromancer",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@copy",
+          "count": 5,
+          "counter": "loyalty"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "Liliana, Defiant Necromancer",
+          "count": 3,
+          "counter": "loyalty"
         },
         {
           "op": "assertHandCount",
           "player": 0,
           "name": "Clever Impersonator",
           "count": 0
-        },
-        {
-          "op": "assertCounterCount",
-          "player": 1,
-          "name": "Liliana, Defiant Necromancer",
-          "counter": "LOYALTY",
-          "count": 3
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Liliana, Defiant Necromancer",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Liliana, Defiant Necromancer",
-          "count": 1
-        },
-        {
-          "op": "assertCounterCount",
-          "player": 0,
-          "name": "Liliana, Defiant Necromancer",
-          "counter": "LOYALTY",
-          "count": 5
         }
       ]
     },
@@ -365,7 +415,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Clever Impersonator",
+          "name": "Clever Impersonator@copy",
           "count": 1
         },
         {
@@ -390,31 +440,68 @@ registerPortedMageTests({
           "name": "Clever Impersonator"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Clever Impersonator",
+          "count": 1,
+          "onTop": true
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Jace, Vryn's Prodigy"
+          "value": "Enter as a copy of Jace, Vryn's Prodigy"
         },
         {
-          "op": "setChoice",
+          "op": "addTarget",
           "player": 0,
-          "value": "Jace, Vryn's Prodigy[only copy]"
+          "target": "@copy"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Jace, Vryn's Prodigy",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@copy",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Draw a card"
+          "ability": "{T}: Draw a card",
+          "source": "Jace, Vryn's Prodigy"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "@copy",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Swamp"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -441,6 +528,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Clever Impersonator",
           "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@copy",
+          "count": 0
         }
       ]
     },
@@ -554,7 +647,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Clever Impersonator",
+          "name": "Clever Impersonator@copy",
           "count": 1
         },
         {
@@ -586,15 +679,19 @@ registerPortedMageTests({
           "count": 5
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "castSpell",
+          "name": "Kindred Discovery",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "source": "Kindred Discovery",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Kindred Discovery"
+          "isSpell": true
         },
         {
           "op": "setChoice",
@@ -602,21 +699,40 @@ registerPortedMageTests({
           "value": "Thopter"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Kindred Discovery",
+          "count": 1
+        },
+        {
           "op": "castSpell",
+          "name": "Clever Impersonator",
+          "player": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Clever Impersonator"
+          "objectAlias": "@copy"
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Yes"
+          "op": "assertStackObject",
+          "source": "Clever Impersonator",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "Kindred Discovery"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Kindred Discovery"
+          ]
         },
         {
           "op": "setChoice",
@@ -626,49 +742,134 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@copy"
+          },
+          "count": 1,
+          "checks": []
         },
         {
           "op": "castSpell",
+          "name": "Ornithopter",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Ornithopter",
+          "count": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Ornithopter"
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Kindred Discovery",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "controller": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Ornithopter",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Ornithopter",
+          "count": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Ornithopter"
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Kindred Discovery",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "controller": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
+          "name": "Memnite",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Memnite",
+          "count": 1,
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Memnite"
+          "isSpell": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 2,
-          "phase": "END_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Kindred Discovery",
+          "count": 0,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "controller": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Ornithopter",
+          "count": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Memnite",
+          "count": 1
         },
         {
           "op": "assertHandCount",

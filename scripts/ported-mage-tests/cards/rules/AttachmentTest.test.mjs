@@ -134,17 +134,35 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
+          "player": 0,
+          "source": "Candlestick",
+          "ability": "Equip {2}",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Equip",
-          "target": "Codsworth, Handy Helper"
+          "target": "Codsworth, Handy Helper",
+          "actionLabel": "Activate Candlestick: Equip {2}"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Candlestick\"",
+          "target": "\"Codsworth, Handy Helper\"",
+          "targetPlayer": 0,
+          "expected": true
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "player": 0,
+          "source": "Island",
+          "ability": "{T}: Add {U}.",
+          "count": 2
         },
         {
           "op": "castSpell",
@@ -157,50 +175,121 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Agoraphobia\"",
+          "target": "\"Codsworth, Handy Helper\"",
+          "targetPlayer": 0,
+          "expected": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Codsworth, Handy Helper",
+          "tapped": false,
+          "count": 1
         },
         {
           "op": "activateAbility",
+          "player": 0,
+          "source": "Codsworth, Handy Helper",
+          "ability": "{T}",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Attach",
-          "target": "Candlestick"
+          "target": {
+            "groups": [
+              [
+                "Candlestick"
+              ],
+              [
+                "Bloated Toad"
+              ]
+            ]
+          },
+          "abilityIndex": 2
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "source": "Codsworth, Handy Helper",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Bloated Toad",
+          "targetCount": 2,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
           "player": 0,
-          "target": "Bloated Toad"
+          "attachment": "\"Candlestick\"",
+          "target": "\"Codsworth, Handy Helper\"",
+          "targetPlayer": 0,
+          "expected": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 0
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Codsworth, Handy Helper",
+          "tapped": false,
+          "count": 1
         },
         {
           "op": "activateAbility",
+          "player": 0,
+          "source": "Codsworth, Handy Helper",
+          "ability": "{T}",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Attach",
-          "target": "Agoraphobia"
+          "target": {
+            "groups": [
+              [
+                "Agoraphobia"
+              ],
+              [
+                "Bloated Toad"
+              ]
+            ]
+          },
+          "abilityIndex": 2
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Bloated Toad"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Codsworth, Handy Helper",
+          "count": 1,
           "turn": 3,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Bloated Toad",
+          "targetCount": 2,
+          "completeTargets": true
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, \"Candlestick\", codsworth, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, \"Agoraphobia\", codsworth, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Agoraphobia\"",
+          "target": "\"Codsworth, Handy Helper\"",
+          "targetPlayer": 0,
+          "expected": true
         }
       ]
     },
@@ -519,7 +608,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Add {W}.",
-          "count": 4
+          "count": 4,
+          "source": "Plains"
         },
         {
           "op": "castSpell",
@@ -532,38 +622,70 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Captured by the Consulate\"",
+          "target": "\"Pia Nalaar\"",
+          "targetPlayer": 1,
+          "expected": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Codsworth, Handy Helper",
+          "tapped": false,
+          "count": 1
         },
         {
           "op": "activateAbility",
+          "player": 0,
+          "source": "Codsworth, Handy Helper",
+          "ability": "{T}",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Attach",
-          "target": "Captured by the Consulate"
+          "target": {
+            "groups": [
+              [
+                "Captured by the Consulate"
+              ],
+              [
+                "Codsworth, Handy Helper"
+              ]
+            ]
+          },
+          "abilityIndex": 2
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Codsworth, Handy Helper"
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Codsworth, Handy Helper",
+          "count": 1,
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Activated",
+          "objectTarget": "Codsworth, Handy Helper",
+          "targetCount": 2,
+          "completeTargets": true
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Captured by the Consulate\"",
+          "target": "\"Pia Nalaar\"",
+          "targetPlayer": 1,
+          "expected": true
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "count": 0
-        },
-        {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerB, \"Captured by the Consulate\", \"Pia Nalaar\", true)"
         }
       ]
     },

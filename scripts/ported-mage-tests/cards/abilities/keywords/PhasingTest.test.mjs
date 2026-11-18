@@ -25,7 +25,11 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 1,
           "name": "Crusade",
-          "count": 1
+          "count": 1,
+          "fixtureSource": true,
+          "typeLine": "Enchantment",
+          "oracleText": "White creatures get +1/+1.",
+          "manaCost": "{W}{W}"
         },
         {
           "op": "addCard",
@@ -33,6 +37,13 @@ registerPortedMageTests({
           "player": 1,
           "name": "Silvercoat Lion",
           "count": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "power": 3,
+          "toughness": 3
         },
         {
           "op": "castSpell",
@@ -44,7 +55,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 1,
-          "value": "Non-Aura enchantment"
+          "value": "enchantment"
         },
         {
           "op": "setStopAt",

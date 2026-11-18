@@ -54,7 +54,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Bruna, Light of Alabaster",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "setChoice",

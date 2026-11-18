@@ -7,10 +7,6 @@ registerPortedMageTests({
       "name": "test_NotBestowed",
       "operations": [
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -32,33 +28,46 @@ registerPortedMageTests({
           "name": "Plains"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 0
         },
         {
-          "op": "execute"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Plains",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Springheart Nantuko",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertTokenCount",
+          "player": 0,
+          "name": "Insect Token",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "count": 3
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Insect Token",
-          "count": 1
         }
       ]
     },
     {
       "name": "test_Bestow_Dontpay",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
         {
           "op": "addCard",
           "zone": "HAND",
@@ -84,36 +93,38 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Plains",
+          "name": "Plains@land",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Springheart Nantuko using bestow",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Springheart Nantuko using bestow",
           "target": "Grizzly Bears"
         },
         {
-          "op": "playLand",
+          "op": "assertStackObject",
+          "source": "Springheart Nantuko",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Plains"
+          "objectTarget": "Grizzly Bears",
+          "targetCount": 1,
+          "isSpell": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "\"Springheart Nantuko\"",
+          "target": "Grizzly Bears",
+          "expected": true
         },
         {
           "op": "assertPowerToughness",
@@ -123,20 +134,60 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
+          "op": "playLand",
+          "name": "@land",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Springheart Nantuko",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Plains",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Insect Token",
           "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 2,
+          "tapped": true
         }
       ]
     },
     {
       "name": "test_Bestow_Pay",
       "operations": [
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
         {
           "op": "addCard",
           "zone": "HAND",
@@ -162,23 +213,60 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Forest",
+          "name": "Forest@land",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Springheart Nantuko using bestow",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Springheart Nantuko using bestow",
           "target": "Grizzly Bears"
         },
         {
-          "op": "playLand",
+          "op": "assertStackObject",
+          "source": "Springheart Nantuko",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "objectTarget": "Grizzly Bears",
+          "targetCount": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
           "player": 0,
-          "name": "Forest"
+          "attachment": "\"Springheart Nantuko\"",
+          "target": "Grizzly Bears",
+          "expected": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 3,
+          "toughness": 3
+        },
+        {
+          "op": "playLand",
+          "name": "@land",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Springheart Nantuko",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -186,12 +274,15 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Forest",
+          "count": 4
         },
         {
           "op": "assertPermanentCount",
@@ -207,9 +298,10 @@ registerPortedMageTests({
         },
         {
           "op": "assertTappedCount",
+          "player": 0,
           "name": "Forest",
-          "tapped": true,
-          "count": 4
+          "count": 4,
+          "tapped": true
         }
       ]
     }

@@ -356,6 +356,65 @@ registerPortedMageTests({
           "target": "Homicidal Brute"
         },
         {
+          "op": "assertStackObject",
+          "source": "Cloudshift",
+          "count": 1,
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "targetCount": 1,
+          "objectTarget": "Homicidal Brute"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Civilized Scholar",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Moonmist",
+          "count": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "player": 0,
+          "ability": "{T}: Add {G}",
+          "source": "Savannah"
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "player": 0,
+          "ability": "{T}: Add {W}",
+          "source": "Savannah"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 3,
+          "phase": "END_COMBAT",
+          "player": 0,
+          "colors": "W",
+          "amount": 1
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "END_COMBAT",
@@ -363,8 +422,14 @@ registerPortedMageTests({
           "name": "Moonmist"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentTapped(\"after transform\", 3, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Homicidal Brute\", false, 1)"
+          "op": "assertTappedCount",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Homicidal Brute",
+          "tapped": false,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

@@ -46,9 +46,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Target opponent gains control of target Horse you control. If they do, remove Bill Ferny from combat and create three Treasure tokens."
+          ]
         },
         {
           "op": "addTarget",
@@ -59,6 +63,20 @@ registerPortedMageTests({
           "op": "addTarget",
           "player": 0,
           "target": "Armored Warhorse"
+        },
+        {
+          "op": "assertBlockDeclarationRejected",
+          "turn": 1,
+          "player": 1,
+          "reason": "must block",
+          "declarations": []
+        },
+        {
+          "op": "block",
+          "turn": 1,
+          "player": 1,
+          "blocker": "Iron Golem",
+          "attacker": "Bill Ferny, Bree Swindler"
         },
         {
           "op": "setStopAt",
@@ -127,7 +145,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Phantasmal Image",
+          "name": "Phantasmal Image@horse.image",
           "count": 1
         },
         {
@@ -145,14 +163,18 @@ registerPortedMageTests({
           "name": "Phantasmal Image"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Yes"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Armored Warhorse"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Armored Warhorse"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
@@ -162,9 +184,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Target opponent gains control of target Horse you control. If they do, remove Bill Ferny from combat and create three Treasure tokens."
+          ]
         },
         {
           "op": "addTarget",
@@ -174,7 +200,21 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Armored Warhorse[only copy]"
+          "target": "@horse.image"
+        },
+        {
+          "op": "assertBlockDeclarationRejected",
+          "turn": 1,
+          "player": 1,
+          "reason": "must block",
+          "declarations": []
+        },
+        {
+          "op": "block",
+          "turn": 1,
+          "player": 1,
+          "blocker": "Iron Golem",
+          "attacker": "Bill Ferny, Bree Swindler"
         },
         {
           "op": "setStopAt",

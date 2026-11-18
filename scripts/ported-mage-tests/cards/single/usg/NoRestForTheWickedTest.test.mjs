@@ -334,7 +334,7 @@ registerPortedMageTests({
           "turn": 4,
           "player": 1,
           "attacker": "Memnite",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",

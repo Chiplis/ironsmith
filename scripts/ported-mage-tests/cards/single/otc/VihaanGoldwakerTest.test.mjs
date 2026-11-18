@@ -42,12 +42,22 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "checkType(\"check mimic Artifact\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Mimic\", CardType.ARTIFACT, true)"
+          "op": "assertType",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Mimic",
+          "cardType": "ARTIFACT",
+          "extra": "true"
         },
         {
-          "op": "unsupported",
-          "source": "checkType(\"check mimic Creature\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Mimic\", CardType.CREATURE, true)"
+          "op": "assertType",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Mimic",
+          "cardType": "CREATURE",
+          "extra": "true"
         },
         {
           "op": "unsupported",
@@ -63,17 +73,21 @@ registerPortedMageTests({
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Mimic"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Mimic",
+          "ability": "VigilanceAbility.class",
+          "expected": true
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "POSTCOMBAT_MAIN",
-          "ability": 0,
-          "expected": "Mimic"
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Mimic",
+          "ability": "HasteAbility.class",
+          "expected": true
         },
         {
           "op": "activateAbility",

@@ -334,74 +334,125 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Copy Enchantment",
+          "name": "Copy Enchantment@copy",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "Curse of Exhaustion",
+          "player": 0,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Curse of Exhaustion",
           "target": 1
         },
         {
-          "op": "castSpell",
-          "turn": 4,
-          "phase": "POSTCOMBAT_MAIN",
+          "op": "assertStackObject",
+          "source": "Curse of Exhaustion",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAttachedTo",
           "player": 0,
-          "name": "Lightning Bolt",
-          "target": 1
+          "attachment": "Curse of Exhaustion",
+          "attachedPlayer": 1,
+          "expected": true
         },
         {
           "op": "castSpell",
+          "name": "Copy Enchantment",
+          "player": 1,
           "turn": 4,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Copy Enchantment"
+          "objectAlias": "@copy"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": false
+          "op": "assertStackObject",
+          "source": "Copy Enchantment",
+          "count": 1,
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Curse of Exhaustion"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@copy"
+          },
+          "count": 1,
+          "checks": []
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "@copy",
+          "attachedPlayer": 0,
+          "expected": true
         },
         {
           "op": "assertPlayableAbility",
           "turn": 4,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "label": "Cast Lightning",
-          "expected": false
+          "label": "Cast Lightning Bolt",
+          "expected": true
         },
         {
-          "op": "setStopAt",
+          "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 0,
           "turn": 4,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "target": 1
         },
         {
-          "op": "execute"
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "targetCount": 1
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Lightning Bolt",
+          "expected": false,
+          "holdStack": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertHandCount",
-          "player": 1,
-          "name": "Copy Enchantment",
-          "count": 0
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 1,
-          "name": "Copy Enchantment",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
           "player": 0,
-          "name": "Curse of Exhaustion",
-          "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 1,
-          "name": "Curse of Exhaustion",
+          "name": "Lightning Bolt",
           "count": 1
         },
         {
@@ -1325,13 +1376,34 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Memnite"
+        },
+        {
           "op": "setStopAt",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { if (!e.getMessage().contains(\"Missing CHOICE def for turn 2, step UPKEEP, PlayerB\")) { Assert.fail(\"Should have had error about needing a target, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Memnite",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
         }
       ]
     },

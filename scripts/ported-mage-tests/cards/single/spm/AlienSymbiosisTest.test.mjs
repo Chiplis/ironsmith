@@ -47,6 +47,33 @@ registerPortedMageTests({
           "target": "Bear Cub"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Island"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alien Symbiosis",
+          "count": 1,
+          "onTop": true,
+          "objectTarget": "Bear Cub",
+          "targetCount": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Island",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN"
@@ -62,12 +89,17 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, bearCub, MenaceAbility.class, 1)"
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Bear Cub",
+          "count": 1,
+          "ability": "Menace"
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(bearCub, SubType.SYMBIOTE)"
+          "op": "assertSubtype",
+          "player": 0,
+          "name": "Bear Cub",
+          "subtype": "Symbiote"
         }
       ]
     }

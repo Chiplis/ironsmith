@@ -156,12 +156,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Gitaxian Probe",
-          "target": 0
+          "kind": "cast_spell",
+          "label": "Gitaxian Probe",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStopAt",
@@ -169,8 +171,7 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Gitaxian Probe$targetPlayer=PlayerA\")) { Assert.fail(\"must throw error about having 0 actions, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
         }
       ]
     },
@@ -246,11 +247,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Myr Superion"
+          "kind": "cast_spell",
+          "label": "Myr Superion",
+          "sourceZone": "hand",
+          "checkPayment": true
         },
         {
           "op": "setStopAt",
@@ -258,8 +262,7 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Myr Superion\")) { Assert.fail(\"must throw error about having 0 actions, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
         }
       ]
     },
@@ -303,32 +306,63 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "Pyretic Ritual",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Pyretic Ritual",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Pyretic Ritual"
+          "isSpell": true
         },
         {
-          "op": "castSpell",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Fated Conflagration",
-          "target": "Carnivorous Moss-Beast"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Pyretic Ritual",
           "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "R",
+          "amount": 3
+        },
+        {
+          "op": "castSpell",
+          "name": "Fated Conflagration",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": "Carnivorous Moss-Beast"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Fated Conflagration",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "objectTarget": "Carnivorous Moss-Beast"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "R",
+          "amount": 0
         },
         {
           "op": "assertGraveyardCount",
@@ -341,6 +375,16 @@ registerPortedMageTests({
           "player": 1,
           "name": "Carnivorous Moss-Beast",
           "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
         }
       ]
     },
@@ -942,6 +986,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Infectious Curse",
+          "expected": true,
+          "attachedPlayer": 1
+        },
+        {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -972,12 +1023,20 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"a\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, 20 + 1)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "life": 21,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"b\", 3, PhaseStep.PRECOMBAT_MAIN, playerB, 20 - 1 - 1)"
+          "op": "assertLife",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "life": 18,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -1036,7 +1095,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Look at the top four"
+          "ability": "+1: Look at the top four",
+          "source": "Vivien Reid"
         },
         {
           "op": "setChoice",
@@ -1044,15 +1104,22 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"Vivien Reid counter check\", 1, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Vivien Reid\", CounterType.LOYALTY, 7)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Vivien Reid",
+          "counter": "LOYALTY",
+          "count": 7,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-8: You get an emblem"
+          "ability": "-8: You get an emblem",
+          "source": "Vivien Reid"
         },
         {
           "op": "waitStackResolved",
@@ -1065,20 +1132,28 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-X: {this} deals X damage divided as you choose"
+          "ability": "-X: {this} deals X damage divided as you choose",
+          "source": "Huatli, Warrior Poet"
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "value": "X=4"
+          "kind": "number",
+          "descriptionPrefix": "Choose value for X",
+          "value": 4,
+          "rejectedValue": 5
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"Grizzly Bears\", 2)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Grizzly Bears",
+          "amount": 2
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, \"Ghitu Lavarunner\", 2)"
+          "op": "addTargetAmount",
+          "player": 0,
+          "target": "Ghitu Lavarunner",
+          "amount": 2
         },
         {
           "op": "setStrictChooseMode",
@@ -1165,14 +1240,19 @@ registerPortedMageTests({
           "name": "Spark Double"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Carth the Lion"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Carth the Lion"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "castSpell",
@@ -1182,20 +1262,38 @@ registerPortedMageTests({
           "name": "Spark Double"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Carth the Lion"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Carth the Lion"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Carth the Lion",
+          "count": 3
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Vivien Reid",
+          "counter": "LOYALTY",
+          "count": 5
         },
         {
           "op": "assertPlayableAbility",

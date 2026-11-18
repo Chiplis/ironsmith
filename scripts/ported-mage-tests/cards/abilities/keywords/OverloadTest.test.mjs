@@ -477,53 +477,61 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
+          "name": "March of Progress with overload",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "March of Progress",
+          "count": 1,
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "March of Progress with overload"
+          "targetCount": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Memnite",
           "count": 2
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Ornithopter",
           "count": 2
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Food Token",
           "count": 1
         },
         {
           "op": "castSpell",
+          "name": "March of Progress with overload",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "March of Progress",
+          "count": 1,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "March of Progress with overload"
+          "targetCount": 0
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

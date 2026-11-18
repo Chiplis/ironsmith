@@ -47,12 +47,21 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "label": "Cast Outwit",
-          "expected": true
+          "expected": true,
+          "holdStack": true
         },
         {
           "op": "castSpell",
@@ -140,12 +149,21 @@ registerPortedMageTests({
           "target": "Memnite"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "targetCount": 1
+        },
+        {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "label": "Cast Outwit",
-          "expected": false
+          "expected": false,
+          "holdStack": true
         },
         {
           "op": "setStopAt",

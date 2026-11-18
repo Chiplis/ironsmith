@@ -50,8 +50,12 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Bolt check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast your second spell each turn\", 0)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast your second spell each turn",
+          "count": 0
         },
         {
           "op": "waitStackResolved",
@@ -67,8 +71,12 @@ registerPortedMageTests({
           "name": "Isamaru, Hound of Konda"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"Hound check\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast your second spell each turn\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast your second spell each turn",
+          "count": 1
         },
         {
           "op": "setStopAt",

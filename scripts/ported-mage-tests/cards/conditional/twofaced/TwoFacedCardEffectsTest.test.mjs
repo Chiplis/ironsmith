@@ -64,7 +64,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Mayor of Avabruck",
+          "name": "Mayor of Avabruck@original",
           "count": 1
         },
         {
@@ -78,7 +78,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Clone",
+          "name": "Clone@clone",
           "count": 1
         },
         {
@@ -86,14 +86,41 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Mayor of Avabruck"
+          "name": "Mayor of Avabruck",
+          "objectAlias": "@original"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Mayor of Avabruck",
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Clone"
+          "name": "Clone",
+          "objectAlias": "@clone"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Mayor of Avabruck"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -124,6 +151,22 @@ registerPortedMageTests({
           "player": 1,
           "name": "Mayor of Avabruck",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@clone",
+            "name": "Mayor of Avabruck"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "doubleFaced",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -134,7 +177,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Mayor of Avabruck",
+          "name": "Mayor of Avabruck@original",
           "count": 1
         },
         {
@@ -148,7 +191,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Clone",
+          "name": "Clone@clone",
           "count": 1
         },
         {
@@ -163,24 +206,41 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Mayor of Avabruck"
+          "name": "Mayor of Avabruck",
+          "objectAlias": "@original"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Mayor of Avabruck",
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Clone"
+          "name": "Clone",
+          "objectAlias": "@clone"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Mayor of Avabruck"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Mayor of Avabruck"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -215,6 +275,22 @@ registerPortedMageTests({
           "player": 1,
           "name": "Mayor of Avabruck",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@clone",
+            "name": "Mayor of Avabruck"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "doubleFaced",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -225,7 +301,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Mayor of Avabruck",
+          "name": "Mayor of Avabruck@original",
           "count": 1
         },
         {
@@ -239,7 +315,18 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Clone",
+          "name": "Clone@clone",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Howlpack Alpha",
           "count": 1
         },
         {
@@ -247,7 +334,22 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Clone"
+          "name": "Clone",
+          "objectAlias": "@clone"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Howlpack Alpha"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -278,6 +380,22 @@ registerPortedMageTests({
           "player": 1,
           "name": "Howlpack Alpha",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "alias": "@clone",
+            "name": "Howlpack Alpha"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "doubleFaced",
+              "expected": false
+            }
+          ]
         }
       ]
     },

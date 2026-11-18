@@ -36,21 +36,18 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Counterspell",
-          "target": "Sudden Shock"
-        },
-        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Counterspell$target=Sudden Shock\")) { Assert.fail(\"Should have thrown error about trying to use Counterspell, but got:\\n\" + e.getMessage()); } }"
+          "op": "assertNoAction",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "kind": "cast_spell",
+          "label": "Counterspell",
+          "onStack": "Sudden Shock"
         }
       ]
     },
@@ -344,14 +341,6 @@ registerPortedMageTests({
           "value": "X=1"
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Shock",
-          "target": "Fortress Crab"
-        },
-        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -361,8 +350,13 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); throw new AssertionError(\"expected failure to cast Shock\"); } catch (AssertionError e) { Assert.assertTrue(e.getMessage().contains(\"Can't find ability to activate command: Cast Shock$target=Fortress Crab\")); }"
+          "op": "assertNoAction",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "kind": "cast_spell",
+          "label": "Shock",
+          "onStack": "Molten Disaster"
         }
       ]
     },
@@ -443,13 +437,6 @@ registerPortedMageTests({
           "value": "X=1"
         },
         {
-          "op": "activateAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "Sacrifice"
-        },
-        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -459,8 +446,23 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); throw new AssertionError(\"expected failure to activate sacrifice ability\"); } catch (AssertionError e) { Assert.assertTrue(e.getMessage().contains(\"Can't find ability to activate command: Sacrifice\")); }"
+          "op": "assertTappedCount",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "name": "Mountain",
+          "tapped": true,
+          "count": 4,
+          "onStack": "Molten Disaster"
+        },
+        {
+          "op": "assertNoAction",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "kind": "activate_ability",
+          "label": "Sacrifice",
+          "onStack": "Molten Disaster"
         }
       ]
     }

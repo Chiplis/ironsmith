@@ -566,8 +566,12 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerB, aura, creature, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "targetPlayer": 1,
+          "attachment": "Kenrith's Transformation",
+          "target": "Owlin Shieldmage",
+          "expected": true
         },
         {
           "op": "assertAbility",
@@ -716,8 +720,12 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerB, aura, creature, true)"
+          "op": "assertAttachedTo",
+          "player": 0,
+          "targetPlayer": 1,
+          "attachment": "Kenrith's Transformation",
+          "target": "Owlin Shieldmage",
+          "expected": true
         },
         {
           "op": "assertAbility",

@@ -8,6 +8,13 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "addCard",
+          "zone": "OUTSIDE_GAME",
+          "player": 0,
+          "name": "Disenchant",
+          "count": 1
+        },
+        {
+          "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Plains",
@@ -62,12 +69,17 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(garth, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Garth One-Eye",
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Plains\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Plains",
+          "tapped": true,
+          "count": 2
         },
         {
           "op": "assertPermanentCount",
@@ -92,6 +104,13 @@ registerPortedMageTests({
     {
       "name": "testBraingeyser",
       "operations": [
+        {
+          "op": "addCard",
+          "zone": "OUTSIDE_GAME",
+          "player": 0,
+          "name": "Braingeyser",
+          "count": 1
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -146,12 +165,17 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(garth, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Garth One-Eye",
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Island\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Island",
+          "tapped": true,
+          "count": 5
         },
         {
           "op": "assertGraveyardCount",
@@ -169,6 +193,13 @@ registerPortedMageTests({
     {
       "name": "testTerror",
       "operations": [
+        {
+          "op": "addCard",
+          "zone": "OUTSIDE_GAME",
+          "player": 0,
+          "name": "Terror",
+          "count": 1
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -225,12 +256,17 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(garth, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Garth One-Eye",
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Swamp\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": true,
+          "count": 2
         },
         {
           "op": "assertPermanentCount",
@@ -257,6 +293,13 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "addCard",
+          "zone": "OUTSIDE_GAME",
+          "player": 0,
+          "name": "Shivan Dragon",
+          "count": 1
+        },
+        {
+          "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Mountain",
@@ -275,6 +318,11 @@ registerPortedMageTests({
           "value": "Shivan Dragon"
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -290,18 +338,36 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(garth, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Garth One-Eye",
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Mountain\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 6
+        },
+        {
+          "op": "assertTokenCount",
+          "player": 0,
+          "name": "Shivan Dragon",
+          "count": 1
         }
       ]
     },
     {
       "name": "testRegrowth",
       "operations": [
+        {
+          "op": "addCard",
+          "zone": "OUTSIDE_GAME",
+          "player": 0,
+          "name": "Regrowth",
+          "count": 1
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -358,12 +424,17 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(garth, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Garth One-Eye",
+          "tapped": true
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Forest\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Forest",
+          "tapped": true,
+          "count": 2
         },
         {
           "op": "assertHandCount",
@@ -390,6 +461,13 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "addCard",
+          "zone": "OUTSIDE_GAME",
+          "player": 0,
+          "name": "Black Lotus",
+          "count": 1
+        },
+        {
+          "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Garth One-Eye",
@@ -399,6 +477,11 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": "Black Lotus"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
         },
         {
           "op": "activateAbility",
@@ -416,8 +499,16 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(garth, true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Garth One-Eye",
+          "tapped": true
+        },
+        {
+          "op": "assertTokenCount",
+          "player": 0,
+          "name": "Black Lotus",
+          "count": 1
         }
       ]
     }

@@ -60,7 +60,7 @@ registerPortedMageTests({
         },
         {
           "op": "addCard",
-          "zone": "BATTLEFIELD",
+          "zone": "HAND",
           "player": 0,
           "name": "Maximum Carnage",
           "count": 1
@@ -80,9 +80,39 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addTarget",
-          "player": "playerD",
-          "target": 0
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain",
+          "count": 5
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Maximum Carnage",
+          "resolve": true
+        },
+        {
+          "op": "attack",
+          "turn": 2,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 1,
+          "attacker": "Bear Cub",
+          "defender": 3,
+          "expectedLegal": true
+        },
+        {
+          "op": "attack",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 3,
+          "attacker": "Bear Cub",
+          "defender": 2,
+          "expectedLegal": true,
+          "rejectedDefender": 0,
+          "rejection": "attack requirement|illegal attack|invalid attackers|cannot attack"
         },
         {
           "op": "setStopAt",
@@ -90,8 +120,12 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (AssertionError e) { assertTrue(\"Shouldn't be able to attack playerA\", e.getMessage().contains(\"[targetPlayer=PlayerA], but not used\")); }"
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 2,
+          "life": 18
         }
       ]
     }

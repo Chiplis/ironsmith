@@ -35,51 +35,58 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "BEGIN_COMBAT",
+          "source": "Bleeding Effect",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Rumbling Baloth",
-          "ability": "FirstStrike",
-          "expected": true
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Rumbling Baloth",
-          "ability": "HexproofFromWhite",
-          "expected": true
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Rumbling Baloth",
-          "ability": false,
-          "expected": true
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Rumbling Baloth",
-          "ability": "Flying",
-          "expected": false
-        },
-        {
-          "op": "assertAbility",
-          "player": 0,
-          "name": "Rumbling Baloth",
-          "ability": "HexproofFromBlue",
-          "expected": false
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Rumbling Baloth"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "first strike",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "hexproof from white",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "menace",
+              "expected": true
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "flying",
+              "expected": false
+            },
+            {
+              "property": "ability",
+              "kind": "static",
+              "value": "hexproof from blue",
+              "expected": false
+            }
+          ]
         }
       ]
     }

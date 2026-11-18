@@ -110,7 +110,7 @@ registerPortedMageTests({
           "turn": 4,
           "player": 1,
           "attacker": "Sakashima the Impostor",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",

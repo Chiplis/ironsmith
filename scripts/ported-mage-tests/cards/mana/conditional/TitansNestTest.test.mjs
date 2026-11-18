@@ -67,8 +67,17 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{C}{C}[{TitansNestManaCondition}]\", manaOptions)"
+          "op": "assertManaOptions",
+          "player": 0,
+          "exact": true,
+          "options": [
+            {
+              "mana": "{C}{C}",
+              "restricted": {
+                "coloredSpellWithoutX": 2
+              }
+            }
+          ]
         }
       ]
     }

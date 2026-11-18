@@ -45,15 +45,23 @@ registerPortedMageTests({
           "value": "Balduvian Bears"
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"boost\", 1, PhaseStep.BEGIN_COMBAT, playerA, \"Silumgar Scavenger\", CounterType.P1P1, 1)"
+          "op": "assertCounterCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Silumgar Scavenger",
+          "counter": "P1P1",
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "assertAbility",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
-          "ability": 0,
-          "expected": "Silumgar Scavenger"
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Silumgar Scavenger",
+          "ability": "HasteAbility.class",
+          "expected": true
         },
         {
           "op": "setStopAt",

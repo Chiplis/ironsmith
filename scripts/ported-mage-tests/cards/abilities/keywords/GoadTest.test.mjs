@@ -190,7 +190,7 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerD",
+          "player": 3,
           "name": "Jeering Homunculus",
           "count": 1
         },
@@ -204,14 +204,14 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 3,
           "name": "Island",
           "count": 2
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
+          "player": 2,
           "name": "Silvercoat Lion",
           "count": 1
         },
@@ -233,21 +233,61 @@ registerPortedMageTests({
           "name": "Jeering Homunculus"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 2,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
+        },
+        {
           "op": "addTarget",
-          "player": "playerD",
+          "player": 3,
           "target": "Silvercoat Lion"
         },
         {
           "op": "setChoice",
-          "player": "playerD",
+          "player": 3,
           "value": "Yes"
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerD",
+          "player": 3,
           "name": "Jeering Homunculus"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 2,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -256,8 +296,24 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertAttacking",
+          "player": 2,
+          "name": "Silvercoat Lion",
+          "defenders": [
+            1
+          ],
+          "expected": true
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "startingLife": 40
     },
     {
       "name": "testMultipleGoadRestriction",
@@ -272,7 +328,7 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerD",
+          "player": 3,
           "name": "Jeering Homunculus",
           "count": 1
         },
@@ -286,7 +342,7 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 3,
           "name": "Island",
           "count": 2
         },
@@ -300,7 +356,7 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
+          "player": 2,
           "name": "Silvercoat Lion",
           "count": 1
         },
@@ -322,21 +378,61 @@ registerPortedMageTests({
           "name": "Jeering Homunculus"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 2,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
+        },
+        {
           "op": "addTarget",
-          "player": "playerD",
+          "player": 3,
           "target": "Silvercoat Lion"
         },
         {
           "op": "setChoice",
-          "player": "playerD",
+          "player": 3,
           "value": "Yes"
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerD",
+          "player": 3,
           "name": "Jeering Homunculus"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 2,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "setStopAt",
@@ -345,8 +441,25 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertAttacking",
+          "player": 2,
+          "name": "Silvercoat Lion",
+          "defenders": [
+            0,
+            3
+          ],
+          "expected": true
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "startingLife": 40
     },
     {
       "name": "testRegularCombatRequirement",
@@ -388,21 +501,21 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 3,
           "name": "Goblin Balloon Brigade",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerD",
+          "player": 3,
           "name": "Mountain",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": "playerD",
+          "player": 3,
           "name": "Goblin Champion",
           "count": 1
         },
@@ -420,19 +533,24 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "playerD"
+          "target": 3
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": "playerD",
+          "player": 3,
           "name": "Goblin Champion"
         },
         {
           "op": "addTarget",
-          "player": "playerD",
-          "target": "playerC"
+          "player": 3,
+          "target": 2
         },
         {
           "op": "setStopAt",
@@ -441,8 +559,45 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 3,
+            "name": "Goblin Balloon Brigade"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 3,
+            "name": "Goblin Champion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "startingLife": 40
     }
   ]
 });

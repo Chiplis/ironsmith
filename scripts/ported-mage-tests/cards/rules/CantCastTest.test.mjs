@@ -28,11 +28,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Jayemdae Tome"
+          "kind": "cast_spell",
+          "label": "Jayemdae Tome",
+          "sourceZone": "hand"
         },
         {
           "op": "setStopAt",
@@ -40,8 +42,7 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Jayemdae Tome\")) { Assert.fail(\"must not have throw error about bad targets, but got:\\n\" + e.getMessage()); } }"
+          "op": "execute"
         }
       ]
     },
@@ -70,17 +71,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertRejectedProposal",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Blaze",
-          "target": 0
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "X=3"
+          "x": 3,
+          "silentRejection": true
         },
         {
           "op": "setStopAt",
@@ -88,8 +85,13 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Blaze$targetPlayer=PlayerA\")) { Assert.fail(\"must not have throw error about bad targets, but got:\\n\" + e.getMessage()); } } assertHandCount(playerA, \"Blaze\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Blaze",
+          "count": 1
         },
         {
           "op": "assertLife",
@@ -187,11 +189,13 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "castSpell",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Pine Walker using Morph"
+          "name": "Pine Walker",
+          "filterMethod": "Morph",
+          "methods": []
         },
         {
           "op": "setStopAt",
@@ -199,8 +203,13 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Pine Walker\")) { Assert.fail(\"must not have throw error about bad targets, but got:\\n\" + e.getMessage()); } } assertPermanentCount(playerA, EmptyNames.FACE_DOWN_CREATURE.getTestCommand(), 0)"
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Face-down Creature",
+          "count": 0
         },
         {
           "op": "assertHandCount",
@@ -228,11 +237,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "castSpell",
+          "op": "assertCastMethods",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Mox Opal"
+          "name": "Mox Opal",
+          "methods": [],
+          "zone": "hand"
         },
         {
           "op": "setStopAt",
@@ -240,8 +251,13 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Mox Opal\")) { Assert.fail(\"must not have throw error about bad targets, but got:\\n\" + e.getMessage()); } } assertHandCount(playerA, \"Mox Opal\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Mox Opal",
+          "count": 1
         }
       ]
     },
@@ -407,12 +423,13 @@ registerPortedMageTests({
           "value": "Ethersworn Canonist"
         },
         {
-          "op": "castSpell",
+          "op": "assertNoAction",
           "turn": 4,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "name": "Abrupt Decay",
-          "target": "Ethersworn Canonist"
+          "kind": "cast_spell",
+          "label": "Abrupt Decay",
+          "sourceZone": "hand"
         },
         {
           "op": "setStopAt",
@@ -420,8 +437,14 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Abrupt Decay$target=Ethersworn Canonist\")) { Assert.fail(\"must not have throw error about bad targets, but got:\\n\" + e.getMessage()); } } assertCounterCount(playerA, \"Aether Vial\", CounterType.CHARGE, 2)"
+          "op": "execute"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Aether Vial",
+          "counter": "CHARGE",
+          "count": 2
         },
         {
           "op": "assertPermanentCount",

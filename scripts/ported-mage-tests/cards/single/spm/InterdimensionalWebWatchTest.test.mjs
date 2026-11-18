@@ -56,15 +56,49 @@ registerPortedMageTests({
           "name": "Interdimensional Web Watch"
         },
         {
-          "op": "activateAbility",
+          "op": "assertStackObject",
+          "source": "Interdimensional Web Watch",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "resolutions": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Interdimensional Web Watch",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "resolutions": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "colors",
+          "description": "Add two mana in any combination of colors",
+          "choices": [
+            "Blue",
+            "Red"
+          ]
+        },
+        {
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Interdimensional Web Watch",
           "ability": "{T}: Add two"
-        },
-        {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 0, 1, 0, 1, 0)"
         },
         {
           "op": "waitStackResolved",
@@ -85,12 +119,22 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Lightning Bolt"
+          "name": "Lightning Bolt",
+          "target": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "resolutions": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",

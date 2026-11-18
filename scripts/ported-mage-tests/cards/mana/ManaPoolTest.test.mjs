@@ -656,8 +656,14 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"damage X\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Variable Damage Fixture",
+          "fixtureSource": true,
+          "custom": true,
+          "typeLine": "Artifact",
+          "oracleText": "{X}: This permanent deals X damage to any target."
         },
         {
           "op": "activateAbility",
@@ -688,8 +694,13 @@ registerPortedMageTests({
           "ability": "{T}: Add {R}"
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 4)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 4,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -711,12 +722,21 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 4 - 3)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.END_TURN, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 1,
+          "life": 17,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",
@@ -736,19 +756,31 @@ registerPortedMageTests({
       "name": "test_ConditionalMana_OneXAbility",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"add 10\", playerA, new SimpleActivatedAbility(Zone.ALL, new AddConditionalManaEffect(Mana.RedMana(10), new SimpleActivatedAbilityManaBuilder()), new ManaCostsImpl<>(\"\")))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Restricted Mana Fixture",
+          "fixtureSource": true,
+          "custom": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Add {R}{R}{R}{R}{R}{R}{R}{R}{R}{R}. Spend this mana only to activate abilities."
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"damage X\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Variable Damage Fixture",
+          "fixtureSource": true,
+          "custom": true,
+          "typeLine": "Artifact",
+          "oracleText": "{X}: This permanent deals X damage to any target."
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Add {R}"
+          "ability": "{0}: Add {R}"
         },
         {
           "op": "waitStackResolved",
@@ -757,8 +789,13 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 10)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 10,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
@@ -780,12 +817,21 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 10 - 3)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 7,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.END_TURN, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 1,
+          "life": 17,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",
@@ -819,12 +865,24 @@ registerPortedMageTests({
           "count": 5
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"damage X\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Variable Damage Fixture",
+          "fixtureSource": true,
+          "custom": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: This permanent deals X damage to any target."
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"counter until pay X\", playerB, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Variable Counter Fixture",
+          "fixtureSource": true,
+          "custom": true,
+          "typeLine": "Artifact",
+          "oracleText": "{X}: Counter target spell unless its controller pays {X}."
         },
         {
           "op": "addCard",
@@ -841,8 +899,13 @@ registerPortedMageTests({
           "ability": "{T}: Add {R}"
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana spell\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 1)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -881,8 +944,21 @@ registerPortedMageTests({
           "ability": "{T}: Add {R}"
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana prevent\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 4)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 4,
+          "seatIndependent": true,
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "text": "Lightning Bolt",
+          "count": 1
         },
         {
           "op": "activateAbility",
@@ -913,12 +989,21 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana after\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 4 - 3)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 1,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.END_TURN, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 1,
+          "life": 17,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",
@@ -952,16 +1037,34 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"add 10\", playerA, new SimpleManaAbility(Zone.ALL, new AddConditionalManaEffect(Mana.RedMana(10), new SimpleActivatedAbilityManaBuilder()), new ManaCostsImpl<>(\"\")))"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Payment Shield Mana Fixture",
+          "fixtureSource": true,
+          "custom": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Add {R}{R}{R}{R}{R}{R}{R}{R}{R}{R}. This mana can't be spent to cast a nonartifact spell."
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"damage X\", playerA, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Variable Damage Fixture",
+          "fixtureSource": true,
+          "custom": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: This permanent deals X damage to any target."
         },
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"counter until pay X\", playerB, ability)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Variable Counter Fixture",
+          "fixtureSource": true,
+          "custom": true,
+          "typeLine": "Artifact",
+          "oracleText": "{X}: Counter target spell unless its controller pays {X}."
         },
         {
           "op": "addCard",
@@ -978,8 +1081,13 @@ registerPortedMageTests({
           "ability": "{T}: Add {R}"
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana spell\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 1)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 1,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -994,11 +1102,24 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Add {R}"
+          "ability": "{0}: Add {R}"
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana prevent\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 10)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 10,
+          "seatIndependent": true,
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "text": "Lightning Bolt",
+          "count": 1
         },
         {
           "op": "activateAbility",
@@ -1029,12 +1150,21 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana after\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"R\", 10 + 1 - 1 - 3)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "R",
+          "amount": 7,
+          "seatIndependent": true
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.END_TURN, playerB, 20 - 3)"
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 1,
+          "life": 17,
+          "seatIndependent": true
         },
         {
           "op": "setStopAt",

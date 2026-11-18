@@ -168,6 +168,10 @@ registerPortedMageTests({
       "name": "testVillainousWealthExilesBoost",
       "operations": [
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -213,15 +217,23 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Master of Pearls using Morph"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -237,9 +249,48 @@ registerPortedMageTests({
           "value": "X=3"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Villainous Wealth",
+          "count": 1,
+          "onTop": true,
+          "xValue": 3,
+          "targetCount": 1
+        },
+        {
+          "op": "assertChoiceMenu",
+          "kind": "select_objects",
+          "player": 0,
+          "description": "Choose up to 1 nonland card",
+          "options": [
+            "Secret Plans"
+          ]
+        },
+        {
           "op": "setChoice",
           "player": 0,
-          "value": "Yes"
+          "value": "Secret Plans"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Secret Plans",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -429,6 +480,11 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "clearZone",
+          "zone": "library",
+          "player": 1
+        },
+        {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
@@ -450,24 +506,36 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "skipInitShuffling"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Villainous Wealth",
-          "target": 1
+          "op": "assertLibraryOrder",
+          "player": 1,
+          "cards": [
+            "Mox Sapphire",
+            "Quicken",
+            "Mox Emerald"
+          ]
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "X=3"
+        },
+        {
+          "op": "castSpell",
+          "name": "Villainous Wealth",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Villainous Wealth",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true,
+          "xValue": 3,
+          "targetCount": 1
         },
         {
           "op": "setChoice",
@@ -477,7 +545,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Yes"
+          "value": true
         },
         {
           "op": "setChoice",
@@ -487,20 +555,52 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Yes"
+          "value": true
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Yes"
+          "value": "Quicken"
         },
         {
-          "op": "setStopAt",
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mox Emerald",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Mox Sapphire",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Quicken",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
         },
         {
           "op": "assertGraveyardCount",
@@ -509,9 +609,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertExileCount",
+          "op": "assertGraveyardCount",
           "player": 1,
-          "count": 0
+          "name": "Quicken",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
@@ -526,9 +627,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertGraveyardCount",
+          "op": "assertExileCount",
           "player": 1,
-          "name": "Quicken",
+          "name": null,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
           "count": 1
         }
       ]

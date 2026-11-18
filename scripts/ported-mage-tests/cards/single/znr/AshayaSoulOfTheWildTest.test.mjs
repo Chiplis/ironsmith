@@ -211,7 +211,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Volrath's Shapeshifter",
+          "name": "Volrath's Shapeshifter@ashaya.copy",
           "count": 1
         },
         {
@@ -222,11 +222,30 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Ashaya, Soul of the Wild",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Volrath's Shapeshifter"
+          "name": "Volrath's Shapeshifter",
+          "objectAlias": "@ashaya.copy"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Volrath's Shapeshifter",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -237,12 +256,54 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(ashaya, CardType.LAND, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@ashaya.copy"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "calculatedName",
+              "expected": "Ashaya, Soul of the Wild"
+            },
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Forest",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(ashaya, CardType.CREATURE, SubType.ELEMENTAL)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@ashaya.copy"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "calculatedName",
+              "expected": "Ashaya, Soul of the Wild"
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Elemental",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertAbility",
@@ -259,12 +320,46 @@ registerPortedMageTests({
           "toughness": 5
         },
         {
-          "op": "unsupported",
-          "source": "assertType(bear, CardType.LAND, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Grizzly Bears",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Forest",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(bear, CardType.CREATURE, SubType.BEAR)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Grizzly Bears",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Bear",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertAbility",

@@ -340,19 +340,27 @@ registerPortedMageTests({
           "name": "Apex Hawks"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose optional costs for Apex Hawks",
+          "choices": [
+            "Multikicker: 2",
+            "Multikicker: 2"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Apex Hawks",
+          "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -476,6 +484,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose optional costs for Sunscape Battlemage",
+          "choices": [
+            "Kicker {2}{U}: 3"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -483,26 +500,30 @@ registerPortedMageTests({
           "name": "Sunscape Battlemage"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Sunscape Battlemage",
+          "count": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Sunscape Battlemage",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -666,6 +687,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose optional costs for Sunscape Battlemage",
+          "choices": [
+            "Kicker {1}{G}: 2",
+            "Kicker {2}{U}: 3"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -673,14 +704,11 @@ registerPortedMageTests({
           "name": "Sunscape Battlemage"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Sunscape Battlemage",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -691,16 +719,18 @@ registerPortedMageTests({
           "target": "Sunscape Battlemage"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ertai's Trickery",
+          "count": 1,
+          "targetCount": 1,
+          "completeTargets": true
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -993,19 +1023,20 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after cast\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Ago\", 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after cast\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast\", 1)"
-        },
-        {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "player": 0,
+          "text": "Cast Agonizing Demise",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast",
+          "count": 1
         },
         {
           "op": "setChoice",
@@ -1023,6 +1054,13 @@ registerPortedMageTests({
           "target": "@bear2"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null,
+          "once": true
+        },
+        {
           "op": "assertStackSize",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -1030,12 +1068,20 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after copy trigger\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Ago\", 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Agonizing Demise",
+          "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after copy trigger\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast\", 0)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast",
+          "count": 0
         },
         {
           "op": "setStrictChooseMode",
@@ -1151,19 +1197,20 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after cast\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Ago\", 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after cast\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast\", 1)"
-        },
-        {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "player": 0,
+          "text": "Cast Agonizing Demise",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast",
+          "count": 1
         },
         {
           "op": "setChoice",
@@ -1181,6 +1228,13 @@ registerPortedMageTests({
           "target": "@bear2"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null,
+          "once": true
+        },
+        {
           "op": "assertStackSize",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -1188,12 +1242,20 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after copy trigger\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Ago\", 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Agonizing Demise",
+          "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after copy trigger\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast\", 0)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast",
+          "count": 0
         },
         {
           "op": "castSpell",
@@ -1211,16 +1273,33 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"before counter\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Ago\", 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Agonizing Demise",
+          "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"before counter\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Whenever you cast\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Whenever you cast",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"before counter\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Absorb\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Absorb",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
         },
         {
           "op": "waitStackResolved",
@@ -1228,11 +1307,6 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": null,
           "once": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
         },
         {
           "op": "waitStackResolved",
@@ -1249,8 +1323,12 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after counter\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Ago\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Agonizing Demise",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",
@@ -1344,6 +1422,14 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Academy Drake",
+          "count": 1
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -1356,16 +1442,26 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}, {T}",
-          "target": "Academy Drake"
+          "ability": "Copy target permanent spell you control",
+          "target": "Academy Drake",
+          "source": "Lithoform Engine"
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after copy\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Academy Drake\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Academy Drake",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after copy\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"{4}, {T}\", 1)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Lithoform Engine",
+          "abilityKind": "Activated"
         },
         {
           "op": "waitStackResolved",
@@ -1375,8 +1471,12 @@ registerPortedMageTests({
           "once": true
         },
         {
-          "op": "unsupported",
-          "source": "checkStackObject(\"after copy\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Cast Academy Drake\", 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "text": "Cast Academy Drake",
+          "count": 2
         },
         {
           "op": "castSpell",
@@ -1416,6 +1516,10 @@ registerPortedMageTests({
     {
       "name": "test_ZCC_CopiedCreaturesSpellMustWork",
       "operations": [
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
         {
           "op": "addCard",
           "zone": "HAND",
@@ -1480,22 +1584,32 @@ registerPortedMageTests({
           "value": "X=2"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Verazol, the Split Current",
+          "count": 1,
+          "onTop": true,
+          "xValue": 2
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Verazol, the Split Current",
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkPermanentCounters(\"prepare\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Verazol, the Split Current\", CounterType.P1P1, 4)"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Verazol, the Split Current",
+          "counter": "P1P1",
+          "count": 4
         },
         {
           "op": "castSpell",
@@ -1520,14 +1634,75 @@ registerPortedMageTests({
           "value": false
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Verazol, the Split Current",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Verazol, the Split Current",
+          "counter": "P1P1",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Deathforge Shaman",
+          "count": 2,
+          "onTop": true
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Deathforge Shaman",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 16
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
         },
         {
           "op": "addTarget",
@@ -1538,27 +1713,38 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, 20 - 4)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkLife(\"after\", 1, PhaseStep.PRECOMBAT_MAIN, playerB, 20 - 4)"
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Deathforge Shaman",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 16
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 16
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Deathforge Shaman",
+          "count": 2
         }
       ]
     },
@@ -1618,7 +1804,8 @@ registerPortedMageTests({
           "turn": 1,
           "player": 0,
           "attacker": "Raging Goblin",
-          "defender": 1
+          "defender": 1,
+          "expectedLegal": false
         },
         {
           "op": "setStopAt",
@@ -1626,8 +1813,16 @@ registerPortedMageTests({
           "phase": "END_COMBAT"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Player PlayerA must have 0 actions but found 1\")) { Assert.fail(\"Should have thrown error about not being able to attack with Raging Golin, but got:\\n\" + e.getMessage()); } } castSpell(1, PhaseStep.POSTCOMBAT_MAIN, playerB, \"Lightning Bolt\", playerA)"
+          "op": "execute"
+        },
+        {
+          "op": "assertNoAction",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "kind": "cast_spell",
+          "label": "Lightning Bolt",
+          "sourceZone": "hand"
         },
         {
           "op": "setStopAt",
@@ -1635,8 +1830,13 @@ registerPortedMageTests({
           "phase": "END_TURN"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Cast Lightning Bolt$targetPlayer=PlayerA\")) { Assert.fail(\"Should have thrown error about not being able to attack with Raging Golin, but got:\\n\" + e.getMessage()); } } assertGraveyardCount(playerA, \"Orim's Chant\", 1)"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Orim's Chant",
+          "count": 1
         },
         {
           "op": "assertGraveyardCount",
@@ -1659,6 +1859,10 @@ registerPortedMageTests({
     {
       "name": "test_Single_BloodhuskRitualist",
       "operations": [
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -1709,13 +1913,48 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
           "value": false
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bloodhusk Ritualist",
+          "count": 1,
+          "onTop": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "count": 5,
+          "tapped": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bloodhusk Ritualist",
+          "count": 1,
+          "onTop": true,
+          "abilityKind": "Triggered",
+          "targetCount": 1
         },
         {
           "op": "castSpell",
@@ -1726,13 +1965,30 @@ registerPortedMageTests({
           "target": "Bloodhusk Ritualist"
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "onTop": true,
+          "objectTarget": "Bloodhusk Ritualist"
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": "Fireball^Fireball"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setStopAt",
@@ -1792,6 +2048,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose optional costs for Marsh Casualties",
+          "choices": [
+            "Kicker: 3"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -1800,24 +2065,22 @@ registerPortedMageTests({
           "target": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Marsh Casualties",
+          "count": 1,
+          "targetCount": 1,
+          "completeTargets": true
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertTappedCount",
+          "player": 0,
           "name": "Swamp",
           "tapped": true,
           "count": 5

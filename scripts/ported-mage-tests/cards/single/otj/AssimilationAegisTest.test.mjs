@@ -49,7 +49,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Grizzly Bears",
+          "name": "Grizzly Bears@bear",
           "count": 1
         },
         {
@@ -62,7 +62,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Grizzly Bears"
+          "target": "@bear"
         },
         {
           "op": "waitStackResolved",
@@ -74,8 +74,8 @@ registerPortedMageTests({
           "op": "assertExileCount",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Grizzly Bears",
+          "player": 1,
+          "name": "@bear",
           "count": 1
         },
         {
@@ -108,7 +108,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Goblin Piker"
+          "target": "Goblin Piker",
+          "source": "Assimilation Aegis"
         },
         {
           "op": "setChoice",
@@ -151,7 +152,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Elite Vanguard"
+          "target": "Elite Vanguard",
+          "source": "Assimilation Aegis"
         },
         {
           "op": "setChoice",
@@ -207,8 +209,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": 1,
-          "count": "Grizzly Bears"
+          "targetPlayer": 1,
+          "name": "Grizzly Bears",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",

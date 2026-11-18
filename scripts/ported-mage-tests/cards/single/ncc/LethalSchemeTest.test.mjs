@@ -166,34 +166,45 @@ registerPortedMageTests({
           "target": "Elite Vanguard"
         },
         {
-          "op": "setChoice",
+          "op": "setManaPayment",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "alternatives": [
+            {
+              "source": "Grizzly Bears",
+              "kind": "convoke"
+            }
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Lethal Scheme",
+          "objectTarget": "Elite Vanguard",
+          "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 1
+        },
+        {
+          "op": "assertTapped",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "tapped": true
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Black"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Black"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Convoke"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Grizzly Bears"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "pBear.getIdName()"
+          "value": "Grizzly Bears"
         },
         {
           "op": "setChoice",
@@ -297,7 +308,8 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Grizzly Bears",
-          "count": 1
+          "count": 1,
+          "tapped": true
         },
         {
           "op": "addCard",
@@ -307,24 +319,84 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
-        },
-        {
-          "op": "execute"
+          "op": "addCard",
+          "player": 0,
+          "zone": "BATTLEFIELD",
+          "name": "Convoke Fixture",
+          "fixtureSource": true,
+          "typeLine": "Artifact",
+          "oracleText": "{0}: Tap target creature you control.\n{B}: Untap target creature you control."
         },
         {
           "op": "setStrictChooseMode",
           "value": true
         },
         {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Convoke Fixture",
+          "ability": "{0}: Tap target creature",
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Convoke Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
           "op": "activateManaAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
+          "source": "Swamp",
           "ability": "{T}: Add {B}",
           "count": 4
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 4
+        },
+        {
+          "op": "saveRuntimeCheckpoint",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0
         },
         {
           "op": "castSpell",
@@ -335,34 +407,183 @@ registerPortedMageTests({
           "target": "Elite Vanguard"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Black"
+          "count": 1,
+          "source": "Lethal Scheme",
+          "objectTarget": "Elite Vanguard"
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Black"
+          "colors": "B",
+          "amount": 0
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Black"
+          "resolutions": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Convoke"
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Elite Vanguard",
+          "count": 0,
+          "seatIndependent": true
         },
         {
-          "op": "addTarget",
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
+          "name": "Mountain",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Mountain",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Lethal Scheme",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "power": 2,
+          "toughness": 2,
+          "seatIndependent": true
+        },
+        {
+          "op": "restoreRuntimeCheckpoint"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Convoke Fixture",
+          "ability": "Untap target creature",
           "target": "Grizzly Bears"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "pBear.getIdName()"
+          "count": 1,
+          "source": "Convoke Fixture",
+          "abilityKind": "Activated",
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "tapped": true,
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 3
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": true,
+          "count": 4,
+          "seatIndependent": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Lethal Scheme",
+          "target": "Elite Vanguard"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "count": 1,
+          "source": "Lethal Scheme",
+          "objectTarget": "Elite Vanguard"
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 0
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "tapped": true,
+          "count": 1,
+          "seatIndependent": true
         },
         {
           "op": "setChoice",
@@ -370,58 +591,92 @@ registerPortedMageTests({
           "value": "Mountain"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "resolutions": 1
         },
         {
           "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "count": 0
+          "name": "Elite Vanguard",
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 1
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "count": 2
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Island",
-          "count": 0
-        },
-        {
-          "op": "assertHandCount",
-          "player": 0,
-          "name": "Island",
-          "count": 1
-        },
-        {
-          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Mountain",
-          "count": 1
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "assertHandCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Mountain",
-          "count": 0
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Island",
+          "count": 0,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Lethal Scheme",
+          "count": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": null,
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "assertPowerToughness",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Grizzly Bears",
           "power": 2,
-          "toughness": 2
+          "toughness": 2,
+          "seatIndependent": true
         }
       ]
     },
@@ -504,34 +759,45 @@ registerPortedMageTests({
           "target": "Elite Vanguard"
         },
         {
-          "op": "setChoice",
+          "op": "setManaPayment",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "alternatives": [
+            {
+              "source": "Grizzly Bears",
+              "kind": "convoke"
+            }
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Lethal Scheme",
+          "objectTarget": "Elite Vanguard",
+          "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 1
+        },
+        {
+          "op": "assertTapped",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "tapped": true
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Black"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Black"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Convoke"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Grizzly Bears"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "pBear.getIdName()"
+          "value": "Grizzly Bears"
         },
         {
           "op": "setChoice",
@@ -673,34 +939,45 @@ registerPortedMageTests({
           "target": "Elite Vanguard"
         },
         {
-          "op": "setChoice",
+          "op": "setManaPayment",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "alternatives": [
+            {
+              "source": "Grizzly Bears",
+              "kind": "convoke"
+            }
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Lethal Scheme",
+          "objectTarget": "Elite Vanguard",
+          "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "colors": "B",
+          "amount": 1
+        },
+        {
+          "op": "assertTapped",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "tapped": true
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Black"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Black"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Convoke"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Grizzly Bears"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "pBear.getIdName()"
+          "value": "Grizzly Bears"
         },
         {
           "op": "setChoice",
@@ -856,54 +1133,88 @@ registerPortedMageTests({
           "target": "Elite Vanguard"
         },
         {
-          "op": "setChoice",
+          "op": "setManaPayment",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "alternatives": [
+            {
+              "source": "Grizzly Bears",
+              "kind": "convoke"
+            },
+            {
+              "source": "Felhide Minotaur",
+              "kind": "convoke"
+            }
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "objectTarget": "Elite Vanguard",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Convoke"
+          "colors": "B",
+          "amount": 2
         },
         {
-          "op": "addTarget",
+          "op": "assertTapped",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "target": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "tapped": true
         },
         {
-          "op": "setChoice",
+          "op": "assertTapped",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Convoke"
+          "name": "Felhide Minotaur",
+          "tapped": true
         },
         {
-          "op": "addTarget",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "target": "Felhide Minotaur"
+          "kind": "select_objects",
+          "description": "Choose a permanent to connive next",
+          "options": [
+            "Grizzly Bears",
+            "Felhide Minotaur"
+          ],
+          "min": 1,
+          "max": 1
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "pBear.getIdName()"
+          "description": "Choose a permanent to connive next",
+          "choices": [
+            "Grizzly Bears"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Gray Ogre"
+          "description": "Choose 1 card to discard",
+          "choices": [
+            "Gray Ogre"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "pMino.getIdName()"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Island"
+          "description": "Choose 1 card to discard",
+          "choices": [
+            "Island"
+          ]
         },
         {
           "op": "setStopAt",
@@ -1073,54 +1384,88 @@ registerPortedMageTests({
           "target": "Elite Vanguard"
         },
         {
-          "op": "setChoice",
+          "op": "setManaPayment",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "alternatives": [
+            {
+              "source": "Grizzly Bears",
+              "kind": "convoke"
+            },
+            {
+              "source": "Felhide Minotaur",
+              "kind": "convoke"
+            }
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "objectTarget": "Elite Vanguard",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Convoke"
+          "colors": "B",
+          "amount": 2
         },
         {
-          "op": "addTarget",
+          "op": "assertTapped",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "target": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "tapped": true
         },
         {
-          "op": "setChoice",
+          "op": "assertTapped",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Convoke"
+          "name": "Felhide Minotaur",
+          "tapped": true
         },
         {
-          "op": "addTarget",
+          "op": "assertChoiceMenu",
           "player": 0,
-          "target": "Felhide Minotaur"
+          "kind": "select_objects",
+          "description": "Choose a permanent to connive next",
+          "options": [
+            "Felhide Minotaur",
+            "Grizzly Bears"
+          ],
+          "min": 1,
+          "max": 1
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "pMino.getIdName()"
+          "description": "Choose a permanent to connive next",
+          "choices": [
+            "Felhide Minotaur"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Gray Ogre"
+          "description": "Choose 1 card to discard",
+          "choices": [
+            "Gray Ogre"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "pBear.getIdName()"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Island"
+          "description": "Choose 1 card to discard",
+          "choices": [
+            "Island"
+          ]
         },
         {
           "op": "setStopAt",
@@ -1316,34 +1661,52 @@ registerPortedMageTests({
           "target": "Elite Vanguard"
         },
         {
-          "op": "setChoice",
+          "op": "setManaPayment",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "alternatives": [
+            {
+              "source": "Grizzly Bears",
+              "kind": "convoke"
+            },
+            {
+              "source": "Felhide Minotaur",
+              "kind": "convoke"
+            }
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "objectTarget": "Elite Vanguard",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Convoke"
+          "colors": "B",
+          "amount": 2
         },
         {
-          "op": "addTarget",
+          "op": "assertTapped",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "target": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "tapped": true
         },
         {
-          "op": "setChoice",
+          "op": "assertTapped",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Convoke"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Felhide Minotaur"
+          "name": "Felhide Minotaur",
+          "tapped": true
         },
         {
           "op": "castSpell",
@@ -1351,37 +1714,70 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Act of Aggression",
-          "target": "Grizzly Bears"
+          "target": {
+            "groups": [
+              [
+                "Grizzly Bears"
+              ]
+            ]
+          }
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": false
+          "kind": "hybrid_payment",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": false
+          "kind": "hybrid_payment",
+          "choices": [
+            "2 life (Phyrexian)"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Act of Aggression",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "pMino.getIdName()"
+          "value": "Felhide Minotaur"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Doom Blade"
+          "description": "Choose 1 card to discard",
+          "choices": [
+            "Doom Blade"
+          ]
         },
         {
           "op": "setChoice",
           "player": 1,
-          "value": "pBear.getIdName()"
+          "value": "Grizzly Bears"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 1,
-          "value": "Island"
+          "description": "Choose 1 card to discard",
+          "choices": [
+            "Island"
+          ]
         },
         {
           "op": "setStopAt",
@@ -1527,29 +1923,40 @@ registerPortedMageTests({
           "target": "Elite Vanguard"
         },
         {
-          "op": "setChoice",
+          "op": "setManaPayment",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "alternatives": [
+            {
+              "source": "Grizzly Bears",
+              "kind": "convoke"
+            }
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Black"
+          "source": "Lethal Scheme",
+          "objectTarget": "Elite Vanguard",
+          "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Black"
+          "colors": "B",
+          "amount": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertTapped",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Convoke"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "tapped": true
         },
         {
           "op": "castSpell",
@@ -1557,17 +1964,59 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Doom Blade",
-          "target": "Grizzly Bears"
+          "target": {
+            "groups": [
+              [
+                "Grizzly Bears"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Doom Blade",
+          "count": 1,
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "pBear.getIdName()"
+          "value": "Grizzly Bears"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Gray Ogre"
+          "description": "Choose 1 card to discard",
+          "choices": [
+            "Gray Ogre"
+          ]
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Gray Ogre",
+          "count": 1
         },
         {
           "op": "setStopAt",

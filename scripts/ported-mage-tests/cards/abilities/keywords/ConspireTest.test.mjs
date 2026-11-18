@@ -748,82 +748,149 @@ registerPortedMageTests({
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "name": "Wort, the Raidmother",
           "player": 0,
-          "name": "Wort, the Raidmother"
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Wort, the Raidmother",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Wort, the Raidmother",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Goblin Warrior Token",
+          "count": 2
         },
         {
           "op": "castSpell",
+          "name": "Sakashima the Impostor",
+          "player": 0,
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Sakashima the Impostor"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "source": "Sakashima the Impostor",
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Wort, the Raidmother"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Wort, the Raidmother"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Sakashima the Impostor",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Goblin Warrior Token",
+          "count": 4
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose optional costs for Lightning Bolt",
+          "choices": [
+            "Granted Conspire: special",
+            "Granted Conspire: special"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose two untapped creatures to conspire",
+          "choices": [
+            "Goblin Warrior Token",
+            "Goblin Warrior Token"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose two untapped creatures to conspire",
+          "choices": [
+            "Goblin Warrior Token",
+            "Goblin Warrior Token"
+          ]
         },
         {
           "op": "castSpell",
+          "name": "Lightning Bolt",
+          "player": 0,
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt",
           "target": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Goblin Warrior Token"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Goblin Warrior Token"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "When you pay the conspire"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 1,
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "targetCount": 1,
+          "isSpell": true
         },
         {
-          "op": "execute"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Goblin Warrior Token",
+          "count": 4,
+          "tapped": true
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Lightning Bolt",
+          "count": 2,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": false
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
