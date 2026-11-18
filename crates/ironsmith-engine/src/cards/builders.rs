@@ -5,6 +5,7 @@
 
 #![allow(dead_code)]
 
+use crate::effects::CreateTokenEffect;
 use crate::ability::{
     self, Ability, AbilityKind, ActivationTiming, LevelAbility, TriggeredAbility,
 };
@@ -95,45 +96,6 @@ impl std::error::Error for CardTextError {}
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
 type ParsedAbility = ();
-
-#[cfg(ironsmith_runtime_parser_tests)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct ParseCacheKey {
-    builder_context: String,
-    text: String,
-    allow_unsupported: bool,
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-impl ParseCacheKey {
-    fn new(builder: &CardDefinitionBuilder, text: &str, allow_unsupported: bool) -> Self {
-        Self {
-            builder_context: format!("{builder:?}"),
-            text: text.to_string(),
-            allow_unsupported,
-        }
-    }
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-type CachedParseResult = Result<CardDefinition, CardTextError>;
-
-#[cfg(ironsmith_runtime_parser_tests)]
-fn parse_result_cache() -> &'static std::sync::Mutex<HashMap<ParseCacheKey, CachedParseResult>> {
-    static PARSE_RESULT_CACHE: std::sync::OnceLock<
-        std::sync::Mutex<HashMap<ParseCacheKey, CachedParseResult>>,
-    > = std::sync::OnceLock::new();
-    PARSE_RESULT_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-fn store_cached_parse(key: ParseCacheKey, result: CachedParseResult) -> CachedParseResult {
-    parse_result_cache()
-        .lock()
-        .expect("parse result cache mutex poisoned")
-        .insert(key, result.clone());
-    result
-}
 
 #[cfg(ironsmith_runtime_parser_tests)]
 fn finalize_definition(
@@ -396,29 +358,12 @@ pub(crate) enum InsteadSemantics {
     NonReplacement,
 }
 
-fn finalize_backup_abilities(definition: CardDefinition) -> CardDefinition {
-    definition
-}
-
-fn finalize_cipher_effects(definition: CardDefinition) -> CardDefinition {
-    definition
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-fn lookup_cached_parse(key: &ParseCacheKey) -> Option<CachedParseResult> {
-    parse_result_cache()
-        .lock()
-        .expect("parse result cache mutex poisoned")
-        .get(key)
-        .cloned()
-}
-
 #[cfg(ironsmith_runtime_parser_tests)]
 pub fn parse_card_text(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
 ) -> Result<CardDefinition, CardTextError> {
-    parse_card_text_with_policy(builder, text, false)
+    compile_runtime_builder_text(builder, text, false).map(|compiled| compiled.definition)
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -426,24 +371,7 @@ pub fn parse_card_text_allow_unsupported(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
 ) -> Result<CardDefinition, CardTextError> {
-    parse_card_text_with_policy(builder, text, true)
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-fn parse_card_text_with_policy(
-    builder: CardDefinitionBuilder,
-    text: impl Into<String>,
-    allow_unsupported: bool,
-) -> Result<CardDefinition, CardTextError> {
-    let text = text.into();
-    let cache_key = ParseCacheKey::new(&builder, &text, allow_unsupported);
-    if let Some(cached) = lookup_cached_parse(&cache_key) {
-        return cached;
-    }
-    let result = crate::perf::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
-        compile_to_runtime_definition(&builder, text, allow_unsupported)
-    });
-    store_cached_parse(cache_key, result)
+    compile_runtime_builder_text(builder, text, true).map(|compiled| compiled.definition)
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -468,17 +396,7 @@ fn parse_card_text_with_annotations_policy(
     text: impl Into<String>,
     allow_unsupported: bool,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    let text = text.into();
-    let cache_key = ParseCacheKey::new(&builder, &text, allow_unsupported);
-    let compiled = crate::perf::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
-        compiler_runtime_for_tests::compile_runtime_builder_snapshot_to_runtime_compiled_card_text(
-            runtime_builder_snapshot(&builder),
-            text,
-            allow_unsupported,
-        )
-    })
-    .map_err(compiler_runtime_error_to_card_text_error)?;
-    let _ = store_cached_parse(cache_key, Ok(compiled.definition.clone()));
+    let compiled = compile_runtime_builder_text(builder, text, allow_unsupported)?;
     Ok((
         compiled.definition,
         parse_annotations_from_compiler(compiled.annotations),
@@ -1473,27 +1391,23 @@ pub struct CardDefinitionBuilder {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn compile_to_runtime_definition(
-    builder: &CardDefinitionBuilder,
+fn compile_runtime_builder_text(
+    builder: CardDefinitionBuilder,
     text: impl Into<String>,
     allow_unsupported: bool,
-) -> Result<CardDefinition, CardTextError> {
-    compiler_runtime_for_tests::compile_runtime_builder_snapshot_to_runtime_definition(
-        runtime_builder_snapshot(builder),
-        text,
-        allow_unsupported,
-    )
+) -> Result<ironsmith_compiler::CompiledCardText<CardDefinition>, CardTextError> {
+    let text = text.into();
+    crate::perf::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        compiler_runtime_for_tests::compile_runtime_builder_snapshot_to_runtime_compiled_card_text(
+            compiler_runtime_for_tests::RuntimeBuilderSnapshot {
+                card: builder.card_builder.build(),
+                has_fuse: builder.has_fuse,
+            },
+            text,
+            allow_unsupported,
+        )
+    })
     .map_err(compiler_runtime_error_to_card_text_error)
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-fn runtime_builder_snapshot(
-    builder: &CardDefinitionBuilder,
-) -> compiler_runtime_for_tests::RuntimeBuilderSnapshot {
-    compiler_runtime_for_tests::RuntimeBuilderSnapshot {
-        card: builder.card_builder.clone().build(),
-        has_fuse: builder.has_fuse,
-    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -1543,11 +1457,6 @@ fn parse_annotations_from_compiler(
 }
 
 impl CardDefinitionBuilder {
-    #[cfg(ironsmith_runtime_parser_tests)]
-    fn parse_cache_key(&self, text: &str, allow_unsupported: bool) -> ParseCacheKey {
-        ParseCacheKey::new(self, text, allow_unsupported)
-    }
-
     #[cfg(any(test, ironsmith_runtime_parser_tests))]
     fn pt_value_text(value: PtValue) -> String {
         match value {
@@ -4017,9 +3926,9 @@ impl CardDefinitionBuilder {
     pub fn afterlife(self, amount: u32) -> Self {
         self.with_ability(Ability::triggered(
             Trigger::this_dies(),
-            vec![Effect::new(Self::keyword_token_instruction(
-                Self::afterlife_spirit_token(),
+            vec![Effect::new(CreateTokenEffect::afterlife_spirits(
                 amount,
+                ability::flying(),
             ))],
         ))
     }
@@ -4030,34 +3939,14 @@ impl CardDefinitionBuilder {
     /// • Put N +1/+1 counters on it.
     /// • Create N 1/1 colorless Servo artifact creature tokens."
     pub fn fabricate(self, amount: u32) -> Self {
-        let put_description = if amount == 1 {
-            "Put a +1/+1 counter on this creature".to_string()
-        } else {
-            format!("Put {amount} +1/+1 counters on this creature")
-        };
-        let create_description = if amount == 1 {
-            "Create a 1/1 colorless Servo artifact creature token".to_string()
-        } else {
-            format!("Create {amount} 1/1 colorless Servo artifact creature tokens")
-        };
-        let modes = vec![
-            EffectMode {
-                source_text: put_description,
-                effects: vec![Effect::plus_one_counters(amount as i32, ChooseSpec::Source)],
-            },
-            EffectMode {
-                source_text: create_description,
-                effects: vec![Effect::new(Self::keyword_token_instruction(Self::fabricate_servo_token(), amount))],
-            },
-        ];
-
+        let choice = crate::effects::ChooseModeEffect::fabricate(
+            amount,
+            Effect::plus_one_counters(amount as i32, ChooseSpec::Source),
+            Effect::new(CreateTokenEffect::fabricate_servos(amount)),
+        );
         self.with_ability(Ability::triggered(
             Trigger::this_enters_battlefield(),
-            // CR 702.123a: if the counters can't be put on it, the Servos are
-            // created (the same counters-else-token shape as endure).
-            vec![Effect::new(
-                crate::effects::ChooseModeEffect::choose_one(modes).as_endure(),
-            )],
+            vec![Effect::new(choice)],
         ))
     }
 
@@ -4065,38 +3954,36 @@ impl CardDefinitionBuilder {
     ///
     /// "When this Equipment enters, create a 2/2 red Rebel creature token, then attach this to it."
     pub fn for_mirrodin(self) -> Self {
-        let created_tag = TagKey::from("for_mirrodin_created");
-        self.with_ability(Ability::triggered(
-            Trigger::this_enters_battlefield(),
-            vec![
-                Effect::new(Self::keyword_token_instruction(Self::for_mirrodin_rebel_token(), 1)).tag(created_tag.clone()),
-                Effect::attach_to(ChooseSpec::Tagged(created_tag)),
-            ],
-        ))
+        self.attach_to_keyword_token(
+            CreateTokenEffect::for_mirrodin_rebel(),
+            TagKey::from("for_mirrodin_created"),
+        )
     }
 
     /// Add job select: create a 1/1 colorless Hero on entry, then attach this to it.
     pub fn job_select(self) -> Self {
-        let created_tag = TagKey::from("job_select_created");
-        self.with_ability(Ability::triggered(
-            Trigger::this_enters_battlefield(),
-            vec![
-                Effect::new(Self::keyword_token_instruction(Self::job_select_hero_token(), 1)).tag(created_tag.clone()),
-                Effect::attach_to(ChooseSpec::Tagged(created_tag)),
-            ],
-        ))
+        self.attach_to_keyword_token(
+            CreateTokenEffect::job_select_hero(),
+            TagKey::from("job_select_created"),
+        )
     }
 
     /// Add living weapon.
     ///
     /// "When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it."
     pub fn living_weapon(self) -> Self {
-        let created_tag = TagKey::from("living_weapon_created");
+        self.attach_to_keyword_token(
+            CreateTokenEffect::living_weapon_germ(),
+            TagKey::from("living_weapon_created"),
+        )
+    }
+
+    fn attach_to_keyword_token(self, token: CreateTokenEffect, tag: TagKey) -> Self {
         self.with_ability(Ability::triggered(
             Trigger::this_enters_battlefield(),
             vec![
-                Effect::new(Self::keyword_token_instruction(Self::living_weapon_germ_token(), 1)).tag(created_tag.clone()),
-                Effect::attach_to(ChooseSpec::Tagged(created_tag)),
+                Effect::new(token).tag(tag.clone()),
+                Effect::attach_to(ChooseSpec::Tagged(tag)),
             ],
         ))
     }
@@ -4137,13 +4024,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn mobilize_value(self, amount: crate::effect::Value) -> Self {
-        let effect = Self::keyword_token_instruction(
-            Self::mobilize_warrior_token(),
-            amount,
-        )
-        .tapped()
-        .attacking()
-        .sacrifice_at_next_end_step();
+        let effect = CreateTokenEffect::mobilize_warriors(amount);
 
         self.with_ability(Ability::triggered(
             Trigger::this_attacks(),
@@ -4834,75 +4715,6 @@ impl CardDefinitionBuilder {
         ))
     }
 
-    /// Only known keyword-expansion owners call this constructor. The generic
-    /// token executor never guesses word provenance from characteristics.
-    fn keyword_token_instruction(token: CardDefinition, count: impl Into<crate::effect::Value>)
-        -> crate::effects::CreateTokenEffect
-    {
-        let roles = ironsmith_core::TokenTextRoles::rules_implied(
-            ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len());
-        crate::effects::CreateTokenEffect::you(token, count).with_text_roles(roles)
-    }
-
-    fn fabricate_servo_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Servo Token")
-            .token()
-            .card_types(vec![CardType::Artifact, CardType::Creature])
-            .subtypes(vec![Subtype::Servo])
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .build()
-    }
-
-    fn afterlife_spirit_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Spirit Token")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Spirit])
-            .color_indicator(ColorSet::WHITE.union(ColorSet::BLACK))
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .flying()
-            .build()
-    }
-
-    fn for_mirrodin_rebel_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Rebel Token")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Rebel])
-            .color_indicator(ColorSet::RED)
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build()
-    }
-
-    fn job_select_hero_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Hero Token")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Hero])
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .build()
-    }
-
-    fn living_weapon_germ_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Phyrexian Germ Token")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Phyrexian, Subtype::Germ])
-            .color_indicator(ColorSet::BLACK)
-            .power_toughness(PowerToughness::fixed(0, 0))
-            .build()
-    }
-
-    fn mobilize_warrior_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Warrior Token")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Warrior])
-            .color_indicator(ColorSet::RED)
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .build()
-    }
-
     // === Build ===
 
     /// Build the card definition.
@@ -4924,7 +4736,7 @@ impl CardDefinitionBuilder {
                 card.rules_text_color_identity = card.rules_text_color_identity.union(colors);
             }
         }
-        let definition = finalize_backup_abilities(CardDefinition {
+        CardDefinition {
             card,
             canonical_text,
             ability_labels: Vec::new(),
@@ -4937,8 +4749,7 @@ impl CardDefinitionBuilder {
             additional_cost: self.additional_cost,
             refers_to_ante,
             ability_counter_definitions: std::collections::BTreeMap::new(),
-        });
-        finalize_cipher_effects(definition)
+        }
     }
 }
 

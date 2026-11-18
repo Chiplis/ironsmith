@@ -96,6 +96,7 @@ pub use composition::{
     ActionProgramCursor, ProgramAction, ProgramActionScope, ProgramCompletion,
     ProgramInstructionSelection, ProgramPreparation,
 };
+pub(crate) use ironsmith_engine_macros::project_effect_outcome;
 pub use context::{
     DoThisLimit, ExecutionError, IterationContext, ReplacementExecutionContext, ResolvedTarget,
     TargetError, rebase_target_scope,

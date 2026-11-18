@@ -227,9 +227,7 @@ fn last_effect_creates_tokens(effects: &[EffectAst]) -> bool {
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                    | SubjectVerbActionAst::Tokens(
-                        TokenActionAst::CreateTokenCopyFromSource { .. }
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. }
                     )
                     | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenChoice { .. }),
                 ..

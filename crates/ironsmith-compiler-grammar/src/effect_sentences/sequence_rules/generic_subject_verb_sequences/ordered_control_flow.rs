@@ -987,10 +987,7 @@ pub fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
     let Some((player, count, reveal_top)) = parse_top_cards_view_sentence(&view_tokens) else {
         return Ok(None);
     };
-    let remainder_player = match player {
-        PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
-        player => player,
-    };
+    let remainder_player = player.in_followup();
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
     let Some(action_match) =

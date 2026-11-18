@@ -480,10 +480,6 @@ impl EffectExecutor for ChooseObjectsEffect {
         ));
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

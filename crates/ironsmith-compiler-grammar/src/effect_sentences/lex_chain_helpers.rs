@@ -21,7 +21,7 @@ pub fn is_token_creation_context(tokens: &[OwnedLexToken]) -> bool {
 
 pub fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
     let found = chain_grammar::find_chain_verb_tokens(tokens)?;
-    Some((lower_chain_verb(found.kind), found.word_index))
+    Some((found.kind, found.word_index))
 }
 
 /// "Add two mana in any combination of {U}, {B}, and/or {R}." (Relic of
@@ -118,61 +118,4 @@ pub fn split_segments_on_comma_effect_head_lexed(
     segments: Vec<&[OwnedLexToken]>,
 ) -> Vec<&[OwnedLexToken]> {
     chain_grammar::split_segments_on_comma_effect_head_tokens(segments)
-}
-
-fn lower_chain_verb(kind: chain_grammar::ChainVerbKind) -> Verb {
-    match kind {
-        chain_grammar::ChainVerbKind::Add => Verb::Add,
-        chain_grammar::ChainVerbKind::Move => Verb::Move,
-        chain_grammar::ChainVerbKind::Deal => Verb::Deal,
-        chain_grammar::ChainVerbKind::Draw => Verb::Draw,
-        chain_grammar::ChainVerbKind::Counter => Verb::Counter,
-        chain_grammar::ChainVerbKind::Destroy => Verb::Destroy,
-        chain_grammar::ChainVerbKind::Exile => Verb::Exile,
-        chain_grammar::ChainVerbKind::Reveal => Verb::Reveal,
-        chain_grammar::ChainVerbKind::Look => Verb::Look,
-        chain_grammar::ChainVerbKind::Lose => Verb::Lose,
-        chain_grammar::ChainVerbKind::Gain => Verb::Gain,
-        chain_grammar::ChainVerbKind::Put => Verb::Put,
-        chain_grammar::ChainVerbKind::Sacrifice => Verb::Sacrifice,
-        chain_grammar::ChainVerbKind::Create => Verb::Create,
-        chain_grammar::ChainVerbKind::Investigate => Verb::Investigate,
-        chain_grammar::ChainVerbKind::Assimilate => Verb::Assimilate,
-        chain_grammar::ChainVerbKind::Proliferate => Verb::Proliferate,
-        chain_grammar::ChainVerbKind::Tap => Verb::Tap,
-        chain_grammar::ChainVerbKind::Unattach => Verb::Unattach,
-        chain_grammar::ChainVerbKind::Attach => Verb::Attach,
-        chain_grammar::ChainVerbKind::Untap => Verb::Untap,
-        chain_grammar::ChainVerbKind::Unlock => Verb::Unlock,
-        chain_grammar::ChainVerbKind::Scry => Verb::Scry,
-        chain_grammar::ChainVerbKind::Discard => Verb::Discard,
-        chain_grammar::ChainVerbKind::Transform => Verb::Transform,
-        chain_grammar::ChainVerbKind::Convert => Verb::Convert,
-        chain_grammar::ChainVerbKind::Flip => Verb::Flip,
-        chain_grammar::ChainVerbKind::Roll => Verb::Roll,
-        chain_grammar::ChainVerbKind::Regenerate => Verb::Regenerate,
-        chain_grammar::ChainVerbKind::Heal => Verb::Heal,
-        chain_grammar::ChainVerbKind::Mill => Verb::Mill,
-        chain_grammar::ChainVerbKind::Get => Verb::Get,
-        chain_grammar::ChainVerbKind::Remove => Verb::Remove,
-        chain_grammar::ChainVerbKind::Return => Verb::Return,
-        chain_grammar::ChainVerbKind::Exchange => Verb::Exchange,
-        chain_grammar::ChainVerbKind::Become => Verb::Become,
-        chain_grammar::ChainVerbKind::Switch => Verb::Switch,
-        chain_grammar::ChainVerbKind::Skip => Verb::Skip,
-        chain_grammar::ChainVerbKind::Surveil => Verb::Surveil,
-        chain_grammar::ChainVerbKind::Incubate => Verb::Incubate,
-        chain_grammar::ChainVerbKind::Shuffle => Verb::Shuffle,
-        chain_grammar::ChainVerbKind::Reorder => Verb::Reorder,
-        chain_grammar::ChainVerbKind::Reverse => Verb::Reverse,
-        chain_grammar::ChainVerbKind::Pay => Verb::Pay,
-        chain_grammar::ChainVerbKind::Take => Verb::Take,
-        chain_grammar::ChainVerbKind::Detain => Verb::Detain,
-        chain_grammar::ChainVerbKind::Assign => Verb::Assign,
-        chain_grammar::ChainVerbKind::Goad => Verb::Goad,
-        chain_grammar::ChainVerbKind::Suspect => Verb::Suspect,
-        chain_grammar::ChainVerbKind::End => Verb::End,
-        chain_grammar::ChainVerbKind::Note => Verb::Note,
-        chain_grammar::ChainVerbKind::Activate => Verb::Activate,
-    }
 }

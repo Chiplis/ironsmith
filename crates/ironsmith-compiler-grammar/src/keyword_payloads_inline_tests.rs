@@ -5,6 +5,7 @@ use crate::lexer::lex_line;
 fn line(text: &str) -> PreprocessedLine {
     let tokens = lex_line(text, 0).expect("keyword test line should lex");
     PreprocessedLine {
+        keyword_reminder: None,
         info: LineInfo {
             line_index: 0,
             display_line_index: 0,

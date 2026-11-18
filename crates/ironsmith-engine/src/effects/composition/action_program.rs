@@ -1248,7 +1248,27 @@ struct ProgramOriginalObserver {
     inner: Box<dyn SimultaneousEffectCompletion>,
 }
 
-impl ProgramOriginalObserver {
+impl crate::effects::composition::CompletionDecorator for ProgramOriginalObserver {
+    fn phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner.original_phase_status()
+    }
+
+    fn freeze_inner(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        self.inner.freeze(game)
+    }
+
+    fn observe_inner(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: &mut EffectOutcome,
+    ) -> Result<(), ExecutionError> {
+        let mut local = self.context.reborrow(&mut *ctx.decision_maker);
+        self.scope.run(game, &mut local, |game, ctx| {
+            self.inner.observe_original(game, ctx, original)
+        })
+    }
+
     /// Transfer the actual continuation in its captured participant frame.
     /// Every original/draw phase uses this boundary; the request selects only
     /// the child phase, without changing its scalar or retained-packet contract.
@@ -1292,125 +1312,6 @@ impl ProgramOriginalObserver {
         original: crate::effects::composition::CompletionInput,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
         original.dispatch(self.inner, game, ctx)
-    }
-}
-
-impl SimultaneousEffectCompletion for ProgramOriginalObserver {
-    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
-        self.inner.original_phase_status()
-    }
-
-    fn complete_original_phase_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut crate::effects::ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<
-        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
-        crate::effects::ExecutionError,
-    > {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::OriginalOutcome(original),
-        )
-    }
-
-    fn complete_original_phase_from_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut crate::effects::ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<
-        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
-        crate::effects::ExecutionError,
-    > {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::OriginalOutputs(original),
-        )
-    }
-
-    fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut crate::effects::ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<
-        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
-        crate::effects::ExecutionError,
-    > {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::DrawOutcome(original),
-        )
-    }
-
-    fn prepare_draw_boundary_from_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut crate::effects::ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<
-        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
-        crate::effects::ExecutionError,
-    > {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::DrawOutputs(original),
-        )
-    }
-
-    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        self.inner.freeze(game)
-    }
-    fn observe_original(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: &mut EffectOutcome,
-    ) -> Result<(), ExecutionError> {
-        let mut local = self.context.reborrow(&mut *ctx.decision_maker);
-        self.scope.run(game, &mut local, |game, ctx| {
-            self.inner.observe_original(game, ctx, original)
-        })
-    }
-    fn complete(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.complete_with_outputs(game, ctx, original)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-    fn complete_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        self.finish(
-            game,
-            ctx,
-            crate::effects::composition::CompletionInput::Outcome(original),
-        )
-    }
-
-    fn complete_from_original_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        self.finish(
-            game,
-            ctx,
-            crate::effects::composition::CompletionInput::Outputs(original),
-        )
     }
 }
 
@@ -1641,7 +1542,7 @@ fn finish_stopped_participants(
             facts.extend(completed.facts);
             participant.result = Some(completed.outputs);
         }
-        participant.frame.context = ExecutionContextCheckpoint::capture(&local);
+        participant.frame.context = local.into_checkpoint();
     }
     Ok(())
 }
@@ -1787,10 +1688,8 @@ fn run_action_programs(
                     if local.decision_maker.awaiting_choice() {
                         return Ok(None);
                     }
-                    participant.frame.context = ExecutionContextCheckpoint::capture(&local);
-                    let stopped = local.resolution_stopped();
-                    drop(local);
-                    if stopped {
+                    participant.frame.context = local.into_checkpoint();
+                    if participant.frame.context.resolution_stopped() {
                         ctx.stop_resolution();
                         break;
                     }
@@ -1829,10 +1728,8 @@ fn run_action_programs(
                     return Ok(None);
                 }
                 action.declaration.action.scope.clear_preselected_objects();
-                participant.frame.context = ExecutionContextCheckpoint::capture(&local);
-                let stopped = local.resolution_stopped();
-                drop(local);
-                if stopped {
+                participant.frame.context = local.into_checkpoint();
+                if participant.frame.context.resolution_stopped() {
                     ctx.stop_resolution();
                     break;
                 }
@@ -1854,10 +1751,8 @@ fn run_action_programs(
                 if local.decision_maker.awaiting_choice() {
                     return Ok(None);
                 }
-                participant.frame.context = ExecutionContextCheckpoint::capture(&local);
-                let stopped = local.resolution_stopped();
-                drop(local);
-                if stopped {
+                participant.frame.context = local.into_checkpoint();
+                if participant.frame.context.resolution_stopped() {
                     ctx.stop_resolution();
                     break;
                 }
@@ -1932,15 +1827,14 @@ fn run_action_programs(
                 let prepared = original.scope.run(game, &mut local, |game, ctx| {
                     completion.prepare_draw_boundary_from_outputs(game, ctx, prior)
                 })?;
-                participant.frame.context = ExecutionContextCheckpoint::capture(&local);
+                let awaiting_choice = local.decision_maker.awaiting_choice();
+                participant.frame.context = local.into_checkpoint();
                 original.receipt = prepared;
                 boundary = original.receipt.completion.is_some();
-                if local.decision_maker.awaiting_choice() {
+                if awaiting_choice {
                     return Ok(None);
                 }
-                let stopped = local.resolution_stopped();
-                drop(local);
-                if stopped {
+                if participant.frame.context.resolution_stopped() {
                     ctx.stop_resolution();
                     boundary = false;
                     break;
@@ -2050,10 +1944,8 @@ fn run_action_programs(
                     .as_mut()
                     .expect("unfinished program")
                     .accept_action_with_context(game, &mut local, outputs);
-                participant.frame.context = ExecutionContextCheckpoint::capture(&local);
-                let stopped = local.resolution_stopped();
-                drop(local);
-                if stopped {
+                participant.frame.context = local.into_checkpoint();
+                if participant.frame.context.resolution_stopped() {
                     ctx.stop_resolution();
                 }
                 result?;
@@ -2163,10 +2055,8 @@ fn seal_program_originals(
         if local.decision_maker.awaiting_choice() {
             return Ok(None);
         }
-        participant.frame.context = ExecutionContextCheckpoint::capture(&local);
-        let stopped = local.resolution_stopped();
-        drop(local);
-        if stopped {
+        participant.frame.context = local.into_checkpoint();
+        if participant.frame.context.resolution_stopped() {
             ctx.stop_resolution();
         }
         owners.push(PreparedProgramOwner {
@@ -2210,10 +2100,11 @@ fn commit_sealed_program_originals(
         let mut receipt = owner.scope.run(game, &mut local, |game, ctx| {
             proposal.commit_original_with_outputs(game, ctx)
         })?;
-        participant.frame.context = ExecutionContextCheckpoint::capture(&local);
+        let awaiting_choice = local.decision_maker.awaiting_choice();
+        participant.frame.context = local.into_checkpoint();
         if let Some(inner) = receipt.completion.take() {
             receipt.completion = Some(Box::new(ProgramOriginalObserver {
-                context: ExecutionContextCheckpoint::capture(&local),
+                context: participant.frame.context.clone(),
                 scope: owner.scope.clone(),
                 inner,
             }));
@@ -2224,12 +2115,10 @@ fn commit_sealed_program_originals(
             receipt,
             original_bindings,
         });
-        if local.decision_maker.awaiting_choice() {
+        if awaiting_choice {
             return Ok(Vec::new());
         }
-        let stopped = local.resolution_stopped();
-        drop(local);
-        if stopped {
+        if participant.frame.context.resolution_stopped() {
             ctx.stop_resolution();
         }
     }
@@ -2260,10 +2149,8 @@ fn phase_program_original(
             super::simultaneous::complete_retained_original_phase_with_outputs(game, ctx, receipt)
         })?;
     }
-    participant.frame.context = ExecutionContextCheckpoint::capture(&local);
-    let stopped = local.resolution_stopped();
-    drop(local);
-    if stopped {
+    participant.frame.context = local.into_checkpoint();
+    if participant.frame.context.resolution_stopped() {
         ctx.stop_resolution();
     }
     Ok(CompletedProgramOriginal {
@@ -2316,13 +2203,12 @@ fn complete_program_original_outputs(
             )
         })?
     };
-    participant.frame.context = ExecutionContextCheckpoint::capture(&local);
-    if local.decision_maker.awaiting_choice() {
+    let awaiting_choice = local.decision_maker.awaiting_choice();
+    participant.frame.context = local.into_checkpoint();
+    if awaiting_choice {
         return Ok(None);
     }
-    let stopped = local.resolution_stopped();
-    drop(local);
-    if stopped {
+    if participant.frame.context.resolution_stopped() {
         ctx.stop_resolution();
     }
     Ok(Some(CompletedProgramOwnerOutputs {
@@ -2370,8 +2256,9 @@ fn bind_program_original_outputs(
             .run(game, &mut local, |game, ctx| {
                 action.proposal.bind_damage_action(game, ctx, &outputs)
             })?;
-        participant.frame.context = ExecutionContextCheckpoint::capture(&local);
-        if local.decision_maker.awaiting_choice() {
+        let awaiting_choice = local.decision_maker.awaiting_choice();
+        participant.frame.context = local.into_checkpoint();
+        if awaiting_choice {
             return Ok(CompletedProgramUnit {
                 owner: None,
                 bindings: Vec::new(),

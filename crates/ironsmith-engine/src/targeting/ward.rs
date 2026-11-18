@@ -261,15 +261,7 @@ impl WardCounterEffect {
 }
 
 impl crate::effects::EffectExecutor for WardCounterEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut crate::effects::ExecutionContext,
-    ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

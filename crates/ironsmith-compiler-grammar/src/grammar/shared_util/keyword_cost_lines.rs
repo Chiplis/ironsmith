@@ -16,6 +16,70 @@ use crate::model::compiler_semantic::{
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
+/// Return the remainder after a keyword price equated to the card's own mana cost.
+pub(crate) fn card_mana_cost_tail<'a>(
+    tokens: &'a [OwnedLexToken],
+    keyword: &str,
+) -> Option<&'a [OwnedLexToken]> {
+    use crate::grammar::primitives::strip_lexed_prefix_phrase as prefix;
+    let [owner, name, rest @ ..] = crate::util::trim_statement_separators(tokens) else {
+        return None;
+    };
+    if !owner.is_any_word(&["its", "the"]) || !name.is_word(keyword) {
+        return None;
+    }
+    let rest = prefix(rest, &["cost", "is"])?;
+    prefix(
+        prefix(rest, &["equal", "to"]).unwrap_or(rest),
+        &["its", "mana", "cost"],
+    )
+}
+
+pub(crate) fn card_mana_reduction_operand<'a>(
+    tokens: &'a [OwnedLexToken],
+    keyword: &str,
+) -> Option<&'a [OwnedLexToken]> {
+    crate::grammar::primitives::strip_lexed_prefix_phrase(
+        card_mana_cost_tail(tokens, keyword)?,
+        &["reduced", "by"],
+    )
+}
+
+/// Every symbol in a fixed generic discount must itself be generic. X and
+/// Phyrexian life options can have zero mana value without being generic.
+pub(crate) fn generic_discount(tokens: &[OwnedLexToken]) -> Option<u32> {
+    if tokens.is_empty() {
+        return None;
+    }
+    tokens.iter().try_fold(0u32, |sum, token| {
+        let amount = match token.kind {
+            TokenKind::Number => token.parser_text(), // Legacy unbraced cost.
+            _ => token.mana_group_inner()?,
+        };
+        sum.checked_add(crate::util::decimal_count(amount)?)
+    })
+}
+
+pub(crate) fn parse_card_mana_cost_reduction(
+    tokens: &[OwnedLexToken],
+    keyword: &str,
+    minimum: u32,
+) -> Result<Option<u32>, CardTextError> {
+    let Some(operand) = card_mana_reduction_operand(tokens, keyword) else {
+        return Ok(None);
+    };
+    let reduction = generic_discount(operand)
+        .filter(|&n| n >= minimum)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "expected a fixed generic {keyword} reduction of at least {minimum}, found '{}'",
+                render_token_slice(operand)
+            ))
+        })?;
+    crate::word_claims::claim_tokens(operand);
+    Ok(Some(reduction))
+}
+
 pub fn parse_buyback(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
@@ -101,30 +165,17 @@ fn parse_compiler_total_cost(
 /// "This cost is reduced by {2} for each basic land type among lands you
 /// control." following a printed cost (Draco's upkeep payment, Fugitive
 /// Codebreaker's disguise cost): the per-unit generic reduction and the count.
-pub fn parse_cost_reduced_by_for_each_followup(
-    tokens: &[OwnedLexToken],
-) -> Option<(u32, Value)> {
-    let words = TokenWordView::new(tokens).word_refs();
-    let words: Vec<&str> = words.into_iter().filter(|word| *word != ".").collect();
-    let rest = words.strip_prefix(&["this", "cost", "is", "reduced", "by"][..])?;
-    let amount_token = tokens.iter().find(|token| {
-        matches!(
-            leaf::parse_leaf_surface_mana_pip_token(token),
-            Some(leaf::LeafManaPipToken::ManaGroup(_))
-        )
-    })?;
-    let Some(leaf::LeafManaPipToken::ManaGroup(group)) =
-        leaf::parse_leaf_surface_mana_pip_token(amount_token)
-    else {
-        return None;
-    };
-    let [crate::mana::ManaSymbol::Generic(per)] = group.as_slice() else {
-        return None;
-    };
-    let for_each_at = rest.iter().position(|word| *word == "for")?;
-    let count_words = &rest[for_each_at..];
-    let (count, used) = crate::util::parse_for_each_count_value_words(count_words)?;
-    (used == count_words.len() && *per > 0).then_some((u32::from(*per), count))
+pub fn parse_cost_reduced_by_for_each_followup(tokens: &[OwnedLexToken]) -> Option<(u32, Value)> {
+    let rest = crate::grammar::primitives::strip_lexed_prefix_phrase(
+        crate::util::trim_statement_separators(tokens),
+        &["this", "cost", "is", "reduced", "by"],
+    )?;
+    let for_each = rest.iter().position(|token| token.is_word("for"))?;
+    let (operand, count_tokens) = rest.split_at(for_each);
+    let per = generic_discount(operand)?;
+    let count_words = TokenWordView::new(count_tokens).word_refs();
+    let (count, used) = crate::util::parse_for_each_count_value_words(&count_words)?;
+    (used == count_words.len() && per > 0).then_some((per, count))
 }
 
 /// Split a final "This cost is reduced by {N} for each ..." sentence off an

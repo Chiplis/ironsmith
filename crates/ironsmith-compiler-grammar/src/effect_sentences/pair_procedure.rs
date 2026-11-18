@@ -344,19 +344,11 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
-        id: RuleId::new("offered-cast-copy-or-fallback"),
-        head: HeadDiscriminator::words(&["target", "each", "that", "an", "you"]),
-        consumed: 4,
-        read: |sentences, index| {
-            statements(sentences, index, offered_cast_copy::read(sentences, index, true))
-        },
-    },
-    Shape {
         id: RuleId::new("offered-cast-copy"),
         head: HeadDiscriminator::words(&["target", "each", "that", "an", "you"]),
         consumed: 3,
         read: |sentences, index| {
-            statements(sentences, index, offered_cast_copy::read(sentences, index, false))
+            statements(sentences, index, offered_cast_copy::read(sentences, index))
         },
     },
     Shape {

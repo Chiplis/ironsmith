@@ -1,3 +1,4 @@
+use ironsmith_core::static_ability_model::DeckConstructionRule;
 use crate::util::is_source_reference_words;
 
 use super::super::super::lexer::{OwnedLexToken, TokenKind, TokenWordView, parser_token_word_refs};
@@ -25,7 +26,7 @@ pub enum StaticSpecialLineShape {
     HiddenAgenda,
     DoubleAgenda,
     StartingPlayer,
-    AnyNumberNamedDeckConstruction,
+    DeckConstruction(DeckConstructionRule),
     /// "A deck with this commander can have ..." / "If ~ is your commander,
     /// ..." (Rulebreaker): see [`parse_commander_deck_allowance_words`].
     CommanderDeckAllowance,
@@ -124,19 +125,6 @@ fn is_draft_rule(words: &[&str]) -> bool {
             && phrase_is_present(words, &["booster", "pack"]))
 }
 
-/// "As you create your deck, circle two of the colors below." (Cryptic
-/// Spires): a choice made while building the deck, kept as
-/// deck-construction rule text that pregame setup reads back.
-fn is_deck_construction_instruction(words: &[&str]) -> bool {
-    [
-        &["as", "you", "create", "your", "deck"][..],
-        &["as", "you", "build", "your", "deck"],
-        &["as", "you", "construct", "your", "deck"],
-    ]
-    .iter()
-    .any(|prefix| phrase_is_prefix(words, prefix) && words.len() > prefix.len())
-}
-
 fn is_hidden_agenda(words: &[&str]) -> bool {
     phrase_is_exact(words, &["hidden", "agenda"])
 }
@@ -156,35 +144,6 @@ fn is_starting_player(words: &[&str]) -> bool {
             "at", "random",
         ],
     )
-}
-
-/// The copy-count exception names its card literally; deck validation reads
-/// the name and limit back out of the rule text.
-pub fn is_named_deck_construction(words: &[&str]) -> bool {
-    let prefix = &[
-        "a", "deck", "can", "have", "any", "number", "of", "cards", "named",
-    ];
-    if phrase_is_prefix(words, prefix) && words.len() > prefix.len() {
-        return true;
-    }
-    // "A deck can have up to nine cards named Nazgûl." (Nazgûl, Seven
-    // Dwarves): a bounded copy-count exception to CR 100.2a. Deck
-    // validation reads the limit back out of the rule text.
-    let bounded_prefix = &["a", "deck", "can", "have", "up", "to"];
-    if !phrase_is_prefix(words, bounded_prefix) {
-        return false;
-    }
-    let Some((count, used)) = words
-        .get(bounded_prefix.len()..)
-        .and_then(leaf::parse_leaf_number_prefix_words)
-        .and_then(|number| number.into_fixed())
-    else {
-        return false;
-    };
-    let tail_start = bounded_prefix.len() + used;
-    count > 0
-        && phrase_is_prefix(words.get(tail_start..).unwrap_or_default(), &["cards", "named"])
-        && words.len() > tail_start + 2
 }
 
 /// One class head: card-type, supertype, and subtype words ("basic land",
@@ -346,8 +305,8 @@ pub fn parse_static_special_line_tokens(
         Some(StaticSpecialLineShape::DraftRule)
     } else if parse_commander_deck_allowance_words(&words).is_some() {
         Some(StaticSpecialLineShape::CommanderDeckAllowance)
-    } else if is_named_deck_construction(&words) || is_deck_construction_instruction(&words) {
-        Some(StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
+    } else if let Some(rule) = DeckConstructionRule::from_words(&words) {
+        Some(StaticSpecialLineShape::DeckConstruction(rule))
     } else if super::parse_first_keyword_cost_alternative_tokens(tokens).is_some() {
         Some(StaticSpecialLineShape::FirstEquipCostAlternative)
     } else if let Some(prefix) =
@@ -478,7 +437,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             parse_static_special_line_tokens(&deck),
-            Some(StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
+            Some(StaticSpecialLineShape::DeckConstruction(DeckConstructionRule::CopyLimit(None)))
         );
     }
 

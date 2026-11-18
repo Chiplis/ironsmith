@@ -707,26 +707,9 @@ fn comma_continues_name_epithet(before: &[OwnedLexToken], after: &[OwnedLexToken
 
 fn top_level_boundaries(tokens: &[OwnedLexToken]) -> Vec<BoundaryCandidate> {
     let mut boundaries = Vec::new();
-    let mut quote_open = false;
-    let mut parenthesis_depth = 0usize;
-    let mut bracket_depth = 0usize;
-    let mut index = 0usize;
-    while index < tokens.len() {
+    let mut indices = crate::token_primitives::top_level_token_indices(tokens, |_| true);
+    while let Some(index) = indices.next() {
         let token = &tokens[index];
-        match token.kind {
-            TokenKind::Quote => quote_open = !quote_open,
-            TokenKind::LParen if !quote_open => parenthesis_depth += 1,
-            TokenKind::RParen if !quote_open => {
-                parenthesis_depth = parenthesis_depth.saturating_sub(1)
-            }
-            TokenKind::LBracket if !quote_open => bracket_depth += 1,
-            TokenKind::RBracket if !quote_open => bracket_depth = bracket_depth.saturating_sub(1),
-            _ => {}
-        }
-        if quote_open || parenthesis_depth != 0 || bracket_depth != 0 {
-            index += 1;
-            continue;
-        }
         let (end, operator) = if token.kind == TokenKind::Comma
             && tokens
                 .get(index + 1)
@@ -756,12 +739,10 @@ fn top_level_boundaries(tokens: &[OwnedLexToken]) -> Vec<BoundaryCandidate> {
         {
             // "named Mileva, the Stalwart, it has ..." (Tenth District
             // Hero): the comma is inside the printed name.
-            index += 1;
             continue;
         } else if token.kind == TokenKind::Comma {
             (index + 1, CoordinationOperatorAst::Comma)
         } else {
-            index += 1;
             continue;
         };
         boundaries.push(BoundaryCandidate {
@@ -770,7 +751,10 @@ fn top_level_boundaries(tokens: &[OwnedLexToken]) -> Vec<BoundaryCandidate> {
             operator,
             span: token_span(&tokens[index..end]),
         });
-        index = end;
+        // A comma and its following connective are one boundary.
+        if end == index + 2 {
+            indices.next();
+        }
     }
     boundaries
 }
@@ -838,6 +822,16 @@ fn classify_boundary<'a>(
     RecognizedCoordinationBoundary,
     Option<TypedClauseHeadAst<'a>>,
 )> {
+    // “for blue or for red” supplies two colors to one action.
+    if candidate.operator == CoordinationOperatorAst::Or
+        && let [.., first_for, first] = before
+        && let [second_for, second, ..] = after
+        && first_for.is_word("for") && second_for.is_word("for")
+        && crate::util::parse_color(first.parser_text()).is_some()
+        && crate::util::parse_color(second.parser_text()).is_some()
+    {
+        return None;
+    }
     // "sacrifice any number of artifacts, enchantments, and/or tokens"
     // (Lich-Knights' Conquest): "and/or" closes a serial noun list; it never
     // joins two instructions.
@@ -1591,6 +1585,20 @@ fn classify_boundary<'a>(
         None => return None,
     };
 
+    // The exile reader distributes a shared source zone and duration across
+    // counted card operands. Keep them together when the verb is omitted.
+    if omission == CoordinationOmissionAst::Action
+        && candidate.operator == CoordinationOperatorAst::And
+        && let Some((verb, left)) = before.split_first()
+        && verb.is_word("exile")
+        && super::independently_counted_exile_operands(left, after)
+        && [left, after].into_iter().all(|operand| {
+            operand.iter().any(|token| token.is_any_word(&["card", "cards"]))
+                && !operand.iter().any(|token| token.is_any_word(&["target", "targets"]))
+        })
+    {
+        return None;
+    }
     if matches!(candidate.operator, CoordinationOperatorAst::Comma)
         && matches!(omission, CoordinationOmissionAst::Action)
     {

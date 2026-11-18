@@ -93,6 +93,7 @@ pub fn parse_keyword_payload_for_kind(
 ) -> Result<LineAst, CardTextError> {
     info.normalized.normalized = text.to_string();
     let line = PreprocessedLine {
+        keyword_reminder: None,
         info,
         tokens: parse_tokens.to_vec(),
     };

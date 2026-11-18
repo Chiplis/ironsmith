@@ -120,30 +120,8 @@ impl ScheduleDelayedTriggerEffect {
         controller: PlayerFilter,
     ) -> Self {
         Self {
-            trigger,
-            persistent_player_rule: None,
-            intervening_if: None,
-            effects: effects.into(),
-            one_shot,
-            start_next_turn: false,
-            duration: ironsmith_core::DelayedTriggerDuration::Forever,
-            until_end_of_turn: false,
-            until_end_of_combat: false,
-            leading_duration_surface: false,
-            watch_ability_source: false,
-            watch_all_object_targets: false,
-            either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: None,
-            source_collection_scope: None,
-            target_objects: Vec::new(),
-            ability_source: None,
             target_tag: Some(target_tag.into()),
-            target_filter: None,
-            controller,
-            prepayment: None,
-            event_value_from_prior_prevention: false,
-            duration_player: None,
-            fires_if_watched_source_absent: false,
+            ..Self::new(trigger, effects, one_shot, Vec::new(), controller)
         }
     }
 

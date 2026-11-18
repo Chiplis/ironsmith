@@ -74,6 +74,9 @@ pub struct ManaPaymentPreferences {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub x_allocation: Option<ironsmith_core::mana::XManaAllocation>,
+    /// Exact W/U/B/R/G/C quantities to spend from a server-proved assignment.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub actual_mana_allocation: Option<ironsmith_core::mana::ActualManaAllocation>,
 }
 
 impl ManaPaymentPreferences {
@@ -187,6 +190,20 @@ impl ManaPaymentRequest {
             assist_completion: None,
             activation_excluded_sources: Vec::new(),
         }
+    }
+
+    /// The helper pays generic mana under their own spending policy. Producer
+    /// restrictions on the spell still apply to that contribution.
+    pub(crate) fn assist_contribution(
+        game: &crate::GameState,
+        assistant: PlayerId,
+        spell: ObjectId,
+        total: &ManaCost,
+        amount: u32,
+    ) -> Self {
+        let cost = ManaCost::from_generic(amount).inherit_transaction_spending_restrictions(total);
+        Self::new(assistant, spell, PaymentReason::CastSpell, cost)
+            .with_spend_policy(game.mana_spend_policy_for_cast(assistant, Some(spell)))
     }
 
     pub(crate) fn reserving_alternatives(&self, allocations: &[PlannedPipAllocation]) -> Self {

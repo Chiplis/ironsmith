@@ -6,25 +6,13 @@ use crate::game_state::GameState;
 pub type RepeatProcessEffect = ironsmith_core::RepeatProcessEffect<Effect>;
 
 impl EffectExecutor for RepeatProcessEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         for effect in &self.effects {
             visitor(effect);
         }
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

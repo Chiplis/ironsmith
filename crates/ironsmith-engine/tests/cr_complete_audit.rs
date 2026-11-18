@@ -8385,7 +8385,7 @@ fn cr_708_2a_and_708_8_face_down_characteristics_replace_and_restore_printed_val
     assert_eq!(&*up.subtypes, &[Subtype::Goblin]);
     assert_eq!(&*up.supertypes, &[Supertype::Legendary]);
     assert_eq!(up.colors, ColorSet::RED.union(ColorSet::BLUE));
-    assert_eq!(up.mana_cost, Some(mana_cost));
+    assert_eq!(up.mana_cost.as_deref(), Some(&mana_cost));
     assert_eq!((up.power, up.toughness), (Some(3), Some(4)));
     assert!(game.object_has_ability(object, &StaticAbility::flying()));
     assert_eq!(
@@ -33372,7 +33372,7 @@ fn cr_709_5b_d_copied_room_spells_and_permanents_keep_both_halves_but_not_unlock
                         .filter(|a| matches!(&a.kind, AbilityKind::Static(s) if s.has_haste()))
                         .count();
                     if first.name != required_name
-                        || first.mana_cost.as_ref().map(ManaCost::mana_value) != Some(1)
+                        || first.mana_cost.as_deref().map(ManaCost::mana_value) != Some(1)
                         || (first_flash, first_haste)
                             != (usize::from(!first_right), usize::from(first_right))
                     {
@@ -33418,7 +33418,7 @@ fn cr_709_5b_d_copied_room_spells_and_permanents_keep_both_halves_but_not_unlock
                     if !game.is_room_fully_unlocked(room)
                         || !full.name.contains("Left copy door")
                         || !full.name.contains("Right copy door")
-                        || full.mana_cost.as_ref().map(ManaCost::mana_value) != Some(2)
+                        || full.mana_cost.as_deref().map(ManaCost::mana_value) != Some(2)
                     {
                         mismatches.push(format!("fully unlocked copy actor={actor:?}, right={cast_right}, path={path}, linked={first_linked}: name={:?}, cost={:?}", full.name, full.mana_cost));
                     }
@@ -33564,7 +33564,7 @@ fn cr_flip_card_transition_fixture(
                 game.current_characteristics(donor)
                     .unwrap()
                     .mana_cost
-                    .as_ref(),
+                    .as_deref(),
                 Some(&printed_cost)
             );
         }
@@ -33589,7 +33589,7 @@ fn cr_flip_card_transition_fixture(
     );
     let before = game.current_characteristics(subject).unwrap();
     assert_eq!(before.name, "Normal flip face");
-    assert_eq!(before.mana_cost.as_ref(), Some(&printed_cost));
+    assert_eq!(before.mana_cost.as_deref(), Some(&printed_cost));
     assert_eq!(before.colors, ColorSet::BLUE);
     assert_eq!((before.power, before.toughness), (Some(1), Some(2)));
     if external {
@@ -33687,7 +33687,7 @@ fn cr_flip_card_transition_fixture(
         {
             mismatches.push(format!("flipped characteristics mode={mode}, external={external}, face_down={face_down}, tapped={tapped}, repeat={repeat}: name={:?}, types={:?}/{:?}/{:?}, pt={:?}, flying={flying}, vigilance={vigilance}, haste={haste}", chars.name, chars.card_types, chars.subtypes, chars.supertypes, (chars.power, chars.toughness)));
         }
-        if chars.mana_cost.as_ref() != Some(&printed_cost) {
+        if chars.mana_cost.as_deref() != Some(&printed_cost) {
             mismatches.push(format!("flip cost mode={mode}, external={external}, face_down={face_down}, tapped={tapped}, repeat={repeat}: {:?}, required{printed_cost:?}", chars.mana_cost));
         }
         let expected_color = if external {
@@ -34981,7 +34981,7 @@ fn cr_audit_double_faced_back_land_fixture(
         let front_chars = game.current_characteristics(spell).unwrap();
         assert_eq!(front_chars.name, "Explicit original front face");
         assert_eq!(
-            front_chars.mana_cost.as_ref(),
+            front_chars.mana_cost.as_deref(),
             front.card.mana_cost.as_ref()
         );
         assert_eq!(front_chars.card_types.as_slice(), &[CardType::Creature]);
@@ -35008,7 +35008,7 @@ fn cr_audit_double_faced_back_land_fixture(
         let front_chars = game.current_characteristics(permanent).unwrap();
         assert_eq!(front_chars.name, "Explicit original front face");
         assert_eq!(
-            front_chars.mana_cost.as_ref(),
+            front_chars.mana_cost.as_deref(),
             front.card.mana_cost.as_ref()
         );
         assert_eq!(front_chars.colors, ironsmith::ColorSet::BLUE);
@@ -35158,7 +35158,7 @@ fn cr_712_8a_double_faced_cards_return_to_front_characteristics_independently_of
                             vec![CardType::Instant]
                         };
                         if chars.name != front.card.name
-                            || chars.mana_cost.as_ref() != front.card.mana_cost.as_ref()
+                            || chars.mana_cost.as_deref() != front.card.mana_cost.as_ref()
                             || chars.card_types.as_slice() != required_types.as_slice()
                         {
                             mismatches.push(format!("front restoration actor={actor:?}, transforming={transforming}, front_mv={front_mana_value}, back_id_first={back_id_first}, zone={destination:?}: name={:?}, cost={:?}, types={:?}; required name={:?}, cost={:?}, types={required_types:?}", chars.name, chars.mana_cost, chars.card_types, front.card.name, front.card.mana_cost));
@@ -39486,7 +39486,7 @@ fn cr_715_3_4_native_adventure_casting_resolution_and_countering_use_the_correct
                         || chars.name != front.card.name
                         || chars.card_types.as_slice() != [CardType::Creature]
                         || chars.subtypes.contains(&Subtype::Adventure)
-                        || chars.mana_cost != front.card.mana_cost
+                        || chars.mana_cost.as_deref() != front.card.mana_cost.as_ref()
                         || !game.object_has_ability(current, &StaticAbility::vigilance())
                     {
                         mismatches.push(format!("Adventure normal characteristics after stack actor={actor:?}, instant={instant}, as_adventure={as_adventure}, countered={countered}: zone={:?}, name={:?}, types={:?}, cost={:?}",game.object(current).unwrap().zone,chars.name,chars.card_types,chars.mana_cost));
@@ -39619,7 +39619,7 @@ fn cr_715_4_adventure_spell_departures_restore_normal_characteristics_for_both_f
                     let chars = game.current_characteristics(current).unwrap();
                     if chars.name != front.card.name
                         || chars.card_types.as_slice() != [CardType::Creature]
-                        || chars.mana_cost != front.card.mana_cost
+                        || chars.mana_cost.as_deref() != front.card.mana_cost.as_ref()
                         || (chars.power, chars.toughness) != (Some(4), Some(5))
                         || !game.object_has_ability(current, &StaticAbility::vigilance())
                     {
@@ -50809,7 +50809,7 @@ fn cr_audit_draw_during_announcement(check_reveal: bool) {
                 assert_eq!(game.object(drawn).unwrap().zone, Zone::Hand);
                 let chars = game.current_characteristics(drawn).unwrap();
                 assert_eq!(chars.name.as_ref(), "Drawn blue flying creature");
-                assert_eq!(chars.mana_cost, drawn_definition.card.mana_cost);
+                assert_eq!(chars.mana_cost.as_deref(), drawn_definition.card.mana_cost.as_ref());
                 assert_eq!((chars.power, chars.toughness), (Some(2), Some(3)));
                 assert_eq!(chars.card_types.as_slice(), &[CardType::Creature]);
                 assert!(!chars.colors.is_empty());
@@ -83570,7 +83570,7 @@ fn cr_612_10_702_47_splice_adds_complete_text_without_replacing_original_charact
             assert_eq!(game.current_colors(spell), Some(ColorSet::RED));
             assert_eq!(game.current_card_types(spell), Some(vec![CardType::Instant]));
             assert_eq!(game.current_subtypes(spell), Some(vec![Subtype::Arcane]));
-            assert_eq!(game.calculated_characteristics(spell).unwrap().mana_cost, ritual.card.mana_cost);
+            assert_eq!(game.calculated_characteristics(spell).unwrap().mana_cost.as_deref(), ritual.card.mana_cost.as_ref());
             assert!(game.current_spell_program(spell).unwrap() == expected_program,
                 "complete original resolving program must precede each chosen splice program {label}");
             let ability_count = splice_abilities(&game, spell);
@@ -83747,7 +83747,7 @@ fn cr_702_47a_spliced_card_may_pay_discard_cost_while_its_complete_text_stays_on
         cr_audit_complete_priority_action_with_dm(&mut game,actor,action,&mut dm,&mut queue).unwrap();let spell=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.stack.len(),1);assert_eq!(game.stack[0].object_id,spell);assert_eq!(dm.main_splices,1);assert_eq!(dm.discards,1);assert_eq!(game.player(actor).unwrap().mana_pool.total(),0);
         let current_skill=game.find_object_by_stable_id(skill_stable).unwrap();let current_filler=game.find_object_by_stable_id(filler_stable).unwrap();
         assert_eq!(game.object(current_skill).unwrap().zone,if discard_splicer{Zone::Graveyard}else{Zone::Hand});assert_eq!(game.object(current_filler).unwrap().zone,if discard_splicer{Zone::Hand}else{Zone::Graveyard});
-        assert!(game.current_spell_program(spell).unwrap()==expected);assert_eq!(game.current_name(spell).as_deref(),Some("Tormenting Voice"));assert_eq!(game.current_card_types(spell),Some(vec![CardType::Sorcery]));assert_eq!(game.current_colors(spell),Some(ColorSet::RED));assert_eq!(game.calculated_characteristics(spell).unwrap().mana_cost,voice.card.mana_cost);
+        assert!(game.current_spell_program(spell).unwrap()==expected);assert_eq!(game.current_name(spell).as_deref(),Some("Tormenting Voice"));assert_eq!(game.current_card_types(spell),Some(vec![CardType::Sorcery]));assert_eq!(game.current_colors(spell),Some(ColorSet::RED));assert_eq!(game.calculated_characteristics(spell).unwrap().mana_cost.as_deref(),voice.card.mana_cost.as_ref());
         let current=splice_count(&game,spell);let required=usize::from(use_splice);if current!=required{errors.push(format!("splice-discard-complete-text {label}: splice_abilities{current},required{required}"));}
         settle(&mut game,&mut queue,&mut dm);
         for stable in draws{let id=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.object(id).unwrap().zone,Zone::Hand);draw_count+=1;}
@@ -83782,7 +83782,7 @@ fn cr_702_47c_spliced_damage_uses_the_main_spells_blue_source_and_keeps_original
         let witness_def=CardDefinitionBuilder::new(CardId::new(),"Splice main draw witness").card_types(vec![CardType::Artifact]).build();let witness=game.create_object_from_definition(&witness_def,actor,Zone::Library);let witness_stable=game.object(witness).unwrap().stable_id;let mut dm=Choices{ray,victim,splices:0,targets:0};
         cr_audit_announce_target_domain_effect(&mut game,actor,0,Effect::add_mana(vec![ManaSymbol::Colorless,ManaSymbol::Blue,ManaSymbol::Red]),&mut dm);settle(&mut game,&mut queue,&mut dm);assert_eq!(game.player(actor).unwrap().mana_pool.total(),3);
         let hand=game.create_object_from_definition(&mists,actor,Zone::Hand);let stable=game.object(hand).unwrap().stable_id;let original=game.object(hand).unwrap().spell_effect_owned().unwrap();let mut expected=original.clone();expected.extend(game.object(ray).unwrap().spell_effect_owned().unwrap());let action=ironsmith::compute_legal_actions(&game,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==hand)).unwrap();cr_audit_complete_priority_action_with_dm(&mut game,actor,action,&mut dm,&mut queue).unwrap();
-        let spell=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.stack.len(),1);assert_eq!(game.stack[0].object_id,spell);assert_eq!(dm.splices,1);assert_eq!(dm.targets,1);assert_eq!(game.current_name(spell).as_deref(),Some("Reach Through Mists"));assert_eq!(game.current_colors(spell),Some(ColorSet::BLUE));assert_eq!(game.current_card_types(spell),Some(vec![CardType::Instant]));assert_eq!(game.current_subtypes(spell),Some(vec![Subtype::Arcane]));assert_eq!(game.calculated_characteristics(spell).unwrap().mana_cost,mists.card.mana_cost);assert!(game.current_spell_program(spell).unwrap()==expected);assert_eq!(game.player(actor).unwrap().mana_pool.total(),0);
+        let spell=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.stack.len(),1);assert_eq!(game.stack[0].object_id,spell);assert_eq!(dm.splices,1);assert_eq!(dm.targets,1);assert_eq!(game.current_name(spell).as_deref(),Some("Reach Through Mists"));assert_eq!(game.current_colors(spell),Some(ColorSet::BLUE));assert_eq!(game.current_card_types(spell),Some(vec![CardType::Instant]));assert_eq!(game.current_subtypes(spell),Some(vec![Subtype::Arcane]));assert_eq!(game.calculated_characteristics(spell).unwrap().mana_cost.as_deref(),mists.card.mana_cost.as_ref());assert!(game.current_spell_program(spell).unwrap()==expected);assert_eq!(game.player(actor).unwrap().mana_pool.total(),0);
         settle(&mut game,&mut queue,&mut dm);let damage=game.damage_on(victim);if damage!=2{errors.push(format!("splice-damage-source {label}: damage{damage},required2; main blue,physical splicer red"));}
         let drawn=game.find_object_by_stable_id(witness_stable).unwrap();assert_eq!(game.object(drawn).unwrap().zone,Zone::Hand);assert_eq!(game.object(ray).unwrap().zone,Zone::Hand);assert_eq!(game.current_colors(ray),Some(ColorSet::RED));let main=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.object(main).unwrap().zone,Zone::Graveyard);assert!(game.current_spell_program(main).unwrap()==original);assert!(game.object(main).unwrap().splice_cast_state.is_none());assert_eq!(game.object(victim).unwrap().zone,Zone::Battlefield);assert_eq!(game.object(victim).unwrap().owner,other);assert_eq!(game.current_controller(victim),Some(other));assert_eq!(game.player(actor).unwrap().life,20);assert_eq!(game.player(other).unwrap().life,20);assert!(game.stack.is_empty());game.validate_zone_consistency().unwrap();games+=1;
     }}
@@ -84607,8 +84607,8 @@ fn cr_702_47e_707_10_spliced_spell_copies_resolve_or_leave_without_modifying_the
                         && game.current_card_types(copy) == Some(vec![CardType::Instant])
                         && game.current_subtypes(copy) == Some(vec![Subtype::Arcane])
                         && game.current_colors(copy) == Some(ColorSet::BLUE)
-                        && game.calculated_characteristics(copy).unwrap().mana_cost
-                            == mists.card.mana_cost;
+                        && game.calculated_characteristics(copy).unwrap().mana_cost.as_deref()
+                            == mists.card.mana_cost.as_ref();
                     if !correct_program || !correct_values {
                         errors.push(format!("splice-copy-definition {label}: program{correct_program},values{correct_values}; requiredtrue/true"));
                     }

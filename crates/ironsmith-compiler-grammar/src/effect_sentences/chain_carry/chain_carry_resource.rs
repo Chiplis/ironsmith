@@ -243,10 +243,7 @@ pub fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
             (
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                            ..
-                        }),
+                        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -287,12 +284,6 @@ pub fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
-                    sacrifice_at_next_end_step,
-                    sacrifice_at_next_end_step_reference_surface,
-                    next_end_step_player: effect_next_end_step_player,
-                    ..
-                })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                     sacrifice_at_next_end_step,
                     sacrifice_at_next_end_step_reference_surface,
                     next_end_step_player: effect_next_end_step_player,

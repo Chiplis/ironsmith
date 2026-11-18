@@ -7,6 +7,26 @@ use super::super::grammar::structure;
 use super::*;
 use crate::model::ast::{EffectAst, StaticAbilityAst};
 
+/// Instruction colons cannot become activation-price delimiters. Inspect only
+/// the first unquoted colon; an actual earlier activation price keeps ownership.
+fn has_bounded_header(tokens: &[OwnedLexToken]) -> bool {
+    if tokens.first().is_some_and(|token| token.is_any_word(&["when", "whenever", "at"])) { return false; }
+    let mut start = 0;
+    for (index, kind) in crate::grammar::effects::control_flow::instruction_delimiters(tokens) {
+        if kind == TokenKind::Period { start = index + 1; continue; }
+        let header = &tokens[start..index];
+        let words = crate::lexer::parser_token_word_refs(header);
+        let Some(operand) = words.strip_suffix(&["do", "the", "following"]) else { return false };
+        let bracketed = tokens.get(index + 1).is_some_and(|t| t.kind == TokenKind::LBracket);
+        return operand.starts_with(&["with", "x", "equal", "to"])
+            || operand.starts_with(&["for", "each"])
+            || operand.contains(&"unless")
+            || bracketed && (operand.is_empty() || operand.first() == Some(&"if")
+                && header.len() >= 4 && header[header.len() - 4].kind == TokenKind::Comma);
+    }
+    false
+}
+
 fn probe_is_static_ability_line(tokens: &[OwnedLexToken]) -> bool {
     matches!(
         crate::word_claims::probe_only(|| {
@@ -76,73 +96,6 @@ fn parse_any_player_no_one_does_statement(
     }))
 }
 
-fn parse_historical_target_return_statement(
-    line: &PreprocessedLine,
-) -> Result<Option<RecognizedStatementLine>, CardTextError> {
-    let sentences = split_lexed_sentences(&line.info.source_tokens);
-    let [choose, return_them, draw] = sentences.as_slice() else {
-        return Ok(None);
-    };
-    let choose_words = crate::lexer::parser_token_word_refs(choose);
-    let return_words = crate::lexer::parser_token_word_refs(return_them);
-    let draw_words = crate::lexer::parser_token_word_refs(draw);
-    if !crate::word_primitives::parse_sequence_prefix(
-        &choose_words,
-        &[
-            "choose",
-            "up",
-            "to",
-            "three",
-            "target",
-            "permanent",
-            "cards",
-            "in",
-            "graveyards",
-            "that",
-            "were",
-            "put",
-            "there",
-            "from",
-            "the",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-    ) || !crate::word_primitives::parse_sequence_prefix(
-        &return_words,
-        &["return", "them", "to", "the", "battlefield"],
-    ) || !crate::word_primitives::parse_sequence_prefix(
-        &draw_words,
-        &[
-            "you",
-            "draw",
-            "a",
-            "card",
-            "for",
-            "each",
-            "opponent",
-            "who",
-            "controls",
-            "one",
-            "or",
-            "more",
-            "of",
-            "those",
-            "permanents",
-        ],
-    ) {
-        return Ok(None);
-    }
-
-    Ok(Some(RecognizedStatementLine {
-        info: line.info.clone(),
-        text: line.info.raw_line.clone(),
-        parse_tokens: line.info.source_tokens.clone(),
-        parse_groups: vec![line.info.source_tokens.clone()],
-        parsed_effects: None,
-    }))
-}
-
 fn is_each_player_choose_unselected_bounce_then_draw_statement(tokens: &[OwnedLexToken]) -> bool {
     statement_shapes::parse_each_player_choose_bounce_draw_tokens(tokens).is_some()
 }
@@ -177,20 +130,10 @@ pub(super) fn recognize_statement_line(
     // it is an instruction delimiter rather than an activation-cost colon.
     let words = crate::lexer::parser_token_word_refs(&line.tokens);
     // A quantified participant is a scope, not a standalone nominal clause.
-    if crate::grammar::effects::for_each_shapes::parse_participant_clause_shape(&line.tokens)
-        .is_some_and(|shape| !shape.participant_is_actor && crate::lexer::parser_token_word_refs(shape.inner_tokens).starts_with(&["you", "may"])) {
-        let effects = parse_effect_sentences_committing_loss_on_success(&line.tokens)?;
-        return Ok(Some(RecognizedStatementLine { info:line.info.clone(),text:line.info.raw_line.clone(),parse_tokens:line.tokens.clone(),parse_groups:vec![line.tokens.clone()],parsed_effects:Some(effects) }));
-    }
-
-    if crate::effect_sentences::bounded_source_programs::has_optional_cost_program_head(&line.tokens) {
-        let effects=parse_effect_sentences_committing_loss_on_success(&line.tokens)?;
-        return Ok(Some(RecognizedStatementLine {
-            info:line.info.clone(),text:line.info.raw_line.clone(),
-            parse_tokens:line.tokens.clone(),parse_groups:vec![line.tokens.clone()],parsed_effects:Some(effects),
-        }));
-    }
-    if (crate::effect_sentences::bounded_source_programs::has_bounded_header(&line.tokens)
+    let optional_participant = crate::grammar::effects::for_each_shapes::parse_participant_clause_shape(&line.tokens)
+        .is_some_and(|shape| !shape.participant_is_actor && crate::lexer::parser_token_word_refs(shape.inner_tokens).starts_with(&["you", "may"]));
+    if optional_participant || crate::effect_sentences::has_optional_quoted_cost(&line.tokens)
+        || (has_bounded_header(&line.tokens)
         || words.starts_with(&["repeat", "the", "following", "process"])
         // "Return target spell ... . If you controlled it, perform the
         // catalyze action as follows: ...": the colon closes a named-action
@@ -401,6 +344,12 @@ const WHOLE_LINE_STATEMENT_RECOGNIZERS: &[(
         },
         |_, normalized| normalized.to_string(),
     ),
+    (
+        |line, _| {
+            statement_shapes::historical_target_return_sentences(&line.info.source_tokens).is_some()
+        },
+        |line, _| line.info.raw_line.clone(),
+    ),
 ];
 
 fn recognize_statement_line_general(
@@ -438,13 +387,6 @@ fn recognize_statement_line_general(
                 parsed_effects: None,
             }));
         }
-    }
-    // The complete target declaration contains an embedded `put ... there`
-    // relative clause. recognized form probing individual syntactic clauses would treat
-    // that history predicate as a second move instruction before the linked
-    // three-sentence semantic rule can claim it.
-    if let Some(statement) = parse_historical_target_return_statement(line)? {
-        return Ok(Some(statement));
     }
     // Preserve an authored player-or-planeswalker controller backreference
     // before name/reference normalization simplifies the second target to a
@@ -1539,3 +1481,24 @@ mod tests {
 #[cfg(test)]
 #[path = "statement_recognition_numeric_owner_tests.rs"]
 mod numeric_owner_tests;
+
+#[cfg(test)]
+mod quantified_colon_regressions {
+    use super::*;
+    #[test]
+    fn quantified_instruction_after_previous_sentence_keeps_statement_ownership() {
+        let tokens = crate::lexer::lex_line("Exile all cards from your graveyard. For each card exiled this way, you may do the following: draw a card.", 0).unwrap();
+        assert!(has_bounded_header(&tokens));
+        let activation = crate::lexer::lex_line("{2}: For each card exiled this way, you may do the following: draw a card.", 0).unwrap();
+        assert!(!has_bounded_header(&activation));
+    }
+
+    #[test]
+    fn quoted_activation_colon_does_not_hide_a_later_instruction() {
+        let tokens = crate::lexer::lex_line(
+            r#"Target creature gains "{T}: Draw a card." until end of turn. With X equal to your devotion to blue, do the following: draw X cards."#,
+            0,
+        ).unwrap();
+        assert!(has_bounded_header(&tokens));
+    }
+}

@@ -302,15 +302,7 @@ fn parse_independent_exile_pair(
     else {
         return Ok(None);
     };
-    let starts_with_indefinite_article = |branch: &[OwnedLexToken]| {
-        crate::lexer::token_word_refs(branch)
-            .first()
-            .is_some_and(|word| matches!(*word, "a" | "an"))
-            || crate::util::parse_choice_count_token_prefix_consumed(branch).is_some()
-    };
-    if !starts_with_indefinite_article(first_tokens)
-        || !starts_with_indefinite_article(second_tokens)
-    {
+    if !effect_grammar::independently_counted_exile_operands(first_tokens, second_tokens) {
         return Ok(None);
     }
 

@@ -2,14 +2,12 @@
 
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::DrawCardsEffect;
-use crate::effects::helpers::{
-    normalize_object_selection, resolve_objects_for_effect, resolve_value,
-};
+use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
-use crate::ids::{ObjectId, PlayerId};
+use crate::ids::ObjectId;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::CardType;
@@ -25,13 +23,6 @@ pub struct ConniveEffect {
     pub descriptive: bool,
 }
 
-#[derive(Debug, Clone)]
-struct ConniveInstruction {
-    object_id: ObjectId,
-    controller: PlayerId,
-    snapshot: ObjectSnapshot,
-}
-
 impl ConniveEffect {
     pub fn new(target: ChooseSpec) -> Self {
         Self::new_with_count(target, Value::Fixed(1))
@@ -44,10 +35,53 @@ impl ConniveEffect {
             descriptive: false,
         }
     }
-}
 
-fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
-    game.team_apnap_player_order()
+    fn connive_once(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        action: &KeywordActionEvent,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let count = i32::try_from(action.amount)
+            .map_err(|_| ExecutionError::InternalError("connive magnitude overflow".into()))?;
+        if count == 0 {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::with_objects(Vec::new()),
+            ));
+        }
+        let mut outputs = connive_body(
+            ChooseSpec::SpecificObject(action.source),
+            PlayerFilter::Specific(action.player),
+            count.into(),
+        )
+        .0
+        .execute_child_with_outputs(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(outputs);
+        }
+        let mut children = vec![outputs.outcome.clone()];
+        if !self.descriptive {
+            let notification = crate::effects::composition::complete_keyword_action(
+                game,
+                ctx,
+                KeywordActionEvent::new(
+                    KeywordActionKind::Connive,
+                    action.player,
+                    action.source,
+                    action.amount,
+                )
+                .with_snapshot(action.snapshot.clone()),
+            )?;
+            children.push(notification.clone());
+            outputs.retain_batch_children([CompletedEffectOutputs::aggregate_only(notification)]);
+        }
+        Ok(
+            outputs.project_aggregate(EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::with_objects(vec![action.source]),
+                children,
+            )),
+        )
+    }
 }
 
 fn connive_snapshot_for_object(
@@ -166,15 +200,7 @@ impl EffectExecutor for ConniveEffect {
         ));
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -210,185 +236,31 @@ impl EffectExecutor for ConniveEffect {
                     ));
                 }
 
-                let mut remaining = target_ids
+                let actions = target_ids
                     .into_iter()
                     .filter_map(|object_id| {
                         let snapshot = connive_snapshot_for_object(game, ctx, object_id)?;
                         // CR 701.50a-b: the instructed permanent connives even if it
                         // stopped being a creature. Target legality, where relevant,
                         // is handled by the target specification/resolution pipeline.
-                        Some(ConniveInstruction {
-                            object_id,
-                            controller: snapshot.controller,
-                            snapshot,
-                        })
+                        Some(
+                            KeywordActionEvent::new(
+                                KeywordActionKind::Connive, snapshot.controller, object_id, count as u32,
+                            )
+                            .with_snapshot(Some(snapshot)),
+                        )
                     })
                     .collect::<Vec<_>>();
-                if remaining.is_empty() {
+                if actions.is_empty() {
                     return Ok(CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::target_invalid(),
                     ));
                 }
 
-                let mut outputs = CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved());
-                let mut children = Vec::new();
-                let mut connived_objects = Vec::new();
-                let player_order = players_in_apnap_order(game);
-
-                for player in player_order {
-                    while let Some(candidate_indices) = (!remaining.is_empty()).then(|| {
-                        remaining
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(index, instruction)| {
-                                (instruction.controller == player).then_some(index)
-                            })
-                            .collect::<Vec<_>>()
-                    }) {
-                        if candidate_indices.is_empty() {
-                            break;
-                        }
-
-                        let chosen_index = if candidate_indices.len() == 1 {
-                            candidate_indices[0]
-                        } else {
-                            use crate::decisions::make_decision;
-                            use crate::decisions::specs::ChooseObjectsSpec;
-
-                            let choices = candidate_indices
-                                .iter()
-                                .map(|&index| remaining[index].object_id)
-                                .collect::<Vec<_>>();
-                            let spec = ChooseObjectsSpec::new(
-                                ctx.source,
-                                "Choose a permanent to connive next",
-                                choices.clone(),
-                                1,
-                                Some(1),
-                            );
-                            let selection: Vec<ObjectId> = make_decision(
-                                game,
-                                ctx.decision_maker,
-                                player,
-                                Some(ctx.source),
-                                spec,
-                            );
-                            if ctx.decision_maker.awaiting_choice() {
-                                return Ok(CompletedEffectOutputs::aggregate_only(
-                                    EffectOutcome::with_objects(connived_objects),
-                                ));
-                            }
-                            let normalized = normalize_object_selection(selection, &choices, 1);
-                            let chosen_object = normalized.first().copied().unwrap_or(choices[0]);
-                            candidate_indices
-                                .into_iter()
-                                .find(|index| remaining[*index].object_id == chosen_object)
-                                .unwrap_or(0)
-                        };
-
-                        let instruction = remaining.remove(chosen_index);
-                        let controller = instruction.controller;
-                        let target_id = instruction.object_id;
-
-                        // CR 614: replacement effects such as Leader, Super-Genius's
-                        // ("instead you draw a card, then that creature connives") see
-                        // the would-connive event first. The replacement suppresses
-                        // itself, so the connive it performs is not replaced again.
-                        let would_event = crate::events::Event::new_with_provenance(
-                            KeywordActionEvent::new(
-                                KeywordActionKind::Connive,
-                                controller,
-                                target_id,
-                                count as u32,
-                            )
-                            .with_snapshot(Some(instruction.snapshot.clone())),
-                            ctx.provenance,
-                        );
-                        let iteration_outcome = if self.descriptive {
-                            let body = connive_body(ChooseSpec::SpecificObject(target_id), PlayerFilter::Specific(controller), (count as i32).into());
-                            let result = body.0.execute_child_with_outputs(game, ctx)?;
-                            let child = result.outcome.clone();
-                            result.project_aggregate(EffectOutcome::aggregate_with_primary_result(EffectOutcome::with_objects(vec![target_id]), vec![child]))
-                        } else {
-                            crate::effects::composition::execute_keyword_action_with_outputs(
-                                game,
-                                ctx,
-                                would_event,
-                                crate::effects::composition::KeywordActionOutput::Objects,
-                                crate::effects::composition::KeywordActionAmount::BodyMagnitude,
-                                |game, ctx, action| {
-                                    let controller = action.player;
-                                    let target_id = action.source;
-                                    let count = i32::try_from(action.amount).map_err(|_| {
-                                        ExecutionError::InternalError(
-                                            "connive magnitude overflow".into(),
-                                        )
-                                    })?;
-                                    if count == 0 {
-                                        return Ok(CompletedEffectOutputs::aggregate_only(
-                                            EffectOutcome::with_objects(Vec::new()),
-                                        ));
-                                    }
-                                    let mut connived_objects = Vec::new();
-                                    let mut children = Vec::new();
-
-                                    let mut body_outputs = connive_body(
-                                        ChooseSpec::SpecificObject(target_id),
-                                        PlayerFilter::Specific(controller),
-                                        count.into(),
-                                    )
-                                    .0
-                                    .execute_child_with_outputs(game, ctx)?;
-                                    if ctx.decision_maker.awaiting_choice() {
-                                        return Ok(body_outputs);
-                                    }
-                                    let body = body_outputs.outcome.clone();
-                                    children.push(body);
-
-                                    let notification =
-                                        crate::effects::composition::complete_keyword_action(
-                                            game,
-                                            ctx,
-                                            KeywordActionEvent::new(
-                                                KeywordActionKind::Connive,
-                                                controller,
-                                                target_id,
-                                                count as u32,
-                                            )
-                                            .with_snapshot(action.snapshot.clone()),
-                                        )?;
-                                    children.push(notification.clone());
-                                    body_outputs.retain_batch_children([
-                                        CompletedEffectOutputs::aggregate_only(notification),
-                                    ]);
-                                    connived_objects.push(target_id);
-                                    Ok(body_outputs.project_aggregate(
-                                        EffectOutcome::aggregate_with_primary_result(
-                                            EffectOutcome::with_objects(connived_objects),
-                                            children,
-                                        ),
-                                    ))
-                                },
-                            )?
-                        };
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::count(0),
-                            ));
-                        }
-                        if let Some(objects) = iteration_outcome.outcome.objects() {
-                            connived_objects.extend_from_slice(objects);
-                        }
-                        children.push(iteration_outcome.outcome.clone());
-                        outputs.retain_owned_child(iteration_outcome);
-                    }
-                }
-
-                Ok(
-                    outputs.project_aggregate(EffectOutcome::aggregate_with_primary_result(
-                        EffectOutcome::with_objects(connived_objects),
-                        children,
-                    )),
+                crate::effects::composition::execute_ordered_permanent_actions(
+                    game, ctx, actions, "Choose a permanent to connive next", self.descriptive,
+                    crate::effects::composition::KeywordActionAmount::BodyMagnitude,
+                    |game, ctx, action| self.connive_once(game, ctx, action),
                 )
             },
         )
@@ -753,4 +625,38 @@ mod tests {
             vec![(bob, bob_second), (bob, bob_first), (alice, alice_creature)]
         );
     }
+
+    #[test]
+    fn connive_and_explore_follow_team_member_order_and_repeat_instructions() {
+        let [a, b, c, d] = [0, 1, 2, 3].map(PlayerId::from_index);
+        for kind in [KeywordActionKind::Connive, KeywordActionKind::Explore] {
+            let mut game = GameState::new(["A", "B", "C", "D"].map(String::from).into(), 20);
+            game.turn.active_player = c;
+            game.set_teams(vec![vec![a, b], vec![c, d]]).unwrap();
+            game.enable_shared_team_turns().unwrap();
+            game.set_shared_team_member_order(0, vec![b, a]).unwrap();
+            game.set_shared_team_member_order(1, vec![d, c]).unwrap();
+            let [ca, cb, cc, cd, second_c] = [a, b, c, d, c].map(|p| create_creature(&mut game, p));
+            let source = game.new_object_id();
+            let mut dm = ConniveDecisionMaker {
+                object_choices: VecDeque::from([vec![second_c]]),
+            };
+            let mut ctx = ExecutionContext::new(source, a, &mut dm);
+            ctx.set_tagged_objects("batch", [ca, cc, cb, second_c, cd, ca].map(|id| {
+                ObjectSnapshot::from_object(game.object(id).unwrap(), &game)
+            }).into());
+            let target = ChooseSpec::tagged("batch");
+            let result = match kind {
+                KeywordActionKind::Connive => ConniveEffect::new(target).execute(&mut game, &mut ctx),
+                _ => crate::effects::ExploreEffect::new(target).execute(&mut game, &mut ctx),
+            }.unwrap();
+            let events: Vec<_> = result.events.iter()
+                .filter_map(|event| event.downcast::<KeywordActionEvent>())
+                .filter(|event| event.action == kind)
+                .map(|event| (event.player, event.source))
+                .collect();
+            assert_eq!(events, [(d, cd), (c, second_c), (c, cc), (b, cb), (a, ca), (a, ca)]);
+        }
+    }
+
 }

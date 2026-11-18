@@ -162,7 +162,7 @@ pub(super) use helpers_00::{same_name_extraction_hand_draw_matches, search_exile
 pub(super) use helpers_01::describe_countered_spell_exile_replacement_followup;
 pub(in crate::compiled_text) use helpers_01::describe_create_token_then_set_base_pt_bundle;
 pub(in crate::compiled_text) use helpers_01::describe_declared_target_for_each_pump_unblockable_bundle;
-use helpers_01::describe_linked_graveyard_choices_then_may_return_bundle as describe_effect_list_linked_graveyard_choices_then_may_return_bundle;
+use helpers_01::describe_linked_graveyard_return;
 pub(in crate::compiled_text) use helpers_01::describe_reveal_hand_choose_prefix;
 pub(in crate::compiled_text) use helpers_01::describe_revealed_hand_choose_then_exile;
 pub(in crate::compiled_text) use helpers_01::describe_reveal_hand_choose_shuffle_into_library_bundle;
@@ -26337,86 +26337,9 @@ pub(super) fn normalize_haunting_echoes_text(text: &str) -> Option<String> {
 pub(crate) fn describe_linked_graveyard_choices_then_may_return_bundle(
     filtered: &[&Effect],
 ) -> Option<String> {
-    let [first_choose_effect, second_choose_effect, may_effect] = filtered else {
-        return None;
-    };
-    let first_choose = first_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let second_choose =
-        second_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
-    let [move_effect] = may.effects.as_slice() else {
-        return None;
-    };
-    let move_to_zone = unwrap_basic_tag_wrappers(move_effect)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-
-    if first_choose.is_search
-        || second_choose.is_search
-        || first_choose.replace_tagged_objects
-        || second_choose.replace_tagged_objects
-        || first_choose.tag != second_choose.tag
-        || choose_exact_count(first_choose) != Some(1)
-        || choose_exact_count(second_choose) != Some(1)
-        || choose_primary_zone(first_choose) != Some(Zone::Graveyard)
-        || choose_primary_zone(second_choose) != Some(Zone::Graveyard)
-        || !matches!(
-            &second_choose.chooser,
-            PlayerFilter::AliasedOwnerOf(crate::filter::ObjectRef::Tagged(tag))
-                | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(tag))
-                if tag == &first_choose.tag
-        )
-        || !move_to_battlefield_uses_chosen_tag(move_to_zone, first_choose.tag.as_str())
-    {
-        return None;
-    }
-
-    let describe_choose_clause = |choose: &crate::effects::ChooseObjectsEffect,
-                                  capitalize_subject: bool| {
-        let chooser = describe_player_filter(&choose.chooser);
-        let chosen = describe_choose_selection(choose);
-        let location = describe_choose_zone_location(choose, "graveyard");
-        if chooser == "you" {
-            return format!("Choose {chosen} {location}");
-        }
-        let subject = if capitalize_subject {
-            capitalize_first(&chooser)
-        } else {
-            chooser.clone()
-        };
-        let choose_verb = player_verb(&chooser, "choose", "chooses");
-        format!("{subject} {choose_verb} {chosen} {location}")
-    };
-
-    let first_clause = describe_choose_clause(first_choose, true);
-    let second_clause = describe_choose_clause(second_choose, false);
-    let tapped_suffix = if move_to_zone.enters_tapped {
-        " tapped"
-    } else {
-        ""
-    };
-    let controller_suffix = match move_to_zone.battlefield_controller {
-        crate::effects::BattlefieldController::Preserve => "",
-        crate::effects::BattlefieldController::Owner => " under their owners' control",
-        crate::effects::BattlefieldController::You => " under your control",
-    };
-    let decider = may
-        .decider
-        .as_ref()
-        .map(describe_player_filter)
-        .unwrap_or_else(|| "you".to_string());
-    let may_clause = if decider == "you" {
-        format!("You may return those cards to the battlefield{tapped_suffix}{controller_suffix}")
-    } else {
-        let may_verb = player_verb(&decider, "may", "may");
-        format!(
-            "{} {may_verb} return those cards to the battlefield{tapped_suffix}{controller_suffix}",
-            capitalize_first(&decider)
-        )
-    };
-
-    Some(format!(
-        "{first_clause}, then {second_clause}. {may_clause}"
-    ))
+    describe_linked_graveyard_return(filtered, |effect| {
+        unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
+    })
 }
 
 pub(super) fn describe_graveyard_mana_ladder_return_clause_bundle(

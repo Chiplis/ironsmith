@@ -935,12 +935,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 // cast with its Teamwork optional cost paid.
                 let using_teamwork = crate::lexer::parser_token_word_refs(filter_tokens)
                     .ends_with(&["using", "teamwork"]);
-                // "a spell using blink": the web binder's reading of a custom
-                // keyword's designation ("a blinked spell"); the receipt of a
-                // payment attributed to that keyword, never an official one.
-                let using_custom = (!using_teamwork)
-                    .then(|| custom_keyword_using_suffix(filter_tokens))
-                    .flatten();
+                // Read the receipt first, so words in its name cannot add a
+                // modal or kicked condition to the cast event.
+                let using_custom = filter_tokens.iter().rposition(|t| t.is_word("using")).and_then(|start| {
+                    crate::custom_identity_filters::bare_payment_name(&filter_tokens[start + 1..])
+                        .map(|name| (start, name))
+                });
                 let filter_tokens = if using_teamwork {
                     &filter_tokens[..filter_tokens.len().saturating_sub(2)]
                 } else if let Some((start, _)) = &using_custom {
@@ -1032,7 +1032,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         if using_teamwork {
                             filter.ability_markers.push("teamwork".to_string());
                         }
-                        if let Some((_, keyword)) = &using_custom {
+                        if let Some((_, keyword)) = using_custom {
                             filter.ability_markers.push(format!("using {keyword}"));
                         }
                         if modal {
@@ -2600,9 +2600,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let subject_word_count = if words.len() == 5 { 2 } else { 1 };
         let subject_token_end = trigger_word_token_start(tokens, subject_word_count)
             .unwrap_or(subject_word_count.min(tokens.len()));
-        return Ok(this_leaves_battlefield_trigger_spec(
-            source_reference_surface_for_trigger_subject(&tokens[..subject_token_end]),
-        ));
+        return Ok(source_leaves_trigger_for_subject(&tokens[..subject_token_end]));
     }
 
     if let Some(enters_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Enter)
@@ -7686,21 +7684,6 @@ fn damage_amount_comparison_operator(
         Cmp::NotEqual(n) => (Op::NotEqual, *n),
         _ => return None,
     })
-}
-
-/// `(start, keyword)` for a trailing "using <keyword>" naming a custom keyword:
-/// plain words that are not an official keyword's name or form.
-fn custom_keyword_using_suffix(tokens: &[OwnedLexToken]) -> Option<(usize, String)> {
-    let start = tokens.iter().rposition(|token| token.is_word("using"))?;
-    let words = crate::lexer::parser_token_word_refs(&tokens[start + 1..]);
-    if words.is_empty() || words.len() != tokens.len() - start - 1 || words.len() > 4 {
-        return None;
-    }
-    let keyword = words.join(" ");
-    if crate::keyword_forms::official(&keyword).is_some() || crate::keyword_forms::is_participle(&keyword) {
-        return None;
-    }
-    Some((start, keyword))
 }
 
 #[cfg(test)]

@@ -323,75 +323,7 @@ fn absorb_single_conditional_effect_into_trigger(
     }
 }
 
-pub fn derive_triggered_ability_functional_zones_from_facts(
-    trigger: &TriggerSpec,
-    facts: &crate::model::facts::TriggerFunctionalZoneFacts,
-) -> Vec<Zone> {
-    if let TriggerSpec::WithIntro { trigger, .. } = trigger {
-        return derive_triggered_ability_functional_zones_from_facts(trigger, facts);
-    }
-    if !facts.excluded_zones.is_empty() {
-        return [Zone::Library, Zone::Hand, Zone::Battlefield, Zone::Graveyard,
-            Zone::Stack, Zone::Exile, Zone::Command, Zone::Ante, Zone::OutsideGame]
-            .into_iter().filter(|zone| !facts.excluded_zones.contains(zone)).collect();
-    }
-    let mut zones = base_trigger_functional_zones(trigger);
-    if let Some(explicit_zone) = &facts.explicit_zone
-        && !ironsmith_compiler_semantic::model::trigger_zones::explicit_zone_belongs_to_branch(trigger, *explicit_zone)
-    {
-        zones = vec![*explicit_zone];
-        if facts.explicit_zone_or_battlefield && *explicit_zone != Zone::Battlefield {
-            zones.push(Zone::Battlefield);
-        }
-    }
-    if facts.discards_this_card {
-        zones = vec![Zone::Hand];
-    } else if facts.returns_self_from_graveyard && !trigger_references_attached_object(trigger) {
-        zones = vec![Zone::Graveyard];
-    }
-    zones
-}
-
-/// Zones from which the trigger event is observed, before whole-ability
-/// facts. CR 113.6: an "A or B" trigger functions wherever either arm does
-/// ("When you cast or cycle this card", CR 603.2 + CR 702.29c).
-fn base_trigger_functional_zones(trigger: &TriggerSpec) -> Vec<Zone> {
-    ironsmith_compiler_semantic::model::trigger_zones::base_trigger_functional_zones(trigger)
-}
-
-fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
-    match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => trigger_references_attached_object(trigger),
-        TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
-            filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
-        }
-        TriggerSpec::PutIntoGraveyardFromZone { filter, .. }
-        | TriggerSpec::PutIntoGraveyardFromAnyExcept { filter, .. } => {
-            filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
-        }
-        TriggerSpec::Either(left, right) => {
-            trigger_references_attached_object(left) || trigger_references_attached_object(right)
-        }
-        _ => false,
-    }
-}
-
-fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
-    filter
-        .tagged_constraints
-        .iter()
-        .any(|constraint| constraint.tag.as_str() == tag)
-        || filter.could_be_targeted_by.as_ref().is_some_and(|constraint| {
-            matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
-        })
-        || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
-        || matches!(&filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
-        || filter.targets_object.as_deref().is_some_and(|targets| filter_references_tag(targets, tag))
-        || filter.targets_only_object.as_deref().is_some_and(|targets| filter_references_tag(targets, tag))
-        || filter.attached_to_object.as_deref().is_some_and(|attached_to| filter_references_tag(attached_to, tag))
-        || filter.blocked_or_was_blocked_by_this_turn.as_deref().is_some_and(|combat_partner| filter_references_tag(combat_partner, tag))
-        || filter.any_of.iter().any(|branch| filter_references_tag(branch, tag))
-}
+pub use ironsmith_compiler_semantic::model::trigger_zones::derive_triggered_ability_functional_zones_from_facts;
 
 /// The frequency limit these facts state, as a predicate.
 fn trigger_frequency_condition_from_facts(

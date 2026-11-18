@@ -764,8 +764,7 @@ fn read_create_token_copy_exception(
         && let Ok(
             effect @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. }),
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. }),
                 ..
             }),
         ) = super::super::super::parse_create(tokens, None)

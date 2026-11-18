@@ -8,6 +8,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use csv::StringRecord;
+pub use ironsmith_card_source::{build_parse_input, default_cards_path, normalize_lookup_name};
+use ironsmith_card_source::{
+    RegistryCardInput, face_metadata_lines, get_first_face, registry_card_name,
+    strip_parenthetical_text, value_to_string,
+};
 use reqwest::blocking::Client;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use serde_json::Value;
@@ -30,15 +35,6 @@ pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tag
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
 const DB_SCHEMA_VERSION: i64 = 12;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
-const UNRELEASED_MARKER: &str = "ironsmith_unreleased";
-const SUPPORTED_PAPER_FORMATS: &[&str] = &[
-    "commander",
-    "standard",
-    "modern",
-    "pioneer",
-    "legacy",
-    "vintage",
-];
 const TAGGER_FETCH_ORACLE_CARD_TAG_QUERY: &str = r#"
 query FetchOracleCardTagPage($slug: String!, $type: TagType!, $page: Int) {
   tagBySlug(slug: $slug, type: $type) {
@@ -63,55 +59,6 @@ fn read_sqlite_count(row: &rusqlite::Row<'_>) -> rusqlite::Result<usize> {
     usize::try_from(count).map_err(|err| {
         rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Integer, Box::new(err))
     })
-}
-
-fn strip_parenthetical_text(text: &str) -> String {
-    text.lines()
-        .map(strip_parenthetical_text_from_line)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn strip_parenthetical_text_from_line(line: &str) -> String {
-    let mut stripped = String::with_capacity(line.len());
-    let mut depth = 0usize;
-
-    for ch in line.chars() {
-        match ch {
-            '(' => {
-                if depth == 0 {
-                    while stripped.ends_with([' ', '\t']) {
-                        stripped.pop();
-                    }
-                }
-                depth += 1;
-            }
-            ')' => {
-                depth = depth.saturating_sub(1);
-            }
-            _ if depth == 0 => stripped.push(ch),
-            _ => {}
-        }
-    }
-
-    tighten_spacing(&stripped)
-}
-
-fn tighten_spacing(line: &str) -> String {
-    let collapsed = line
-        .replace('\u{00a0}', " ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let mut tightened = String::with_capacity(collapsed.len());
-    for ch in collapsed.chars() {
-        if matches!(ch, '.' | ',' | ';' | ':' | '!' | '?') && tightened.ends_with(' ') {
-            tightened.pop();
-        }
-        tightened.push(ch);
-    }
-    tightened.trim().to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -410,30 +357,6 @@ pub fn default_db_path() -> PathBuf {
     PathBuf::from(DEFAULT_DB_PATH)
 }
 
-pub fn default_cards_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")))
-        .join("cards.json")
-}
-
-pub fn normalize_lookup_name(name: &str) -> String {
-    let trimmed = name.trim();
-    if trimmed.contains(" / ") && !trimmed.contains(" // ") {
-        return trimmed.replacen(" / ", " // ", 1);
-    }
-    trimmed.to_string()
-}
-
-pub fn build_parse_input(metadata_lines: &[String], oracle_text: &str) -> String {
-    let mut lines = metadata_lines.to_vec();
-    if !oracle_text.trim().is_empty() {
-        lines.push(oracle_text.trim().to_string());
-    }
-    lines.join("\n")
-}
-
 pub fn postprocess_oracle_text(text: &str) -> String {
     strip_parenthetical_text(text)
 }
@@ -515,20 +438,18 @@ fn normalize_canonical_oracle_line(line: &str) -> String {
 }
 
 pub fn load_canonical_cards(path: &str) -> Result<BTreeMap<String, CardPayload>, Box<dyn Error>> {
-    let raw = fs::read_to_string(path)?;
-    let cards: Vec<Value> = serde_json::from_str(&raw)?;
-    Ok(load_registry_cards_from_values(cards)
-        .into_iter()
-        .map(|(name, record)| (name, record.payload))
-        .collect())
+    ironsmith_card_source::load_registry_cards_with(
+        path,
+        &BTreeSet::new(),
+        Vec::new(),
+        |card, input| tooling_registry_record(card, input).payload,
+    )
 }
 
 pub fn load_registry_cards(
     path: &str,
 ) -> Result<BTreeMap<String, RegistryCardRecord>, Box<dyn Error>> {
-    let raw = fs::read_to_string(path)?;
-    let cards: Vec<Value> = serde_json::from_str(&raw)?;
-    Ok(load_registry_cards_from_values(cards))
+    load_registry_cards_with_explicit_includes(path, &BTreeSet::new())
 }
 
 pub fn load_registry_cards_with_explicit_includes(
@@ -543,28 +464,12 @@ pub fn load_registry_cards_with_explicit_includes_and_cards(
     included_names: &BTreeSet<String>,
     extra_cards: Vec<Value>,
 ) -> Result<BTreeMap<String, RegistryCardRecord>, Box<dyn Error>> {
-    let raw = fs::read_to_string(path)?;
-    let mut cards: Vec<Value> = serde_json::from_str(&raw)?;
-    let mut included_names = included_names
-        .iter()
-        .map(|name| normalize_lookup_name(name))
-        .collect::<BTreeSet<_>>();
-    for card in extra_cards {
-        if let Some(name) = supplemental_card_name(&card) {
-            included_names.insert(name);
-        }
-        cards.push(card);
-    }
-    Ok(load_registry_cards_from_values_with_explicit_includes(
-        cards,
-        &included_names,
-    ))
-}
-
-fn supplemental_card_name(card: &Value) -> Option<String> {
-    let face = get_first_face(card);
-    let name = normalize_lookup_name(&pick_field(card, face, "name")?);
-    (!name.is_empty()).then_some(name)
+    ironsmith_card_source::load_registry_cards_with(
+        path,
+        included_names,
+        extra_cards,
+        tooling_registry_record,
+    )
 }
 
 /// Visit one card at a time, retaining neither the input string nor the
@@ -594,11 +499,10 @@ pub fn load_card_by_name(path: &str, name: &str) -> Result<Option<CardPayload>, 
     let normalized = normalize_lookup_name(name);
     let mut found = None;
     visit_card_records(path, |card| {
-        if found.is_some() || supplemental_card_name(card).as_deref() != Some(normalized.as_str()) {
+        if found.is_some() || registry_card_name(card).as_deref() != Some(normalized.as_str()) {
             return;
         }
-        found = build_registry_card_record_with_explicit_includes(card, &BTreeSet::new())
-            .map(|record| record.payload);
+        found = registry_payload(card);
     })?;
     Ok(found)
 }
@@ -653,8 +557,7 @@ pub fn load_card_payloads_by_names(
                     .filter_map(|idx| build_card_payload_for_face(card, idx))
                     .collect::<Vec<_>>()
             } else {
-                build_registry_card_record_with_explicit_includes(card, &BTreeSet::new())
-                    .map(|record| vec![record.payload])
+                registry_payload(card).map(|payload| vec![payload])
                     .unwrap_or_default()
             };
             if !payloads.is_empty() {
@@ -2930,163 +2833,27 @@ fn decode_html_entities(raw: &str) -> String {
         .replace("&gt;", ">")
 }
 
-fn registry_card_content_hash(
-    payload: &CardPayload,
-    raw_card_json: &str,
-    layout: Option<&str>,
-) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(payload.name.as_bytes());
-    hasher.update([0]);
-    hasher.update(payload.oracle_text.as_bytes());
-    hasher.update([0]);
-    hasher.update(payload.raw_oracle_text.as_bytes());
-    hasher.update([0]);
-    hasher.update(payload.parse_input.as_bytes());
-    hasher.update([0]);
-    hasher.update(layout.unwrap_or("").as_bytes());
-    hasher.update([0]);
-    hasher.update(raw_card_json.as_bytes());
-    let digest = hasher.finalize();
-    let mut out = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        out.push_str(&format!("{byte:02x}"));
-    }
-    out
+fn registry_payload(card: &Value) -> Option<CardPayload> {
+    let input = RegistryCardInput::from_card(card, &BTreeSet::new())?;
+    Some(tooling_registry_record(card, input).payload)
 }
 
-fn load_registry_cards_from_values<I>(cards: I) -> BTreeMap<String, RegistryCardRecord>
-where
-    I: IntoIterator<Item = Value>,
-{
-    load_registry_cards_from_values_with_explicit_includes(cards, &BTreeSet::new())
-}
-
-fn load_registry_cards_from_values_with_explicit_includes<I>(
-    cards: I,
-    included_names: &BTreeSet<String>,
-) -> BTreeMap<String, RegistryCardRecord>
-where
-    I: IntoIterator<Item = Value>,
-{
-    let mut out = BTreeMap::new();
-    for card in cards {
-        let Some(record) = build_registry_card_record_with_explicit_includes(&card, included_names)
-        else {
-            continue;
-        };
-        out.entry(record.payload.name.clone()).or_insert(record);
-    }
-    out
-}
-
-#[cfg(test)]
-fn load_canonical_cards_from_values<I>(cards: I) -> BTreeMap<String, CardPayload>
-where
-    I: IntoIterator<Item = Value>,
-{
-    load_registry_cards_from_values(cards)
-        .into_iter()
-        .map(|(name, record)| (name, record.payload))
-        .collect()
-}
-
-fn build_registry_card_record_with_explicit_includes(
+pub(crate) fn tooling_registry_record(
     card: &Value,
-    included_names: &BTreeSet<String>,
-) -> Option<RegistryCardRecord> {
-    if card
-        .get("digital")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        return None;
-    }
+    input: RegistryCardInput,
+) -> RegistryCardRecord {
+    let RegistryCardInput {
+        record,
+        metadata_lines,
+    } = input;
     let face = get_first_face(card);
-    let name = normalize_lookup_name(&pick_field(card, face, "name")?);
-    if name.is_empty() {
-        return None;
-    }
-    if !card_is_legal_in_supported_paper_format(card) && !included_names.contains(&name) {
-        return None;
-    }
     let parse_name = face
         .and_then(|value| value.get("name"))
         .and_then(Value::as_str)
         .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != name)
+        .filter(|value| !value.is_empty() && *value != record.name)
         .map(ToOwned::to_owned);
 
-    let raw_oracle_text = pick_field(card, face, "oracle_text")
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let oracle_text = strip_parenthetical_text(&raw_oracle_text);
-
-    let mana_cost = pick_field_preferring_face(card, face, "mana_cost");
-    let type_line = pick_field_preferring_face(card, face, "type_line");
-    let power = pick_field_preferring_face(card, face, "power");
-    let toughness = pick_field_preferring_face(card, face, "toughness");
-    let loyalty = pick_field_preferring_face(card, face, "loyalty");
-    let defense = pick_field_preferring_face(card, face, "defense");
-    let first_printed_set_name = card
-        .get("first_printed_set_name")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let attraction_lights = face
-        .and_then(|value| value.get("attraction_lights"))
-        .or_else(|| card.get("attraction_lights"))
-        .and_then(Value::as_array)
-        .map(|lights| {
-            lights
-                .iter()
-                .filter_map(Value::as_u64)
-                .map(|light| light.to_string())
-                .collect::<Vec<_>>()
-        })
-        .filter(|lights| !lights.is_empty());
-
-    let mut metadata_lines = Vec::new();
-    if let Some(mana_cost) = mana_cost
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-    {
-        metadata_lines.push(format!("Mana cost: {}", mana_cost.trim()));
-    }
-    if let Some(type_line) = type_line
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-    {
-        metadata_lines.push(format!("Type: {}", type_line.trim()));
-    }
-    if let Some(line) = color_indicator_metadata_line(card, face) {
-        metadata_lines.push(line);
-    }
-    if let Some(set_name) = first_printed_set_name {
-        metadata_lines.push(format!("First printed set: {set_name}"));
-    }
-    if let Some(lights) = attraction_lights {
-        metadata_lines.push(format!("Attraction lights: {}", lights.join(", ")));
-    }
-    if let (Some(power), Some(toughness)) = (power.as_deref(), toughness.as_deref())
-        && !power.trim().is_empty()
-        && !toughness.trim().is_empty()
-    {
-        metadata_lines.push(format!(
-            "Power/Toughness: {}/{}",
-            power.trim(),
-            toughness.trim()
-        ));
-    }
-    if let Some(loyalty) = loyalty.as_deref().filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Loyalty: {}", loyalty.trim()));
-    }
-    if let Some(defense) = defense.as_deref().filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Defense: {}", defense.trim()));
-    }
-
-    let parse_input = build_parse_input(&metadata_lines, &raw_oracle_text);
     let linked_face_layout = linked_face_layout_from_card(card);
     let other_face_name = linked_face_layout.and_then(|_| {
         get_second_face(card)
@@ -3096,82 +2863,27 @@ fn build_registry_card_record_with_explicit_includes(
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
     });
-    let payload = CardPayload {
-        name,
-        parse_name,
-        oracle_text,
-        raw_oracle_text,
-        metadata_lines,
-        parse_input,
-        other_face_name,
-        linked_face_layout,
-    };
-    let layout = card
-        .get("layout")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned);
-    let raw_card_json = serde_json::to_string(card).ok()?;
-    let content_hash = registry_card_content_hash(&payload, &raw_card_json, layout.as_deref());
-
-    Some(RegistryCardRecord {
-        payload,
-        raw_card_json,
-        mana_cost: mana_cost
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned),
-        type_line: type_line
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned),
-        power: power
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned),
-        toughness: toughness
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned),
-        loyalty: loyalty
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned),
-        defense: defense
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned),
-        layout,
-        content_hash,
-    })
-}
-
-fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
-    // scripts/download_scryfall_cards.py keeps previewed cards that no format
-    // lists yet, so lobbies can opt into them.
-    if card.get(UNRELEASED_MARKER).and_then(Value::as_bool) == Some(true) {
-        return true;
+    RegistryCardRecord {
+        payload: CardPayload {
+            name: record.name,
+            parse_name,
+            oracle_text: record.oracle_text,
+            raw_oracle_text: record.raw_oracle_text,
+            metadata_lines,
+            parse_input: record.parse_input,
+            other_face_name,
+            linked_face_layout,
+        },
+        raw_card_json: record.raw_card_json,
+        mana_cost: record.mana_cost,
+        type_line: record.type_line,
+        power: record.power,
+        toughness: record.toughness,
+        loyalty: record.loyalty,
+        defense: record.defense,
+        layout: record.layout,
+        content_hash: record.content_hash,
     }
-    let Some(legalities) = card.get("legalities").and_then(Value::as_object) else {
-        return true;
-    };
-    if legalities.is_empty() {
-        return true;
-    }
-
-    SUPPORTED_PAPER_FORMATS.iter().any(|format| {
-        legalities
-            .get(*format)
-            .and_then(Value::as_str)
-            .is_some_and(|status| matches!(status, "legal" | "restricted"))
-    })
 }
 
 fn parse_card(name: &str, parse_input: &str, allow_unsupported: bool) -> ParseAttempt {
@@ -3283,12 +2995,6 @@ fn normalize_inline_card_ids(text: &str) -> String {
     out
 }
 
-fn get_first_face(card: &Value) -> Option<&Value> {
-    card.get("card_faces")
-        .and_then(Value::as_array)
-        .and_then(|faces| faces.first())
-}
-
 fn get_second_face(card: &Value) -> Option<&Value> {
     card.get("card_faces")
         .and_then(Value::as_array)
@@ -3310,68 +3016,7 @@ pub(crate) fn build_card_payload_for_face(card: &Value, face_index: usize) -> Op
         .trim()
         .to_string();
     let oracle_text = strip_parenthetical_text(&raw_oracle_text);
-    let mana_cost = pick_field_preferring_face(card, Some(face), "mana_cost");
-    let type_line = pick_field_preferring_face(card, Some(face), "type_line");
-    let power = pick_field_preferring_face(card, Some(face), "power");
-    let toughness = pick_field_preferring_face(card, Some(face), "toughness");
-    let loyalty = pick_field_preferring_face(card, Some(face), "loyalty");
-    let defense = pick_field_preferring_face(card, Some(face), "defense");
-    let first_printed_set_name = card
-        .get("first_printed_set_name")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let attraction_lights = face
-        .get("attraction_lights")
-        .or_else(|| card.get("attraction_lights"))
-        .and_then(Value::as_array)
-        .map(|lights| {
-            lights
-                .iter()
-                .filter_map(Value::as_u64)
-                .map(|light| light.to_string())
-                .collect::<Vec<_>>()
-        })
-        .filter(|lights| !lights.is_empty());
-
-    let mut metadata_lines = Vec::new();
-    if let Some(mana_cost) = mana_cost
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-    {
-        metadata_lines.push(format!("Mana cost: {}", mana_cost.trim()));
-    }
-    if let Some(type_line) = type_line
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-    {
-        metadata_lines.push(format!("Type: {}", type_line.trim()));
-    }
-    if let Some(line) = color_indicator_metadata_line(card, Some(face)) {
-        metadata_lines.push(line);
-    }
-    if let Some(set_name) = first_printed_set_name {
-        metadata_lines.push(format!("First printed set: {set_name}"));
-    }
-    if let Some(lights) = attraction_lights {
-        metadata_lines.push(format!("Attraction lights: {}", lights.join(", ")));
-    }
-    if let (Some(power), Some(toughness)) = (power.as_deref(), toughness.as_deref())
-        && !power.trim().is_empty()
-        && !toughness.trim().is_empty()
-    {
-        metadata_lines.push(format!(
-            "Power/Toughness: {}/{}",
-            power.trim(),
-            toughness.trim()
-        ));
-    }
-    if let Some(loyalty) = loyalty.as_deref().filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Loyalty: {}", loyalty.trim()));
-    }
-    if let Some(defense) = defense.as_deref().filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Defense: {}", defense.trim()));
-    }
+    let metadata_lines = face_metadata_lines(card, face);
 
     let linked_face_layout = linked_face_layout_from_card(card);
     let other_face_name = linked_face_layout.and_then(|_| {
@@ -3390,62 +3035,12 @@ pub(crate) fn build_card_payload_for_face(card: &Value, face_index: usize) -> Op
         name: name.to_string(),
         parse_name: None,
         oracle_text,
-        raw_oracle_text: raw_oracle_text.clone(),
-        metadata_lines: metadata_lines.clone(),
         parse_input: build_parse_input(&metadata_lines, &raw_oracle_text),
+        raw_oracle_text,
+        metadata_lines,
         other_face_name,
         linked_face_layout,
     })
-}
-
-fn value_to_string(value: &Value) -> Option<String> {
-    if value.is_null() {
-        return None;
-    }
-    if let Some(value) = value.as_str() {
-        return Some(value.to_string());
-    }
-    Some(value.to_string())
-}
-
-fn pick_field(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
-    if let Some(value) = card.get(key).and_then(value_to_string) {
-        return Some(value);
-    }
-    face.and_then(|value| value.get(key))
-        .and_then(value_to_string)
-}
-
-fn pick_field_preferring_face(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
-    if let Some(value) = face
-        .and_then(|value| value.get(key))
-        .and_then(value_to_string)
-    {
-        return Some(value);
-    }
-    card.get(key).and_then(value_to_string)
-}
-
-/// The "Color indicator: ..." metadata line for a face's Scryfall
-/// `color_indicator` (CR 204). The face's own value wins; a single-faced card
-/// keeps it on the root object.
-fn color_indicator_metadata_line(card: &Value, face: Option<&Value>) -> Option<String> {
-    let letters = face
-        .and_then(|value| value.get("color_indicator"))
-        .or_else(|| card.get("color_indicator"))
-        .and_then(Value::as_array)?;
-    let names = [
-        ("W", "White"),
-        ("U", "Blue"),
-        ("B", "Black"),
-        ("R", "Red"),
-        ("G", "Green"),
-    ]
-    .into_iter()
-    .filter(|(letter, _)| letters.iter().any(|value| value.as_str() == Some(*letter)))
-    .map(|(_, name)| name)
-    .collect::<Vec<_>>();
-    (!names.is_empty()).then(|| format!("Color indicator: {}", names.join(", ")))
 }
 
 fn linked_face_layout_from_card(card: &Value) -> Option<LinkedFaceLayout> {
@@ -4765,6 +4360,37 @@ CardDefinition {
         }
     }
 
+    fn cards_file(cards: &[Value]) -> tempfile::NamedTempFile {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        serde_json::to_writer(file.as_file(), cards).unwrap();
+        file
+    }
+
+    #[test]
+    fn supplemental_cards_admit_named_originals_before_filling_missing_records() {
+        let banned = |name, text| serde_json::json!({
+            "name": name, "oracle_text": text, "legalities": {"commander": "banned"}
+        });
+        let file = cards_file(&[
+            banned("Front // Back", "Original printing"),
+            banned("Explicit", "Explicit include"),
+            banned("Excluded", "Outside this registry"),
+        ]);
+        let rows = load_registry_cards_with_explicit_includes_and_cards(
+            file.path().to_str().unwrap(),
+            &BTreeSet::from([" Explicit ".to_owned()]),
+            vec![
+                banned("Front / Back", "Later printing"),
+                banned("Supplement", "Supplemental card"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows["Front // Back"].payload.oracle_text, "Original printing");
+        assert_eq!(rows["Explicit"].payload.oracle_text, "Explicit include");
+        assert_eq!(rows["Supplement"].payload.oracle_text, "Supplemental card");
+    }
+
     #[test]
     fn canonical_loader_dedupes_by_name() {
         let cards = vec![
@@ -4782,7 +4408,8 @@ CardDefinition {
             }),
         ];
 
-        let loaded = load_canonical_cards_from_values(cards);
+        let file = cards_file(&cards);
+        let loaded = load_canonical_cards(file.path().to_str().unwrap()).unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(
             loaded
@@ -4812,7 +4439,8 @@ CardDefinition {
             }),
         ];
 
-        let loaded = load_canonical_cards_from_values(cards);
+        let file = cards_file(&cards);
+        let loaded = load_canonical_cards(file.path().to_str().unwrap()).unwrap();
         assert!(loaded.contains_key("Lightning Bolt"));
         assert!(!loaded.contains_key("Digital Bolt"));
     }
@@ -4861,7 +4489,8 @@ CardDefinition {
             }),
         ];
 
-        let loaded = load_canonical_cards_from_values(cards);
+        let file = cards_file(&cards);
+        let loaded = load_canonical_cards(file.path().to_str().unwrap()).unwrap();
         assert!(loaded.contains_key("Ancestral Recall"));
         assert!(loaded.contains_key("Lightning Bolt"));
         assert!(!loaded.contains_key("Contract from Below"));
@@ -5497,7 +5126,7 @@ CardDefinition {
     fn replace_registry_cards_stores_stripped_oracle_text_but_keeps_raw_parse_input() {
         let path = unique_temp_path("registry-strip");
         let mut db = CardStatusDb::open(&path).expect("open db");
-        let rows = load_registry_cards_from_values(vec![serde_json::json!({
+        let file = cards_file(&[serde_json::json!({
             "name": "Sky Drake",
             "oracle_text": "Flying (This creature can't be blocked except by creatures with flying or reach.)",
             "mana_cost": "{1}{U}",
@@ -5505,6 +5134,7 @@ CardDefinition {
             "power": "2",
             "toughness": "1"
         })]);
+        let rows = load_registry_cards(file.path().to_str().unwrap()).unwrap();
         let record = rows
             .get("Sky Drake")
             .expect("sky drake registry row")

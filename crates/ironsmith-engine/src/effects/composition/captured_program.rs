@@ -45,7 +45,7 @@ impl<T> CapturedProgramFrame<T> {
         run: impl FnOnce(&mut GameState, &mut ExecutionContext, T) -> Result<R, ExecutionError>,
     ) -> Result<R, ExecutionError> {
         let Self { program, context } = self;
-        let mut child = context.reborrow(&mut *parent.decision_maker);
+        let mut child = context.into_context(&mut *parent.decision_maker);
         run(game, &mut child, program)
     }
 }

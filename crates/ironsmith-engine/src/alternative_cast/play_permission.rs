@@ -1,6 +1,7 @@
 //! Exact origin selection for a cast whose rules depend on the chosen grant.
 //! This owner is distinct from the legacy source-only PlayFrom lookup.
-use super::GrantSelection;
+use std::borrow::Cow;
+use super::{CastingMethod, GrantSelection};
 use crate::effects::ExecutionError;
 use crate::grant::Grantable;
 use crate::grant_registry::{Grant, GrantPermissionIdentity, PlayFromConstraints, grant_usage_limit_allows};
@@ -22,7 +23,7 @@ pub(crate) fn resolve(
     {
         return Err(ExecutionError::IncompleteEvidence("exact play permission has no live origin card".into()));
     }
-    let query = crate::grant_registry::proposed_card_face_query(game, face)?;
+    let query = crate::grant_registry::query_with_spell_face(game, face)?;
     let grants = query.effect_store.grant_registry.get_grants_for_card(&query, face.id, zone, player);
     let grant = grants.get(selection.index).filter(|grant|
         grant.permission_identity.as_ref() == Some(&selection.identity)
@@ -77,10 +78,43 @@ impl PlayPermissionReceipt {
     }
 }
 
+fn play_from_parts(origin: &CastingMethod) -> Result<(ObjectId, Zone, Option<usize>), ExecutionError> {
+    match origin {
+        CastingMethod::PlayFrom { source, zone, use_alternative }
+        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, use_alternative } => Ok((*source, *zone, *use_alternative)),
+        CastingMethod::FaceDownPlayFrom { source, zone } => Ok((*source, *zone, None)),
+        _ => Err(ExecutionError::IncompleteEvidence("exact permission requires one ordinary play-from origin".into())),
+    }
+}
+
+/// Select the characteristics a zone permission sees before the card moves.
+pub(crate) fn play_from_face<'a>(
+    game: &GameState,
+    card: &'a Object,
+    origin: &CastingMethod,
+) -> Result<Option<Cow<'a, Object>>, ExecutionError> {
+    let face = match origin {
+        CastingMethod::PlayFrom { .. } => card.projected_front_half().map_or(Cow::Borrowed(card), Cow::Owned),
+        CastingMethod::SplitOtherHalfPlayFrom { .. } => Cow::Owned(
+            crate::decision::spell_view_for_split_other_half_cast(game, card)
+                .ok_or_else(|| ExecutionError::IncompleteEvidence("selected permission has no linked spell face".into()))?,
+        ),
+        CastingMethod::FaceDownPlayFrom { .. } => {
+            if !crate::decision::spell_can_be_cast_face_down(game, card) {
+                return Err(ExecutionError::IncompleteEvidence("selected permission does not supply a face-down casting rule".into()));
+            }
+            Cow::Owned(crate::decision::spell_view_for_face_down_cast(game, card))
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(face))
+}
+
 /// Rebuild the selected face from the authoritative object and method. The
 /// caller's provisional Object never authorizes arbitrary characteristics.
-pub(crate) fn selected_face(game: &GameState, player: PlayerId, spell: &Object, method: &super::CastingMethod) -> Result<(Object, ObjectId, Zone), ExecutionError> {
-    use super::CastingMethod;
+pub(crate) fn selected_face<'a>(
+    game: &'a GameState, player: PlayerId, spell: &Object, method: &CastingMethod,
+) -> Result<(Cow<'a, Object>, ObjectId, Zone), ExecutionError> {
     let origin = if let CastingMethod::ExactPermission { origin, .. } = method {
         super::blind_play::admit_pre_stack_method(game, spell.id, player, method)?;
         origin.as_ref()
@@ -89,29 +123,14 @@ pub(crate) fn selected_face(game: &GameState, player: PlayerId, spell: &Object, 
         method
     };
     let physical = game.object(spell.id).ok_or(ExecutionError::ObjectNotFound(spell.id))?;
-    let (source, zone, alternative) = match origin {
-        CastingMethod::PlayFrom { source, zone, use_alternative }
-        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, use_alternative } => (*source, *zone, *use_alternative),
-        CastingMethod::FaceDownPlayFrom { source, zone } => (*source, *zone, None),
-        _ => return Err(ExecutionError::IncompleteEvidence("exact permission requires one ordinary play-from origin".into())),
-    };
+    let (source, zone, alternative) = play_from_parts(origin)?;
     if physical.zone != zone { return Err(ExecutionError::IncompleteEvidence("selected permission origin changed".into())); }
-    let mut face = match origin {
-        CastingMethod::SplitOtherHalfPlayFrom { .. } => crate::decision::spell_view_for_split_other_half_cast(game, physical)
-            .ok_or_else(|| ExecutionError::IncompleteEvidence("selected permission has no linked spell face".into()))?,
-        CastingMethod::FaceDownPlayFrom { .. } => {
-            if !crate::decision::spell_can_be_cast_face_down(game, physical) {
-                return Err(ExecutionError::IncompleteEvidence("selected permission does not supply a face-down casting rule".into()));
-            }
-            crate::decision::spell_view_for_face_down_cast(game, physical)
-        }
-        _ => physical.clone(),
-    };
+    let mut face = play_from_face(game, physical, origin)?
+        .ok_or_else(|| ExecutionError::IncompleteEvidence("selected permission has no play-from origin".into()))?;
     if let Some(index) = alternative {
         let method = face.alternative_casts.get(index).filter(|method| method.cast_from_zone() == Zone::Hand)
             .cloned().ok_or_else(|| ExecutionError::IncompleteEvidence("selected permission has no printed alternative from hand".into()))?;
-        if method.is_bestow() { face.apply_bestow_cast_overlay(); }
-        if let Some((cost, power_toughness)) = method.casting_characteristics() { face.apply_cast_characteristic_overlay(cost.clone(), power_toughness); }
+        face.to_mut().apply_alternative_cast_characteristics(&method);
     }
     Ok((face, source, zone))
 }
@@ -121,12 +140,7 @@ pub(crate) fn selected_alternative(
 ) -> Result<Option<super::AlternativeCastingMethod>, ExecutionError> {
     let super::CastingMethod::ExactPermission { origin, .. } = method else { return Ok(None); };
     super::blind_play::admit_pre_stack_method(game, spell.id, player, method)?;
-    let index = match origin.as_ref() {
-        super::CastingMethod::PlayFrom { use_alternative, .. }
-        | super::CastingMethod::SplitOtherHalfPlayFrom { use_alternative, .. } => *use_alternative,
-        super::CastingMethod::FaceDownPlayFrom { .. } => None,
-        _ => return Err(ExecutionError::IncompleteEvidence("exact permission has an invalid alternative origin".into())),
-    };
+    let (_, _, index) = play_from_parts(origin)?;
     let Some(index) = index else { return Ok(None); };
     if game.object(spell.id).is_some_and(|object| object.zone == Zone::Stack) {
         return game.object(spell.id).and_then(|object| object.cast_alternative_method_owned())
@@ -156,11 +170,7 @@ pub(crate) fn receipt_for_method(
                 && game.cast_origin_snapshot(spell.id).is_some_and(|snapshot|
                     snapshot.object_id == receipt.origin && snapshot.zone == receipt.zone))
             .ok_or_else(|| ExecutionError::IncompleteEvidence("exact play permission lost its casting receipt".into()))?;
-        let (source, zone) = match origin.as_ref() {
-            super::CastingMethod::PlayFrom { source, zone, .. } | super::CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
-            | super::CastingMethod::FaceDownPlayFrom { source, zone } => (*source, *zone),
-            _ => return Err(ExecutionError::IncompleteEvidence("exact play permission has a nested or invalid origin".into())),
-        };
+        let (source, zone, _) = play_from_parts(origin)?;
         if receipt.source != source || receipt.zone != zone { return Err(ExecutionError::IncompleteEvidence("cast receipt and selected origin disagree".into())); }
         return Ok(Some(receipt.clone()));
     }

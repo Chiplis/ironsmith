@@ -142,10 +142,6 @@ fn place_sheet_pt_sticker(effect: &PutStickerEffect, game: &mut GameState,
 }
 
 impl EffectExecutor for PutStickerEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

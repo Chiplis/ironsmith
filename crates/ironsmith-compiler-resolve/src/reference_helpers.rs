@@ -1,3 +1,4 @@
+use crate::model::reference_state::SnapshotAntecedent;
 use crate::cards::builders::{CardTextError, PlayerAst, TagKey, TargetAst};
 use crate::effect::{EffectId, EventValueSpec, Restriction, Value};
 use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
@@ -461,7 +462,7 @@ fn append_object_filter_target_player_choices(
 fn controller_antecedent_tag(refs: &ReferenceEnv) -> Option<&TagKey> {
     let last = refs.known_last_object_tag()?;
     let is_off_battlefield_card = is_off_battlefield_card_result_tag(last.as_str())
-        || refs.snapshot_tag_aliases.iter().any(|(alias, concrete)| {
+        || refs.snapshot_bindings.aliases().any(|(alias, concrete)| {
             concrete == last
                 && alias.as_str()
                     == crate::tag::CompilerReferenceTag::OffBattlefieldCardAntecedent.as_str()
@@ -469,12 +470,8 @@ fn controller_antecedent_tag(refs: &ReferenceEnv) -> Option<&TagKey> {
     if !is_off_battlefield_card {
         return Some(last);
     }
-    refs.snapshot_tag_aliases
-        .iter()
-        .find(|(alias, _)| {
-            alias.as_str() == crate::tag::CompilerReferenceTag::PriorObjectAntecedent.as_str()
-        })
-        .map(|(_, prior)| prior)
+    refs.snapshot_bindings
+        .lookup(crate::tag::CompilerReferenceTag::PriorObjectAntecedent.as_str())
         .or(Some(last))
 }
 
@@ -490,10 +487,10 @@ fn resolve_object_ref(reference: &ObjectRef, refs: &ReferenceEnv) -> ObjectRef {
             }
         }
         ObjectRef::Tagged(tag) => refs
-            .snapshot_tag_aliases
-            .iter()
-            .find(|(alias, _)| alias == tag)
-            .map(|(_, concrete)| ObjectRef::tagged(concrete.clone()))
+            .snapshot_bindings
+            .lookup(tag)
+            .cloned()
+            .map(ObjectRef::tagged)
             .or_else(|| {
                 (tag.as_str() == crate::tag::CompilerReferenceTag::AdditionalCostObject.as_str())
                     .then(|| refs.known_last_object_tag())
@@ -1068,9 +1065,10 @@ fn resolve_it_tag_inner(
         // to itself. TappedThisWay is normalized back to It by resolve_it_tag.
         // Reject these aliases instead of recursively overflowing the worker.
         if previous == crate::tag::CompilerReferenceTag::It.key()
-            && refs.snapshot_tag_aliases.iter().any(|(alias, concrete)| {
-                alias == &runtime_bound_it_alias() && concrete == &previous
-            })
+            && refs
+                .snapshot_bindings
+                .antecedent(SnapshotAntecedent::RuntimeBoundIt)
+                == Some(&previous)
         {
             // `it` is the replaced event's bound object here: resolve the
             // demonstrative against that binding directly.
@@ -1137,23 +1135,15 @@ fn resolve_it_tag_inner(
     for nested in &mut resolved.any_of {
         *nested = resolve_it_tag(nested, refs)?;
     }
-    let plural_cost_reference = filter.has_plural_object_noun_surface()
+    if filter.has_plural_object_noun_surface()
         && filter.has_explicit_card_noun()
         && refs.known_last_object_tag().is_some_and(|tag| {
             tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
         })
-        && refs.snapshot_tag_aliases.iter().any(|(alias, _)| {
-            alias == &crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
-        });
-    if plural_cost_reference {
-        let cost_tag = refs
-            .snapshot_tag_aliases
-            .iter()
-            .find(|(alias, _)| {
-                alias == &crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
-            })
-            .map(|(_, concrete)| concrete.clone())
-            .expect("plural cost reference proved a snapshot above");
+        && let Some(cost_tag) = refs
+            .snapshot_bindings
+            .lookup(crate::tag::CompilerReferenceTag::AdditionalCostObject.as_str())
+    {
         for constraint in &mut resolved.tagged_constraints {
             if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -1167,8 +1157,8 @@ fn resolve_it_tag_inner(
         resolved.zone = None;
     }
     let exiled_this_way = refs
-        .snapshot_tag_aliases
-        .iter()
+        .snapshot_bindings
+        .aliases()
         .filter(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::ExiledThisWay.key())
         .map(|(_, exiled)| exiled.clone())
         .collect::<Vec<_>>();
@@ -1205,9 +1195,9 @@ fn resolve_it_tag_inner(
     // A later source action may replace the ordinary object antecedent.
     // "Milled this way" still names the milling instruction's exact set.
     if filter.prior_effect_action_surface() == Some(ironsmith_core::PriorEffectAction::Milled)
-        && let Some((_, milled)) = refs.snapshot_tag_aliases.iter().find(|(alias, _)| {
-            alias == &crate::tag::CompilerReferenceTag::MilledThisWay.key()
-        })
+        && let Some(milled) = refs
+            .snapshot_bindings
+            .lookup(crate::tag::CompilerReferenceTag::MilledThisWay.as_str())
     {
         for constraint in &mut resolved.tagged_constraints {
             if constraint.tag == crate::tag::CompilerReferenceTag::It.key() {
@@ -1218,10 +1208,9 @@ fn resolve_it_tag_inner(
     let revealed_collection_tag = (filter.prior_effect_action_surface()
         == Some(ironsmith_core::PriorEffectAction::Revealed))
     .then(|| {
-        refs.snapshot_tag_aliases
-            .iter()
-            .find(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::PublicRevealed.key())
-            .map(|(_, concrete)| concrete.clone())
+        refs.snapshot_bindings
+            .lookup(crate::tag::CompilerReferenceTag::PublicRevealed.as_str())
+            .cloned()
     })
     .flatten();
     if let Some(revealed_collection_tag) = revealed_collection_tag {
@@ -1239,17 +1228,14 @@ fn resolve_it_tag_inner(
     // An explicit "exiled with this source" reference denotes the persistent
     // link set, even when this resolution has just exiled another card.
     let explicitly_source_linked = filter.source_surface.is_some();
-    if !refs.snapshot_tag_aliases.is_empty() {
+    if !refs.snapshot_bindings.is_empty() {
         for constraint in &mut resolved.tagged_constraints {
             if explicitly_source_linked
                 && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
             {
                 continue;
             }
-            if let Some((_, concrete)) = refs
-                .snapshot_tag_aliases
-                .iter()
-                .find(|(alias, _)| alias == &constraint.tag)
+            if let Some(concrete) = refs.snapshot_bindings.lookup(&constraint.tag)
             {
                 constraint.tag = concrete.clone();
             }
@@ -1300,13 +1286,9 @@ fn resolve_it_tag_inner(
         // token, then put a counter on it for each creature card among those
         // cards"): fall back to the most recent exiled collection.
         let exiled_collection = || {
-            refs.snapshot_tag_aliases
-                .iter()
-                .rev()
-                .find(|(alias, _)| {
-                    alias.as_str() == crate::model::reference_state::LAST_EXILED_COLLECTION_ALIAS
-                })
-                .map(|(_, tag)| tag.clone())
+            refs.snapshot_bindings
+                .antecedent(SnapshotAntecedent::LastExiledCollection)
+                .cloned()
         };
         let collection = match refs.known_last_object_tag() {
             Some(tag) if tag.as_str().starts_with("created") => {
@@ -1458,9 +1440,9 @@ fn resolve_it_tag_inner(
     };
 
     let tag = if definite_noun_excludes_antecedent(filter, tag)
-        && let Some((_, prior)) = refs.snapshot_tag_aliases.iter().find(|(alias, _)| {
-            alias == &crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key()
-        })
+        && let Some(prior) = refs
+            .snapshot_bindings
+            .lookup(crate::tag::CompilerReferenceTag::PriorObjectAntecedent.as_str())
         && !definite_noun_excludes_antecedent(filter, prior)
     {
         prior
@@ -1511,10 +1493,9 @@ fn clear_redundant_live_combat_role_for_event_tag(filter: &mut ObjectFilter) {
 /// selection ("choose a nonland card from it") keeps resolving to that
 /// player's hand; this identity alias is consulted only where an unqualified
 /// pronoun would otherwise fall back to the source object.
-pub fn remember_looked_at_hand(aliases: &mut Vec<(TagKey, TagKey)>) {
+pub fn remember_looked_at_hand(aliases: &mut crate::model::reference_state::SnapshotBindings) {
     let tag: TagKey = (crate::tag::CompilerReferenceTag::LookedAtHand.bind()).into();
-    aliases.retain(|(alias, _)| alias != &tag);
-    aliases.push((tag.clone(), tag));
+    aliases.replace_alias((tag.clone(), tag));
 }
 
 /// The looked-at hand, when it is the live antecedent of an unqualified
@@ -1524,17 +1505,11 @@ fn looked_at_hand_antecedent(refs: &ReferenceEnv) -> Option<TagKey> {
         return None;
     }
     let key = crate::tag::CompilerReferenceTag::LookedAtHand.as_str();
-    refs.snapshot_tag_aliases
-        .iter()
-        .find(|(alias, _)| alias.as_str() == key)
-        .map(|(_, concrete)| concrete.clone())
+    refs.snapshot_bindings.lookup(key).cloned()
 }
 
 pub fn resolve_it_tag_key(tag: &TagKey, refs: &ReferenceEnv) -> Result<TagKey, CardTextError> {
-    if let Some((_, concrete)) = refs
-        .snapshot_tag_aliases
-        .iter()
-        .find(|(alias, _)| alias == tag)
+    if let Some(concrete) = refs.snapshot_bindings.lookup(tag)
     {
         return Ok(concrete.clone());
     }
@@ -1960,22 +1935,10 @@ fn spell_demonstrative_prior_antecedent(refs: &ReferenceEnv) -> Option<TagKey> {
     {
         return None;
     }
-    refs.snapshot_tag_aliases
-        .iter()
-        .find(|(alias, _)| {
-            alias.as_str() == crate::tag::CompilerReferenceTag::PriorObjectAntecedent.as_str()
-        })
-        .map(|(_, prior)| prior.clone())
+    refs.snapshot_bindings
+        .lookup(crate::tag::CompilerReferenceTag::PriorObjectAntecedent.as_str())
+        .cloned()
         .filter(|prior| !is_noun_restricted_object_result_tag(prior))
-}
-
-/// Alias marking that the trigger's event object (`triggering`) is a spell or
-/// ability whose trigger condition named what it targets ("whenever you cast
-/// a spell that targets only a single creature"). A demonstrative whose noun
-/// names a permanent ("that creature", "those permanents") then denotes the
-/// stack object's targets, never the stack object itself.
-pub fn triggering_stack_targets_alias() -> TagKey {
-    TagKey::from("__triggering_stack_targets__")
 }
 
 /// The permanent card types a demonstrative surface names ("that creature",
@@ -2025,10 +1988,9 @@ fn it_names_triggering_stack_object_with_targets(refs: &ReferenceEnv) -> bool {
     let Some(last) = refs.known_last_object_tag() else {
         return false;
     };
-    let alias = triggering_stack_targets_alias();
-    refs.snapshot_tag_aliases
-        .iter()
-        .any(|(existing, tag)| existing == &alias && tag == last)
+    refs.snapshot_bindings
+        .antecedent(SnapshotAntecedent::TriggeringStackTargets)
+        == Some(last)
 }
 
 /// "gain control of that creature" after "whenever you cast a spell that
@@ -2172,21 +2134,6 @@ fn retarget_triggering_stack_union_branches(filter: &mut ObjectFilter, stack_obj
     }
 }
 
-/// Alias recording the object antecedent an explicit source subject
-/// superseded ("sacrifice this artifact and create X tokens, where X is that
-/// creature's mana value": `that creature` is still the entering creature).
-pub fn source_superseded_antecedent_alias() -> TagKey {
-    TagKey::from("__source_superseded_antecedent__")
-}
-
-/// Alias declaring that the generic `it` tag is a concrete runtime binding in
-/// this program (an event replacement binds the affected object as `it`), so
-/// a demonstrative superseded by a source subject ("sacrifice this Aura and
-/// that land gains indestructible") names that bound object.
-pub fn runtime_bound_it_alias() -> TagKey {
-    TagKey::from("__runtime_bound_it__")
-}
-
 /// A demonstrative surface ("that creature", "that spell") never names the
 /// source; when the source is the only live antecedent, it names the object
 /// the source subject superseded.
@@ -2207,11 +2154,9 @@ fn demonstrative_superseded_antecedent(
     if !demonstrative {
         return None;
     }
-    let alias = source_superseded_antecedent_alias();
-    refs.snapshot_tag_aliases
-        .iter()
-        .find(|(existing, _)| existing == &alias)
-        .map(|(_, previous)| previous.clone())
+    refs.snapshot_bindings
+        .antecedent(SnapshotAntecedent::SourceSuperseded)
+        .cloned()
 }
 
 /// The antecedent a source subject superseded, for a counted pronoun set
@@ -2238,11 +2183,9 @@ fn counted_pronoun_superseded_antecedent(
     {
         return None;
     }
-    let alias = source_superseded_antecedent_alias();
-    refs.snapshot_tag_aliases
-        .iter()
-        .find(|(existing, _)| existing == &alias)
-        .map(|(_, previous)| previous.clone())
+    refs.snapshot_bindings
+        .antecedent(SnapshotAntecedent::SourceSuperseded)
+        .cloned()
 }
 
 pub fn resolve_choose_spec_it_tag(
@@ -3525,11 +3468,11 @@ mod tests {
             crate::tag::CompilerReferenceTag::It.key(),
             crate::tag::CompilerReferenceTag::TappedThisWay.key(),
         ] {
-            let refs = ReferenceEnv {
+            let mut refs = ReferenceEnv {
                 source_object_antecedent: true,
-                snapshot_tag_aliases: vec![(source_superseded_antecedent_alias(), previous)].into(),
                 ..ReferenceEnv::default()
             };
+            refs.snapshot_bindings.set_antecedent(SnapshotAntecedent::SourceSuperseded, Some(previous));
             assert!(matches!(resolve_it_tag(&filter, &refs), Err(CardTextError::ParseError(message))
                 if message.contains("no concrete superseded antecedent")));
         }
@@ -3548,11 +3491,12 @@ mod tests {
             TaggedOpbjectRelation::IsTaggedObject,
         );
         let previous = TagKey::from("chosen_0");
-        let refs = ReferenceEnv {
+        let mut refs = ReferenceEnv {
             source_object_antecedent: true,
-            snapshot_tag_aliases: vec![(source_superseded_antecedent_alias(), previous.clone())].into(),
             ..ReferenceEnv::default()
         };
+        refs.snapshot_bindings
+            .set_antecedent(SnapshotAntecedent::SourceSuperseded, Some(previous.clone()));
         let resolved = resolve_it_tag(&filter, &refs).expect("resolve the saved concrete object");
         assert_eq!(resolved.tagged_constraints[0].tag, previous);
         assert!(!resolved.source);
@@ -3691,13 +3635,14 @@ mod tests {
                 )
                 .into(),
             ),
-            snapshot_tag_aliases: vec![(
+            snapshot_bindings: vec![(
                 ironsmith_compiler_semantic::tag::declared_key("__public_revealed").into(),
                 ironsmith_compiler_semantic::tag::declared_key(
                     "__sentence_helper_revealed_l0_s0_e7",
                 )
                 .into(),
-            )],
+            )]
+            .into(),
             ..ReferenceEnv::default()
         };
         let mut revealed = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
@@ -3726,10 +3671,11 @@ mod tests {
         let sacrificed = TagKey::from("sacrificed_later");
         let refs = ReferenceEnv {
             last_object_tag: RefState::Known(sacrificed.clone()),
-            snapshot_tag_aliases: vec![(
+            snapshot_bindings: vec![(
                 crate::tag::CompilerReferenceTag::ExiledThisWay.key(),
                 exiled.clone(),
-            )],
+            )]
+            .into(),
             ..ReferenceEnv::default()
         };
         let mut filter =
@@ -3939,10 +3885,11 @@ mod tests {
             last_object_tag: RefState::Known(
                 ironsmith_compiler_semantic::tag::declared_key("destroyed_1").into(),
             ),
-            snapshot_tag_aliases: vec![(
+            snapshot_bindings: vec![(
                 (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
                 ironsmith_compiler_semantic::tag::declared_key("sacrifice_cost_0").into(),
-            )],
+            )]
+            .into(),
             ..ReferenceEnv::default()
         };
 
@@ -3959,10 +3906,11 @@ mod tests {
             last_object_tag: Some(
                 ironsmith_compiler_semantic::tag::declared_key("damaged_0").into(),
             ),
-            snapshot_tag_aliases: vec![(
+            snapshot_bindings: vec![(
                 (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
                 ironsmith_compiler_semantic::tag::declared_key("sacrifice_cost_0").into(),
-            )],
+            )]
+            .into(),
             ..ReferenceFrame::default()
         }
         .to_lowering_frame();
@@ -4015,10 +3963,11 @@ mod tests {
             last_object_tag: RefState::Known(
                 (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
             ),
-            snapshot_tag_aliases: vec![(
+            snapshot_bindings: vec![(
                 (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
                 ironsmith_compiler_semantic::tag::declared_key("sacrifice_cost_0").into(),
-            )],
+            )]
+            .into(),
             ..ReferenceEnv::default()
         };
 
@@ -4061,10 +4010,11 @@ mod spell_quantity_after_object_actions_tests {
         for current in ["destroyed_0", "sacrificed_0"] {
             let refs = ReferenceEnv {
                 last_object_tag: RefState::Known(current.into()),
-                snapshot_tag_aliases: vec![(
+                snapshot_bindings: vec![(
                     crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key(),
                     "triggering".into(),
-                )],
+                )]
+                .into(),
                 ..Default::default()
             };
             let resolved = resolve_choose_spec_it_tag(&value, &refs).unwrap();
@@ -4072,10 +4022,11 @@ mod spell_quantity_after_object_actions_tests {
         }
         let refs = ReferenceEnv {
             last_object_tag: RefState::Known("targeted_1".into()),
-            snapshot_tag_aliases: vec![(
+            snapshot_bindings: vec![(
                 crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key(),
                 "triggering".into(),
-            )],
+            )]
+            .into(),
             ..Default::default()
         };
         assert_eq!(

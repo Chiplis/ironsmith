@@ -47,6 +47,16 @@ pub enum PlayerAst {
     Implicit,
 }
 
+impl PlayerAst {
+    /// Refers back to an announced player or opponent target in a later clause.
+    pub fn in_followup(self) -> Self {
+        match self {
+            Self::Target | Self::TargetOpponent => Self::That,
+            player => player,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ReturnControllerAst {
     Preserve,

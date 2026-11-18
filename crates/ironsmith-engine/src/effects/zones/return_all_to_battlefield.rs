@@ -25,15 +25,7 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
             objects: resolve_objects_from_spec(game, &ChooseSpec::all(self.filter.clone()), ctx)?,
         }))
     }
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

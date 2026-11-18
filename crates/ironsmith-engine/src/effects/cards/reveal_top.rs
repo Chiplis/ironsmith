@@ -15,15 +15,7 @@ pub use ironsmith_core::RevealTopEffect;
 ///
 /// This is a composable primitive for effects like Goblin Guide.
 impl EffectExecutor for RevealTopEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

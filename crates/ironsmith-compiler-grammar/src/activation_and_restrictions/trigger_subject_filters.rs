@@ -1546,8 +1546,6 @@ pub fn effect_creates_any_token(effect: &EffectAst) -> bool {
                     crate::model::ast::TokenActionAst::CreateTokenWithMods { .. }
                 ) | crate::model::ast::SubjectVerbActionAst::Tokens(
                     crate::model::ast::TokenActionAst::CreateTokenCopy { .. }
-                ) | crate::model::ast::SubjectVerbActionAst::Tokens(
-                    crate::model::ast::TokenActionAst::CreateTokenCopyFromSource { .. }
                 )
             ) =>
         {
@@ -2027,16 +2025,6 @@ pub fn append_token_reminder_to_effect(
             }
             crate::model::ast::SubjectVerbActionAst::Tokens(
                 crate::model::ast::TokenActionAst::CreateTokenCopy {
-                    has_haste,
-                    exile_at_end_of_combat,
-                    sacrifice_at_next_end_step,
-                    exile_at_next_end_step,
-                    next_end_step_player,
-                    ..
-                },
-            )
-            | crate::model::ast::SubjectVerbActionAst::Tokens(
-                crate::model::ast::TokenActionAst::CreateTokenCopyFromSource {
                     has_haste,
                     exile_at_end_of_combat,
                     sacrifice_at_next_end_step,

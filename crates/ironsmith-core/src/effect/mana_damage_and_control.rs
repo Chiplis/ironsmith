@@ -4070,30 +4070,13 @@ impl ChooseCardTypeEffect {
         self
     }
 
-    /// CR 205.2a: every card type, including the nontraditional ones.
     pub fn all_card_types() -> &'static [CardType] {
-        &[
-            CardType::Artifact,
-            CardType::Battle,
-            CardType::Conspiracy,
-            CardType::Creature,
-            CardType::Dungeon,
-            CardType::Enchantment,
-            CardType::Instant,
-            CardType::Kindred,
-            CardType::Land,
-            CardType::Phenomenon,
-            CardType::Plane,
-            CardType::Planeswalker,
-            CardType::Scheme,
-            CardType::Sorcery,
-            CardType::Vanguard,
-        ]
+        CardType::ALL
     }
 
     pub fn card_type_options(&self) -> Vec<CardType> {
         if self.options.is_empty() {
-            Self::all_card_types().to_vec()
+            CardType::ALL.to_vec()
         } else {
             self.options.clone()
         }

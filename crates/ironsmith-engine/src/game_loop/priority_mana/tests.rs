@@ -2179,3 +2179,16 @@ fn native_linked_mana_keeps_pair_ownership_in_immediate_pending_and_special_acti
         else { assert_eq!(game.player(alice).unwrap().mana_pool.colorless, 7); }
     }
 }
+
+#[test]
+fn payment_and_display_keep_hybrid_indices_when_x_and_generic_pips_expand() {
+    use crate::mana::{ManaCost, ManaSymbol::*};
+    let cost = ManaCost::from_pips(vec![
+        vec![X], vec![Generic(0)], vec![Blue, Life(2)], vec![Generic(2)], vec![Generic(2), Red],
+    ]);
+    let units = vec![vec![Generic(1)]; 5];
+    let display = [vec![vec![Blue, Life(2)], vec![Generic(2), Red]], units.clone()].concat();
+    let payment = [vec![vec![Life(2)], vec![Generic(2)]], units].concat();
+    assert_eq!(expand_mana_cost_to_display_pips(&cost, 3), display);
+    assert_eq!(expand_mana_cost_to_pips(&cost, 3, &[(2, Life(2)), (4, Generic(2))]), payment);
+}

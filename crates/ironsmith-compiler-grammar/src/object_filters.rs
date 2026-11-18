@@ -5452,10 +5452,9 @@ mod entry_reference_filter_tests {
 /// (pump subjects, counter recipients and prohibition subjects).
 pub(crate) fn parse_named_action_role_filter(tokens:&[OwnedLexToken])->Option<ObjectFilter> {
     let words=crate::lexer::parser_token_word_refs(tokens);
-    let tag=match words.as_slice() {
-        ["the","performer","of","this","action"]|["the","action","performer"]=>"__named_action_source",
-        ["the","participant"|"participants","in","this","action"]=>"__named_action_objects",
-        _=>return None,
+    let tag = match words.as_slice() {
+        ["the", "action", "performer"] => ironsmith_core::tag::NAMED_ACTION_PERFORMER_TAG,
+        words => crate::grammar::shared_util::reference_shapes::named_action_role(words)?,
     };
     crate::word_claims::claim_tokens(tokens);
     Some(ObjectFilter::default().match_tagged(tag,TaggedOpbjectRelation::SameObjectId))

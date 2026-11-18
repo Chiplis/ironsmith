@@ -37,7 +37,6 @@ fn bind_sequence(
             && matches!(
                 action,
                 TokenActionAst::CreateTokenCopy { .. }
-                    | TokenActionAst::CreateTokenCopyFromSource { .. }
             )
         {
             // "Create a tapped and attacking token that's a copy of that
@@ -88,16 +87,6 @@ fn bind_action(action: &mut TokenActionAst, prototype: &TokenActionAst) {
     } = action else { unreachable!("only token definition references are bound") };
     let mut bound = prototype.clone();
     if let TokenActionAst::CreateTokenCopy {
-        count: bound_count,
-        enters_tapped: bound_tapped,
-        enters_attacking: bound_attacking,
-        exile_at_end_of_combat: bound_combat_exile,
-        sacrifice_at_next_end_step: bound_end_sacrifice,
-        exile_at_next_end_step: bound_end_exile,
-        granted_abilities: bound_grants,
-        ..
-    }
-    | TokenActionAst::CreateTokenCopyFromSource {
         count: bound_count,
         enters_tapped: bound_tapped,
         enters_attacking: bound_attacking,

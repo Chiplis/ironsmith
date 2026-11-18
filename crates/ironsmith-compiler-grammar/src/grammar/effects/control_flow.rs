@@ -21,6 +21,16 @@ use super::typed_clause_heads::{
     ClauseActorHeadAst, ClauseHeadFormAst, classify_typed_clause_head,
 };
 
+/// Sentence stops and instruction colons outside quoted ability or cost text.
+pub(crate) fn instruction_delimiters(tokens: &[OwnedLexToken]) -> impl Iterator<Item = (usize, TokenKind)> + '_ {
+    let mut quoted = false;
+    tokens.iter().enumerate().filter_map(move |(i, token)| {
+        if token.kind == TokenKind::Quote { quoted = !quoted; }
+        (!quoted && matches!(token.kind, TokenKind::Period | TokenKind::Colon))
+            .then_some((i, token.kind))
+    })
+}
+
 const CONTROL_FLOW_RULE: RuleId = RuleId::new("typed-effect-control-flow");
 
 #[derive(Debug, Clone)]
@@ -676,48 +686,11 @@ fn starts_with_words(tokens: &[OwnedLexToken], words: &[&str]) -> bool {
 }
 
 fn first_top_level_comma(tokens: &[OwnedLexToken]) -> Option<usize> {
-    let mut quoted = false;
-    let mut parenthesis_depth = 0usize;
-    let mut bracket_depth = 0usize;
-    for (index, token) in tokens.iter().enumerate() {
-        match token.kind {
-            TokenKind::Quote => quoted = !quoted,
-            TokenKind::LParen if !quoted => parenthesis_depth += 1,
-            TokenKind::RParen if !quoted => parenthesis_depth = parenthesis_depth.saturating_sub(1),
-            TokenKind::LBracket if !quoted => bracket_depth += 1,
-            TokenKind::RBracket if !quoted => bracket_depth = bracket_depth.saturating_sub(1),
-            TokenKind::Comma if !quoted && parenthesis_depth == 0 && bracket_depth == 0 => {
-                return Some(index);
-            }
-            _ => {}
-        }
-    }
-    None
+    crate::token_primitives::top_level_token_indices(tokens, OwnedLexToken::is_comma).next()
 }
 
 fn last_top_level_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
-    let mut quoted = false;
-    let mut parenthesis_depth = 0usize;
-    let mut bracket_depth = 0usize;
-    let mut found = None;
-    for (index, token) in tokens.iter().enumerate() {
-        match token.kind {
-            TokenKind::Quote => quoted = !quoted,
-            TokenKind::LParen if !quoted => parenthesis_depth += 1,
-            TokenKind::RParen if !quoted => parenthesis_depth = parenthesis_depth.saturating_sub(1),
-            TokenKind::LBracket if !quoted => bracket_depth += 1,
-            TokenKind::RBracket if !quoted => bracket_depth = bracket_depth.saturating_sub(1),
-            _ if !quoted
-                && parenthesis_depth == 0
-                && bracket_depth == 0
-                && token.is_word(expected) =>
-            {
-                found = Some(index)
-            }
-            _ => {}
-        }
-    }
-    found
+    crate::token_primitives::top_level_token_indices(tokens, |token| token.is_word(expected)).last()
 }
 
 fn token_span(tokens: &[OwnedLexToken]) -> Option<TextSpan> {

@@ -33,14 +33,15 @@
 //!
 //! # Creating Custom Matchers
 //!
-//! ```ignore
-//! use ironsmith::events::{ReplacementMatcher, EventContext, GameEventType, EventKind, downcast_event, DamageEvent};
+//! ```
+//! use ironsmith::events::{ReplacementMatcher, GameEventType, EventKind, downcast_event, DamageEvent};
+//! use ironsmith::events::context::PreparedEventContext;
 //!
 //! #[derive(Debug, Clone)]
 //! struct MyDamageMatcher;
 //!
 //! impl ReplacementMatcher for MyDamageMatcher {
-//!     fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+//!     fn matches_prepared_event(&self, event: &dyn GameEventType, _: &PreparedEventContext) -> bool {
 //!         if event.event_kind() != EventKind::Damage {
 //!             return false;
 //!         }
@@ -50,14 +51,12 @@
 //!         damage.amount >= 5 // Only match damage of 5 or more
 //!     }
 //!
-//!     fn clone_box(&self) -> Box<dyn ReplacementMatcher> {
-//!         Box::new(self.clone())
-//!     }
-//!
 //!     fn display(&self) -> String {
 //!         "When 5+ damage would be dealt".into()
 //!     }
 //! }
+//!
+//! assert_eq!(MyDamageMatcher.clone_box().display(), "When 5+ damage would be dealt");
 //! ```
 
 pub mod cause;

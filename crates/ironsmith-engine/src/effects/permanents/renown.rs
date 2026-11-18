@@ -1,6 +1,5 @@
 //! Renown keyword effect implementation.
 
-use crate::effect::EffectOutcome;
 use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 #[cfg(test)]
@@ -12,15 +11,6 @@ pub use ironsmith_core::RenownEffect;
 
 /// "If this creature isn't renowned, put N +1/+1 counters on it and it becomes renowned."
 impl EffectExecutor for RenownEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
     fn canonical_program(&self) -> Option<crate::effect::Effect> {
         Some(crate::effect::Effect::new(
             super::designation::DesignationProgram {
@@ -31,6 +21,7 @@ impl EffectExecutor for RenownEffect {
         ))
     }
 
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

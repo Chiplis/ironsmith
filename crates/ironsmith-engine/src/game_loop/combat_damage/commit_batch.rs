@@ -233,7 +233,7 @@ pub(super) fn commit_combat_damage_batch(
             .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
         if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
         payload_receipts.push(OriginalPayloadReceipt {
-            index, source, context: crate::effects::ExecutionContextCheckpoint::capture(&ctx), receipt,
+            index, source, context: ctx.into_checkpoint(), receipt,
         });
     }
     for original in originals {
@@ -455,7 +455,7 @@ pub(super) fn commit_combat_damage_batch(
         }
     }
     for payload in payload_receipts {
-        let mut ctx = payload.context.reborrow(&mut *dm);
+        let mut ctx = payload.context.into_context(&mut *dm);
         let outputs = crate::effects::composition::complete_committed_original_with_outputs(
             game, &mut ctx, payload.receipt,
         ).map_err(|error| CombatDamageAssignmentError::execution(payload.source, error))?;

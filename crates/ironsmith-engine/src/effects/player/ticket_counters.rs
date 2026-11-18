@@ -1,6 +1,5 @@
 //! Ticket counters effect implementation.
 
-use crate::effect::EffectOutcome;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 pub use ironsmith_core::TicketCountersEffect;
@@ -60,15 +59,7 @@ impl EffectExecutor for TicketCountersEffect {
             .prepare_replacement_draw_continuation_with_outputs(game, ctx)
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

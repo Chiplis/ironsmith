@@ -243,11 +243,7 @@ fn effect_driven_cast_options_inner(
     }
     // CR 709.3a: a split card is cast as one half, and only that half is
     // evaluated against the cast permission's filter.
-    let chosen_half_view = object.split_combined.is_some().then(|| {
-        let mut view = object.clone();
-        view.split_combined = None;
-        view
-    });
+    let chosen_half_view = object.projected_front_half();
     let chosen_half = chosen_half_view.as_ref().unwrap_or(object);
 
     let mut options = Vec::new();

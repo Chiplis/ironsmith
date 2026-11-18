@@ -1,3 +1,5 @@
+use crate::model::reference_state::SnapshotAntecedent;
+use crate::model::ast::TokenCopySourceAst;
 use super::*;
 use crate::cards::builders::CharacteristicActionAst;
 use crate::cards::builders::CounterActionAst;
@@ -18,11 +20,9 @@ fn play_permission_it_antecedent(ctx: &EffectLoweringContext) -> Option<TagKey> 
         if !ctx.source_object_antecedent {
             return None;
         }
-        let alias = ironsmith_compiler_resolve::reference_helpers::source_superseded_antecedent_alias();
-        ctx.snapshot_tag_aliases
-            .iter()
-            .find(|(existing, _)| existing == &alias)
-            .map(|(_, previous)| previous.clone())
+        ctx.snapshot_bindings
+            .antecedent(SnapshotAntecedent::SourceSuperseded)
+            .cloned()
     })
 }
 
@@ -36,9 +36,6 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { .. })
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeAuraEnchantment { .. }
-            )
-            | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::BecomeBasePtCreature { .. }
             )
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeBasicLandType { .. }
@@ -57,14 +54,11 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { .. }
             )
-            | SubjectVerbActionAst::Cant { .. }
             | SubjectVerbActionAst::Stack(StackActionAst::CastTagged { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. })
             | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. })
-            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { .. })
@@ -3420,9 +3414,6 @@ pub(super) fn compile_subject_verb_middle(
                 )
             })
         }
-        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-            ..
-        }) => compile_become_base_pt_creature_action(subject_verb, ctx),
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower {
             power,
             target,
@@ -4311,356 +4302,7 @@ pub(super) fn compile_subject_verb_middle(
                 Ok((vec![Effect::new(sequence)], std::mem::take(&mut choices)))
             }
         }
-        SubjectVerbActionAst::Cant { .. } => compile_cant_action(subject_verb, ctx),
-        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
-            name,
-            definition,
-            count,
-            dynamic_power_toughness,
-            player: action_player,
-            actor_surface_explicit,
-            attached_to,
-            tapped,
-            attacking,
-            attack_target_player,
-            combat_entry,
-            exile_at_end_of_combat,
-            sacrifice_at_end_of_combat,
-            sacrifice_at_next_end_step,
-            exile_at_next_end_step,
-            next_end_step_player,
-            granted_abilities,
-            ability_presentation,
-        }) => {
-            let (use_source_chosen_color, use_source_chosen_creature_type) = match definition {
-                crate::model::token_definition::TokenDefinitionSpec::Creature(shape) => (
-                    shape.use_source_chosen_color,
-                    shape.use_source_chosen_creature_type,
-                ),
-                _ => (false, false),
-            };
-            let mut token = lower_token_definition_shape(definition.clone())
-                .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
-            let shape_ability_count = token.abilities.len();
-            let authored_start = token_shape_authored_ability_start(definition, shape_ability_count)?;
-            apply_token_definition_granted_abilities(&mut token, granted_abilities, authored_start)?;
-            let text_roles = retain_token_description_roles(definition, &mut token, shape_ability_count)?;
-            let subject = if *action_player == PlayerAst::Opponent {
-                // A singular authored "an opponent creates ..." is a
-                // resolution-time player choice. Export that chosen player so
-                // a following "they" action stays correlated to the same
-                // opponent instead of resolving a second broad Opponent
-                // filter independently.
-                LoweredSubject::resolve_resolution_chooser(*action_player, ctx, true, true, true)?
-            } else {
-                LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?
-            };
-            let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
-            let player_filter = subject.clone_player_filter();
-            let count = per_player_partition_value_for_filter(count, &player_filter);
-            let mut choices = subject.into_choices();
-            let mut effect = if matches!(player_filter, PlayerFilter::You) {
-                crate::effects::CreateTokenEffect::you(token, count.clone())
-            } else {
-                crate::effects::CreateTokenEffect::new(token, count.clone(), player_filter.clone())
-            };
-            effect.text_roles = text_roles;
-            if use_source_chosen_color {
-                effect = effect.with_source_chosen_color();
-            }
-            if use_source_chosen_creature_type {
-                effect = effect.with_source_chosen_creature_type();
-            }
-            if *actor_surface_explicit {
-                effect = effect.with_explicit_actor_surface();
-            }
-            if token_text_names_source_exiled(definition, granted_abilities, &effect.token) {
-                effect = effect.linking_source_exiled_this_resolution();
-        bind_creation_owned_token_exile_readers(&mut effect.token);
-        effect.link_only_last_source_exiled = !ctx.last_exiled_collection_is_plural;
-            }
-            if let Some(presentation) = ability_presentation {
-                effect = effect.with_ability_presentation(*presentation);
-            }
-            if *tapped {
-                effect = effect.tapped();
-            }
-            if *attacking {
-                effect = effect.attacking();
-            }
-            let (next, combat_choices) =
-                apply_token_combat_entry(effect, *attack_target_player, combat_entry, ctx)?;
-            effect = next;
-            choices.extend(combat_choices);
-            if *exile_at_end_of_combat {
-                effect = effect.exile_at_end_of_combat();
-            }
-            if *sacrifice_at_end_of_combat {
-                effect = effect.sacrifice_at_end_of_combat();
-            }
-            if *sacrifice_at_next_end_step {
-                effect = effect.sacrifice_at_next_end_step();
-            }
-            if *exile_at_next_end_step {
-                effect = effect.exile_at_next_end_step();
-            }
-            effect = effect.next_end_step_player(next_end_step_player.clone());
-            if attached_to.is_some() {
-                effect = effect.suppress_aura_attachment_choice();
-            }
-            let resolved_dynamic_pt = dynamic_power_toughness
-                .as_ref()
-                .map(|(power, toughness)| {
-                    let power = bind_explicit_that_card_token_stat_reference(power, ctx);
-                    let toughness = bind_explicit_that_card_token_stat_reference(toughness, ctx);
-                    Ok::<_, CardTextError>((
-                        resolve_value_it_tag(&power, &current_reference_env(ctx))?,
-                        resolve_value_it_tag(&toughness, &current_reference_env(ctx))?,
-                    ))
-                })
-                .transpose()?;
-            effect.dynamic_power_toughness = resolved_dynamic_pt;
-            let mut effect = Effect::new(effect);
-            let resolved_attached_to = attached_to
-                .as_ref()
-                .map(|target| resolve_target_spec_with_choices(target, &current_reference_env(ctx)))
-                .transpose()?;
-            let needs_created_tag = ctx.auto_tag_object_targets || attached_to.is_some();
-            let mut created_tag: Option<TagKey> = None;
-            if needs_created_tag {
-                let tag = super::reserved_or_fresh_result_tag(ctx, "created");
-                effect = effect.tag(tag.clone());
-                ctx.last_object_tag = Some(tag.clone());
-                created_tag = Some(tag);
-            }
-
-            let mut compiled = subject.resolution_prelude();
-            compiled.push(effect);
-            if let Some((target_spec, target_choices)) = resolved_attached_to {
-                for choice in target_choices {
-                    push_choice(&mut choices, choice);
-                }
-                let Some(created_tag) = created_tag else {
-                    return Err(CardTextError::InvariantViolation(
-                        "attached token creation requires created token tag to be present"
-                            .to_string(),
-                    ));
-                };
-                let objects = ChooseSpec::All(ObjectFilter::tagged(created_tag));
-                let mut attach_effect = Effect::attach_objects(objects, target_spec);
-                if ctx.auto_tag_object_targets {
-                    let tag = ctx.next_tag("attachment_target");
-                    attach_effect = attach_effect.tag(tag.clone());
-                    ctx.last_object_tag = Some(tag);
-                }
-                compiled.push(attach_effect);
-            }
-            Ok((compiled, choices))
-        }
         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
-            without_mana_cost,
-            object,
-            count,
-            player: action_player,
-            enters_tapped,
-            enters_attacking,
-            entry_tapped_attacking_followup,
-            attack_target_player_or_planeswalker_controlled_by,
-            attack_target_player_only,
-            half_power_toughness_round_up,
-            has_haste,
-            haste_followup_reference_surface,
-            exile_at_end_of_combat,
-            exile_at_end_of_combat_reference_surface,
-            loses_soulbond,
-            removed_ability_designations,
-            ability_loss_until,
-            sacrifice_at_next_end_step,
-            sacrifice_at_next_end_step_reference_surface,
-            sacrifice_at_next_end_step_ability_surface,
-            exile_at_next_end_step,
-            exile_at_next_end_step_reference_surface,
-            next_end_step_player,
-            set_colors,
-            added_colors,
-            set_card_types,
-            set_subtypes,
-            preserve_noncreature_subtypes,
-            added_card_types,
-            added_subtypes,
-            removed_supertypes,
-            set_base_power_toughness,
-            set_base_power_toughness_to_source_totals,
-            starting_loyalty,
-            granted_abilities,
-            attached_to,
-        }) => {
-            let ObjectRefAst::Tagged(tag) = object;
-            let tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
-            // "Create a token that's a copy of that creature" after an
-            // unmodified copy names the copied creature, not the earlier token.
-            let tag = ctx
-                .token_copy_sources
-                .iter()
-                .find(|(created, _)| created == &tag)
-                .map(|(_, source)| source.clone())
-                .unwrap_or(tag);
-            let copy_source_tag = tag.clone();
-            let unmodified_copy = !*without_mana_cost && !*half_power_toughness_round_up
-                && !*has_haste
-                && set_colors.is_none()
-                && added_colors.is_empty()
-                && set_card_types.is_none()
-                && set_subtypes.is_none()
-                && added_card_types.is_empty()
-                && added_subtypes.is_empty()
-                && removed_supertypes.is_empty()
-                && set_base_power_toughness.is_none()
-                && !*set_base_power_toughness_to_source_totals
-                && starting_loyalty.is_none()
-                && granted_abilities.is_empty();
-            let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
-            let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
-            let player_filter = subject.into_player_filter();
-            let mut choices = subject.into_choices();
-            let aggregate_tag = tag.clone();
-            let mut effect = crate::effects::CreateTokenCopyEffect::new(
-                ChooseSpec::Tagged(tag),
-                count,
-                player_filter,
-            );
-            if *without_mana_cost { effect = effect.without_mana_cost(); }
-            effect.entry_tapped_attacking_followup = *entry_tapped_attacking_followup;
-            if *enters_tapped {
-                effect = effect.enters_tapped(true);
-            }
-            if *enters_attacking {
-                effect = effect.attacking(true);
-            }
-            if let Some(attack_player) = attack_target_player_or_planeswalker_controlled_by {
-                let attack_player_filter =
-                    resolve_non_target_player_filter(*attack_player, &current_reference_env(ctx))?;
-                effect = if *attack_target_player_only {
-                    effect.attacking_player(attack_player_filter)
-                } else {
-                    effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter)
-                };
-            }
-            if *half_power_toughness_round_up {
-                effect = effect.half_power_toughness_round_up();
-            }
-            if *has_haste {
-                effect = effect.haste(true);
-            }
-            effect = effect.haste_followup_reference_surface(*haste_followup_reference_surface);
-            if *exile_at_end_of_combat {
-                effect = effect.exile_at_eoc(true);
-            }
-            effect = effect.exile_at_end_of_combat_reference_surface(
-                *exile_at_end_of_combat_reference_surface,
-            );
-            if *loses_soulbond {
-                effect = effect.loses_soulbond(true);
-            }
-            effect.removed_ability_designations = removed_ability_designations.clone();
-            effect.ability_loss_until = ability_loss_until.clone();
-            if *sacrifice_at_next_end_step {
-                effect = effect.sacrifice_at_next_end_step(true);
-            }
-            effect = effect.sacrifice_at_next_end_step_reference_surface(
-                *sacrifice_at_next_end_step_reference_surface,
-            );
-            effect = effect.sacrifice_at_next_end_step_ability_text(
-                sacrifice_at_next_end_step_ability_surface.map(|surface| surface.render()),
-            );
-            if *exile_at_next_end_step {
-                effect = effect.exile_at_next_end_step(true);
-            }
-            effect = effect.exile_at_next_end_step_reference_surface(
-                *exile_at_next_end_step_reference_surface,
-            );
-            effect = effect.next_end_step_player(next_end_step_player.clone());
-            if let Some(colors) = set_colors {
-                effect = effect.set_colors(*colors);
-            }
-            if !added_colors.is_empty() {
-                effect = effect.added_colors(*added_colors);
-            }
-            if let Some(card_types) = set_card_types {
-                effect = effect.set_card_types(card_types.clone());
-            }
-            if let Some(subtypes) = set_subtypes {
-                effect = if *preserve_noncreature_subtypes {
-                    effect.set_creature_subtypes(subtypes.clone())
-                } else {
-                    effect.set_subtypes(subtypes.clone())
-                };
-            }
-            for card_type in added_card_types {
-                effect = effect.added_card_type(*card_type);
-            }
-            for subtype in added_subtypes {
-                effect = effect.added_subtype(*subtype);
-            }
-            for supertype in removed_supertypes {
-                effect = effect.removed_supertype(*supertype);
-            }
-            if let Some((power, toughness)) = set_base_power_toughness {
-                effect = effect.set_base_power_toughness(*power, *toughness);
-            }
-            if let Some(loyalty) = starting_loyalty {
-                effect = effect.starting_loyalty(*loyalty);
-            }
-            if *set_base_power_toughness_to_source_totals {
-                let mut filter = ObjectFilter::tagged(aggregate_tag);
-                filter.card_types = vec![CardType::Creature];
-                filter.set_one_of_tagged_set_surface(true);
-                effect = effect.set_base_power_toughness_value(
-                    Value::TotalPower(filter.clone()),
-                    Value::TotalToughness(filter),
-                );
-            }
-            for ability in granted_abilities {
-                let object_abilities =
-                    lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(ability))?;
-                for static_ability in
-                    object_abilities_to_static_carriers(object_abilities, String::new())?
-                {
-                    effect = effect.grant_static_ability(static_ability);
-                }
-            }
-            // "... attached to <object>": the copy enters attached there, so
-            // its controller doesn't choose what an Aura copy enchants.
-            if attached_to.is_some() {
-                effect.suppress_aura_attachment_choice = true;
-            }
-            let resolved_attached_to = attached_to
-                .as_ref()
-                .map(|target| {
-                    resolve_target_spec_with_choices(target, &current_reference_env(ctx))
-                })
-                .transpose()?;
-            let mut effect = Effect::new(effect);
-            let mut created_tag = None;
-            if ctx.auto_tag_object_targets || attached_to.is_some() {
-                let tag = super::reserved_or_fresh_result_tag(ctx, "created");
-                ctx.last_object_tag = Some(tag.clone());
-                if unmodified_copy {
-                    ctx.token_copy_sources.push((tag.clone(), copy_source_tag));
-                }
-                effect = effect.tag(tag.clone());
-                created_tag = Some(tag);
-            }
-            let compiled = attach_created_token_copies(
-                effect,
-                resolved_attached_to,
-                created_tag,
-                &mut choices,
-                ctx,
-            )?;
-            Ok((compiled, choices))
-        }
-        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
             without_mana_cost,
             source,
             count,
@@ -4701,26 +4343,40 @@ pub(super) fn compile_subject_verb_middle(
             attached_to,
             blocking,
         }) => {
-            let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
-            let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
+            let resolve_actor_and_count = |ctx: &mut EffectLoweringContext| {
+                let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
+                let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
+                Ok::<_, CardTextError>((subject, count))
+            };
+            let (subject, count, mut source_spec, source_choices) = match source {
+                TokenCopySourceAst::Object(ObjectRefAst::Tagged(tag)) => {
+                    let tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+                    let (subject, count) = resolve_actor_and_count(ctx)?;
+                    (subject, count, ChooseSpec::Tagged(tag), Vec::new())
+                }
+                TokenCopySourceAst::Target(source) => {
+                    let (subject, count) = resolve_actor_and_count(ctx)?;
+                    let (mut source_spec, source_choices) =
+                        resolve_target_spec_with_choices(source, &current_reference_env(ctx))?;
+                    if let Some(last_tag) = ctx.last_object_tag.as_ref()
+                        && is_exile_cost_collection_tag(last_tag)
+                        && let ChooseSpec::Object(filter) = &source_spec
+                        && filter.zone == Some(Zone::Exile)
+                        && filter.tagged_constraints.iter().any(|constraint| {
+                            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                                && constraint.tag.as_str()
+                                    == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                        })
+                    {
+                        source_spec = ChooseSpec::Tagged(last_tag.clone());
+                    }
+                    (subject, count, source_spec, source_choices)
+                }
+            };
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
-            let (mut source_spec, source_choices) =
-                resolve_target_spec_with_choices(source, &current_reference_env(ctx))?;
             for choice in source_choices {
                 push_choice(&mut choices, choice);
-            }
-            if let Some(last_tag) = ctx.last_object_tag.as_ref()
-                && is_exile_cost_collection_tag(last_tag)
-                && let ChooseSpec::Object(filter) = &source_spec
-                && filter.zone == Some(Zone::Exile)
-                && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                        && constraint.tag.as_str()
-                            == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
-                })
-            {
-                source_spec = ChooseSpec::Tagged(last_tag.clone());
             }
             // "Create a token that's a copy of that creature" after an
             // unmodified copy names the copied creature, not the earlier token
@@ -4763,7 +4419,9 @@ pub(super) fn compile_subject_verb_middle(
                 && granted_abilities.is_empty()
                 && set_name.is_none()
                 && added_supertypes.is_empty();
-            source_spec = with_target_reference_surface_hint(source_spec, source);
+            if let TokenCopySourceAst::Target(target) = source {
+                source_spec = with_target_reference_surface_hint(source_spec, target);
+            }
             let aggregate_source_filter = if *set_base_power_toughness_to_source_totals {
                 Some(
                     mark_copy_source_as_one_of_tagged_set(&mut source_spec).ok_or_else(|| {
@@ -4776,16 +4434,35 @@ pub(super) fn compile_subject_verb_middle(
             } else {
                 None
             };
-            let mut effect =
-                crate::effects::CreateTokenCopyEffect::new(source_spec, count, player_filter);
-            if *without_mana_cost { effect = effect.without_mana_cost(); }
-            effect.entry_tapped_attacking_followup = *entry_tapped_attacking_followup;
-            if *enters_tapped {
-                effect = effect.enters_tapped(true);
-            }
-            if *enters_attacking {
-                effect = effect.attacking(true);
-            }
+            let mut effect = crate::effects::CreateTokenCopyEffect {
+                clear_mana_cost: *without_mana_cost,
+                enters_tapped: *enters_tapped,
+                enters_attacking: *enters_attacking,
+                entry_tapped_attacking_followup: *entry_tapped_attacking_followup,
+                has_haste: *has_haste,
+                haste_followup_reference_surface: *haste_followup_reference_surface,
+                loses_soulbond: *loses_soulbond,
+                removed_ability_designations: removed_ability_designations.clone(),
+                ability_loss_until: ability_loss_until.clone(),
+                exile_at_end_of_combat: *exile_at_end_of_combat,
+                exile_at_end_of_combat_reference_surface: *exile_at_end_of_combat_reference_surface,
+                sacrifice_at_next_end_step: *sacrifice_at_next_end_step,
+                sacrifice_at_next_end_step_reference_surface: *sacrifice_at_next_end_step_reference_surface,
+                sacrifice_at_next_end_step_ability_text: sacrifice_at_next_end_step_ability_surface
+                    .map(|surface| surface.render()),
+                exile_at_next_end_step: *exile_at_next_end_step,
+                exile_at_next_end_step_reference_surface: *exile_at_next_end_step_reference_surface,
+                next_end_step_player: next_end_step_player.clone(),
+                set_colors: *set_colors,
+                added_colors: *added_colors,
+                set_card_types: set_card_types.clone(),
+                set_name: set_name.clone(),
+                added_supertypes: added_supertypes.clone(),
+                set_base_power_toughness: *set_base_power_toughness,
+                starting_loyalty: *starting_loyalty,
+                suppress_aura_attachment_choice: attached_to.is_some(),
+                ..crate::effects::CreateTokenCopyEffect::new(source_spec, count, player_filter)
+            };
             if let Some(attack_player) = attack_target_player_or_planeswalker_controlled_by {
                 let attack_player_filter =
                     resolve_non_target_player_filter(*attack_player, &current_reference_env(ctx))?;
@@ -4797,46 +4474,6 @@ pub(super) fn compile_subject_verb_middle(
             }
             if *half_power_toughness_round_up {
                 effect = effect.half_power_toughness_round_up();
-            }
-            if *has_haste {
-                effect = effect.haste(true);
-            }
-            effect = effect.haste_followup_reference_surface(*haste_followup_reference_surface);
-            if *exile_at_end_of_combat {
-                effect = effect.exile_at_eoc(true);
-            }
-            effect = effect.exile_at_end_of_combat_reference_surface(
-                *exile_at_end_of_combat_reference_surface,
-            );
-            if *loses_soulbond {
-                effect = effect.loses_soulbond(true);
-            }
-            effect.removed_ability_designations = removed_ability_designations.clone();
-            effect.ability_loss_until = ability_loss_until.clone();
-            if *sacrifice_at_next_end_step {
-                effect = effect.sacrifice_at_next_end_step(true);
-            }
-            effect = effect.sacrifice_at_next_end_step_reference_surface(
-                *sacrifice_at_next_end_step_reference_surface,
-            );
-            effect = effect.sacrifice_at_next_end_step_ability_text(
-                sacrifice_at_next_end_step_ability_surface.map(|surface| surface.render()),
-            );
-            if *exile_at_next_end_step {
-                effect = effect.exile_at_next_end_step(true);
-            }
-            effect = effect.exile_at_next_end_step_reference_surface(
-                *exile_at_next_end_step_reference_surface,
-            );
-            effect = effect.next_end_step_player(next_end_step_player.clone());
-            if let Some(colors) = set_colors {
-                effect = effect.set_colors(*colors);
-            }
-            if !added_colors.is_empty() {
-                effect = effect.added_colors(*added_colors);
-            }
-            if let Some(card_types) = set_card_types {
-                effect = effect.set_card_types(card_types.clone());
             }
             if let Some(subtypes) = set_subtypes {
                 effect = if *preserve_noncreature_subtypes {
@@ -4853,15 +4490,6 @@ pub(super) fn compile_subject_verb_middle(
             }
             for supertype in removed_supertypes {
                 effect = effect.removed_supertype(*supertype);
-            }
-            // CR 707.9b: name/supertype exceptions are copiable values.
-            effect.set_name = set_name.clone();
-            effect.added_supertypes = added_supertypes.clone();
-            if let Some((power, toughness)) = set_base_power_toughness {
-                effect = effect.set_base_power_toughness(*power, *toughness);
-            }
-            if let Some(loyalty) = starting_loyalty {
-                effect = effect.starting_loyalty(*loyalty);
             }
             if let Some(filter) = aggregate_source_filter {
                 effect = effect.set_base_power_toughness_value(
@@ -4886,9 +4514,6 @@ pub(super) fn compile_subject_verb_middle(
                     push_choice(&mut choices, choice);
                 }
                 effect.enters_blocking = Some(spec);
-            }
-            if attached_to.is_some() {
-                effect.suppress_aura_attachment_choice = true;
             }
             let resolved_attached_to = attached_to
                 .as_ref()

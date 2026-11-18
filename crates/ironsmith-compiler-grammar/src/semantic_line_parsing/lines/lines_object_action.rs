@@ -163,30 +163,7 @@ pub(super) fn standard_gift_create_token_effect(
     definition: crate::model::token_definition::TokenDefinitionSpec,
     tapped: bool,
 ) -> EffectAst {
-    EffectAst::subject_verb(
-        SubjectVerbRoleAst::Actor,
-        PlayerAst::Chosen,
-        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
-            name: name.to_string(),
-            definition,
-            count: crate::effect::Value::Fixed(1),
-            dynamic_power_toughness: None,
-            player: PlayerAst::Chosen,
-            actor_surface_explicit: false,
-            attached_to: None,
-            tapped,
-            attacking: false,
-            attack_target_player: None,
-            combat_entry: Default::default(),
-            exile_at_end_of_combat: false,
-            sacrifice_at_end_of_combat: false,
-            sacrifice_at_next_end_step: false,
-            exile_at_next_end_step: false,
-            next_end_step_player: PlayerFilter::Any,
-            granted_abilities: Vec::new(),
-            ability_presentation: None,
-        }),
-    )
+    crate::effect_sentences::simple_token_creation(name, definition, Value::Fixed(1), PlayerAst::Chosen, tapped, None)
 }
 
 pub(super) fn try_lower_hideaway_tokens(

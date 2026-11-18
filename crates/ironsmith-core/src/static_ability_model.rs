@@ -766,51 +766,63 @@ pub fn partner_group_identifier(keyword: &str) -> Option<String> {
     (!group.is_empty()).then_some(group)
 }
 
-/// The copy limit stated by a deck-construction rule ("A deck can have any
-/// number of cards named ~" → `Some(None)`, "up to seven" → `Some(Some(7))`).
-pub fn deck_construction_copy_limit(text: &str) -> Option<Option<u32>> {
-    let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
-
-    if normalized.starts_with("a deck can have any number of cards named ") {
-        return Some(None);
-    }
-    let amount = normalized.strip_prefix("a deck can have up to ")?.split_whitespace().next()?;
-    let limit = amount.parse().ok().or_else(|| {
-        Some(match amount {
-            "one" => 1,
-            "two" => 2,
-            "three" => 3,
-            "four" => 4,
-            "five" => 5,
-            "six" => 6,
-            "seven" => 7,
-            "eight" => 8,
-            "nine" => 9,
-            "ten" => 10,
-            _ => return None,
-        })
-    })?;
-    Some(Some(limit))
+/// A printed deck-building instruction. Copy limits and color choices have
+/// pregame behavior. Other instructions retain their display text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeckConstructionRule {
+    CopyLimit(Option<u32>),
+    ChooseColors(u32),
+    Instruction,
 }
 
-/// How many colors a deck-construction rule has its owner circle ("As you
-/// create your deck, circle two of the colors below." → 2, Cryptic Spires).
-pub fn deck_construction_color_choice_count(text: &str) -> Option<u32> {
-    let normalized = text.trim().to_ascii_lowercase();
-    let rest = normalized.strip_prefix("as you create your deck, ")?;
-    let rest = rest.strip_prefix("circle ").or_else(|| rest.strip_prefix("choose "))?;
-    let (amount, rest) = rest.split_once(' ')?;
-    if !rest.starts_with("of the colors") {
-        return None;
+impl DeckConstructionRule {
+    pub fn from_words(words: &[&str]) -> Option<Self> {
+        match words {
+            ["a", "deck", "can", "have", "any", "number", "of", "cards", "named", _, ..] => {
+                Some(Self::CopyLimit(None))
+            }
+            ["a", "deck", "can", "have", "up", "to", rest @ ..] => {
+                let (limit, used) = crate::parse_cardinal_words(rest)?;
+                (limit > 0 && matches!(&rest[used..], ["cards", "named", _, ..]))
+                    .then_some(Self::CopyLimit(Some(limit)))
+            }
+            ["as", "you", "create" | "build" | "construct", "your", "deck", rest @ ..]
+                if !rest.is_empty() =>
+            {
+                if let ["circle" | "choose", rest @ ..] = rest
+                    && let Some((count, used)) = crate::parse_cardinal_words(rest)
+                    && rest[used..].starts_with(&["of", "the", "colors"])
+                {
+                    return Some(Self::ChooseColors(count));
+                }
+                Some(Self::Instruction)
+            }
+            _ => None,
+        }
     }
-    amount.parse().ok().or(match amount {
-        "one" => Some(1),
-        "two" => Some(2),
-        "three" => Some(3),
-        "four" => Some(4),
-        "five" => Some(5),
+
+    pub fn from_text(text: &str) -> Self {
+        let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
+        let words: Vec<_> = normalized
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|word| !word.is_empty())
+            .collect();
+        Self::from_words(&words).unwrap_or(Self::Instruction)
+    }
+}
+
+pub fn deck_construction_copy_limit(text: &str) -> Option<Option<u32>> {
+    match DeckConstructionRule::from_text(text) {
+        DeckConstructionRule::CopyLimit(maximum) => Some(maximum),
         _ => None,
-    })
+    }
+}
+
+pub fn deck_construction_color_choice_count(text: &str) -> Option<u32> {
+    match DeckConstructionRule::from_text(text) {
+        DeckConstructionRule::ChooseColors(count) => Some(count),
+        _ => None,
+    }
 }
 
 /// A keyword-marker line whose game effect the engine implements. It is
@@ -961,7 +973,7 @@ pub fn keyword_marker_mechanic(text: &str) -> Option<KeywordMarkerMechanic> {
     if let Some(rest) = normalized.strip_prefix("when this creature enters, put ")
         && let Some(amount) = rest.strip_suffix(" +1/+1 counters on target creature. if that's another creature, it gains the following abilities until end of turn")
             .or_else(|| rest.strip_suffix(" +1/+1 counter on target creature. if that's another creature, it gains the following abilities until end of turn")) {
-        let amount = match amount { "a" | "one" => Some(1), "two" => Some(2), "three" => Some(3), _ => amount.parse().ok() };
+        let amount = crate::parse_cardinal_word(amount);
         if let Some(amount) = amount { return Some(M::EntryCountersAndFollowingAbilities { amount }); }
     }
     if normalized == "if this is the first time a spell you control with this spell's name has resolved this game, at the beginning of each of your precombat main phases for the rest of the game, create a copy of this object in exile. you may cast the copy without paying its mana cost. exile this spell" { return Some(M::RecurringCopyOnFirstNameResolution); }
@@ -986,7 +998,7 @@ pub fn keyword_marker_mechanic(text: &str) -> Option<KeywordMarkerMechanic> {
     }
     if let Some(rest) = normalized.strip_prefix("if you control ") {
         if let Some((amount, rest)) = rest.split_once(" or more ") {
-            let minimum = match amount { "one" => Some(1), "two" => Some(2), "three" => Some(3), "four" => Some(4), "five" => Some(5), "six" => Some(6), "seven" => Some(7), "eight" => Some(8), "nine" => Some(9), "ten" => Some(10), _ => amount.parse().ok() };
+            let minimum = crate::parse_cardinal_word(amount);
             for (filter, historic_only, tapped_only) in [("permanents", false, false), ("tapped permanents", false, true), ("artifacts, legendaries, and/or sagas", true, false)] {
                 if let Some(result) = rest.strip_prefix(filter).and_then(|s| s.trim_start().strip_prefix(',')).map(str::trim_start) {
                     let named_designation = result.strip_prefix("you are in your ").and_then(|s| s.strip_suffix(" for the rest of the game")).filter(|s| !s.is_empty()).map(str::to_string);
@@ -5014,11 +5026,7 @@ impl<
             };
         }
         if let Some(payload) = label_any.downcast_ref::<LandwalkKind>() {
-            return Self {
-                id: Some(StaticAbilityId::Landwalk),
-                label: payload.display(),
-                payload: StaticAbilityPayload::Landwalk(*payload),
-            };
+            return Self::landwalk_for_kind(*payload);
         }
         Self {
             id: None,
@@ -5598,20 +5606,23 @@ impl<
 
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
         let text = text.into();
-        if let Some(count) = deck_construction_color_choice_count(&text) {
-            return Self {
-                id: Some(StaticAbilityId::DeckConstructionRuleText),
-                label: text,
-                payload: StaticAbilityPayload::DeckConstructionColorChoice { count },
-            };
-        }
-        let Some(maximum) = deck_construction_copy_limit(&text) else {
-            return Self::identified(StaticAbilityId::DeckConstructionRuleText, text);
+        Self::deck_construction_rule(DeckConstructionRule::from_text(&text), text)
+    }
+
+    pub fn deck_construction_rule(rule: DeckConstructionRule, text: impl Into<String>) -> Self {
+        let payload = match rule {
+            DeckConstructionRule::CopyLimit(maximum) => {
+                StaticAbilityPayload::DeckConstructionCopyLimit { maximum }
+            }
+            DeckConstructionRule::ChooseColors(count) => {
+                StaticAbilityPayload::DeckConstructionColorChoice { count }
+            }
+            DeckConstructionRule::Instruction => StaticAbilityPayload::None,
         };
         Self {
             id: Some(StaticAbilityId::DeckConstructionRuleText),
-            label: text,
-            payload: StaticAbilityPayload::DeckConstructionCopyLimit { maximum },
+            label: text.into(),
+            payload,
         }
     }
 
@@ -6416,43 +6427,51 @@ impl<
         Self::identified(StaticAbilityId::Unleash, "unleash")
     }
 
+    pub fn landwalk_for_kind(kind: LandwalkKind) -> Self {
+        Self {
+            id: Some(StaticAbilityId::Landwalk),
+            label: kind.display(),
+            payload: StaticAbilityPayload::Landwalk(kind),
+        }
+    }
+
     pub fn any_landwalk() -> Self {
-        Self::new(LandwalkKind::AnyLand)
+        Self::landwalk_for_kind(LandwalkKind::AnyLand)
     }
 
     pub fn nonbasic_landwalk() -> Self {
-        Self::new(LandwalkKind::NonbasicLand)
+        Self::landwalk_for_kind(LandwalkKind::NonbasicLand)
     }
 
     pub fn artifact_landwalk() -> Self {
-        Self::new(LandwalkKind::ArtifactLand)
+        Self::landwalk_for_kind(LandwalkKind::ArtifactLand)
     }
 
     pub fn legendary_landwalk() -> Self {
-        Self::new(LandwalkKind::LegendaryLand)
+        Self::landwalk_for_kind(LandwalkKind::LegendaryLand)
     }
 
     pub fn snow_any_landwalk() -> Self {
-        Self::new(LandwalkKind::SnowLand)
+        Self::landwalk_for_kind(LandwalkKind::SnowLand)
     }
 
     pub fn chosen_type_landwalk(snow: bool) -> Self {
-        Self::new(LandwalkKind::ChosenType { snow })
+        Self::landwalk_for_kind(LandwalkKind::ChosenType { snow })
     }
 
     pub fn sacrificed_land_types_landwalk() -> Self {
-        Self::new(LandwalkKind::SacrificedLandTypes)
+        Self::landwalk_for_kind(LandwalkKind::SacrificedLandTypes)
     }
 
     pub fn landwalk(kind: Subtype) -> Self {
-        Self::new(LandwalkKind::Subtype {
+        Self::landwalk_for_kind(LandwalkKind::Subtype {
             subtype: kind,
             snow: false,
         })
     }
 
     pub fn snow_landwalk(subtype: Subtype) -> Self {
-        Self::new(LandwalkKind::Subtype {
+        Self::landwalk_for_kind(LandwalkKind::Subtype {
             subtype,
             snow: true,
         })

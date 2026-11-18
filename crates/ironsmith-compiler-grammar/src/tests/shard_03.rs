@@ -767,7 +767,6 @@ pub(super) fn rewrite_typed_replacement_predicate_regression_shapes_preserve_sem
             if matches!(
                 &subject_verb.action,
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. })
             )
     ));
 }

@@ -511,7 +511,7 @@ fn delayed_registration_result_imports(
     }
     let result_tag = ctx.last_object_tag.clone()?;
     Some(ReferenceImports {
-        snapshot_tag_aliases: vec![(TagKey::from(alias), result_tag.into())],
+        snapshot_bindings: vec![(TagKey::from(alias), result_tag.into())].into(),
         ..Default::default()
     })
 }
@@ -561,7 +561,7 @@ fn rebind_registering_player_or_planeswalker_target(effects: Vec<Effect>) -> Vec
         let mut planeswalker = ObjectFilter::default().with_type(crate::types::CardType::Planeswalker);
         planeswalker.zone = Some(Zone::Battlefield);
         planeswalker.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-            tag: crate::tag::TagKey::from("targeted_0"),
+            tag: crate::tag::CompilerReferenceTag::Targeted0.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         ChooseSpec::ObjectOrPlayer(
@@ -922,16 +922,16 @@ fn compile_duration_scoped_delayed_trigger(
     one_shot: bool,
     duration: &Until,
     either_of_watched_objects: bool,
-    while_any_tagged_object_in_zone: &Option<(TagKey, Zone)>,
+    while_any_tagged_object_in_zone: Option<(&TagKey, Zone)>,
     ctx: &mut EffectLoweringContext,
-) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+) -> Result<crate::effects::ScheduleDelayedTriggerEffect, CardTextError> {
     // "Until end of turn, whenever you play a land or cast a spell this way,
     // ..." (Apple of Eden): the body keeps the play-or-cast event's
     // references; the matcher is linked to the exact preceding play grants.
     if let TriggerSpec::PlayedOrCastThroughPreviousPermission(event) =
         trigger_without_intro(trigger)
     {
-        let (compiled, choices) = compile_duration_scoped_delayed_trigger(
+        let mut schedule = compile_duration_scoped_delayed_trigger(
             event,
             effects,
             one_shot,
@@ -940,15 +940,8 @@ fn compile_duration_scoped_delayed_trigger(
             while_any_tagged_object_in_zone,
             ctx,
         )?;
-        let [effect] = compiled.as_slice() else {
-            unreachable!("delayed registration is one effect");
-        };
-        let mut schedule = effect
-            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
-            .unwrap()
-            .clone();
         schedule.trigger = ironsmith_core::DelayedTriggerSpec::PlayedOrCastThroughPreviousPermission;
-        return Ok((vec![Effect::new(schedule)], choices));
+        return Ok(schedule);
     }
     if let TriggerSpec::ConditionQualified {
         trigger,
@@ -956,7 +949,7 @@ fn compile_duration_scoped_delayed_trigger(
         surface,
     } = trigger_without_intro(trigger)
     {
-        let (compiled, choices) = compile_duration_scoped_delayed_trigger(
+        let mut schedule = compile_duration_scoped_delayed_trigger(
             trigger,
             effects,
             one_shot,
@@ -965,19 +958,12 @@ fn compile_duration_scoped_delayed_trigger(
             while_any_tagged_object_in_zone,
             ctx,
         )?;
-        let [effect] = compiled.as_slice() else {
-            unreachable!("delayed registration is one effect");
-        };
-        let mut schedule = effect
-            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
-            .unwrap()
-            .clone();
         schedule.trigger = ironsmith_core::DelayedTriggerSpec::ConditionQualified {
             trigger: Box::new(schedule.trigger),
             condition: compile_condition_from_predicate_ast(condition, ctx, &None)?,
             surface: surface.clone(),
         };
-        return Ok((vec![Effect::new(schedule)], choices));
+        return Ok(schedule);
     }
     // A delayed trigger whose event names its own untagged object ("whenever
     // a creature becomes tapped, destroy it") supplies the antecedent for its
@@ -1057,7 +1043,7 @@ fn compile_duration_scoped_delayed_trigger(
             ..Default::default()
         },
     )?;
-    let delayed_effects = lowered.effects.to_vec();
+    let delayed_effects = lowered.effects.into_iter().collect::<Vec<_>>();
     let refs = current_reference_env(ctx);
     let mut watched_tag = None;
     let mut watched_filter = None;
@@ -1079,6 +1065,32 @@ fn compile_duration_scoped_delayed_trigger(
     let mut watch_ability_source = watches_ability_source(trigger);
     let mut watch_all_object_targets = false;
 
+    // A tagged subject becomes the source of its delayed event. Each event
+    // determines when its other filter conditions must hold.
+    enum FilterTiming {
+        Registration,
+        Event,
+        Both,
+    }
+    let mut resolve_watched_filter =
+        |filter: &ObjectFilter, timing: FilterTiming| -> Result<ObjectFilter, CardTextError> {
+            let mut resolved = resolve_it_tag(filter, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&resolved) {
+                watched_tag = Some(tag);
+                match timing {
+                    FilterTiming::Registration => {
+                        watched_filter = Some(resolved);
+                        return Ok(ObjectFilter::source());
+                    }
+                    FilterTiming::Both => watched_filter = Some(resolved.clone()),
+                    FilterTiming::Event => {}
+                }
+                resolved.tagged_constraints.clear();
+                resolved.source = true;
+            }
+            Ok(resolved)
+        };
+
     let delayed_trigger = match trigger_without_intro(trigger) {
         TriggerSpec::ZoneChange(event) if event.duration_return_from_source => {
             let tag = event.filter.as_ref().and_then(watch_tag_from_filter).ok_or_else(|| {
@@ -1093,66 +1105,27 @@ fn compile_duration_scoped_delayed_trigger(
         TriggerSpec::ZoneChange(event) => {
             let mut event = event.clone();
             if let Some(filter) = &event.filter {
-                let resolved = resolve_it_tag(filter, &refs)?;
-                if let Some(tag) = watch_tag_from_filter(&resolved) {
-                    // A reference to an earlier selected object is an exact
-                    // watcher, just like a tagged dies/attack subject. Empty
-                    // choices register nothing; each captured object owns its
-                    // own source-local delayed occurrence.
-                    watched_tag = Some(tag);
-                    watched_filter = Some(resolved);
-                    event.filter = Some(ObjectFilter::source());
-                } else {
-                    event.filter = Some(resolved);
-                }
+                event.filter = Some(resolve_watched_filter(filter, FilterTiming::Registration)?);
             }
             ironsmith_core::DelayedTriggerSpec::ZoneChange(event)
         }
         TriggerSpec::CharacteristicGained(control) => {
             let mut control = control.clone();
-            control.filter = resolve_it_tag(&control.filter, &refs)?;
-            if let Some(tag) = watch_tag_from_filter(&control.filter) {
-                watched_tag = Some(tag);
-                watched_filter = Some(control.filter.clone());
-                control.filter.tagged_constraints.clear();
-                control.filter.source = true;
-            }
+            control.filter = resolve_watched_filter(&control.filter, FilterTiming::Both)?;
             ironsmith_core::DelayedTriggerSpec::CharacteristicGained(control)
         }
         TriggerSpec::ControlChanged(control) => {
             let mut control = control.clone();
-            control.filter = resolve_it_tag(&control.filter, &refs)?;
-            if let Some(tag) = watch_tag_from_filter(&control.filter) {
-                watched_tag = Some(tag);
-                watched_filter = Some(control.filter.clone());
-                control.filter.tagged_constraints.clear();
-                control.filter.source = true;
-            }
+            control.filter = resolve_watched_filter(&control.filter, FilterTiming::Both)?;
             ironsmith_core::DelayedTriggerSpec::ControlChanged(control)
         }
         TriggerSpec::Attacks(filter) => {
-            let resolved = resolve_it_tag(filter, &refs)?;
-            if let Some(tag) = watch_tag_from_filter(&resolved) {
-                watched_tag = Some(tag);
-                // Evaluate attack restrictions when the attack happens, not
-                // while registering a watcher before attackers are declared.
-                let mut event_filter = resolved;
-                event_filter.tagged_constraints.clear();
-                event_filter.source = true;
-                ironsmith_core::DelayedTriggerSpec::Attacks(event_filter)
-            } else {
-                ironsmith_core::DelayedTriggerSpec::Attacks(resolved)
-            }
+            let source = resolve_watched_filter(filter, FilterTiming::Event)?;
+            ironsmith_core::DelayedTriggerSpec::Attacks(source)
         }
         TriggerSpec::Dies(filter) => {
-            let resolved = resolve_it_tag(filter, &refs)?;
-            if let Some(tag) = watch_tag_from_filter(&resolved) {
-                watched_tag = Some(tag);
-                watched_filter = Some(resolved);
-                ironsmith_core::DelayedTriggerSpec::Dies(ObjectFilter::source())
-            } else {
-                ironsmith_core::DelayedTriggerSpec::Dies(resolved)
-            }
+            let source = resolve_watched_filter(filter, FilterTiming::Registration)?;
+            ironsmith_core::DelayedTriggerSpec::Dies(source)
         }
         TriggerSpec::ThisLeavesBattlefield | TriggerSpec::ThisLeavesBattlefieldWithSurface(_) => {
             watch_ability_source = true;
@@ -1176,73 +1149,33 @@ fn compile_duration_scoped_delayed_trigger(
             }
         }
         TriggerSpec::PermanentBecomesTapped(filter) => {
-            let resolved = resolve_it_tag(filter, &refs)?;
-            if let Some(tag) = watch_tag_from_filter(&resolved) {
-                watched_tag = Some(tag);
-                watched_filter = Some(resolved);
-                ironsmith_core::DelayedTriggerSpec::PermanentBecomesTapped(ObjectFilter::source())
-            } else {
-                ironsmith_core::DelayedTriggerSpec::PermanentBecomesTapped(resolved)
-            }
+            let source = resolve_watched_filter(filter, FilterTiming::Registration)?;
+            ironsmith_core::DelayedTriggerSpec::PermanentBecomesTapped(source)
         }
         TriggerSpec::DealsCombatDamage(filter) => {
-            let resolved = resolve_it_tag(filter, &refs)?;
-            if let Some(tag) = watch_tag_from_filter(&resolved) {
-                watched_tag = Some(tag);
-                watched_filter = Some(resolved);
-                ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(ObjectFilter::source())
-            } else if either_of_watched_objects {
+            let mut source = resolve_watched_filter(filter, FilterTiming::Registration)?;
+            if watched_tag.is_none() && either_of_watched_objects {
                 watch_all_object_targets = true;
-                watched_filter = Some(resolved);
-                ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(ObjectFilter::source())
-            } else {
-                ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(resolved)
+                watched_filter = Some(source);
+                source = ObjectFilter::source();
             }
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(source)
         }
-        TriggerSpec::DealsDamage { source, .. } => {
-            let resolved = resolve_it_tag(source, &refs)?;
-            if let Some(tag) = watch_tag_from_filter(&resolved) {
-                watched_tag = Some(tag);
-                watched_filter = Some(resolved);
-                ironsmith_core::DelayedTriggerSpec::DealsDamage {
-                    source: ObjectFilter::source(),
-                }
-            } else {
-                ironsmith_core::DelayedTriggerSpec::DealsDamage { source: resolved }
-            }
-        }
+        TriggerSpec::DealsDamage { source, .. } => ironsmith_core::DelayedTriggerSpec::DealsDamage {
+            source: resolve_watched_filter(source, FilterTiming::Registration)?,
+        },
         TriggerSpec::DealsCombatDamageTo { source, target } => {
-            let resolved_source = resolve_it_tag(source, &refs)?;
-            let resolved_target = resolve_it_tag(target, &refs)?;
-            if let Some(tag) = watch_tag_from_filter(&resolved_source) {
-                watched_tag = Some(tag);
-                watched_filter = Some(resolved_source);
-                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageTo {
-                    source: ObjectFilter::source(),
-                    target: resolved_target,
-                }
-            } else {
-                watch_ability_source = resolved_source.source || resolved_target.source;
-                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageTo {
-                    source: resolved_source,
-                    target: resolved_target,
-                }
+            let source = resolve_watched_filter(source, FilterTiming::Registration)?;
+            let target = resolve_it_tag(target, &refs)?;
+            if watched_tag.is_none() {
+                watch_ability_source = source.source || target.source;
             }
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageTo { source, target }
         }
         TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
-            let resolved = resolve_it_tag(source, &refs)?;
-            if let Some(tag) = watch_tag_from_filter(&resolved) {
-                watched_tag = Some(tag);
-                watched_filter = Some(resolved);
-                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
-                    source: ObjectFilter::source(),
-                    player: player.clone(),
-                }
-            } else {
-                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
-                    source: resolved,
-                    player: player.clone(),
-                }
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
+                source: resolve_watched_filter(source, FilterTiming::Registration)?,
+                player: player.clone(),
             }
         }
         TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
@@ -1253,71 +1186,35 @@ fn compile_duration_scoped_delayed_trigger(
             recipient_passive,
             during_your_turn,
             object_recipient: None,
-        } => {
-            let resolved = resolve_it_tag(source, &refs)?;
-            if let Some(tag) = watch_tag_from_filter(&resolved) {
-                watched_tag = Some(tag);
-                watched_filter = Some(resolved);
-                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
-                    source: ObjectFilter::source(),
-                    player: player.clone(),
-                    each_damaged_player: *each_damaged_player,
-                    per_source_controller: *per_source_controller,
-                    recipient_passive: *recipient_passive,
-                    during_your_turn: *during_your_turn,
-                }
-            } else {
-                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
-                    source: resolved,
-                    player: player.clone(),
-                    each_damaged_player: *each_damaged_player,
-                    per_source_controller: *per_source_controller,
-                    recipient_passive: *recipient_passive,
-                    during_your_turn: *during_your_turn,
-                }
-            }
-        }
+        } => ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+            source: resolve_watched_filter(source, FilterTiming::Registration)?,
+            player: player.clone(),
+            each_damaged_player: *each_damaged_player,
+            per_source_controller: *per_source_controller,
+            recipient_passive: *recipient_passive,
+            during_your_turn: *during_your_turn,
+        },
         _ => {
             compile_delayed_trigger_spec(&resolve_play_or_cast_trigger_references(trigger, &refs)?)?
         }
     };
 
-    let mut delayed = if let Some(tag) = watched_tag {
-        crate::effects::ScheduleDelayedTriggerEffect::from_tag(
-            tag,
-            delayed_trigger,
-            delayed_effects,
-            one_shot,
-            Vec::new(),
-            PlayerFilter::You,
-        )
-    } else {
-        crate::effects::ScheduleDelayedTriggerEffect::new(
-            delayed_trigger,
-            delayed_effects,
-            one_shot,
-            Vec::new(),
-            PlayerFilter::You,
-        )
-    };
-    if let Some(filter) = watched_filter {
-        delayed = delayed.with_target_filter(filter);
-    }
-    if watch_ability_source {
-        delayed = delayed.watch_ability_source();
-    }
-    if watch_all_object_targets {
-        delayed = delayed.watch_all_object_targets();
-    }
-    if either_of_watched_objects {
-        delayed = delayed.with_either_of_watched_objects_surface();
-    }
+    let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
+        delayed_trigger,
+        delayed_effects,
+        one_shot,
+        Vec::new(),
+        PlayerFilter::You,
+    );
+    delayed.target_tag = watched_tag;
+    delayed.target_filter = watched_filter;
+    delayed.watch_ability_source = watch_ability_source;
+    delayed.watch_all_object_targets = watch_all_object_targets;
+    delayed.either_of_watched_objects = either_of_watched_objects;
     if let Some((tag, zone)) = while_any_tagged_object_in_zone {
-        delayed = delayed.while_any_tagged_object_in_zone(resolve_it_tag_key(tag, &refs)?, *zone);
+        delayed = delayed.while_any_tagged_object_in_zone(resolve_it_tag_key(tag, &refs)?, zone);
     }
-    delayed = apply_delayed_trigger_duration(delayed, duration)?.with_leading_duration_surface();
-
-    Ok((vec![Effect::new(delayed)], Vec::new()))
+    apply_delayed_trigger_duration(delayed, duration)
 }
 
 pub(super) fn try_compile_timing_and_control_effect(
@@ -1665,40 +1562,25 @@ fn try_compile_timing_and_control_effect_inner(
             source_collection_scope,
             source_absence_state,
         }) => {
-            let (mut compiled, choices) = compile_duration_scoped_delayed_trigger(
+            let mut schedule = compile_duration_scoped_delayed_trigger(
                 trigger,
                 effects,
                 *one_shot,
                 duration,
                 *either_of_watched_objects,
-                &while_any_tagged_object_in_zone
+                while_any_tagged_object_in_zone
                     .as_ref()
-                    .map(|(tag, zone)| (tag.key.clone(), *zone)),
+                    .map(|(tag, zone)| (&tag.key, *zone)),
                 ctx,
-            )?;
-            // CR 603.8: the state reading of a source-leave delay.
-            if *source_absence_state {
-                for effect in &mut compiled {
-                    if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
-                        && schedule.watch_ability_source
-                    {
-                        let mut schedule = schedule.clone();
-                        schedule.fires_if_watched_source_absent = true;
-                        *effect = Effect::new(schedule);
-                    }
-                }
-            }
+            )?
+            .with_leading_duration_surface();
+            schedule.fires_if_watched_source_absent =
+                *source_absence_state && schedule.watch_ability_source;
             if let Some(scope) = source_collection_scope {
-                for effect in &mut compiled {
-                    if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
-                        let mut schedule = schedule.clone();
-                        schedule.source_collection_scope = Some(scope.clone());
-                        schedule.watch_ability_source = true;
-                        *effect = Effect::new(schedule);
-                    }
-                }
+                schedule.source_collection_scope = Some(scope.clone());
+                schedule.watch_ability_source = true;
             }
-            return Ok(Some((compiled, choices)));
+            (vec![Effect::new(schedule)], Vec::new())
         }
         EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
             trigger,
@@ -1822,7 +1704,7 @@ fn try_compile_timing_and_control_effect_inner(
                 // "When you lose control of that Equipment this turn, if
                 // ..." (Stolen Uniform): the authored duration trails the
                 // event; it is not a leading "Until end of turn," frame.
-                let (compiled, choices) = compile_duration_scoped_delayed_trigger(
+                let schedule = compile_duration_scoped_delayed_trigger(
                     trigger,
                     effects,
                     *one_shot,
@@ -1832,24 +1714,10 @@ fn try_compile_timing_and_control_effect_inner(
                         Until::EndOfTurn
                     },
                     false,
-                    &None,
+                    None,
                     ctx,
                 )?;
-                let compiled = compiled
-                    .into_iter()
-                    .map(|effect| {
-                        match effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
-                        {
-                            Some(schedule) => {
-                                let mut schedule = schedule.clone();
-                                schedule.leading_duration_surface = false;
-                                Effect::new(schedule)
-                            }
-                            None => effect,
-                        }
-                    })
-                    .collect();
-                return Ok(Some((compiled, choices)));
+                return Ok(Some((vec![Effect::new(schedule)], Vec::new())));
             }
             // "When this artifact leaves the battlefield this turn, destroy
             // that creature": when the delayed event's own object is the

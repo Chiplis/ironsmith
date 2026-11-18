@@ -66,6 +66,55 @@ fn source_owned_collection_programs_preserve_count_random_and_quality_operands()
 }
 
 #[test]
+fn both_exiled_operands_keep_their_source_zone_count_and_duration() {
+    use ironsmith::CardType;
+
+    fn collect(effect: &Effect, operands: &mut Vec<(Vec<CardType>, Option<Zone>)>) {
+        if let Some(exile) = effect.downcast_ref::<ironsmith::effects::ExileUntilEffect>() {
+            assert_eq!(
+                exile.duration,
+                ironsmith::effects::ExileUntilDuration::SourceLeavesBattlefield
+            );
+            assert!(exile.leave_watcher.is_none());
+            assert_eq!(exile.spec.count(), ironsmith::ChoiceCount::up_to(1));
+            let ChooseSpec::Object(filter) = exile.spec.base() else {
+                panic!("expected a card selection")
+            };
+            assert_eq!(filter.owner, Some(PlayerFilter::You));
+            operands.push((filter.card_types.clone(), filter.zone));
+        }
+        effect.visit_child_effects(&mut |child| collect(child, operands));
+    }
+
+    for (first_zone, first_operand) in [
+        (Zone::Graveyard, "up to one instant card"),
+        (Zone::Hand, "up to one instant card from your hand"),
+    ] {
+        let text = format!(
+            "Type: Artifact\n{{1}}: Exile {first_operand} and up to one sorcery card from your graveyard until this artifact leaves the battlefield. Maintain the cargo collection with cards exiled this way: Whenever this artifact deals combat damage to a player, draw a card."
+        );
+        let definition =
+            ironsmith_compiler_runtime::compile_to_runtime_definition("Carrier", &text, false)
+                .unwrap();
+        let ironsmith::ability::AbilityKind::Activated(ability) = &definition.abilities[0].kind
+        else {
+            panic!("expected an activation")
+        };
+        let mut operands = Vec::new();
+        for effect in ability.effects.all_effects() {
+            collect(effect, &mut operands);
+        }
+        assert_eq!(
+            operands,
+            [
+                (vec![CardType::Instant], Some(first_zone)),
+                (vec![CardType::Sorcery], Some(Zone::Graveyard)),
+            ]
+        );
+    }
+}
+
+#[test]
 fn tagged_watched_recipient_owns_collection_independently_of_producing_ability_source(){
  let mut game=GameState::new(vec!["A".into(),"B".into(),"C".into()],20);
  let producer=game.create_object_from_definition(&body(),A,Zone::Battlefield);

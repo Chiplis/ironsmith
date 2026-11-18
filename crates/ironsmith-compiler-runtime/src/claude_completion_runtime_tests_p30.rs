@@ -195,6 +195,63 @@ fn evercoat_ursine_has_two_hideaway_instances_and_plays_from_the_linked_exile() 
 }
 
 #[test]
+fn derived_keyword_discounts_consume_the_entire_fixed_amount() {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith::effects::BecomeForetoldEffect;
+    use ironsmith::grant::{DerivedAlternativeCast, Grantable};
+    for (head, keyword, expected_grant) in [
+        (
+            "Each nonland card in your hand without foretell has foretell.",
+            "foretell",
+            Some(DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction: 5 }),
+        ),
+        (
+            "Each enchantment card in your hand has miracle.",
+            "miracle",
+            Some(DerivedAlternativeCast::MiracleFromCardManaCostReducedBy { reduction: 5 }),
+        ),
+        (
+            "Whenever this creature enters, draw a card, then exile a card from your hand face down. It becomes foretold.",
+            "foretell",
+            None,
+        ),
+    ] {
+        let compile = |amount: &str| {
+            let text = format!(
+                "Type: Creature — Wizard\nPower/Toughness: 2/2\n{head} Its {keyword} cost is equal to its mana cost reduced by {amount}."
+            );
+            compile_to_runtime_definition("Derived discount", &text, false)
+        };
+        let card = compile("{2}{3}").expect("two generic symbols should total five");
+        let [ability] = card.abilities.as_slice() else {
+            panic!("expected one ability")
+        };
+        match (&ability.kind, expected_grant) {
+            (AbilityKind::Static(rule), Some(expected)) => {
+                assert_eq!(
+                    rule.grant_spec().unwrap().grantable,
+                    Grantable::DerivedAlternativeCast(expected)
+                );
+            }
+            (AbilityKind::Triggered(trigger), None) => {
+                let designation = trigger
+                    .effects
+                    .segments
+                    .iter()
+                    .flat_map(|segment| &segment.default_effects)
+                    .find_map(Effect::downcast_ref::<BecomeForetoldEffect>)
+                    .expect("foretold designation");
+                assert_eq!(designation.foretell_cost_reduction, Some(5));
+            }
+            _ => panic!("unexpected {keyword} ability"),
+        }
+        for invalid in ["{2}{X}", "{2} and draw a card"] {
+            assert!(compile(invalid).is_err(), "{keyword} accepted '{invalid}'");
+        }
+    }
+}
+
+#[test]
 fn ethereal_valkyrie_foretells_the_exiled_card_for_its_mana_cost_minus_two() {
     use ironsmith::card::CardBuilder;
     use ironsmith::ids::CardId;

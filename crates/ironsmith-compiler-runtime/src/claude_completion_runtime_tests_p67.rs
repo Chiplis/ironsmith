@@ -302,6 +302,60 @@ const MOGIS_MARAUDER: &str = "Mana cost: {2}{B}\nType: Creature — Human Berser
 const AGILITY_BOBBLEHEAD: &str = "Mana cost: {3}\nType: Artifact — Bobblehead\n{T}: Add one mana of any color.\n{3}, {T}: Up to X target creatures you control each gain haste until end of turn and can't be blocked this turn except by creatures with haste, where X is the number of Bobbleheads you control as you activate this ability.";
 
 #[test]
+fn sorcery_devotion_limits_targets_while_granted_draw_uses_its_own_x() {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith::effects::{ApplyContinuousEffect, DrawCardsEffect};
+    use ironsmith::{Color, Modification, PlayerFilter, Value};
+
+    let definition = p67_compile(
+        "Devotion Grant",
+        r#"Type: Sorcery
+Up to X target creatures each gain "{X}: Draw X cards" until end of turn, where X is your devotion to black."#,
+    );
+    let mut grants = Vec::new();
+    for effect in definition.spell_effect.as_ref().unwrap().all_effects() {
+        p67_find_effects::<ApplyContinuousEffect>(effect, &mut grants);
+    }
+    let [grant] = grants.as_slice() else {
+        panic!("expected one grant")
+    };
+    let targets = grant
+        .target_spec
+        .as_ref()
+        .expect("the spell targets creatures");
+    assert!(targets.is_target() && targets.count().up_to_x);
+    assert_eq!(
+        targets.count_value().map(Value::unhinted),
+        Some(&Value::Devotion {
+            player: PlayerFilter::You,
+            color: Color::Black
+        }),
+        "black devotion sets the maximum number of targets",
+    );
+
+    let Some(Modification::AddAbilityGeneric(ability)) = &grant.modification else {
+        panic!("expected a granted ability");
+    };
+    let AbilityKind::Activated(activation) = &ability.kind else {
+        panic!("expected an activated ability");
+    };
+    assert_eq!(activation.mana_cost.mana_cost().unwrap().to_oracle(), "{X}");
+    assert!(activation.mana_cost.dynamic_mana_cost().is_none());
+    let effects = activation.effects.all_effects();
+    let [effect] = effects.as_slice() else {
+        panic!("expected one draw effect")
+    };
+    let draw = effect
+        .downcast_ref::<DrawCardsEffect>()
+        .expect("draw cards");
+    assert_eq!(
+        draw.count.unhinted(),
+        &Value::X,
+        "draw the X paid on activation"
+    );
+}
+
+#[test]
 fn p67_where_x_binds_plain_x_target_count_of_grants() {
     // The dynamic target-count prefix reads "up to X target" as XTimes(1);
     // the where-X clause must still define that X (never left unbound).

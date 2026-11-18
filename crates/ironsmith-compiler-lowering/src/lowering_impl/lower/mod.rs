@@ -24,16 +24,7 @@ mod line_lowering;
 mod modal_and_level_lowering;
 mod normalization_support;
 mod restriction_support;
-#[cfg(test)]
-mod sentence_grouping_lowering;
 
-#[cfg(test)]
-use ironsmith_compiler::semantic_line_parsing::{
-    normalize_exert_followup_source_reference_tokens, parse_keyword_line_for_test,
-    parse_single_effect_lexed, parse_triggered_line, strip_lexed_suffix_phrase,
-};
-#[cfg(test)]
-pub use normalization_support::document_to_normalized_card_ast;
 pub use normalization_support::normalize_line_ast_standalone;
 pub use normalization_support::normalize_parsed_card_ast_for_lowering;
 

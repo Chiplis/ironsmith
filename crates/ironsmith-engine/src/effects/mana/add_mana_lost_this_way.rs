@@ -4,7 +4,7 @@
 //! mana instruction); its unconverted mana-lost events supply exactly which
 //! mana is added, type for type.
 
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::Value;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
@@ -64,15 +64,7 @@ fn lost_mana(
 }
 
 impl EffectExecutor for AddManaLostThisWayEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

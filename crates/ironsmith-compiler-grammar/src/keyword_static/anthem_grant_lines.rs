@@ -1,3 +1,9 @@
+use anthem_grant_grammar::{
+    parse_granted_blitz_cost_equals_mana as is_granted_blitz_cost_tail,
+    parse_granted_emerge_cost_equals_mana as is_granted_emerge_cost_tail,
+    parse_granted_scavenge_cost_equals_mana as is_granted_scavenge_cost_tail,
+};
+use crate::grammar::shared_util::keyword_cost_lines::{card_mana_cost_tail, generic_discount, parse_card_mana_cost_reduction};
 #[path = "anthem_grant_lines/universal_keyword_condition.rs"]
 mod universal_keyword_condition;
 use crate::word_primitives::WordWindows as _;
@@ -105,12 +111,6 @@ fn parse_granted_escape_cost_tail_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<anthem_grant_grammar::GrantedEscapeCostTail<'_>> {
     anthem_grant_grammar::parse_granted_escape_cost_tail_clause(tokens)
-}
-
-fn parse_granted_miracle_cost_reduction_tail_clause(
-    tokens: &[OwnedLexToken],
-) -> Option<anthem_grant_grammar::GrantedMiracleCostReductionTail<'_>> {
-    anthem_grant_grammar::parse_granted_miracle_cost_reduction_tail_clause(tokens)
 }
 
 fn parse_cant_be_blocked_by_more_than_clause(
@@ -1290,58 +1290,15 @@ fn extract_grant_spec_from_subject(
     )))
 }
 
-fn parse_granted_miracle_cost_reduction_tail(
-    trailing_tokens: &[OwnedLexToken],
-) -> Result<Option<u32>, CardTextError> {
-    let trailing_word_refs = crate::lexer::token_word_refs(trailing_tokens);
-    let Some(parsed) = parse_granted_miracle_cost_reduction_tail_clause(trailing_tokens) else {
-        return Ok(None);
-    };
-
-    let Some((cost, used)) =
-        crate::util::leading_mana_cost_from_tokens(parsed.reduction_cost_tokens)
-    else {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported miracle cost reduction clause (clause: '{}')",
-            trailing_word_refs.join(" ")
-        )));
-    };
-    if used != parsed.reduction_cost_tokens.len() {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported miracle cost reduction clause (clause: '{}')",
-            trailing_word_refs.join(" ")
-        )));
-    }
-    let generic = cost.generic_mana_total();
-    if generic == 0 || cost.mana_value() != generic {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported miracle cost reduction clause (clause: '{}')",
-            trailing_word_refs.join(" ")
-        )));
-    }
-    Ok(Some(generic))
-}
-
 /// Own both the granted keyword and its complete cost-definition sentence.
 /// Both registry routes return this same typed grant, so no reader can turn
 /// only the first sentence into a removable marker or lose the derived price.
-fn parse_complete_miracle_cost_grant_line(
-    tokens: &[OwnedLexToken],
+fn parse_complete_miracle_cost_grant(
+    first: &[OwnedLexToken],
+    have: usize,
+    companion: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
-    let sentences = sentences.into_iter().filter(|sentence| !sentence.is_empty()).collect::<Vec<_>>();
-    if sentences.len() < 2 { return Ok(None); }
-    let first = sentences[0];
-    let Some(verb) = anthem_grant_grammar::parse_granted_keyword_verb_facts(first) else { return Ok(None); };
-    let have = verb.have_token;
-    let keyword_tokens = &first[have + 1..];
-    if anthem_grant_grammar::parse_granted_alternative_cast_keyword_tokens(keyword_tokens)
-        != Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Miracle)
-    { return Ok(None); }
-    if sentences.len() != 2 {
-        return Err(CardTextError::ParseError("Miracle cost grant has an unowned trailing sentence".into()));
-    }
-    let Some(reduction) = parse_granted_miracle_cost_reduction_tail(sentences[1])? else {
+    let Some(reduction) = parse_card_mana_cost_reduction(companion, "miracle", 1)? else {
         return Err(CardTextError::ParseError("Miracle cost grant requires its complete derived-cost sentence".into()));
     };
     let (condition, subject_start) = parse_anthem_prefix_condition(first, have)?;
@@ -1372,65 +1329,20 @@ fn parse_complete_miracle_cost_grant_line(
 /// a hand grant of foretell with a derived cost (CR 702.143a). "Without
 /// foretell" needs no filter: a card's own foretell cost is preferred over a
 /// granted one whenever it has both.
-fn parse_complete_foretell_cost_grant_line(
-    tokens: &[OwnedLexToken],
+fn parse_complete_foretell_cost_grant(
+    subject: &[OwnedLexToken],
+    second: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
-    let sentences = sentences.into_iter().filter(|sentence| !sentence.is_empty()).collect::<Vec<_>>();
-    let [first, second] = sentences.as_slice() else {
+    let Some(reduction) = parse_card_mana_cost_reduction(second, "foretell", 1)? else {
         return Ok(None);
     };
-    let first = trim_edge_punctuation(first);
-    let first_words = crate::lexer::token_word_refs(&first);
-    let Some(has) = first_words.iter().position(|word| matches!(*word, "has" | "have")) else {
-        return Ok(None);
-    };
-    if first_words.get(has + 1..) != Some(&["foretell"][..]) || has == 0 {
-        return Ok(None);
-    }
-    let second_tokens = trim_edge_punctuation(second);
-    // Sentence-initial words keep their authored capitalization ("Its").
-    let second_words = crate::lexer::token_word_refs(&second_tokens)
-        .into_iter()
-        .map(str::to_ascii_lowercase)
-        .collect::<Vec<_>>();
-    let second_words = second_words.iter().map(String::as_str).collect::<Vec<_>>();
-    let [
-        "its" | "the", "foretell", "cost", "is", "equal", "to", "its", "mana", "cost", "reduced", "by",
-        ..,
-    ] = second_words.as_slice()
-    else {
-        return Ok(None);
-    };
-    let Some(by) = second_tokens.iter().position(|token| token.is_word("by")) else {
-        return Ok(None);
-    };
-    let Some((cost, used)) = crate::util::leading_mana_cost_from_tokens(&second_tokens[by + 1..])
-    else {
-        return Ok(None);
-    };
-    if used != second_tokens.len() - by - 1 {
-        return Ok(None);
-    }
-    let reduction = cost.generic_mana_total();
-    if reduction == 0 || cost.mana_value() != reduction {
-        return Ok(None);
-    }
-    // The subject word tokens up to "has", without a trailing "without
-    // foretell" qualifier.
-    let word_tokens: Vec<OwnedLexToken> = first
-        .iter()
-        .filter(|token| token.as_word().is_some())
-        .cloned()
-        .collect();
-    let mut subject = word_tokens[..has].to_vec();
-    if crate::lexer::token_word_refs(&subject).ends_with(&["without", "foretell"]) {
-        subject.truncate(subject.len() - 2);
-    }
+    let subject =
+        crate::grammar::primitives::strip_lexed_suffix_phrase(subject, &["without", "foretell"])
+            .unwrap_or(subject);
     if subject.is_empty() {
         return Ok(None);
     }
-    let mut filter = parse_object_filter(&subject, false)?;
+    let mut filter = parse_object_filter(subject, false)?;
     let zone = filter.zone.unwrap_or(Zone::Battlefield);
     if zone != Zone::Hand {
         return Ok(None);
@@ -1441,39 +1353,26 @@ fn parse_complete_foretell_cost_grant_line(
         filter,
         zone,
     );
-    Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::grants(spec))]))
+    Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::grants(
+        spec,
+    ))]))
 }
 
 /// "The top card of your library has plot. The plot cost is equal to its
 /// mana cost." (Fblthp, Lost on the Range; CR 702.170a): the library's top
 /// card has plot with a cost derived from its own mana cost. Plotting it from
 /// the library still needs a separate permission.
-fn parse_complete_plot_cost_grant_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
-    let sentences = sentences.into_iter().filter(|sentence| !sentence.is_empty()).collect::<Vec<_>>();
-    let [first, second] = sentences.as_slice() else {
-        return Ok(None);
-    };
-    let first = trim_edge_punctuation(first);
-    let second = trim_edge_punctuation(second);
-    // Sentence-initial words keep their authored capitalization ("The").
-    let lowered = |tokens: &[OwnedLexToken]| {
-        crate::lexer::token_word_refs(tokens)
-            .into_iter()
-            .map(str::to_ascii_lowercase)
-            .collect::<Vec<_>>()
-    };
-    if lowered(&first) != ["the", "top", "card", "of", "your", "library", "has", "plot"] {
-        return Ok(None);
-    }
-    let second_words = lowered(&second);
-    if !matches!(
-        second_words.iter().map(String::as_str).collect::<Vec<_>>().as_slice(),
-        ["the" | "its", "plot", "cost", "is", "equal", "to", "its", "mana", "cost"]
-    ) {
-        return Ok(None);
+fn parse_complete_plot_cost_grant(
+    subject: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Option<Vec<StaticAbilityAst>> {
+    if crate::grammar::primitives::strip_lexed_prefix_phrase(
+        subject,
+        &["the", "top", "card", "of", "your", "library"],
+    ) != Some(&[])
+        || card_mana_cost_tail(second, "plot") != Some(&[])
+    {
+        return None;
     }
     let mut spec = crate::model::CompilerGrantSpecCore::new(
         crate::model::CompilerGrantableCore::DerivedAlternativeCast(
@@ -1483,7 +1382,7 @@ fn parse_complete_plot_cost_grant_line(
         Zone::Library,
     );
     spec.top_card_only = true;
-    Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::grants(spec))]))
+    Some(vec![StaticAbilityAst::Static(StaticAbility::grants(spec))])
 }
 
 /// A quoted ordinary preparation ability can derive each card's price
@@ -1499,8 +1398,6 @@ fn parse_described_preparation_cost_grant_line(
         || tokens[close + 1..].iter().any(|token| token.kind != crate::lexer::TokenKind::Period) {
         return Ok(None);
     }
-    let subject = crate::lexer::render_token_slice(&tokens[..open - 1]).to_ascii_lowercase();
-    let subject = subject.as_str();
     let body = crate::lexer::render_token_slice(&tokens[open + 1..close]).to_ascii_lowercase();
     let body = body.trim();
     let (body, label) = if let Some((body, annotation)) = body.rsplit_once(" this is the ") {
@@ -1511,12 +1408,14 @@ fn parse_described_preparation_cost_grant_line(
     let Some((price, optional_cast)) = crate::grammar::shared_util::alternative_cost_lines::described_resolution_preparation(body)
     else { return Ok(None); };
     let Some(reduction) = price.strip_prefix("its mana cost reduced by ") else { return Ok(None); };
-    let reduction = crate::grammar::values::parse_mana_cost_tokens(&crate::lexer::lex_line(reduction, 0)?)?;
-    if reduction.mana_value() != reduction.generic_mana_total() { return Ok(None); }
+    let reduction = generic_discount(&crate::lexer::lex_line(reduction, 0)?).ok_or_else(|| {
+        CardTextError::ParseError(format!("expected a fixed generic preparation reduction, found '{reduction}'"))
+    })?;
     // "Each instant and sorcery card in your hand has ...": the distributive
     // determiner is not part of the filter.
-    let subject = subject.strip_prefix("each ").unwrap_or(subject);
-    let Ok(mut filter) = parse_object_filter(&crate::lexer::lex_line(subject, 0)?, false) else { return Ok(None); };
+    let subject = &tokens[..open - 1];
+    let subject = crate::grammar::primitives::strip_lexed_prefix_phrase(subject, &["each"]).unwrap_or(subject);
+    let mut filter = parse_object_filter(subject, false)?;
     // "each instant and sorcery card in your hand" reads as a union whose
     // arms each carry the hand zone.
     let union_in_hand = filter.zone.is_none() && !filter.any_of.is_empty()
@@ -1527,40 +1426,72 @@ fn parse_described_preparation_cost_grant_line(
     let spec = crate::model::CompilerGrantSpecCore::new(
         crate::model::CompilerGrantableCore::DerivedAlternativeCast(
             ironsmith_core::DerivedAlternativeCast::ExilePreparationFromCardManaCost {
-                reduction: reduction.generic_mana_total(), optional_cast, label,
+                reduction, optional_cast, label,
             }), filter, Zone::Hand,
     );
     crate::word_claims::claim_tokens(tokens);
     Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::grants(spec))]))
 }
 
-/// An outer period is not an unrelated resolution sibling when the exact
-/// second sentence defines the granted keyword's own price. Keep this proof
-/// narrow; the existing complete grant readers still own all typed semantics.
-fn has_owned_granted_cost_companion(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
-    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
-    let sentences = sentences.into_iter().filter(|sentence| !sentence.is_empty()).collect::<Vec<_>>();
-    let [first, companion] = sentences.as_slice() else { return Ok(false); };
-    let Some(verb) = anthem_grant_grammar::parse_granted_keyword_verb_facts(first) else { return Ok(false); };
-    let keyword = &first[verb.have_token + 1..];
+enum GrantCostCompanion {
+    Unowned,
+    Complete(Vec<StaticAbilityAst>),
+    Keyword(Option<anthem_grant_grammar::GrantedAlternativeCastKeyword>),
+}
+
+/// A second sentence belongs to a keyword grant only when it defines that grant's price.
+fn parse_grant_cost_companion(
+    tokens: &[OwnedLexToken],
+) -> Result<GrantCostCompanion, CardTextError> {
+    use GrantCostCompanion::{Complete, Keyword, Unowned};
     use anthem_grant_grammar::GrantedAlternativeCastKeyword as K;
-    let owned = match anthem_grant_grammar::parse_granted_alternative_cast_keyword_tokens(keyword) {
-        Some(K::Flashback) => anthem_grant_grammar::parse_granted_flashback_cost_equals_mana(companion),
+    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
+    let mut sentences = sentences
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty());
+    let (Some(first), Some(companion), None) =
+        (sentences.next(), sentences.next(), sentences.next())
+    else {
+        return Ok(Unowned);
+    };
+    let Some(verb) = anthem_grant_grammar::parse_granted_keyword_verb_facts(first) else {
+        return Ok(Unowned);
+    };
+    let subject = &first[..verb.have_token];
+    let keyword = &first[verb.have_token + 1..];
+    let kind = anthem_grant_grammar::parse_granted_alternative_cast_keyword_tokens(keyword);
+    let owned = match kind {
+        Some(K::Miracle) => {
+            return Ok(
+                parse_complete_miracle_cost_grant(first, verb.have_token, companion)?
+                    .map_or(Unowned, Complete),
+            );
+        }
+        None if matches!(keyword, [name] if name.is_word("foretell")) => {
+            return Ok(
+                parse_complete_foretell_cost_grant(subject, companion)?.map_or(Unowned, Complete)
+            );
+        }
+        None if matches!(keyword, [name] if name.is_word("plot")) => {
+            return Ok(parse_complete_plot_cost_grant(subject, companion).map_or(Unowned, Complete));
+        }
+        Some(K::Flashback) => {
+            anthem_grant_grammar::parse_granted_flashback_cost_equals_mana(companion)
+        }
         Some(K::Blitz) => is_granted_blitz_cost_tail(companion),
         Some(K::Emerge) => is_granted_emerge_cost_tail(companion),
         Some(K::Mayhem) => anthem_grant_grammar::parse_granted_mayhem_cost_equals_mana(companion),
-        Some(K::Escape) => parse_granted_escape_cost_tail_clause(companion).is_some_and(|parsed|
-            parse_number(parsed.exile_count_tokens).is_some_and(|(_,used)| used == parsed.exile_count_tokens.len())),
-        Some(K::Miracle) => parse_complete_miracle_cost_grant_line(tokens)?.is_some(),
+        Some(K::Escape) => parse_granted_escape_cost_tail_clause(companion).is_some_and(|parsed| {
+            parse_number(parsed.exile_count_tokens)
+                .is_some_and(|(_, used)| used == parsed.exile_count_tokens.len())
+        }),
         None => {
-            (anthem_grant_grammar::classify_granted_keyword_tokens(keyword)
+            anthem_grant_grammar::classify_granted_keyword_tokens(keyword)
                 == anthem_grant_grammar::GrantedKeywordTokenKind::Scavenge
-                && is_granted_scavenge_cost_tail(companion))
-                || parse_complete_foretell_cost_grant_line(tokens)?.is_some()
-                || parse_complete_plot_cost_grant_line(tokens)?.is_some()
+                && is_granted_scavenge_cost_tail(companion)
         }
     };
-    Ok(owned)
+    Ok(if owned { Keyword(kind) } else { Unowned })
 }
 
 /// "During your main phase, each card in your graveyard has beam me up. The
@@ -1705,8 +1636,13 @@ pub fn parse_granted_keyword_static_line(
     if tokens.iter().any(|token| token.is_word("protection")) {
         crate::clause_support::validate_protection_static_line(tokens)?;
     }
-    if static_grant_has_outer_sentence_boundary(tokens)
-        && !has_owned_granted_cost_companion(tokens)? { return Ok(None); }
+    if static_grant_has_outer_sentence_boundary(tokens) {
+        match parse_grant_cost_companion(tokens)? {
+            GrantCostCompanion::Unowned => return Ok(None),
+            GrantCostCompanion::Complete(abilities) => return Ok(Some(abilities)),
+            GrantCostCompanion::Keyword(_) => {}
+        }
+    }
     // The complete compound reader separates granted keywords from a stated
     // blocking quality (CR 113.12). A broad grant must not consume both.
     if matches!(parse_subject_has_keywords_and_cant_be_blocked_line(tokens), Ok(Some(_)))
@@ -1819,9 +1755,6 @@ fn parse_granted_keyword_static_line_inner(
         return self::combat_requirements::parse_combat_requirement_static_line(tokens);
     }
     if let Some(abilities) = parse_described_preparation_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
-    if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
-    if let Some(abilities) = parse_complete_foretell_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
-    if let Some(abilities) = parse_complete_plot_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
 
     // A complete as-entry characteristic replacement is not a keyword grant
     // to the descriptor at its tail (for example a Dinosaur creature).
@@ -2001,7 +1934,7 @@ fn parse_granted_keyword_static_line_inner(
                 return granted_emerge_abilities_from_subject(subject_tokens, condition);
             }
             Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Miracle) => {
-                let Some(reduction) = parse_granted_miracle_cost_reduction_tail(trailing_tokens)?
+                let Some(reduction) = parse_card_mana_cost_reduction(trailing_tokens, "miracle", 1)?
                 else {
                     return Ok(None);
                 };
@@ -3265,18 +3198,6 @@ pub struct StaticAnimationBundleAst {
     pub subtype_mode: AnimationSubtypeMode,
     pub base_power_toughness: Option<(Value, Value)>,
     pub granted_tail: ParsedGrantedTailAst,
-}
-
-fn is_granted_blitz_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
-    anthem_grant_grammar::parse_granted_blitz_cost_equals_mana(trailing_tokens)
-}
-
-fn is_granted_emerge_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
-    anthem_grant_grammar::parse_granted_emerge_cost_equals_mana(trailing_tokens)
-}
-
-fn is_granted_scavenge_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
-    anthem_grant_grammar::parse_granted_scavenge_cost_equals_mana(trailing_tokens)
 }
 
 fn normalize_granted_alternative_spell_filter(
@@ -7340,7 +7261,7 @@ mod complete_granted_cost_boundary_tests {
             "The top card of your library has plot. The plot cost is equal to its mana cost.",
         ] {
             let tokens=crate::lexer::lex_line(text,0).unwrap();
-            assert!(has_owned_granted_cost_companion(&tokens).unwrap());
+            assert!(matches!(parse_grant_cost_companion(&tokens).unwrap(), GrantCostCompanion::Complete(_)));
             assert!(parse_granted_keyword_static_line(&tokens).unwrap().is_some());
             assert!(parse_filter_has_granted_ability_line(&tokens).unwrap().is_some());
         }
@@ -7354,7 +7275,7 @@ mod complete_granted_cost_boundary_tests {
             "Target creature gains custom keyword \"growwise\", and \"Whenever this creature attacks, draw a card.\" until end of turn. You may have it fight another target creature.",
         ] {
             let tokens=crate::lexer::lex_line(text,0).unwrap();
-            assert!(!has_owned_granted_cost_companion(&tokens).unwrap());
+            assert!(matches!(parse_grant_cost_companion(&tokens).unwrap(), GrantCostCompanion::Unowned));
             assert!(parse_granted_keyword_static_line(&tokens).unwrap().is_none());
             assert!(parse_filter_has_granted_ability_line(&tokens).unwrap().is_none());
         }

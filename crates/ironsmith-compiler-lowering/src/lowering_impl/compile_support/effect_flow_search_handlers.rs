@@ -1582,8 +1582,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 for effect in &mut scoped_effects {
                     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                         action: SubjectVerbActionAst::Tokens(
-                            TokenActionAst::CreateTokenCopy { attached_to, .. }
-                            | TokenActionAst::CreateTokenCopyFromSource { attached_to, .. }),
+                            TokenActionAst::CreateTokenCopy { attached_to, .. }),
                         ..
                     }) = effect {
                         let refers_to_it = attached_to.as_ref().is_some_and(|target| match target {
@@ -1686,11 +1685,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             (compiled, inner_choices)
         }
         EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects }) => {
-            let effective_tag = if let Some(concrete) = ctx
-                .snapshot_tag_aliases
-                .iter()
-                .find(|(alias, _)| *alias == tag.key)
-                .map(|(_, concrete)| concrete.clone())
+            let effective_tag = if let Some(concrete) = ctx.snapshot_bindings.lookup(&tag.key).cloned()
             {
                 concrete
             } else if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
@@ -1728,10 +1723,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             effects,
         }) => {
             let resolve_tag = |tag: &TagKey| {
-                ctx.snapshot_tag_aliases
-                    .iter()
-                    .find(|(alias, _)| alias == tag)
-                    .map(|(_, concrete)| concrete.clone())
+                ctx.snapshot_bindings
+                    .lookup(tag)
+                    .cloned()
                     .unwrap_or_else(|| tag.clone())
             };
             let effective_tag = resolve_tag(tag);
@@ -1750,10 +1744,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
         }
         EffectAst::MoveTaggedGroupToZone { tag, zone } => {
             let effective_tag = ctx
-                .snapshot_tag_aliases
-                .iter()
-                .find(|(alias, _)| *alias == tag.key)
-                .map(|(_, concrete)| concrete.clone())
+                .snapshot_bindings
+                .lookup(&tag.key)
+                .cloned()
                 .unwrap_or_else(|| tag.clone().into());
             let effect = Effect::for_each_tagged(
                 effective_tag,
@@ -1767,10 +1760,8 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             // earlier looked-at pool even after an intervening `ChooseObjects`
             // clobbers `last_object_tag`. Emits no runtime effect.
             if let Some(concrete) = ctx.last_object_tag.clone() {
-                ctx.snapshot_tag_aliases
-                    .retain(|(alias, _)| *alias != into.key);
-                ctx.snapshot_tag_aliases
-                    .push((into.clone().into(), concrete));
+                ctx.snapshot_bindings
+                    .replace_alias((into.clone().into(), concrete));
             }
             (Vec::new(), Vec::new())
         }

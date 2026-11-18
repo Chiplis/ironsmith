@@ -18,36 +18,79 @@ pub(crate) fn unresolved_mana(part:&Cost)->Option<ManaCost>{
 /// Hybrid/Phyrexian recipes stay retained until their own halves are announced.
 /// All other dynamic costs retain their
 /// ordinary context-dependent owner and cannot become an accidentally free cost.
-pub(crate) fn resolve(cost:&TotalCost,x:u32)->TotalCost{
- if let Some(branches)=cost.as_one_of(){return TotalCost::one_of(branches.iter().map(|branch|resolve(branch,x)).collect())}
- TotalCost::from_costs(cost.costs().iter().map(|part|{
-  if let Some(recipe)=recipe(part).filter(|recipe|!recipe.base.pips().iter().any(|pip|pip.len()>1)){Cost::mana(crate::decision::mana_cost_with_locked_x_and_generic_reduction(&recipe.base,x,recipe.generic_reduction))}
-  else{part.clone()}
- }).collect())
+pub(crate) fn resolve(cost: &TotalCost, x: u32) -> TotalCost {
+    let mut resolved = cost.clone();
+    resolved.edit_payment_branches(&mut |parts| {
+        for part in parts {
+            if let Some(recipe) = recipe(part)
+                && !recipe.base.pips().iter().any(|pip| pip.len() > 1)
+            {
+                *part = Cost::mana(
+                    crate::decision::mana_cost_with_locked_x_and_generic_reduction(
+                        &recipe.base,
+                        x,
+                        recipe.generic_reduction,
+                    ),
+                );
+            }
+        }
+    });
+    resolved
 }
 
 /// Complete preview branches for one retained price. Hybrid payment is bound
 /// before its local discount, never flattened into independent invented pips.
-pub(crate) fn mana_options(cost:&TotalCost,x:u32)->Vec<ManaCost>{
- if let Some(branches)=cost.as_one_of(){return branches.iter().flat_map(|branch|mana_options(branch,x)).collect()}
- let mut options=vec![ManaCost::new()];
- for part in cost.costs(){
-  let additions=if let Some(recipe)=recipe(part){
-   let bound=crate::decision::mana_cost_with_locked_x_and_generic_reduction(&recipe.base,x,0);
-   bound.reduced_by_mana_cost_options_with_spill(&ManaCost::new().add_generic(recipe.generic_reduction),true)
-  }else if let Some(mana)=part.mana_cost_ref(){
-   vec![crate::decision::mana_cost_with_locked_x_and_generic_reduction(mana,x,0)]
-  }else if part.is_mana_cost(){return Vec::new()}else{continue};
-  options=options.iter().flat_map(|base|additions.iter().map(move|add|crate::decision::add_mana_cost(base,add))).collect();
- }
- options
+pub(crate) fn mana_options(cost: &TotalCost, x: u32) -> Vec<ManaCost> {
+    cost.payment_branches()
+        .flat_map(|parts| branch_mana_options(parts, x))
+        .collect()
+}
+
+fn branch_mana_options(parts: &[Cost], x: u32) -> Vec<ManaCost> {
+    let mut options = vec![ManaCost::new()];
+    for part in parts {
+        let additions = if let Some(recipe) = recipe(part) {
+            let bound =
+                crate::decision::mana_cost_with_locked_x_and_generic_reduction(&recipe.base, x, 0);
+            bound.reduced_by_mana_cost_options_with_spill(
+                &ManaCost::new().add_generic(recipe.generic_reduction),
+                true,
+            )
+        } else if let Some(mana) = part.mana_cost_ref() {
+            vec![crate::decision::mana_cost_with_locked_x_and_generic_reduction(mana, x, 0)]
+        } else if part.is_mana_cost() {
+            return Vec::new();
+        } else {
+            continue;
+        };
+        options = options
+            .iter()
+            .flat_map(|base| {
+                additions
+                    .iter()
+                    .map(move |add| crate::decision::add_mana_cost(base, add))
+            })
+            .collect();
+    }
+    options
 }
 /// Read-only affordability hypotheses keep all nonmana obligations. These
 /// branches never replace the retained announcement recipe or its identity.
-pub(crate) fn preview_cost_options(cost:&TotalCost,x:u32)->Vec<TotalCost>{
- if let Some(branches)=cost.as_one_of(){return branches.iter().flat_map(|branch|preview_cost_options(branch,x)).collect()}
- let nonmana=cost.non_mana_costs().cloned().collect::<Vec<_>>();
- mana_options(cost,x).into_iter().map(|mana|{let mut parts=nonmana.clone();parts.insert(0,Cost::mana(mana));TotalCost::from_costs(parts)}).collect()
+pub(crate) fn preview_cost_options(cost: &TotalCost, x: u32) -> Vec<TotalCost> {
+    cost.payment_branches()
+        .flat_map(|parts| {
+            let nonmana: Vec<_> = parts
+                .iter()
+                .filter(|part| !part.is_mana_cost())
+                .cloned()
+                .collect();
+            branch_mana_options(parts, x).into_iter().map(move |mana| {
+                let mut parts = vec![Cost::mana(mana)];
+                parts.extend_from_slice(&nonmana);
+                TotalCost::from_costs(parts)
+            })
+        })
+        .collect()
 }
 
 /// Bind one component against the original complete announcement's pip

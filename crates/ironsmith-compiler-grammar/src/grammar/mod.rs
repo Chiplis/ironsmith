@@ -14,6 +14,7 @@ pub mod clause_support;
 pub mod conditions;
 pub mod document_facts;
 pub mod document_shapes;
+pub(crate) mod draw_replacement;
 pub mod effects;
 pub mod etb_static_lines;
 pub mod filters;

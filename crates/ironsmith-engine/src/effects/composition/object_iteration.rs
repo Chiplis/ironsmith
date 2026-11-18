@@ -1,9 +1,9 @@
 //! Replacement continuations retain the native selected iteration cursor.
-//! The cursor owns iteration bindings, result projection, targets and postludes;
+//! The cursor owns iteration bindings, result projection and targets;
 //! this adapter only pauses its next actual child at a draw boundary.
 #[cfg(test)]
 use crate::effect::Effect;
-use crate::effect::{EffectOutcome, ExecutionFact};
+use crate::effect::EffectOutcome;
 use crate::effects::replacement::ReplacementResume;
 use crate::effects::{
     ActionProgramCursor, CompletedEffectOutputs, ExecutionContext, ExecutionContextCheckpoint,
@@ -16,20 +16,6 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 #[cfg(test)]
 use crate::tag::TagKey;
-
-pub(super) fn correlated_player_count(outcomes: &[EffectOutcome]) -> i64 {
-    let summary = EffectOutcome::aggregate_summing_counts(outcomes.iter().cloned());
-    let count = summary.as_count().unwrap_or(0);
-    if count != 0 {
-        return count;
-    }
-    i64::from(
-        summary
-            .execution_facts
-            .iter()
-            .any(|fact| matches!(fact, ExecutionFact::Accepted)),
-    )
-}
 
 pub(super) fn prepare_iteration_continuation(
     cursor: Option<Box<dyn ActionProgramCursor>>,
@@ -185,7 +171,7 @@ impl IterationContinuation {
 }
 impl SimultaneousEffectCompletion for IterationContinuation {
     // The cursor retains the rest of one authored instruction, including its
-    // internal payment and postlude order. It has no enclosing addition queue.
+    // internal payment order. It has no enclosing addition queue.
     fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
         crate::effects::OriginalPhaseStatus::Retained
     }

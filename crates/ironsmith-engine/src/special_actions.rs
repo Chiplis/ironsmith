@@ -322,70 +322,33 @@ fn unlock_cost_reduction(game: &GameState, player: PlayerId) -> u32 {
     total
 }
 
-/// Removes up to `reduction` generic mana from the first mana component of a
-/// special-action cost (each branch of a choice of costs separately).
-fn reduce_total_cost_generic(
-    total_cost: &crate::cost::TotalCost,
-    reduction: u32,
-) -> crate::cost::TotalCost {
-    match total_cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => {
-            let mut applied = false;
-            crate::cost::TotalCost::from_costs(
-                costs
-                    .iter()
-                    .map(|cost| match cost.mana_cost_ref() {
-                        Some(mana_cost) if !applied => {
-                            applied = true;
-                            crate::costs::Cost::mana(mana_cost.reduce_generic(reduction))
-                        }
-                        _ => cost.clone(),
-                    })
-                    .collect(),
-            )
-        }
-        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
-            branches
-                .iter()
-                .map(|branch| reduce_total_cost_generic(branch, reduction))
-                .collect(),
-        ),
-    }
+#[derive(Clone, Copy)]
+enum GenericCostAdjustment {
+    Increase(u32),
+    Reduce(u32),
 }
 
-/// Adds `increase` generic mana to a turn-face-up cost: to its mana
-/// component when it has one, otherwise as an extra mana component
-/// (a non-mana morph cost still costs {N} more).
-fn increase_total_cost_generic(
-    total_cost: &crate::cost::TotalCost,
-    increase: u32,
-) -> crate::cost::TotalCost {
-    match total_cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => {
-            let mut applied = false;
-            let mut adjusted: Vec<crate::costs::Cost> = costs
-                .iter()
-                .map(|cost| match cost.mana_cost_ref() {
-                    Some(mana_cost) if !applied => {
-                        applied = true;
-                        crate::costs::Cost::mana(mana_cost.add_generic(increase))
-                    }
-                    _ => cost.clone(),
-                })
-                .collect();
-            if !applied {
-                adjusted.push(crate::costs::Cost::mana(
-                    crate::mana::ManaCost::from_symbols(Vec::new()).add_generic(increase),
-                ));
-            }
-            crate::cost::TotalCost::from_costs(adjusted)
+impl GenericCostAdjustment {
+    // A tax creates a mana component when the payment only has nonmana costs.
+    // Otherwise only the first fixed mana component of this alternative changes.
+    fn apply(self, costs: &mut Vec<crate::costs::Cost>) {
+        if matches!(self, Self::Increase(0) | Self::Reduce(0)) {
+            return;
         }
-        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
-            branches
-                .iter()
-                .map(|branch| increase_total_cost_generic(branch, increase))
-                .collect(),
-        ),
+        for cost in costs.iter_mut() {
+            if let Some(mana) = cost.mana_cost_ref() {
+                *cost = crate::costs::Cost::mana(match self {
+                    Self::Increase(amount) => mana.add_generic(amount),
+                    Self::Reduce(amount) => mana.reduce_generic(amount),
+                });
+                return;
+            }
+        }
+        if let Self::Increase(amount) = self {
+            costs.push(crate::costs::Cost::mana(
+                ManaCost::new().add_generic(amount),
+            ));
+        }
     }
 }
 
@@ -403,22 +366,16 @@ fn adjusted_turn_face_up_cost(
     } else {
         0
     };
-    let increased;
-    let base_cost = if morph_increase > 0 {
-        increased = increase_total_cost_generic(&spec.cost, morph_increase);
-        &increased
-    } else {
-        &spec.cost
-    };
     // Turning a permanent face up is a special action (CR 116.2b, 702.168d):
     // the permanent's own "this spell costs less" statics don't apply to its
     // disguise/morph cost — only effects that modify that action's cost do.
-    adjust_total_cost_mana_components_for_reason(
+    adjusted_special_action_cost(
         game,
         player,
         permanent_id,
-        base_cost,
+        spec.cost.clone(),
         spec.method.payment_reason(),
+        GenericCostAdjustment::Increase(morph_increase),
     )
 }
 
@@ -566,42 +523,25 @@ pub fn suspend_action_keyword(game: &GameState, card_id: ObjectId) -> String {
     letters.next().map_or_else(String::new, |first| first.to_uppercase().chain(letters).collect())
 }
 
-fn adjust_total_cost_mana_components_for_reason(
+fn adjusted_special_action_cost(
     game: &GameState,
     payer: PlayerId,
     source: ObjectId,
-    total_cost: &crate::cost::TotalCost,
+    mut cost: crate::cost::TotalCost,
     reason: crate::costs::PaymentReason,
+    adjustment: GenericCostAdjustment,
 ) -> crate::cost::TotalCost {
-    match total_cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => crate::cost::TotalCost::from_costs(
-            costs
-                .iter()
-                .map(|cost| {
-                    if let Some(mana_cost) = cost.mana_cost_ref() {
-                        crate::costs::Cost::mana(game.adjust_mana_cost_for_payment_reason(
-                            payer,
-                            Some(source),
-                            mana_cost,
-                            reason,
-                        ))
-                    } else {
-                        cost.clone()
-                    }
-                })
-                .collect(),
-        ),
-        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
-            branches
-                .iter()
-                .map(|branch| {
-                    adjust_total_cost_mana_components_for_reason(
-                        game, payer, source, branch, reason,
-                    )
-                })
-                .collect(),
-        ),
-    }
+    cost.edit_payment_branches(&mut |parts| {
+        adjustment.apply(parts);
+        for part in parts {
+            if let Some(mana) = part.mana_cost_ref() {
+                *part = crate::costs::Cost::mana(
+                    game.adjust_mana_cost_for_payment_reason(payer, Some(source), mana, reason),
+                );
+            }
+        }
+    });
+    cost
 }
 
 fn has_sorcery_speed_special_action_timing(
@@ -1751,17 +1691,6 @@ fn can_turn_conspiracy_face_up(
     Ok(())
 }
 
-fn planar_die_cost(amount: u32) -> crate::mana::ManaCost {
-    let mut remaining = amount;
-    let mut symbols = Vec::new();
-    while remaining > 0 {
-        let chunk = remaining.min(u8::MAX as u32) as u8;
-        symbols.push(crate::mana::ManaSymbol::Generic(chunk));
-        remaining -= u32::from(chunk);
-    }
-    crate::mana::ManaCost::from_symbols(symbols)
-}
-
 fn can_roll_planar_die(game: &GameState, player: PlayerId) -> Result<(), ActionError> {
     has_sorcery_speed_special_action_timing(game, player)?;
     // CR 901.12d: in Two-Headed Giant each member of the active team may roll.
@@ -2453,17 +2382,13 @@ fn adjusted_room_unlock_cost(
 ) -> Result<crate::cost::TotalCost, ActionError> {
     let cost = room_unlock_cost(game, room_id, door).ok_or(ActionError::NoSuchAbility)?;
     let reduction = unlock_cost_reduction(game, player);
-    let cost = if reduction > 0 {
-        reduce_total_cost_generic(&cost, reduction)
-    } else {
-        cost
-    };
-    Ok(adjust_total_cost_mana_components_for_reason(
+    Ok(adjusted_special_action_cost(
         game,
         player,
         room_id,
-        &cost,
+        cost,
         crate::costs::PaymentReason::UnlockDoor,
+        GenericCostAdjustment::Reduce(reduction),
     ))
 }
 
@@ -3449,18 +3374,7 @@ fn check_mana_ability_condition(
 pub(crate) fn mana_production_provenance_for_activation_cost(
     cost: &crate::cost::TotalCost,
 ) -> crate::events::mana::ManaProductionProvenance {
-    fn cost_taps_source(cost: &crate::cost::TotalCost) -> bool {
-        match cost.kind() {
-            ironsmith_core::TotalCostKind::All(costs) => {
-                costs.iter().any(|cost| cost.requires_tap())
-            }
-            ironsmith_core::TotalCostKind::OneOf(branches) => {
-                !branches.is_empty() && branches.iter().all(cost_taps_source)
-            }
-        }
-    }
-
-    if cost_taps_source(cost) {
+    if cost.every_branch_requires(crate::costs::Cost::requires_tap) {
         crate::events::mana::ManaProductionProvenance::TappedSourceForMana
     } else {
         crate::events::mana::ManaProductionProvenance::ManaAbility
@@ -6511,6 +6425,54 @@ mod tests {
     use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    #[test]
+    fn special_action_adjustments_preserve_nested_choices_and_only_price_the_first_fixed_mana() {
+        use crate::cost::TotalCost;
+        use crate::costs::{Cost, PaymentReason};
+        use ManaSymbol::{Blue, Generic, Red};
+
+        let game = setup_game();
+        let payer = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(1);
+        let mana = |symbols| Cost::mana(ManaCost::from_symbols(symbols));
+        let price = |first_mana: Vec<ManaSymbol>, surcharge: Option<ManaSymbol>| {
+            let mut life_branch = vec![Cost::life(2)];
+            let mut free_branch = Vec::new();
+            if let Some(symbol) = surcharge {
+                life_branch.push(mana(vec![symbol]));
+                free_branch.push(mana(vec![symbol]));
+            }
+            TotalCost::one_of(vec![
+                TotalCost::from_costs(vec![
+                    Cost::tap(),
+                    mana(first_mana),
+                    Cost::life(1),
+                    mana(vec![Generic(4), Red]),
+                ]),
+                TotalCost::one_of(vec![
+                    TotalCost::from_costs(life_branch),
+                    TotalCost::from_costs(free_branch),
+                ]),
+                TotalCost::one_of(Vec::new()),
+            ])
+        };
+        let initial = price(vec![Generic(3), Blue], None);
+        let adjusted = |adjustment, reason| {
+            adjusted_special_action_cost(&game, payer, source, initial.clone(), reason, adjustment)
+        };
+        assert_eq!(
+            adjusted(
+                GenericCostAdjustment::Increase(2),
+                PaymentReason::TurnFaceUp
+            ),
+            price(vec![Generic(3), Blue, Generic(2)], Some(Generic(2)))
+        );
+        assert_eq!(
+            adjusted(GenericCostAdjustment::Reduce(5), PaymentReason::UnlockDoor),
+            price(vec![Blue], None)
+        );
+    }
 
     #[test]
     fn tapped_mana_filter_rejects_funding_but_preserves_cost_alternatives() {

@@ -125,7 +125,7 @@ pub use zone::Zone;
 
 pub use ironsmith_compiler_resolve::condition_antecedents;
 pub use ironsmith_compiler_resolve::effect_ast_normalization;
-pub use ironsmith_compiler_resolve::effect_ast_traversal;
+pub use ironsmith_compiler_semantic::model::visit as effect_ast_traversal;
 pub use ironsmith_compiler_resolve::predicate_conditions as reference_resolution_support;
 pub use ironsmith_compiler_resolve::reference_helpers;
 pub use ironsmith_compiler_resolve::reference_resolution;

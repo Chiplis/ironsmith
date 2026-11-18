@@ -244,10 +244,6 @@ fn execute_payment_atomically(
 }
 
 impl EffectExecutor for CumulativeUpkeepEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         for effect in &self.payment {
             visitor(effect);
@@ -257,15 +253,7 @@ impl EffectExecutor for CumulativeUpkeepEffect {
         }
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -511,10 +499,6 @@ mod tests {
     struct BooleanGatedLoseLifePayment;
 
     impl EffectExecutor for BooleanGatedLoseLifePayment {
-        fn clone_box(&self) -> Box<dyn EffectExecutor> {
-            Box::new(self.clone())
-        }
-
         fn execute(
             &self,
             game: &mut GameState,

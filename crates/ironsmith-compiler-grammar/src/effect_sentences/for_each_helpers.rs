@@ -1,3 +1,4 @@
+use crate::model::ast::TokenCopySourceAst;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IfResultPredicate, ObjectChoiceEffectAst, OwnedLexToken,
     PermissionEffectAst, PlayerAst, PlayerPredicateAst, PredicateAst, SubjectVerbActionAst,
@@ -756,8 +757,7 @@ fn release_offered_leading_token_copy_actor(
         subject,
         action:
             SubjectVerbActionAst::Tokens(
-                TokenActionAst::CreateTokenCopy { player, .. }
-                | TokenActionAst::CreateTokenCopyFromSource { player, .. },
+                TokenActionAst::CreateTokenCopy { player, .. },
             ),
     })) = effects.first_mut()
     {
@@ -776,11 +776,7 @@ pub fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                        player,
-                        ..
-                    }),
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. }),
                 ..
             }) => {
                 if matches!(*player, PlayerAst::Implicit) {
@@ -1129,11 +1125,7 @@ fn bind_quantified_participant_actor(effects: &mut [EffectAst]) {
                 subject,
                 action:
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                        player,
-                        ..
-                    }),
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. }),
             }) => {
                 if subject.role == SubjectVerbRoleAst::Actor
                     && matches!(subject.player, PlayerAst::Implicit | PlayerAst::You)
@@ -1382,7 +1374,7 @@ fn rebind_outer_that_copy_sources(
 ) -> bool {
     let mut rebound = false;
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { source, .. }),
+        action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { source: TokenCopySourceAst::Target(source), .. }),
         ..
     }) = effect
         && let TargetAst::Object(filter, _, span) = source

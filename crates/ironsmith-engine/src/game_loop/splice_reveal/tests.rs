@@ -108,3 +108,128 @@ fn reprise_moving_source_cost_is_not_reinterpreted_as_a_hand_reveal_offer(){
   assert_eq!(game.stack.len(),1);resolve_stack_entry_with(&mut game,&mut dm).unwrap();assert_eq!(game.player(A).unwrap().life,25);
  }
 }
+#[test]
+fn nested_named_optional_prices_keep_source_order_and_distinguish_free_from_no_alternatives() {
+    use crate::cost::{OptionalCost, TotalCost};
+    use crate::costs::Cost;
+    let (mut game, _, _, _, spell, _) = setup(false, 0, false, false);
+    let life = TotalCost::from_cost(Cost::life(2));
+    let cost = TotalCost::one_of(vec![
+        TotalCost::one_of(vec![TotalCost::one_of(vec![]), life.clone()]),
+        TotalCost::free(),
+    ]);
+    let mut optional = OptionalCost::custom("Named price", cost);
+    optional.reference.custom_keyword = Some("test price".into());
+    game.object_mut(spell)
+        .unwrap()
+        .optional_costs
+        .push(optional);
+    let slots = crate::granted_spell_keywords::optional_cost_payment_alternatives(&game, spell, A)
+        .expect("a nested named price yields concrete alternatives");
+    assert_eq!(
+        slots[0].cost.as_one_of().unwrap(),
+        &[life, TotalCost::free()]
+    );
+}
+
+#[test]
+fn nested_splice_price_pays_the_chosen_discounted_donor_cost_before_exile() {
+    use crate::cost::TotalCost;
+    use crate::costs::Cost;
+    use crate::mana::{ManaCost, ManaSymbol};
+    let (mut game, mut queue, mut state, mut dm, spell, _) = setup(false, 0, false, false);
+    let price = TotalCost::one_of(vec![
+        TotalCost::from_cost(Cost::life(2)),
+        TotalCost::one_of(vec![
+            TotalCost::one_of(vec![]),
+            // This alternative has no referenced permanent. Its siblings remain payable.
+            TotalCost::from_cost(Cost::dynamic_mana(
+                ironsmith_core::DynamicManaCost::from_object_mana_cost(crate::ChooseSpec::Object(
+                    crate::ObjectFilter::creature(),
+                )),
+            )),
+            TotalCost::from_cost(Cost::dynamic_mana(
+                ironsmith_core::DynamicManaCost::from_source_mana_cost(),
+            )),
+        ]),
+    ]);
+    let splice = StaticAbility::splice(SpliceSpec {
+        custom_keyword: Some("Reprise".into()),
+        source_zone: Some(Zone::Graveyard),
+        source_destination: Some(Zone::Exile),
+        max_per_spell: Some(1),
+        descriptive: false,
+        quality: SpliceQuality::Arcane,
+        cost: price,
+        cost_surface: None,
+    });
+    let donor = CardDefinitionBuilder::new(CardId::new(), "Priced donor")
+        .mana_cost(ManaCost::new().add_generic(4))
+        .card_types(vec![CardType::Instant])
+        .with_ability(Ability::static_ability(splice).in_zones(vec![Zone::Graveyard]))
+        .with_spell_effect(vec![Effect::gain_life(4)])
+        .build();
+    let donor = game.create_object_from_definition(&donor, A, Zone::Graveyard);
+    let stable = game.object(donor).unwrap().stable_id;
+    let discount = StaticAbility::from_model(CompiledStaticAbility {
+        id: None,
+        label: "Optional discount".into(),
+        payload: ironsmith_core::StaticAbilityPayload::NamedCastingPriceReduction {
+            filter: crate::ObjectFilter::default(),
+            keywords: vec!["reprise".into()],
+            maximum: 1,
+            optional: true,
+        },
+    });
+    let provider = CardDefinitionBuilder::new(CardId::new(), "Discount provider")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(discount))
+        .build();
+    game.create_object_from_definition(&provider, A, Zone::Battlefield);
+    game.player_mut(A)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Colorless, 4);
+    dm.selected = vec![donor];
+    let progress = start(&mut game, &mut queue, &mut state, &mut dm, spell);
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(DecisionContext::SelectOptions(_))
+    ));
+    let (_, _, offered) = state
+        .pending_cast
+        .as_ref()
+        .unwrap()
+        .splice_price_offer
+        .as_ref()
+        .unwrap();
+    let life = TotalCost::from_cost(Cost::life(2));
+    assert_eq!(
+        offered,
+        &[
+            life.clone(),
+            TotalCost::mana(ManaCost::new().add_generic(4)),
+            life,
+            TotalCost::mana(ManaCost::new().add_generic(3))
+        ]
+    );
+    let progress = crate::game_loop::priority_cast::apply_splice_price_response(
+        &mut game,
+        &mut queue,
+        &mut state,
+        &[3],
+        &mut dm,
+    )
+    .unwrap();
+    finish(&mut game, &mut queue, &mut state, &mut dm, progress);
+    assert_eq!(game.player(A).unwrap().mana_pool.total(), 1);
+    assert_eq!(game.player(A).unwrap().life, 20);
+    assert_eq!(
+        game.object(game.find_object_by_stable_id(stable).unwrap())
+            .unwrap()
+            .zone,
+        Zone::Exile
+    );
+    resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+    assert_eq!(game.player(A).unwrap().life, 25);
+}

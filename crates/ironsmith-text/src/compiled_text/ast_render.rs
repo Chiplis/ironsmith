@@ -84,101 +84,32 @@ fn flatten_strict_segment_sequences(
     Some(flattened)
 }
 
-/// An exact singleton choice from a revealed top-library group, followed by
-/// a captured complement. The complement tag, rather than the generic move
-/// effect alone, proves that "the rest" excludes the card put into hand.
-fn describe_revealed_power_count_hand_exile_partition(
-    program: &crate::resolution::ResolutionProgram,
-) -> Option<String> {
+fn describe_revealed_hand_partition(program: &crate::resolution::ResolutionProgram) -> Option<String> {
+    use ironsmith_core::effect::LibraryHandDisposition::*;
+
     let [segment] = program.segments.as_slice() else { return None; };
     if segment.starts_new_source_line || !segment.self_replacements.is_empty() { return None; }
-    let [look_effect, choice_effect, capture_effect, hand_effect, exile_effect] =
-        segment.default_effects.as_slice() else { return None; };
-    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
-    let choice = choice_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let capture = capture_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
-    let hand = hand_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    let exile = exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    let Value::PowerOf(power_source) = look.count.unhinted() else { return None; };
-    let ChooseSpec::Tagged(sacrificed_tag) = power_source.unhinted() else { return None; };
-    if !sacrificed_tag.as_str().starts_with("__original_sacrifice_cost_")
-        || !look.count.has_surface_hint(ironsmith_core::ValueSurfaceHint::SacrificedObject(
-            ironsmith_core::SacrificedObjectKind::Creature,
-        ))
-        || look != &crate::effects::LookAtTopCardsEffect::revealing(
-            PlayerFilter::You, look.count.clone(), look.tag.clone(),
-        )
-    { return None; }
-    let selected_filter = ObjectFilter::tagged(look.tag.clone()).in_zone(Zone::Library);
-    if choice != &crate::effects::ChooseObjectsEffect::new(
-        selected_filter.clone(), crate::effect::ChoiceCount::exactly(1),
-        PlayerFilter::You, choice.tag.clone(),
-    ).in_zone(Zone::Library) { return None; }
-    let mut rest_filter = selected_filter;
-    rest_filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-        tag: choice.tag.clone(),
-        relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
-    });
-    // "into your hand" is presentation-only destination wording.
-    let mut hand = hand.clone();
-    if hand.destination_player_surface == Some(PlayerFilter::You) {
-        hand.destination_player_surface = None;
-    }
-    if capture != &crate::effects::TagMatchingObjectsEffect::new(rest_filter, capture.tag.clone())
-        .in_zone(Zone::Library)
-        || hand != crate::effects::MoveToZoneEffect::new(
-            ChooseSpec::Tagged(choice.tag.clone()), Zone::Hand, false,
-        ).with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put)
-        || exile != &crate::effects::MoveToZoneEffect::new(
-            ChooseSpec::Tagged(capture.tag.clone()), Zone::Exile, false,
-        ).with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put)
-    { return None; }
-    Some("Reveal a number of cards from the top of your library equal to the sacrificed creature's power. Put one into your hand and exile the rest".to_string())
-}
-
-#[cfg(test)]
-mod revealed_power_count_hand_exile_partition_tests {
-    use super::*;
-
-    const ORACLE: &str = "{3}, {T}, Sacrifice a creature: Reveal a number of cards from the top of your library equal to the sacrificed creature's power. Put one into your hand and exile the rest.";
-
-    fn program() -> crate::resolution::ResolutionProgram {
-        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
-            crate::ids::CardId::new(), "Power Partition Probe",
-        ).card_types(vec![CardType::Artifact]).parse_text(ORACLE).expect("power partition parses");
-        assert_eq!(crate::compiled_text::compiled_text_lines(&definition), vec![ORACLE.to_string()]);
-        definition.abilities.iter().find_map(|ability| match &ability.kind {
-            AbilityKind::Activated(activated) => Some(activated.effects.clone()),
-            _ => None,
-        }).expect("activated program")
-    }
-
-    #[test]
-    fn renders_exact_revealed_complement() {
-        let program = program();
-        assert_eq!(describe_revealed_power_count_hand_exile_partition(&program).as_deref(),
-            Some("Reveal a number of cards from the top of your library equal to the sacrificed creature's power. Put one into your hand and exile the rest"));
-    }
-
-    #[test]
-    fn rejects_a_capture_that_keeps_the_hand_card_or_changes_destination() {
-        let original = program();
-        let mut wrong_capture = original.clone();
-        let capture = original.segments[0].default_effects[2]
-            .downcast_ref::<crate::effects::TagMatchingObjectsEffect>().unwrap();
-        let mut changed = capture.clone();
-        changed.filter.tagged_constraints.pop();
-        wrong_capture.segments[0].default_effects[2] = Effect::new(changed);
-        assert_eq!(describe_revealed_power_count_hand_exile_partition(&wrong_capture), None);
-
-        let mut wrong_destination = original.clone();
-        let exile = original.segments[0].default_effects[4]
-            .downcast_ref::<crate::effects::MoveToZoneEffect>().unwrap();
-        let mut changed = exile.clone();
-        changed.zone = Zone::Graveyard;
-        wrong_destination.segments[0].default_effects[4] = Effect::new(changed);
-        assert_eq!(describe_revealed_power_count_hand_exile_partition(&wrong_destination), None);
-    }
+    let [view, choose, capture, hand, rest] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let look = view.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if look != &crate::effects::LookAtTopCardsEffect::revealing(
+        PlayerFilter::You, look.count.clone(), look.tag.clone(),
+    ) { return None; }
+    let other = if look.count.unhinted() == &Value::Fixed(2) { "the other" } else { "the rest" };
+    let movement = match read_library_hand_partition(&look.tag, [choose, capture, hand, rest])? {
+        HandAndExile => format!("exile {other}"),
+        HandAndGraveyard => format!("{other} into your graveyard"),
+        HandAndLibraryBottom(order) => {
+            let ordering = match order {
+                crate::effects::LibraryPlacementOrder::Random => "in a random order",
+                crate::effects::LibraryPlacementOrder::ChosenBy(PlayerFilter::You) => "in any order",
+                _ => return None,
+            };
+            format!("{other} on the bottom of your library {ordering}")
+        }
+    };
+    Some(format!("{}. Put one into your hand and {movement}", describe_effect(view)))
 }
 
 /// Sequential opponents pick distinct cards out of one revealed library set.
@@ -24985,7 +24916,7 @@ fn describe_resolution_program_inner(
     if let Some(rendered) = describe_may_look_then_may_put_battlefield_rest_bottom_program(program) {
         return rendered;
     }
-    if let Some(rendered) = describe_revealed_power_count_hand_exile_partition(program) {
+    if let Some(rendered) = describe_revealed_hand_partition(program) {
         return rendered;
     }
     if program.segments.iter().all(|segment| {

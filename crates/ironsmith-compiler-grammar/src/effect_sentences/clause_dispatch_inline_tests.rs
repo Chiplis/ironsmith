@@ -533,33 +533,29 @@ fn leading_may_chain_reaches_targeted_graveyard_cast_permission() {
 
 #[test]
 fn plural_demonstrative_pump_preserves_tagged_set() {
-    let tokens =
-        lex_line("Those creatures get +1/+1 until end of turn.", 0).expect("lex plural pump");
-    let effect = parse_effect_clause(&tokens).expect("plural tagged pump should parse");
-    let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
-                target: TargetAst::Object(filter, ..),
-                set_quantifier_surface,
-                ..
+    for text in [
+        "Those creatures get +1/+1 until end of turn.",
+        "those creatures get +1/+1 until end of turn.",
+        "Those creatures get +1/+1 until end of turn for each card in your hand.",
+        "those creatures get +1/+1 until end of turn for each card in your hand.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let effect = parse_effect_clause(&tokens).unwrap();
+        let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
+                filter, set_quantifier_surface, ..
             }),
-        ..
-    }) = effect
-    else {
-        panic!("expected a mass pump for a plural demonstrative subject");
-    };
-    assert!(
-        filter.card_types.is_empty(),
-        "the demonstrative must preserve the previously selected set"
-    );
-    assert_eq!(
-        set_quantifier_surface,
-        Some(ironsmith_core::SetQuantifierSurface::Those)
-    );
-    assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-            && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
-    }));
+            ..
+        }) = effect else {
+            panic!("expected a mass pump for {text}");
+        };
+        assert!(filter.card_types.is_empty(), "the set comes from the prior selection");
+        assert_eq!(set_quantifier_surface, Some(ironsmith_core::SetQuantifierSurface::Those));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        }));
+    }
 }
 
 #[test]

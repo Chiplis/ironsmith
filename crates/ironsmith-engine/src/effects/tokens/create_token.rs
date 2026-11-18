@@ -289,10 +289,7 @@ fn prepare_token_proposal(
             initial_counters.push((counter.counter_type, amount));
         }
     }
-    let token_grants = match &ctx.named_action_token_scope {
-        Some((label, player)) if base_count > 0 => super::capture_named_action_token_grants(game, label, *player)?,
-        _ => Vec::new(),
-    };
+    let token_grants = super::capture_named_action_token_grants(game, ctx, base_count)?;
     super::apply_named_action_grants_to_definition(&mut resolved_token, &token_grants);
     let token_preview = crate::object::Object::from_token_definition(
         ObjectId::from_raw(0),
@@ -447,15 +444,7 @@ impl EffectExecutor for MultipliedTokenInstruction {
         visitor(&self.effect.token);
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -972,15 +961,7 @@ impl EffectExecutor for CreateTokenEffect {
         Ok(Box::new(proposal))
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

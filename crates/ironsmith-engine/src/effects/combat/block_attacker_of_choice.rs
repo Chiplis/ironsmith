@@ -51,10 +51,6 @@ fn candidate_attackers(
 }
 
 impl EffectExecutor for BlockAttackerOfChoiceEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

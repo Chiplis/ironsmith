@@ -25,6 +25,31 @@ pub type OptionalCostKind = ironsmith_core::OptionalCostKind;
 pub type OptionalCostRef = ironsmith_core::OptionalCostRef;
 pub type OptionalCostsPaid = ironsmith_core::OptionalCostsPaid;
 
+/// Transform fixed mana and the base of dynamic mana recipes in each payment.
+/// Dynamic operands and nonmana components retain their positions.
+pub(crate) fn map_base_mana(
+    cost: &TotalCost,
+    adjust: impl Fn(&ManaCost) -> Option<ManaCost>,
+) -> TotalCost {
+    let mut result = cost.clone();
+    result.edit_payment_branches(&mut |parts| {
+        for part in parts {
+            if let Some(mana) = part.mana_cost_ref() {
+                if let Some(mana) = adjust(mana) {
+                    *part = Cost::mana(mana);
+                }
+            } else if let Some(dynamic) = part.dynamic_mana_cost_ref() {
+                let mut dynamic = dynamic.clone();
+                if let Some(base) = adjust(&dynamic.base) {
+                    dynamic.base = base;
+                }
+                *part = Cost::dynamic_mana(dynamic);
+            }
+        }
+    });
+    result
+}
+
 impl ironsmith_core::CostComponent for Cost {
     fn mana(mana_cost: ManaCost) -> Self {
         Self::mana(mana_cost)

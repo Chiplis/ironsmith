@@ -43,7 +43,6 @@ use crate::object::AuraAttachmentFilter;
 pub use crate::payload::{IfResultPredicate, KeywordAction};
 pub use crate::permission_helpers::{PermissionClauseSpec, PermissionLifetime};
 use crate::resolution::ResolutionProgram;
-use crate::static_abilities::StaticAbility;
 pub use crate::tag::TagKey;
 pub use crate::target::{ObjectFilter, PlayerFilter};
 pub use crate::types::CardType;
@@ -71,7 +70,7 @@ pub use crate::model::ast::{
     PredicateAst, RandomActionAst, ReplacementActionAst, RevealLookActionAst, SourcePredicateAst,
     StackActionAst, StatChangeActionAst, StaticAbilityAst, SubjectVerbActionAst,
     SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TokenActionAst,
-    TokenCombatEntryAst,
+    TokenCombatEntryAst, TokenCopySourceAst,
     TriggerFrequencyPredicateAst, TriggerSpec, TriggeringPredicateAst, TurnEventPredicateAst,
     TurnHistoryPredicateAst, TurnStructureActionAst, VoteEffectAst, ZoneMoveActionAst,
 };

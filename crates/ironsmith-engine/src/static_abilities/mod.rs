@@ -298,29 +298,7 @@ impl ThisSpellCastRestrictionKind {
     }
 }
 
-/// Trait for static ability behavior.
-///
-/// All static abilities implement this trait. Each ability is responsible for:
-/// - Providing its identity (for equality/matching checks)
-/// - Generating continuous effects (if applicable)
-/// - Applying game restrictions (if applicable)
-/// - Providing display text
-///
-/// Most abilities only override a few methods - the defaults handle the common case
-/// of simple keyword abilities that don't generate effects.
-pub trait StaticAbilityKindClone {
-    /// Clone this ability into a boxed trait object.
-    fn clone_boxed(&self) -> Box<dyn StaticAbilityKind>;
-}
-
-impl<T> StaticAbilityKindClone for T
-where
-    T: StaticAbilityKind + Clone + 'static,
-{
-    fn clone_boxed(&self) -> Box<dyn StaticAbilityKind> {
-        Box::new(self.clone())
-    }
-}
+crate::boxed_clone::define_boxed_clone!(StaticAbilityKindClone, StaticAbilityKind);
 
 /// An explicitly declared source-owned program offered during a reveal action.
 #[derive(Debug, Clone)]
@@ -333,6 +311,16 @@ pub struct RevealActionOffer {
     pub display: String,
 }
 
+/// Trait for static ability behavior.
+///
+/// All static abilities implement this trait. Each ability is responsible for:
+/// - Providing its identity (for equality/matching checks)
+/// - Generating continuous effects (if applicable)
+/// - Applying game restrictions (if applicable)
+/// - Providing display text
+///
+/// Most abilities only override a few methods - the defaults handle the common case
+/// of simple keyword abilities that don't generate effects.
 pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindClone {
     /// Get the unique identifier for this ability type.
     ///
@@ -5745,14 +5733,7 @@ impl StaticAbility {
     }
 
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
-        let text = text.into();
-        if let Some(count) = ironsmith_core::deck_construction_color_choice_count(&text) {
-            return Self::new(DeckConstructionRuleText::with_color_choices(text, count));
-        }
-        match ironsmith_core::static_ability_model::deck_construction_copy_limit(&text) {
-            Some(maximum) => Self::new(DeckConstructionRuleText::with_copy_limit(text, maximum)),
-            None => Self::new(DeckConstructionRuleText::new(text)),
-        }
+        Self::new(DeckConstructionRuleText::new(text))
     }
 
     pub fn dungeon_entry_restriction(quality: impl Into<String>) -> Self {

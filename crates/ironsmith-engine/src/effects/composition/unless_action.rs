@@ -1,5 +1,7 @@
 //! "Unless [player does action]" effect implementation.
 
+use super::prepared_branch::SelectedProgramTransaction;
+use super::prepared_unless::UnlessBranch;
 use crate::decision::FallbackStrategy;
 use crate::decisions::make_boolean_decision;
 use crate::effect::{Effect, EffectOutcome};
@@ -21,7 +23,7 @@ pub(super) struct SelectedUnlessBranch {
 }
 impl SelectedUnlessBranch {
     fn into_cursor(self) -> Box<dyn crate::effects::ActionProgramCursor> {
-        super::branch_program::selected_clause_cursor_with_selection(&self.effects, self.identity, self.scope, self.selected)
+        super::branch_program::selected_clause_cursor(self.effects, self.identity, self.scope, self.selected)
     }
 }
 
@@ -187,7 +189,7 @@ impl UnlessActionEffect {
                 // Keep announced targets and reference bindings in composed payments.
                 let snapshot = crate::effects::ExecutionContextCheckpoint::capture(ctx);
                 let mut dm = crate::decision::SelectFirstDecisionMaker;
-                let mut query = snapshot.reborrow(&mut dm);
+                let mut query = snapshot.into_context(&mut dm);
                 let result = CostExecutableEffect::can_execute_as_cost_with_context(
                     cost_effect, game, &mut query, crate::costs::PaymentReason::Effect,
                 );
@@ -198,152 +200,30 @@ impl UnlessActionEffect {
     }
 }
 
-/// The per-player part of a simultaneous "each opponent ... unless they
-/// [do X]" (CR 101.4 / 608.2e): the choice is made while preparing, the
-/// alternative or the main effects happen at commit.
 #[derive(Debug)]
-struct UnlessActionProposal {
-    selected: Option<Vec<ObjectId>>,
-    prepared: Option<Box<dyn crate::effects::SimultaneousEffectProposal>>,
-    effects: Vec<Effect>,
-    alternative: Vec<Effect>,
-    wants_alternative: bool,
-    payment_scope: Option<crate::costs::PaymentScope>,
-    iterated_player: Option<PlayerId>,
-}
+struct DeferredUnlessAction(Box<dyn crate::effects::ActionProgramCursor>);
 
-impl crate::effects::SimultaneousEffectProposal for UnlessActionProposal {
-    fn has_simultaneous_originals(&self) -> bool {
-        self.prepared
-            .as_ref()
-            .is_some_and(|inner| inner.has_simultaneous_originals())
-    }
-
-    fn nominal_payment_quantity(&self) -> Option<u64> {
-        self.prepared
-            .as_ref()
-            .and_then(|inner| inner.nominal_payment_quantity())
-    }
-
-    fn declared_payment_resources(&self) -> Vec<crate::effects::PaymentResourceClaim> {
-        self.prepared
-            .as_ref()
-            .map(|inner| inner.declared_payment_resources())
-            .unwrap_or_default()
-    }
-
-    fn declared_life_payments(&self) -> Vec<(PlayerId, u32)> {
-        self.prepared
-            .as_ref()
-            .map(|inner| inner.declared_life_payments())
-            .unwrap_or_default()
-    }
-
-    fn prepare_selection(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<(), ExecutionError> {
-        if let Some(inner) = &mut self.prepared {
-            inner.prepare_selection(game, ctx)?;
-        }
-        Ok(())
-    }
-
-    fn prepare_original(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<(), ExecutionError> {
-        if let Some(inner) = &mut self.prepared {
-            inner.prepare_original(game, ctx)?;
-        }
-        Ok(())
-    }
-
-    fn seal_original(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<(), ExecutionError> {
-        if let Some(inner) = &mut self.prepared {
-            inner.seal_original(game, ctx)?;
-        }
-        Ok(())
-    }
-
-    fn commit_original(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
-        self.commit_original_with_outputs(game, ctx)
-            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
-    }
-
+impl crate::effects::SimultaneousEffectProposal for DeferredUnlessAction {
     fn commit_original_with_outputs(
-        mut self: Box<Self>,
+        self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         ExecutionError,
     > {
-        if let Some(inner) = self.prepared.take() {
-            return inner.commit_original_with_outputs(game, ctx);
-        }
-        self.execute_fallback_with_outputs(game, ctx)
+        SelectedProgramTransaction::Compound
+            .execute(self.0, game, ctx)
             .map(crate::effects::SimultaneousEffectCommit::finished)
     }
 
     fn commit(
-        mut self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        if let Some(inner) = self.prepared.take() {
-            return inner.commit(game, ctx);
-        }
-        self.execute_fallback_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-}
-
-impl UnlessActionProposal {
-    fn execute_fallback_with_outputs(
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        super::execute_transaction(
-            game,
-            ctx,
-            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
-                let proposal = *self;
-                let effects = if proposal.wants_alternative {
-                    &proposal.alternative
-                } else {
-                    &proposal.effects
-                };
-                let scope = crate::effects::ProgramActionScope {
-                    iterated_player: Some(proposal.iterated_player),
-                    payment: proposal.payment_scope,
-                    ..Default::default()
-                };
-                super::action_program::execute_action_program_with_outputs(
-                    super::branch_program::selected_clause_cursor_with_selection(
-                        effects,
-                        vec![usize::from(proposal.wants_alternative)],
-                        scope,
-                        proposal.selected,
-                    ),
-                    game,
-                    ctx,
-                    crate::effects::EffectExecutionPurpose::Action,
-                )
-            },
-        )
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(|receipt| receipt.outcome.into_outcome())
     }
 }
 
@@ -380,10 +260,6 @@ impl EffectExecutor for UnlessActionEffect {
             .map(|plan| plan.map(SelectedUnlessBranch::into_cursor))
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn supports_simultaneous_player_action(&self) -> bool {
         self.player == PlayerFilter::IteratedPlayer
     }
@@ -405,7 +281,9 @@ impl EffectExecutor for UnlessActionEffect {
                 Some(plan) => (plan.scope.payment.is_some(), plan.selected),
                 None => (false, None),
             }
-        } else { (self.choose_alternative(game, ctx, deciding_player), None) };
+        } else {
+            (self.choose_alternative(game, ctx, deciding_player), None)
+        };
         let payment_scope = wants_alternative.then(|| {
             crate::costs::PaymentScope::new(
                 ctx,
@@ -414,13 +292,14 @@ impl EffectExecutor for UnlessActionEffect {
             )
         });
         let iterated_player = ctx.iteration.iterated_player;
+        let effects = if wants_alternative {
+            &self.alternative
+        } else {
+            &self.effects
+        };
         let prepare = |ctx: &mut ExecutionContext| {
             super::prepared_branch::prepare_branch_for_purpose(
-                if wants_alternative {
-                    &self.alternative
-                } else {
-                    &self.effects
-                },
+                effects,
                 game,
                 ctx,
                 iterated_player,
@@ -440,16 +319,21 @@ impl EffectExecutor for UnlessActionEffect {
             prepare(ctx)
         };
         ctx.preselected_objects = previous_selection;
-        let prepared = prepared?;
-        Ok(Box::new(UnlessActionProposal {
+        if let Some(inner) = prepared? {
+            return Ok(UnlessBranch::Action.prepared(inner));
+        }
+        let scope = crate::effects::ProgramActionScope {
+            iterated_player: Some(ctx.iteration.iterated_player),
+            payment: payment_scope,
+            ..Default::default()
+        };
+        let cursor = super::branch_program::selected_clause_cursor(
+            effects.clone(),
+            vec![usize::from(wants_alternative)],
+            scope,
             selected,
-            payment_scope,
-            prepared,
-            effects: self.effects.clone(),
-            alternative: self.alternative.clone(),
-            wants_alternative,
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+        );
+        Ok(Box::new(DeferredUnlessAction(cursor)))
     }
 
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
@@ -465,15 +349,7 @@ impl EffectExecutor for UnlessActionEffect {
         Some(self)
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -613,22 +489,15 @@ fn execute_unless_action_with_outputs(
             };
             // Clear assignments once for the whole any-player clause, exactly
             // as the existing target owner does; retain body-produced bindings.
-            if let Some(targets) = plan.targets.take() {
-                ctx.with_temp_targets(targets, |ctx| {
-                    super::action_program::execute_action_program_with_outputs(
-                        plan.into_cursor(),
-                        game,
-                        ctx,
-                        purpose,
-                    )
-                })
-            } else {
+            let targets = plan.targets.take();
+            let run = |ctx: &mut ExecutionContext| {
                 super::action_program::execute_action_program_with_outputs(
-                    plan.into_cursor(),
-                    game,
-                    ctx,
-                    purpose,
+                    plan.into_cursor(), game, ctx, purpose,
                 )
+            };
+            match targets {
+                Some(targets) => ctx.with_temp_targets(targets, run),
+                None => run(ctx),
             }
         },
     )

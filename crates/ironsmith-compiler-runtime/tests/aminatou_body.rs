@@ -373,6 +373,13 @@ fn room_cast_selects_its_own_frozen_miracle_price_after_the_granter_leaves() {
         else { miracle_mana(&mut game, 2); }
         stack_draw(&mut game, outcome, &mut answers);
         assert_eq!(game.stack.len(), 1);
+        let proof = linked_miracle(game.stack.last().unwrap());
+        assert_eq!(game.object(proof.card).unwrap().split_combined_mana_cost().unwrap().mana_value(), 10);
+        assert_eq!(proof.instance.price, ironsmith::events::other::DrawnMiraclePrice::ReducedManaCost {
+            mana_cost: front.card.mana_cost.clone(),
+            other_face_mana_cost: back.card.mana_cost.clone(),
+            generic_reduction: 4,
+        });
         resolve_stack_entry_with(&mut game, &mut answers).unwrap();
         assert_eq!(game.stack.len(), 1);
         let spell = game.object(game.stack.last().unwrap().object_id).unwrap();

@@ -1214,8 +1214,15 @@ pub fn parse_predicate_with_grammar_entrypoint_lexed(
 
 pub fn split_if_clause_lexed(
     tokens: &[OwnedLexToken],
-    mut parse_effects: impl FnMut(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
+    mut parse_body: impl FnMut(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<IfClauseSplitSpec, CardTextError> {
+    let mut parse_effects = |body: &[OwnedLexToken]| {
+        let effects = parse_body(body)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError("expected a consequence in if clause".into()));
+        }
+        Ok(effects)
+    };
     // Quantified chosen-object survival supplies both a live existence gate
     // and the local antecedent for “that many” in a subsequent search.
     if let Some(comma) = tokens.iter().position(|token| token.is_comma()) {
@@ -1316,59 +1323,55 @@ pub fn split_if_clause_lexed(
         primitives::strip_lexed_suffix_phrases(predicate_tokens, PLAYER_MAY_SUFFIXES).is_some()
     }
 
-    let parse_conditional_consequence =
-        |effect_tokens: &[OwnedLexToken],
-         parse_effects: &mut dyn FnMut(
-            &[OwnedLexToken],
-        ) -> Result<Vec<EffectAst>, CardTextError>| {
-            let trimmed = trim_lexed_commas(effect_tokens);
-            // The direct sentence route retains its final period. Consume
-            // that delimiter before recognizing a terminal replacement word;
-            // never erase a colon, mana symbol, or another unparsed tail.
-            let trimmed = if trimmed.last().is_some_and(|token| token.kind == crate::lexer::TokenKind::Period) {
-                &trimmed[..trimmed.len() - 1]
-            } else { trimmed };
-            let without_instead = if trimmed
-                .first()
-                .is_some_and(|token| structure_token_is(token, "instead"))
-            {
-                trim_lexed_commas(&trimmed[1..])
-            } else {
-                trimmed
-            };
-            // `instead` modifies this whole conditional consequence. The
-            // outer sentence retains it for the typed self-replacement
-            // composer; it is not part of a terminal numeric expression
-            // (for example, "equal to its toughness instead").
-            let without_instead = if without_instead
-                .last()
-                .is_some_and(|token| structure_token_is(token, "instead"))
-                && without_instead
-                    .iter()
-                    .filter(|token| token.is_quote())
-                    .count()
-                    % 2
-                    == 0
-            {
-                trim_lexed_commas(&without_instead[..without_instead.len() - 1])
-            } else {
-                without_instead
-            };
-            // "If X is 10 or more, also create ..." (Finale of Glory): the
-            // consequence happens in addition to the rest of the spell, which
-            // is what a conditional consequence already does.
-            let without_instead = if without_instead.len() > 1
-                && without_instead
-                    .first()
-                    .is_some_and(|token| structure_token_is(token, "also"))
-            {
-                crate::word_claims::claim_tokens(&without_instead[..1]);
-                &without_instead[1..]
-            } else {
-                without_instead
-            };
-            parse_effects(without_instead)
+    let mut parse_conditional_consequence = |effect_tokens: &[OwnedLexToken]| {
+        let trimmed = trim_lexed_commas(effect_tokens);
+        // The direct sentence route retains its final period. Consume
+        // that delimiter before recognizing a terminal replacement word;
+        // never erase a colon, mana symbol, or another unparsed tail.
+        let trimmed = if trimmed.last().is_some_and(|token| token.kind == crate::lexer::TokenKind::Period) {
+            &trimmed[..trimmed.len() - 1]
+        } else { trimmed };
+        let without_instead = if trimmed
+            .first()
+            .is_some_and(|token| structure_token_is(token, "instead"))
+        {
+            trim_lexed_commas(&trimmed[1..])
+        } else {
+            trimmed
         };
+        // `instead` modifies this whole conditional consequence. The
+        // outer sentence retains it for the typed self-replacement
+        // composer; it is not part of a terminal numeric expression
+        // (for example, "equal to its toughness instead").
+        let without_instead = if without_instead
+            .last()
+            .is_some_and(|token| structure_token_is(token, "instead"))
+            && without_instead
+                .iter()
+                .filter(|token| token.is_quote())
+                .count()
+                % 2
+                == 0
+        {
+            trim_lexed_commas(&without_instead[..without_instead.len() - 1])
+        } else {
+            without_instead
+        };
+        // "If X is 10 or more, also create ..." (Finale of Glory): the
+        // consequence happens in addition to the rest of the spell, which
+        // is what a conditional consequence already does.
+        let without_instead = if without_instead.len() > 1
+            && without_instead
+                .first()
+                .is_some_and(|token| structure_token_is(token, "also"))
+        {
+            crate::word_claims::claim_tokens(&without_instead[..1]);
+            &without_instead[1..]
+        } else {
+            without_instead
+        };
+        parse_effects(without_instead)
+    };
 
     if let Some(effect_token_idx) =
         primitives::find_phrase_start(tokens, &["exile", "them", "then", "meld", "them", "into"])
@@ -1383,9 +1386,7 @@ pub fn split_if_clause_lexed(
         if !predicate_tokens_without_commas.is_empty() {
             if let Ok(predicate) =
                 parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens_without_commas)
-                && let Ok(effects) =
-                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
-                && !effects.is_empty()
+                && let Ok(effects) = parse_conditional_consequence(effect_tokens)
             {
                 return Ok(IfClauseSplitSpec {
                     predicate: IfClausePredicateSpec::Conditional(predicate),
@@ -1393,9 +1394,7 @@ pub fn split_if_clause_lexed(
                 });
             }
             if let Some(predicate) = parse_if_result_predicate(&predicate_tokens_without_commas)
-                && let Ok(effects) =
-                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
-                && !effects.is_empty()
+                && let Ok(effects) = parse_conditional_consequence(effect_tokens)
             {
                 return Ok(IfClauseSplitSpec {
                     predicate: IfClausePredicateSpec::Result(predicate),
@@ -1441,9 +1440,7 @@ pub fn split_if_clause_lexed(
                 continue;
             }
             let effect_tokens = trim_lexed_commas(&tokens[split_idx..]);
-            if let Ok(effects) = parse_conditional_consequence(effect_tokens, &mut parse_effects)
-                && !effects.is_empty()
-            {
+            if let Ok(effects) = parse_conditional_consequence(effect_tokens) {
                 return Ok(IfClauseSplitSpec {
                     predicate: IfClausePredicateSpec::Conditional(predicate),
                     effects,
@@ -1472,10 +1469,7 @@ pub fn split_if_clause_lexed(
                         effects,
                     });
                 }
-                if let Ok(effects) =
-                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
-                    && !effects.is_empty()
-                {
+                if let Ok(effects) = parse_conditional_consequence(effect_tokens) {
                     return Ok(IfClauseSplitSpec {
                         predicate: IfClausePredicateSpec::Conditional(predicate),
                         effects,
@@ -1483,9 +1477,7 @@ pub fn split_if_clause_lexed(
                 }
             }
             if let Some(predicate) = parse_if_result_predicate(predicate_tokens)
-                && let Ok(effects) =
-                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
-                && !effects.is_empty()
+                && let Ok(effects) = parse_conditional_consequence(effect_tokens)
             {
                 return Ok(IfClauseSplitSpec {
                     predicate: IfClausePredicateSpec::Result(predicate),
@@ -1508,7 +1500,7 @@ pub fn split_if_clause_lexed(
         // survive into RepeatProcess/IfResult lowering.
         if let Some(predicate) = parse_if_result_predicate(predicate_tokens) {
             let effect_tokens = &tokens[first_comma_idx + 1..];
-            let effects = parse_conditional_consequence(effect_tokens, &mut parse_effects)?;
+            let effects = parse_conditional_consequence(effect_tokens)?;
             return Ok(IfClauseSplitSpec {
                 predicate: IfClausePredicateSpec::Result(predicate),
                 effects,
@@ -1540,9 +1532,7 @@ pub fn split_if_clause_lexed(
             if trim_lexed_commas(effect_tokens)
                 .first()
                 .is_some_and(|token| structure_token_is(token, "instead"))
-                && let Ok(effects) =
-                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
-                && !effects.is_empty()
+                && let Ok(effects) = parse_conditional_consequence(effect_tokens)
             {
                 return Ok(IfClauseSplitSpec {
                     predicate: IfClausePredicateSpec::Conditional(predicate),
@@ -1552,9 +1542,7 @@ pub fn split_if_clause_lexed(
             if effect_tokens
                 .first()
                 .is_some_and(|token| token.is_any_word(&["search", "searches", "look", "reveal"]))
-                && let Ok(effects) =
-                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
-                && !effects.is_empty()
+                && let Ok(effects) = parse_conditional_consequence(effect_tokens)
             {
                 return Ok(IfClauseSplitSpec {
                     predicate: IfClausePredicateSpec::Conditional(predicate),
@@ -1567,9 +1555,7 @@ pub fn split_if_clause_lexed(
                     fragment_tokens,
                 )
                 .is_some()
-                    || parse_conditional_consequence(fragment_tokens, &mut parse_effects)
-                        .map(|effects| !effects.is_empty())
-                        .unwrap_or(false)
+                    || parse_conditional_consequence(fragment_tokens).is_ok()
             } else {
                 true
             };
@@ -1581,9 +1567,7 @@ pub fn split_if_clause_lexed(
             // nested trigger's condition and comma.
             let consequence_has_duration = super::effects::chain_carry::parse_carry_duration_prefix_tokens(effect_tokens).is_some();
             if (comma_fragment_looks_like_effect || comma_fragment_looks_like_delayed_trigger || consequence_has_duration)
-                && let Ok(effects) =
-                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
-                && !effects.is_empty()
+                && let Ok(effects) = parse_conditional_consequence(effect_tokens)
             {
                 return Ok(IfClauseSplitSpec {
                     predicate: IfClausePredicateSpec::Conditional(predicate),
@@ -1599,9 +1583,7 @@ pub fn split_if_clause_lexed(
         if effect_tokens.is_empty() {
             continue;
         }
-        if let Ok(effects) = parse_conditional_consequence(effect_tokens, &mut parse_effects)
-            && !effects.is_empty()
-        {
+        if let Ok(effects) = parse_conditional_consequence(effect_tokens) {
             split = Some((idx, effects));
             break;
         }
@@ -1614,7 +1596,7 @@ pub fn split_if_clause_lexed(
         let effect_tokens = &tokens[first_idx + 1..];
         (
             first_idx,
-            parse_conditional_consequence(effect_tokens, &mut parse_effects)?,
+            parse_conditional_consequence(effect_tokens)?,
         )
     };
     let predicate_tokens = &tokens[1..comma_idx];

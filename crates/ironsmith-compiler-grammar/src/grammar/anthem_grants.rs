@@ -1,3 +1,4 @@
+use super::shared_util::keyword_cost_lines::card_mana_cost_tail;
 use std::ops::Range;
 
 use winnow::combinator::{alt, opt, repeat_till};
@@ -420,15 +421,6 @@ const GRANTED_ESCAPE_EXILE_TAIL_PHRASES: &[&[&str]] = &[
     &["other", "cards", "from", "your", "graveyard"],
     &["other", "card", "from", "your", "graveyard"],
 ];
-const GRANTED_MIRACLE_COST_REDUCED_PREFIX_PHRASES: &[&[&str]] = &[
-    &[
-        "the", "miracle", "cost", "is", "equal", "to", "its", "mana", "cost", "reduced", "by",
-    ],
-    &[
-        "its", "miracle", "cost", "is", "equal", "to", "its", "mana", "cost", "reduced", "by",
-    ],
-];
-
 pub fn parse_first_spell_each_turn_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<FirstSpellEachTurnClause<'_>> {
@@ -600,12 +592,9 @@ pub fn parse_granted_escape_cost_tail_clause(
 pub fn parse_granted_miracle_cost_reduction_tail_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<GrantedMiracleCostReductionTail<'_>> {
-    let tokens = trim_anthem_clause_tokens(tokens);
-    crate::grammar::primitives::probe_all(
-        tokens,
-        parse_granted_miracle_cost_reduction_tail_clause_lexed,
-        "granted-miracle-cost-reduction-tail",
-    )
+    let reduction_cost_tokens =
+        super::shared_util::keyword_cost_lines::card_mana_reduction_operand(tokens, "miracle")?;
+    (!reduction_cost_tokens.is_empty()).then_some(GrantedMiracleCostReductionTail { reduction_cost_tokens })
 }
 
 pub fn parse_cant_be_blocked_by_more_than_clause(
@@ -830,73 +819,27 @@ pub fn classify_granted_keyword_tokens(tokens: &[OwnedLexToken]) -> GrantedKeywo
 }
 
 pub fn parse_granted_flashback_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
-    // "The flashback cost is equal to that card's mana cost" (Lier, Iroh)
-    // is the same CR 702.34a derived cost as "its flashback cost ...".
-    token_any_phrase_complete(
-        tokens,
-        &[
-            &["its", "flashback", "cost", "is", "equal", "to", "its", "mana", "cost"],
-            &["the", "flashback", "cost", "is", "equal", "to", "its", "mana", "cost"],
-            &[
-                "the", "flashback", "cost", "is", "equal", "to", "that", "card's", "mana", "cost",
-            ],
-            &[
-                "the", "flashback", "cost", "is", "equal", "to", "that", "cards", "mana", "cost",
-            ],
-        ],
-    )
+    // Flashback grants can explicitly refer back to "that card's mana cost".
+    card_mana_cost_tail(tokens, "flashback") == Some(&[]) || token_any_phrase_complete(tokens, &[
+        &["the", "flashback", "cost", "is", "equal", "to", "that", "card's", "mana", "cost"],
+        &["the", "flashback", "cost", "is", "equal", "to", "that", "cards", "mana", "cost"],
+    ])
 }
 
 pub fn parse_granted_mayhem_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
-    token_any_phrase_complete(
-        tokens,
-        &[
-            &["the", "mayhem", "cost", "is", "equal", "to", "its", "mana", "cost"],
-            &["its", "mayhem", "cost", "is", "equal", "to", "its", "mana", "cost"],
-        ],
-    )
+    card_mana_cost_tail(tokens, "mayhem") == Some(&[])
 }
 
 pub fn parse_granted_blitz_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
-    token_any_phrase_complete(
-        tokens,
-        &[
-            &[
-                "the", "blitz", "cost", "is", "equal", "to", "its", "mana", "cost",
-            ],
-            &[
-                "its", "blitz", "cost", "is", "equal", "to", "its", "mana", "cost",
-            ],
-        ],
-    )
+    card_mana_cost_tail(tokens, "blitz") == Some(&[])
 }
 
 pub fn parse_granted_emerge_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
-    token_any_phrase_complete(
-        tokens,
-        &[
-            &[
-                "the", "emerge", "cost", "is", "equal", "to", "its", "mana", "cost",
-            ],
-            &[
-                "its", "emerge", "cost", "is", "equal", "to", "its", "mana", "cost",
-            ],
-        ],
-    )
+    card_mana_cost_tail(tokens, "emerge") == Some(&[])
 }
 
 pub fn parse_granted_scavenge_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
-    token_any_phrase_complete(
-        tokens,
-        &[
-            &[
-                "the", "scavenge", "cost", "is", "equal", "to", "its", "mana", "cost",
-            ],
-            &[
-                "its", "scavenge", "cost", "is", "equal", "to", "its", "mana", "cost",
-            ],
-        ],
-    )
+    card_mana_cost_tail(tokens, "scavenge") == Some(&[])
 }
 
 pub fn parse_all_creatures_lose_flying(tokens: &[OwnedLexToken]) -> bool {
@@ -1822,23 +1765,6 @@ fn parse_granted_escape_cost_tail_clause_lexed<'a>(
     primitives::any_phrase(GRANTED_ESCAPE_EXILE_TAIL_PHRASES).parse_next(input)?;
     Ok(GrantedEscapeCostTail {
         exile_count_tokens: trim_lexed_commas(exile_count_tokens),
-    })
-}
-
-fn parse_granted_miracle_cost_reduction_tail_clause_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<GrantedMiracleCostReductionTail<'a>> {
-    primitives::any_phrase(GRANTED_MIRACLE_COST_REDUCED_PREFIX_PHRASES).parse_next(input)?;
-    let reduction_cost_tokens: &'a [OwnedLexToken] = rest.parse_next(input)?;
-    let reduction_cost_tokens = trim_lexed_commas(reduction_cost_tokens);
-    if reduction_cost_tokens.is_empty() {
-        return Err(primitives::backtrack_err(
-            "miracle reduction",
-            "nonempty reduction cost",
-        ));
-    }
-    Ok(GrantedMiracleCostReductionTail {
-        reduction_cost_tokens,
     })
 }
 

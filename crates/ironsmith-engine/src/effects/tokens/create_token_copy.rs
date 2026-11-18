@@ -575,10 +575,7 @@ fn prepare_single_token_copy_proposal(
         resolved_base_power_toughness,
         &static_abilities_to_grant,
     )?;
-    let token_grants = match &ctx.named_action_token_scope {
-        Some((label, player)) if base_count > 0 => super::capture_named_action_token_grants(game, label, *player)?,
-        _ => Vec::new(),
-    };
+    let token_grants = super::capture_named_action_token_grants(game, ctx, base_count)?;
     super::apply_named_action_grants_to_object(&mut token_preview, &token_grants);
     // CR 111.5: an effect that would create a token copy of an instant or
     // sorcery card creates no token.
@@ -1085,15 +1082,7 @@ impl EffectExecutor for CreateTokenCopyEffect {
         Ok(Box::new(proposal))
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

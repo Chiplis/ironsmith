@@ -176,15 +176,7 @@ struct DamageBatch {
 }
 
 impl EffectExecutor for DamageBatch {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -198,20 +190,17 @@ impl EffectExecutor for DamageBatch {
                 // Reborrow the decision maker for the prevention-deferral owner,
                 // preserving every owned context field across the batch callback.
                 let captured = ExecutionContextCheckpoint::capture(ctx);
-                let source = ctx.source;
-                let controller = ctx.controller;
                 let mut completed_context = None;
                 let result = with_deferred_prevention_follow_up_outputs(
                     game,
                     ctx.decision_maker,
                     |game, dm| {
-                        let mut parent = ExecutionContext::new(source, controller, dm);
-                        captured.restore_ref(&mut parent);
+                        let mut parent = captured.into_context(dm);
                         let result = match &self.inputs {
                             DamageBatchInputs::Events(events) => super::multi_source_damage::commit_damage_batch_with_outputs(game, &mut parent, events.clone(), self.batch),
                             DamageBatchInputs::Captured(inputs) => super::multi_source_damage::commit_captured_damage_batch_with_outputs(game, &mut parent, inputs.clone(), self.batch),
                         };
-                        completed_context = Some(ExecutionContextCheckpoint::capture(&parent));
+                        completed_context = Some(parent.into_checkpoint());
                         result
                     },
                 );

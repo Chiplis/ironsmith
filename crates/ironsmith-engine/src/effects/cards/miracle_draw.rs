@@ -29,6 +29,32 @@ fn grants_miracle(grant: &Grantable) -> bool {
     )
 }
 
+/// Freeze each available spell's cost while the revealed card is still in hand.
+fn reduced_miracle_price(
+    game: &GameState,
+    object: &crate::object::Object,
+    generic_reduction: u32,
+) -> Result<DrawnMiraclePrice, ExecutionError> {
+    let face_cost = |projection: Option<&crate::object::Object>| {
+        let query = projection
+            .map(|face| crate::grant_registry::proposed_card_face_query(game, face))
+            .transpose()?;
+        let characteristics = query.as_ref().unwrap_or(game)
+            .try_current_characteristics(object.id)
+            .map_err(ExecutionError::ContinuousDiscovery)?
+            .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                "drawn Miracle card has no current characteristics".into(),
+            ))?;
+        Ok::<_, ExecutionError>(characteristics.mana_cost.as_deref().cloned())
+    };
+    let other = crate::decision::spell_view_for_split_other_half_cast(game, object);
+    Ok(DrawnMiraclePrice::ReducedManaCost {
+        mana_cost: face_cost(object.projected_front_half().as_ref())?,
+        other_face_mana_cost: other.as_ref().map(|face| face_cost(Some(face))).transpose()?.flatten(),
+        generic_reduction,
+    })
+}
+
 fn capture_opportunity(
     game: &GameState,
     card: ObjectId,
@@ -60,24 +86,7 @@ fn capture_opportunity(
                 crate::grant::DerivedAlternativeCast::MiracleFromCardManaCostReducedBy {
                     reduction,
                 },
-            ) => DrawnMiraclePrice::ReducedManaCost {
-                mana_cost: game
-                    .try_current_characteristics(card)
-                    .map_err(ExecutionError::ContinuousDiscovery)?
-                    .ok_or_else(|| {
-                        ExecutionError::IncompleteEvidence(
-                            "drawn Miracle card has no current characteristics".into(),
-                        )
-                    })?
-                    .mana_cost
-                    .as_deref()
-                    .cloned(),
-                other_face_mana_cost: crate::decision::spell_view_for_split_other_half_cast(
-                    game, object,
-                )
-                .and_then(|face| face.mana_cost_owned()),
-                generic_reduction: *reduction,
-            },
+            ) => reduced_miracle_price(game, object, *reduction)?,
             Grantable::AlternativeCast(
                 crate::alternative_cast::AlternativeCastingMethod::Miracle { cost },
             ) => DrawnMiraclePrice::Fixed(cost.clone()),

@@ -4,11 +4,8 @@ use crate::effects::{CompletedEffectOutputs, EffectExecutor, ExecutionContext, E
 use crate::game_state::GameState;
 pub type FirstResolutionEachTurnEffect = ironsmith_core::FirstResolutionEachTurnEffect<Effect>;
 impl EffectExecutor for FirstResolutionEachTurnEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> { Box::new(self.clone()) }
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) { for effect in &self.effects { visitor(effect); } }
-    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx).map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<CompletedEffectOutputs, ExecutionError> {
         super::execute_transaction(game, ctx, || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)), |game, ctx| {
             let label = self.label.trim().to_ascii_lowercase();
@@ -32,7 +29,6 @@ mod tests {
     #[derive(Debug,Clone,PartialEq)]
     struct PreventedChild;
     impl EffectExecutor for PreventedChild {
-        fn clone_box(&self) -> Box<dyn EffectExecutor> {Box::new(self.clone())}
         fn execute(&self, game:&mut GameState, _: &mut ExecutionContext)->Result<EffectOutcome,ExecutionError>{
             game.increment_named_turn_counter("first-resolution-test-child");
             Ok(EffectOutcome::prevented())

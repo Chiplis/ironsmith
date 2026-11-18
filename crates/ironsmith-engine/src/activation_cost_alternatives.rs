@@ -59,12 +59,7 @@ impl CostPayer for AlternativeUseReceipt {
     }
 }
 fn contains_receipt(cost: &TotalCost) -> bool {
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => costs
-            .iter()
-            .any(|cost| cost.downcast_ref::<AlternativeUseReceipt>().is_some()),
-        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(contains_receipt),
-    }
+    cost.payment_branches().flatten().any(|part| part.downcast_ref::<AlternativeUseReceipt>().is_some())
 }
 
 /// A consumer rider is shared by all original prices. Component rules combine,
@@ -261,9 +256,6 @@ impl EffectExecutor for ironsmith_core::GrantActivationCostAlternativeEffect {
             }
             Ok(crate::effect::EffectOutcome::with_objects(affected))
         })
-    }
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
     }
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
         Some(&self.target)

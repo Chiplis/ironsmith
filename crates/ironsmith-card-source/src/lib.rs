@@ -3,6 +3,8 @@
 //! This crate intentionally has no dependency on the compiler, runtime, registry,
 //! or canonical text renderer. Keep it on the data-preflight side of the graph.
 
+pub mod reports;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
@@ -104,6 +106,16 @@ pub fn load_registry_cards_with_explicit_includes_and_cards(
     included_names: &BTreeSet<String>,
     extra_cards: Vec<Value>,
 ) -> Result<BTreeMap<String, RegistryCardRecord>, Box<dyn Error>> {
+    load_registry_cards_with(path, included_names, extra_cards, |_, input| input.record)
+}
+
+/// Project each admitted card while its original JSON and parser metadata are available.
+pub fn load_registry_cards_with<T>(
+    path: &str,
+    included_names: &BTreeSet<String>,
+    extra_cards: Vec<Value>,
+    mut project: impl FnMut(&Value, RegistryCardInput) -> T,
+) -> Result<BTreeMap<String, T>, Box<dyn Error>> {
     let raw = fs::read_to_string(path)?;
     let mut cards: Vec<Value> = serde_json::from_str(&raw)?;
     let mut included_names = included_names
@@ -111,7 +123,7 @@ pub fn load_registry_cards_with_explicit_includes_and_cards(
         .map(|name| normalize_lookup_name(name))
         .collect::<BTreeSet<_>>();
     for card in extra_cards {
-        if let Some(name) = supplemental_card_name(&card) {
+        if let Some(name) = registry_card_name(&card) {
             included_names.insert(name);
         }
         cards.push(card);
@@ -119,57 +131,145 @@ pub fn load_registry_cards_with_explicit_includes_and_cards(
 
     let mut out = BTreeMap::new();
     for card in cards {
-        let Some(record) = build_registry_card_record(&card, &included_names) else {
+        let Some(input) = RegistryCardInput::from_card(&card, &included_names) else {
             continue;
         };
-        out.entry(record.name.clone()).or_insert(record);
+        out.entry(input.record.name.clone())
+            .or_insert_with(|| project(&card, input));
     }
     Ok(out)
 }
 
-fn supplemental_card_name(card: &Value) -> Option<String> {
+pub fn registry_card_name(card: &Value) -> Option<String> {
     let name = normalize_lookup_name(&pick_field(card, get_first_face(card), "name")?);
     (!name.is_empty()).then_some(name)
 }
 
-fn build_registry_card_record(
-    card: &Value,
-    included_names: &BTreeSet<String>,
-) -> Option<RegistryCardRecord> {
-    if card
-        .get("digital")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        return None;
+pub struct RegistryCardInput {
+    pub record: RegistryCardRecord,
+    pub metadata_lines: Vec<String>,
+}
+
+impl RegistryCardInput {
+    pub fn from_card(card: &Value, included_names: &BTreeSet<String>) -> Option<Self> {
+        if card
+            .get("digital")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            return None;
+        }
+        let face = get_first_face(card);
+        let name = registry_card_name(card)?;
+        if !card_is_legal_in_supported_paper_format(card) && !included_names.contains(&name) {
+            return None;
+        }
+
+        let raw_oracle_text = pick_field(card, face, "oracle_text")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let oracle_text = strip_parenthetical_text(&raw_oracle_text);
+        let metadata = CardMetadata::for_registry(card, face);
+        let metadata_lines = metadata.lines(|lines| append_registry_metadata(lines, card, face));
+        let parse_input = build_parse_input(&metadata_lines, &raw_oracle_text);
+        let layout = nonempty(
+            card.get("layout")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned),
+        );
+        let raw_card_json = serde_json::to_string(card).ok()?;
+        let content_hash = registry_card_content_hash(
+            &name,
+            &oracle_text,
+            &raw_oracle_text,
+            &parse_input,
+            &raw_card_json,
+            layout.as_deref(),
+        );
+
+        let record = RegistryCardRecord {
+            name,
+            oracle_text,
+            raw_oracle_text,
+            parse_input,
+            raw_card_json,
+            mana_cost: metadata.mana_cost,
+            type_line: metadata.type_line,
+            power: metadata.power,
+            toughness: metadata.toughness,
+            loyalty: metadata.loyalty,
+            defense: metadata.defense,
+            layout,
+            content_hash,
+        };
+        Some(RegistryCardInput {
+            record,
+            metadata_lines,
+        })
     }
-    let face = get_first_face(card);
-    let name = normalize_lookup_name(&pick_field(card, face, "name")?);
-    if name.is_empty()
-        || (!card_is_legal_in_supported_paper_format(card) && !included_names.contains(&name))
-    {
-        return None;
+}
+
+struct CardMetadata {
+    mana_cost: Option<String>,
+    type_line: Option<String>,
+    power: Option<String>,
+    toughness: Option<String>,
+    loyalty: Option<String>,
+    defense: Option<String>,
+}
+
+impl CardMetadata {
+    fn read(field: impl Fn(&str) -> Option<String>) -> Self {
+        let nonempty = |key: &str| field(key).filter(|value| !value.is_empty());
+        Self {
+            mana_cost: nonempty("mana_cost"),
+            type_line: nonempty("type_line"),
+            power: nonempty("power"),
+            toughness: nonempty("toughness"),
+            loyalty: nonempty("loyalty"),
+            defense: nonempty("defense"),
+        }
     }
 
-    let raw_oracle_text = pick_field(card, face, "oracle_text")
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let oracle_text = strip_parenthetical_text(&raw_oracle_text);
-    let mana_cost = nonempty(pick_field_preferring_face(card, face, "mana_cost"));
-    let type_line = nonempty(pick_field_preferring_face(card, face, "type_line"));
-    let power = nonempty(pick_field_preferring_face(card, face, "power"));
-    let toughness = nonempty(pick_field_preferring_face(card, face, "toughness"));
-    let loyalty = nonempty(pick_field_preferring_face(card, face, "loyalty"));
-    let defense = nonempty(pick_field_preferring_face(card, face, "defense"));
+    fn for_registry(card: &Value, face: Option<&Value>) -> Self {
+        Self::read(|key| nonempty(pick_field_preferring_face(card, face, key)))
+    }
 
-    let mut metadata_lines = Vec::new();
-    if let Some(value) = &mana_cost {
-        metadata_lines.push(format!("Mana cost: {value}"));
+    fn lines(&self, add_extra: impl FnOnce(&mut Vec<String>)) -> Vec<String> {
+        let mut metadata_lines = Vec::new();
+        if let Some(value) = &self.mana_cost {
+            metadata_lines.push(format!("Mana cost: {value}"));
+        }
+        if let Some(value) = &self.type_line {
+            metadata_lines.push(format!("Type: {value}"));
+        }
+        add_extra(&mut metadata_lines);
+        if let (Some(power), Some(toughness)) = (&self.power, &self.toughness) {
+            metadata_lines.push(format!("Power/Toughness: {power}/{toughness}"));
+        }
+        if let Some(value) = &self.loyalty {
+            metadata_lines.push(format!("Loyalty: {value}"));
+        }
+        if let Some(value) = &self.defense {
+            metadata_lines.push(format!("Defense: {value}"));
+        }
+
+        metadata_lines
     }
-    if let Some(value) = &type_line {
-        metadata_lines.push(format!("Type: {value}"));
-    }
+}
+
+/// Format the standard parser metadata using the caller's field selection and whitespace rules.
+pub fn basic_metadata_lines(field: impl Fn(&str) -> Option<String>) -> Vec<String> {
+    CardMetadata::read(field).lines(|_| {})
+}
+
+pub fn face_metadata_lines(card: &Value, face: &Value) -> Vec<String> {
+    CardMetadata::for_registry(card, Some(face))
+        .lines(|lines| append_registry_metadata(lines, card, Some(face)))
+}
+
+fn append_registry_metadata(metadata_lines: &mut Vec<String>, card: &Value, face: Option<&Value>) {
     if let Some(line) = color_indicator_metadata_line(card, face) {
         metadata_lines.push(line);
     }
@@ -196,50 +296,9 @@ fn build_registry_card_record(
     {
         metadata_lines.push(format!("Attraction lights: {}", lights.join(", ")));
     }
-    if let (Some(power), Some(toughness)) = (&power, &toughness) {
-        metadata_lines.push(format!("Power/Toughness: {power}/{toughness}"));
-    }
-    if let Some(value) = &loyalty {
-        metadata_lines.push(format!("Loyalty: {value}"));
-    }
-    if let Some(value) = &defense {
-        metadata_lines.push(format!("Defense: {value}"));
-    }
-
-    let parse_input = build_parse_input(&metadata_lines, &raw_oracle_text);
-    let layout = nonempty(
-        card.get("layout")
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned),
-    );
-    let raw_card_json = serde_json::to_string(card).ok()?;
-    let content_hash = registry_card_content_hash(
-        &name,
-        &oracle_text,
-        &raw_oracle_text,
-        &parse_input,
-        &raw_card_json,
-        layout.as_deref(),
-    );
-
-    Some(RegistryCardRecord {
-        name,
-        oracle_text,
-        raw_oracle_text,
-        parse_input,
-        raw_card_json,
-        mana_cost,
-        type_line,
-        power,
-        toughness,
-        loyalty,
-        defense,
-        layout,
-        content_hash,
-    })
 }
 
-fn build_parse_input(metadata_lines: &[String], oracle_text: &str) -> String {
+pub fn build_parse_input(metadata_lines: &[String], oracle_text: &str) -> String {
     let mut lines = metadata_lines.to_vec();
     if !oracle_text.trim().is_empty() {
         lines.push(oracle_text.trim().to_string());
@@ -311,13 +370,13 @@ fn color_indicator_metadata_line(card: &Value, face: Option<&Value>) -> Option<S
     (!names.is_empty()).then(|| format!("Color indicator: {}", names.join(", ")))
 }
 
-fn get_first_face(card: &Value) -> Option<&Value> {
+pub fn get_first_face(card: &Value) -> Option<&Value> {
     card.get("card_faces")
         .and_then(Value::as_array)
         .and_then(|faces| faces.first())
 }
 
-fn value_to_string(value: &Value) -> Option<String> {
+pub fn value_to_string(value: &Value) -> Option<String> {
     if value.is_null() {
         None
     } else if let Some(value) = value.as_str() {
@@ -327,7 +386,7 @@ fn value_to_string(value: &Value) -> Option<String> {
     }
 }
 
-fn pick_field(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
+pub fn pick_field(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
     card.get(key).and_then(value_to_string).or_else(|| {
         face.and_then(|value| value.get(key))
             .and_then(value_to_string)
@@ -362,13 +421,13 @@ mod tests {
             "legalities": {"vintage": "restricted", "legacy": "banned"}
         });
         let includes = BTreeSet::new();
-        let record = build_registry_card_record(&card, &includes).unwrap();
-        assert_eq!(record.name, "Ancestral Recall");
+        let input = RegistryCardInput::from_card(&card, &includes).unwrap();
+        assert_eq!(input.record.name, "Ancestral Recall");
         card["legalities"]["vintage"] = Value::from("banned");
-        assert!(build_registry_card_record(&card, &includes).is_none());
+        assert!(RegistryCardInput::from_card(&card, &includes).is_none());
         card["legalities"]["vintage"] = Value::from("restricted");
         card["digital"] = Value::from(true);
-        assert!(build_registry_card_record(&card, &includes).is_none());
+        assert!(RegistryCardInput::from_card(&card, &includes).is_none());
     }
 
     #[test]
@@ -383,9 +442,9 @@ mod tests {
             "legalities": {"standard": "not_legal", "vintage": "not_legal"}
         });
         let includes = BTreeSet::new();
-        assert!(build_registry_card_record(&card, &includes).is_none());
+        assert!(RegistryCardInput::from_card(&card, &includes).is_none());
         card[UNRELEASED_MARKER] = Value::from(true);
-        assert!(build_registry_card_record(&card, &includes).is_some());
+        assert!(RegistryCardInput::from_card(&card, &includes).is_some());
     }
 
     #[test]

@@ -44,6 +44,16 @@ impl<'a> Document<'a> {
         }
     }
 
+    fn following_effect(
+        &self, colon: usize, wrap: impl FnOnce(Vec<EffectAst>) -> EffectAst,
+    ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+        let (effects, tail) = parse_following_body(self, colon)?;
+        if effects.is_empty() { return Ok(None); }
+        let mut output = vec![wrap(effects)];
+        bounded_program_followups(&mut output, tail)?;
+        Ok(Some(output))
+    }
+
     /// A reading's outcome: its error is a committed diagnostic on the document.
     fn outcome(
         &self,
@@ -553,19 +563,14 @@ fn bind_just_created_named_token_sources(effects: &mut [EffectAst]) {
 }
 
 fn bounded_program_colon(tokens: &[OwnedLexToken]) -> Option<usize> {
-    let mut quoted = false;
-    for (index, token) in tokens.iter().enumerate() {
-        if token.kind == TokenKind::Quote { quoted = !quoted; }
-        else if !quoted && token.kind == TokenKind::Colon { return Some(index); }
-        else if !quoted && token.kind == TokenKind::Period { return None; }
-    }
-    None
+    let (index, kind) = effect_grammar::control_flow::instruction_delimiters(tokens).next()?;
+    (kind == TokenKind::Colon).then_some(index)
 }
 
 /// Brackets delimit a nestable complete program. Legacy unbracketed programs
 /// retain their first-sentence scope. Quoted punctuation never closes a body.
-fn bounded_program_payload<'a>(document: &Document<'a>, colon: usize)
-    -> Result<(&'a [OwnedLexToken], &'a [OwnedLexToken]), CardTextError>
+fn parse_following_body<'a>(document: &Document<'a>, colon: usize)
+    -> Result<(Vec<EffectAst>, &'a [OwnedLexToken]), CardTextError>
 {
     let tokens = document.tokens;
     if tokens.get(colon + 1).is_some_and(|token| token.kind == TokenKind::LBracket) {
@@ -591,15 +596,15 @@ fn bounded_program_payload<'a>(document: &Document<'a>, colon: usize)
                             }
                             tail
                         };
-                        return Ok((&tokens[start..index], crate::util::trim_edge_punctuation_tokens(tail)));
+                        return Ok((parse_bounded_program(&tokens[start..index])?, crate::util::trim_edge_punctuation_tokens(tail)));
                     }
                 }
             }
         }
         return Err(CardTextError::ParseError("bounded program has no closing bracket".into()));
     }
-    let Some(&first) = document.sentences.first() else { return Ok((&[], &[])); };
-    Ok((&first[colon + 1..], crate::util::trim_edge_punctuation_tokens(&tokens[first.len()..])))
+    let Some(&first) = document.sentences.first() else { return Ok((Vec::new(), &[])); };
+    Ok((parse_bounded_program(&first[colon + 1..])?, crate::util::trim_edge_punctuation_tokens(&tokens[first.len()..])))
 }
 
 fn bounded_program_followups(output: &mut Vec<EffectAst>, tail: &[OwnedLexToken]) -> Result<(), CardTextError> {
@@ -623,22 +628,65 @@ fn read_imperative_participant_program(document: &Document<'_>) -> Result<Option
     Ok(Some(output))
 }
 
-fn read_value_bound_following_program(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(colon) = bounded_program_colon(document.tokens) else { return Ok(None); };
-    let header = &document.tokens[..colon];
-    let words = crate::lexer::parser_token_word_refs(header);
-    if !words.starts_with(&["with", "x", "equal", "to"]) || !words.ends_with(&["do", "the", "following"]) { return Ok(None); }
-    if words.as_slice() == ["with", "x", "equal", "to", "the", "number", "of", "objects", "chosen", "this", "way", "do", "the", "following"] { return Ok(None); }
-    let Some(comma) = header.iter().position(|token|token.kind == TokenKind::Comma) else { return Ok(None); };
-    let Some((value, used)) = crate::grammar::shared_util::value_expr::parse_value_expr_tokens(&header[4..comma]) else { return Ok(None); };
-    if used != comma - 4 { return Ok(None); }
-    let (body, tail) = bounded_program_payload(document, colon)?;
-    let effects = parse_bounded_program(body)?;
+/// A leading "unless" normally owns its whole consequence. An explicit
+/// "do the following:" instead delimits it, leaving subsequent effects outside.
+pub(super) fn parse_leading_unless(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some(split) = effect_grammar::parse_leading_unless_clause_split_tokens(tokens) else { return Ok(None) };
+    let condition = crate::util::trim_edge_punctuation_tokens(&tokens[split.condition]);
+    let consequence = crate::util::trim_edge_punctuation_tokens(&tokens[split.effect]);
+    if condition.is_empty() || consequence.is_empty() { return Ok(None); }
+    let (effects, tail) = match consequence {
+        [do_, the, following, colon, ..]
+            if do_.is_word("do") && the.is_word("the") && following.is_word("following") && colon.is_colon() => {
+                crate::word_claims::claim_tokens(&consequence[..4]);
+                parse_following_body(&Document::new(consequence), 3)?
+            }
+        _ => (crate::clause_support::parse_effect_sentences_lexed(consequence)?, &[][..]),
+    };
     if effects.is_empty() { return Ok(None); }
-    crate::word_claims::claim_tokens(header);
-    let mut output = vec![EffectAst::BindX { value, effects }];
+    let Some(effect) = super::try_build_unless(effects, SubjectVerbPrimitiveClause::new(condition), 0)? else {
+        return Ok(None);
+    };
+    let mut output = vec![effect];
     bounded_program_followups(&mut output, tail)?;
     Ok(Some(output))
+}
+
+pub(crate) fn parse_scoped_following_tokens(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if tokens.first().is_some_and(|t| t.is_word("unless")) { return parse_leading_unless(tokens); }
+    if !tokens.first().is_some_and(|t| t.is_word("with")) { return Ok(None); }
+    read_value_bound_following_program(&Document::new(tokens))
+}
+
+fn read_value_bound_following_program(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(colon) = bounded_program_colon(document.tokens) else { return Ok(None) };
+    let header = &document.tokens[..colon];
+    let Some(comma) = header.iter().position(|t| t.kind == TokenKind::Comma) else { return Ok(None) };
+    let (operand, suffix) = header.split_at(comma);
+    if !matches!(suffix, [_, do_, the, following]
+        if do_.is_word("do") && the.is_word("the") && following.is_word("following")) {
+        return Ok(None);
+    }
+    let [with, x, equal, to, expression @ ..] = operand else { return Ok(None) };
+    if !(with.is_word("with") && x.is_word("x") && equal.is_word("equal") && to.is_word("to")) {
+        return Ok(None);
+    }
+    let chosen_count = ["the", "number", "of", "objects", "chosen", "this", "way"];
+    let value = if expression.len() == chosen_count.len()
+        && expression.iter().zip(chosen_count).all(|(token, word)| token.is_word(word)) {
+        // Resolution binds this tag to the set published by the preceding choice.
+        crate::effect::Value::Count(crate::target::ObjectFilter::tagged(
+            crate::tag::CompilerReferenceTag::ChosenObjects.bind()))
+    } else {
+        let Some((value, used)) = crate::grammar::shared_util::value_expr::parse_value_expr_tokens(expression) else { return Ok(None) };
+        if used != expression.len() { return Ok(None); }
+        value
+    };
+    document.following_effect(colon, |effects| {
+        crate::word_claims::claim_tokens(&document.tokens[..=colon]);
+        EffectAst::BindX { value, effects }
+    })
 }
 
 /// "Return target creature card ... . With X equal to that creature's power,
@@ -750,8 +798,7 @@ fn read_foreach_following_program(document: &Document<'_>) -> Result<Option<Vec<
     // "For each player/opponent, do the following: [...]": every such
     // player in turn is "that player" in the bounded body.
     if matches!(subject_words.as_slice(), ["for","each","player"] | ["for","each","opponent"]) {
-        let (body, tail) = bounded_program_payload(document, colon)?;
-        let effects = parse_bounded_program(body)?;
+        let (effects, tail) = parse_following_body(document, colon)?;
         if effects.is_empty() { return Err(CardTextError::ParseError("bounded foreach program has an empty body".into())); }
         crate::word_claims::claim_tokens(header);
         let effects = if optional {
@@ -781,8 +828,7 @@ fn read_foreach_following_program(document: &Document<'_>) -> Result<Option<Vec<
     } else { subject };
     let filter = if player_target.is_none() && target.is_none() { super::for_each_helpers::parse_for_each_object_subject(object_subject)? } else { None };
     if player_target.is_none() && target.is_none() && filter.is_none() { return Ok(None); }
-    let (body, tail) = bounded_program_payload(document, colon)?;
-    let mut effects = parse_bounded_program(body)?;
+    let (mut effects, tail) = parse_following_body(document, colon)?;
     if effects.is_empty() { return Err(CardTextError::ParseError("bounded foreach program has an empty body".into())); }
     for effect in &mut effects { super::chain_carry::bind_implicit_player_context(effect, crate::cards::builders::PlayerAst::You); }
     crate::word_claims::claim_tokens(&header[comma..]);
@@ -947,19 +993,18 @@ fn read_named_action_program(document: &Document<'_>) -> Result<Option<Vec<Effec
         (3, ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted, None)
     } else if words.ends_with(&["action", "with", "tokens", "created", "this", "way", "if", "any", "are", "created"]) {
         (10, ironsmith_core::effect::NamedActionProgramCompletion::NonemptyObjects,
-            Some(crate::cards::builders::TargetAst::Tagged(crate::tag::TagRef::of(crate::tag::TagKey::from("__named_action_created_objects")), None)))
+            Some(crate::cards::builders::TargetAst::Tagged(crate::tag::TagRef::of(ironsmith_core::tag::NAMED_ACTION_CREATED_OBJECTS_TAG), None)))
     } else if words.ends_with(&["action", "with", "tokens", "created", "this", "way", "as", "follows"]) {
         (8, ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted,
-            Some(crate::cards::builders::TargetAst::Tagged(crate::tag::TagRef::of(crate::tag::TagKey::from("__named_action_created_objects")), None)))
+            Some(crate::cards::builders::TargetAst::Tagged(crate::tag::TagRef::of(ironsmith_core::tag::NAMED_ACTION_CREATED_OBJECTS_TAG), None)))
     } else if words.ends_with(&["action", "with", "objects", "chosen", "this", "way", "if", "the", "following", "cost", "is", "paid"]) {
         (12, ironsmith_core::effect::NamedActionProgramCompletion::AcceptedPayment,
             Some(crate::model::TargetAst::Tagged(crate::tag::CompilerReferenceTag::ChosenObjects.bind(), None)))
     } else { return Ok(None); };
     if words.len() <= suffix_len + 2 { return Ok(None); }
     let label = words[2..words.len() - suffix_len].join(" ");
-    let (body, mut tail) = bounded_program_payload(document, colon)?;
-    let mut program = parse_bounded_program(body)?;
-    if objects.as_ref().is_some_and(|target| matches!(target, crate::cards::builders::TargetAst::Tagged(tag, _) if tag.as_str() == "__named_action_created_objects")) {
+    let (mut program, mut tail) = parse_following_body(document, colon)?;
+    if objects.as_ref().is_some_and(|target| matches!(target, crate::cards::builders::TargetAst::Tagged(tag, _) if tag.as_str() == ironsmith_core::tag::NAMED_ACTION_CREATED_OBJECTS_TAG)) {
         let following = Document::new(tail);
         if let Some(first) = following.sentences.first()
             && matches!(crate::lexer::parser_token_word_refs(first).as_slice(), ["the", "token", "enters", "tapped"] | ["the", "tokens", "enter", "tapped"])
@@ -982,7 +1027,7 @@ fn read_named_action_program(document: &Document<'_>) -> Result<Option<Vec<Effec
 fn named_program_creation_count(effects: &[EffectAst]) -> usize {
     let mut count = 0;
     for effect in effects {
-        if matches!(effect, EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst { action: crate::cards::builders::SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenWithMods { .. } | crate::cards::builders::TokenActionAst::CreateTokenCopy { .. } | crate::cards::builders::TokenActionAst::CreateTokenCopyFromSource { .. }), .. })) { count += 1; }
+        if matches!(effect, EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst { action: crate::cards::builders::SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenWithMods { .. } | crate::cards::builders::TokenActionAst::CreateTokenCopy { .. }), .. })) { count += 1; }
         crate::effect_ast_traversal::for_each_nested_effects(effect, true, |effects| count += named_program_creation_count(effects));
     }
     count
@@ -992,7 +1037,7 @@ fn named_program_creation_tapped(effects: &mut [EffectAst]) {
         if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst { action: crate::cards::builders::SubjectVerbActionAst::Tokens(action), .. }) = effect {
             match action {
                 crate::cards::builders::TokenActionAst::CreateTokenWithMods { tapped, .. } => *tapped = true,
-                crate::cards::builders::TokenActionAst::CreateTokenCopy { enters_tapped, .. } | crate::cards::builders::TokenActionAst::CreateTokenCopyFromSource { enters_tapped, .. } => *enters_tapped = true,
+                crate::cards::builders::TokenActionAst::CreateTokenCopy { enters_tapped, .. } => *enters_tapped = true,
                 _ => {},
             }
         }
@@ -1005,17 +1050,13 @@ fn read_result_following_program(document: &Document<'_>) -> Result<Option<Vec<E
     let header = &document.tokens[..colon];
     let Some(prefix) = crate::grammar::structure::split_leading_result_prefix_lexed(header) else { return Ok(None); };
     if crate::lexer::parser_token_word_refs(prefix.trailing_tokens).as_slice() != ["do", "the", "following"] { return Ok(None); }
-    let (body, tail) = bounded_program_payload(document, colon)?;
-    let effects = parse_bounded_program(body)?;
-    if effects.is_empty() { return Ok(None); }
-    crate::word_claims::claim_tokens(header);
-    let conditional = match prefix.kind {
-        crate::grammar::structure::LeadingResultPrefixKind::If => crate::cards::builders::ConditionalEffectAst::IfResult { predicate: prefix.predicate, effects },
-        crate::grammar::structure::LeadingResultPrefixKind::When => crate::cards::builders::ConditionalEffectAst::WhenResult { predicate: prefix.predicate, effects },
-    };
-    let mut output = vec![EffectAst::Conditionals(conditional)];
-    bounded_program_followups(&mut output, tail)?;
-    Ok(Some(output))
+    document.following_effect(colon, |effects| {
+        crate::word_claims::claim_tokens(header);
+        EffectAst::Conditionals(match prefix.kind {
+            crate::grammar::structure::LeadingResultPrefixKind::If => ConditionalEffectAst::IfResult { predicate: prefix.predicate, effects },
+            crate::grammar::structure::LeadingResultPrefixKind::When => ConditionalEffectAst::WhenResult { predicate: prefix.predicate, effects },
+        })
+    })
 }
 
 fn read_optional_following_program(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1046,8 +1087,7 @@ fn read_optional_following_program(document: &Document<'_>) -> Result<Option<Vec
         if prefix_end==0{return Ok(None)}
     }
     let prefix=if prefix_end>0 {crate::clause_support::parse_effect_sentences_lexed(&header[..prefix_end])?}else{Vec::new()};
-    let (body, tail) = bounded_program_payload(document, colon)?;
-    let effects = parse_bounded_program(body)?;
+    let (effects, tail) = parse_following_body(document, colon)?;
     if effects.is_empty() { return Ok(None); }
     crate::word_claims::claim_tokens(&header[prefix_end..]);
     let mut output=prefix;
@@ -1074,13 +1114,10 @@ fn read_repeat_following_process(
         let count_words = &words[4..words.len()-1];
         let Some((count, used)) = crate::util::parse_value_expr_words(count_words) else { return Ok(None); };
         if used != count_words.len() { return Ok(None); }
-        let (body, tail) = bounded_program_payload(document, colon)?;
-        let effects = parse_bounded_program(body)?;
-        if effects.is_empty() { return Ok(None); }
-        crate::word_claims::claim_tokens(header);
-        let mut output = vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects })];
-        bounded_program_followups(&mut output, tail)?;
-        return Ok(Some(output));
+        return document.following_effect(colon, |effects| {
+            crate::word_claims::claim_tokens(header);
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects })
+        });
     }
     if rest.is_empty() {
         return Ok(None);
@@ -1668,7 +1705,7 @@ fn read_leading_player_may(
     // optional-action wrapper must not strip its modal/price envelope and
     // offer a competing ordinary mana-payment reading.
     if sentences.first().is_some_and(|first|
-        super::bounded_source_programs::has_optional_cost_program_head(first))
+        super::has_optional_quoted_cost(first))
     { return Ok(None); }
     // A quoted restriction grant is a complete typed effect shape, but its
     // whole-sentence recognizer must not absorb a leading player choice.
@@ -1760,14 +1797,14 @@ fn independent_program_headers_do_not_become_creator_subjects() {
 /// quote or a loose optional action. Keep following result clauses as siblings.
 fn read_explicit_optional_cost_program(document:&Document<'_>)->Result<Option<Vec<EffectAst>>,CardTextError>{
     let Some(first)=document.sentences.first().copied() else{return Ok(None);};
-    if !super::bounded_source_programs::has_optional_cost_program_head(first){return Ok(None);}
-    let mut effects=super::parse_effect_sentence_lexed(first)?;
-    if !matches!(effects.as_slice(),[EffectAst::Permissions(PermissionEffectAst::MayPay{..})]) {return Ok(None);}
+    if !super::has_optional_quoted_cost(first){return Ok(None);}
+    let Some(payment) = super::clause_primitives::parse_optional_quoted_cost(first)? else { return Ok(None) };
+    let mut effects = vec![payment];
     // The continuation can contain a nested bounded If-you-do program.
     // Give its owner the complete tail; splitting its interior sentences
     // here would erase the bracket/result scope before that owner runs.
     let tail=crate::util::trim_edge_punctuation_tokens(&document.tokens[first.len()..]);
-    if !tail.is_empty(){effects.extend(crate::clause_support::parse_effect_sentences_lexed(tail)?);}
+    bounded_program_followups(&mut effects, tail)?;
     Ok(Some(effects))
 }
 
@@ -1967,16 +2004,15 @@ fn read_bounded_instruction_program(document: &Document<'_>) -> Result<Option<Ve
         Some(crate::grammar::filters::parse_condition_predicate_lexed(&header[1..comma])?)
     };
     if !document.tokens.get(colon+1).is_some_and(|token| token.kind == TokenKind::LBracket) { return Ok(None); }
-    let (body, mut tail) = bounded_program_payload(document, colon)?;
-    let effects = parse_bounded_program(body)?;
+    let (effects, mut tail) = parse_following_body(document, colon)?;
     let mut if_false = Vec::new();
     if predicate.is_some() && tail.first().is_some_and(|token| token.is_word("otherwise")) {
         if let Some(otherwise_colon) = bounded_program_colon(tail)
             && crate::lexer::parser_token_word_refs(&tail[..otherwise_colon]) == ["otherwise", "do", "the", "following"]
             && tail.get(otherwise_colon + 1).is_some_and(|token| token.kind == TokenKind::LBracket)
         {
-            let (otherwise_body, remainder) = bounded_program_payload(&Document::new(tail), otherwise_colon)?;
-            if_false = parse_bounded_program(otherwise_body)?;
+            let (otherwise, remainder) = parse_following_body(&Document::new(tail), otherwise_colon)?;
+            if_false = otherwise;
             if if_false.is_empty() { return Err(CardTextError::ParseError("bounded otherwise program cannot be empty".into())); }
             crate::word_claims::claim_tokens(&tail[..=otherwise_colon]);
             tail = remainder;
@@ -2005,6 +2041,38 @@ fn read_bounded_instruction_program(document: &Document<'_>) -> Result<Option<Ve
 #[cfg(test)]
 mod bounded_instruction_scope_tests {
     use super::*;
+
+    #[test]
+    fn chosen_count_and_unless_payment_scope_only_the_bracketed_effects() {
+        for header in [
+            "With X equal to the number of objects chosen this way",
+            "Unless any player pays {2}",
+        ] {
+            let text = format!("{header}, do the following: [Draw a card; You gain 2 life]. You lose 3 life.");
+            let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+            let output = crate::clause_support::parse_effect_sentences_lexed(&tokens).unwrap();
+            let [scope, followup] = output.as_slice() else { panic!("{output:?}") };
+            let body = match scope {
+                EffectAst::BindX { value, effects } => {
+                    assert!(header.starts_with("With"));
+                    assert_eq!(*value, crate::effect::Value::Count(crate::target::ObjectFilter::tagged(
+                        crate::tag::CompilerReferenceTag::ChosenObjects.bind())));
+                    effects
+                }
+                EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { player, effects, .. }) => {
+                    assert!(header.starts_with("Unless"));
+                    assert_eq!(*player, crate::cards::builders::PlayerAst::Any);
+                    effects
+                }
+                _ => panic!("{scope:?}"),
+            };
+            let parse = |text| crate::clause_support::parse_effect_sentences_lexed(
+                &crate::lexer::lex_line(text, 0).unwrap()).unwrap();
+            assert_eq!(body, &parse("Draw a card. You gain 2 life."));
+            assert_eq!(std::slice::from_ref(followup), parse("You lose 3 life."));
+        }
+    }
+
     #[test]
     fn conditional_program_keeps_complete_body_and_independent_tail() {
         let tokens=crate::lexer::lex_line("If you control an artifact, do the following: [You gain 2 life; Draw a card]. You lose 1 life.",0).unwrap();
@@ -2093,8 +2161,7 @@ mod quoted_optional_price_owner_tests {
                 if matches!(effect, EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
                     action: crate::cards::builders::SubjectVerbActionAst::Tokens(
                         crate::cards::builders::TokenActionAst::CreateTokenWithMods { tapped: true, .. }
-                        | crate::cards::builders::TokenActionAst::CreateTokenCopy { enters_tapped: true, .. }
-                        | crate::cards::builders::TokenActionAst::CreateTokenCopyFromSource { enters_tapped: true, .. }), .. })) { count += 1; }
+                        | crate::cards::builders::TokenActionAst::CreateTokenCopy { enters_tapped: true, .. }), .. })) { count += 1; }
                 crate::effect_ast_traversal::for_each_nested_effects(effect, true, |body| count += tapped_creation_count(body));
             }
             count
@@ -2105,7 +2172,7 @@ mod quoted_optional_price_owner_tests {
     fn ordinary_quoted_optional_actions_keep_their_original_owner() {
         let tokens=crate::lexer::lex_line("You may have target creature gain \"Whenever this creature attacks, draw a card.\" until end of turn.",0).unwrap();let document=Document::new(&tokens);
         assert!(read_explicit_optional_cost_program(&document).unwrap().is_none());
-        assert!(!super::super::bounded_source_programs::has_optional_cost_program_head(&tokens));
+        assert!(!super::super::has_optional_quoted_cost(&tokens));
     }
 }
 
@@ -2153,7 +2220,7 @@ fn read_chosen_color_or_type_protection(document: &Document<'_>) -> Result<Optio
         crate::ability::ProtectionFrom::Color(crate::color::ColorSet::RED),
         crate::ability::ProtectionFrom::Color(crate::color::ColorSet::GREEN),
     ];
-    protections.extend(ironsmith_core::ChooseCardTypeEffect::all_card_types().iter().copied().map(crate::ability::ProtectionFrom::CardType));
+    protections.extend(crate::types::CardType::ALL.iter().copied().map(crate::ability::ProtectionFrom::CardType));
     let abilities=protections.into_iter().map(|protection|crate::cards::builders::GrantedAbilityAst::StaticAbility(Box::new(
         crate::cards::builders::StaticAbilityAst::Static(crate::model::CompilerStaticAbilityCore::protection(protection))
     ))).collect();
@@ -2171,7 +2238,7 @@ mod color_or_type_protection_program_tests {
         let effects=read_chosen_color_or_type_protection(&Document::new(&tokens)).unwrap().unwrap();
         let [EffectAst::SubjectVerb(subject)]=effects.as_slice() else {panic!("one common target owner")};
         let crate::cards::builders::SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantAbilitiesChoiceToTarget{abilities,duration,..})=&subject.action else {panic!("existing resolution-time choice")};
-        assert_eq!(abilities.len(),5+ironsmith_core::ChooseCardTypeEffect::all_card_types().len());
+        assert_eq!(abilities.len(),5+crate::types::CardType::ALL.len());
         assert_eq!(*duration,crate::effect::Until::EndOfTurn);
         let extra=crate::lexer::lex_line("Choose a color or card type. Target permanent gains protection from the chosen color or type until end of turn. Draw a card.",0).unwrap();
         assert!(read_chosen_color_or_type_protection(&Document::new(&extra)).unwrap().is_none());

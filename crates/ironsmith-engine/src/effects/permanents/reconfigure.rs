@@ -8,15 +8,7 @@ use crate::target::ChooseSpec;
 pub use ironsmith_core::ReconfigureEffect;
 
 impl EffectExecutor for ReconfigureEffect {
-    fn execute(
-        &self,
-        game: &mut crate::game_state::GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut crate::game_state::GameState,

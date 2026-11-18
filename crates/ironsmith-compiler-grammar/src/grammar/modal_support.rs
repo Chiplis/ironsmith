@@ -1,13 +1,7 @@
-use crate::cards::builders::DamagePreventionActionAst;
 use crate::cards::builders::{
-    ActivationTiming, CardTextError, CharacteristicActionAst, ChoiceActionAst,
-    ConditionalModeSelection, ControlActionAst, CounterActionAst, DamageActionAst, EffectAst,
-    EffectPredicate, ExchangeActionAst, GameActionAst, GrantActionAst, IfResultPredicate,
-    KeywordActionAst, LibraryActionAst, LifeResourceActionAst, LineInfo, ManaActionAst,
-    ParsedConditionalModeChange, ParsedModalActivatedHeader, ParsedModalGate, ParsedModalHeader,
-    PermanentStateActionAst, RandomActionAst, ReplacementActionAst, RevealLookActionAst,
-    StackActionAst, StatChangeActionAst, SubjectVerbActionAst, TokenActionAst,
-    TurnStructureActionAst, ZoneMoveActionAst,
+    ActivationTiming, CardTextError, ConditionalModeSelection, EffectAst, EffectPredicate,
+    IfResultPredicate, LineInfo, ParsedConditionalModeChange, ParsedModalActivatedHeader,
+    ParsedModalGate, ParsedModalHeader,
 };
 use crate::effect::Value;
 use crate::target::PlayerFilter;
@@ -17,7 +11,6 @@ use super::activation_and_restrictions::activated_line_core::{
     infer_activated_functional_zones_lexed, parse_activate_only_timing_lexed,
 };
 use super::clause_support::{parse_effect_sentences_lexed, parse_trigger_clause_lexed};
-use super::effect_ast_traversal::try_for_each_nested_effects_mut;
 use super::grammar::abilities::parse_activation_condition_lexed;
 use super::grammar::activation_costs::parse_activation_cost_tokens;
 use super::grammar::primitives as grammar;
@@ -31,7 +24,6 @@ use super::lexer::{
     OwnedLexToken, TokenKind, contains_token_word, locate_token_word_choice, render_token_slice,
     trim_lexed_commas,
 };
-use super::modal_helpers::{replace_unbound_x_with_value, value_contains_unbound_x};
 use super::semantic_assembly::assemble_activation_cost;
 
 type ModalHeader = ParsedModalHeader;
@@ -577,730 +569,7 @@ fn parse_x_is_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
         .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
 }
 
-pub fn replace_modal_header_x_in_effects_ast(
-    effects: &mut [EffectAst],
-    replacement: &Value,
-    clause: &str,
-) -> Result<(), CardTextError> {
-    for effect in effects {
-        replace_modal_header_x_in_effect_ast(effect, replacement, clause)?;
-    }
-    Ok(())
-}
-
-fn replace_modal_header_x_in_value(
-    value: &mut Value,
-    replacement: &Value,
-    clause: &str,
-) -> Result<(), CardTextError> {
-    if !value_contains_unbound_x(value) {
-        return Ok(());
-    }
-    *value = replace_unbound_x_with_value(value.clone(), replacement, clause)?;
-    Ok(())
-}
-
-fn replace_modal_header_x_in_effect_ast(
-    effect: &mut EffectAst,
-    replacement: &Value,
-    clause: &str,
-) -> Result<(), CardTextError> {
-    match effect {
-        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { .. }) => {
-                // Use the ordinary target-tree rewrite (count wrappers,
-                // aggregate bounds and nested target filter expressions).
-                crate::effect_sentences::replace_unbound_x_in_effect_anywhere(effect, replacement, clause)?;
-            }
-            SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { .. }) => {},
-            SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { .. } | CounterActionAst::PutCountersThenBecomeRenowned { .. } | CounterActionAst::GrowCountersOnChosenHolders) => {},
-            SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { amount })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
-            | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
-                count: amount,
-                ..
-            })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
-            | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count: amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count: amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { count: amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Proliferate {
-                count: amount,
-            })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate {
-                count: amount,
-            })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend {
-                counters: amount, ..
-            })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate {
-                count: amount,
-                ..
-            })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive {
-                count: amount,
-                ..
-            })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
-                amount, ..
-            })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
-                amount,
-                ..
-            })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
-                amount, ..
-            })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
-                amount,
-                ..
-            })
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventDamageEach { amount, .. },
-            )
-            | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { count: amount, .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
-                count: amount, ..
-            })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
-                count: amount,
-                ..
-            })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll {
-                count: amount,
-                ..
-            })
-            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
-                amount,
-                ..
-            })
-            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll {
-                amount, ..
-            })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard {
-                count: amount, ..
-            })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { count: amount })
-            | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { count: amount })
-            | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters {
-                count: amount,
-            })
-            | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { count: amount })
-            | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count: amount })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {
-                amount,
-            })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
-                amount,
-                ..
-            })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget { amount, .. },
-            )
-            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-                count: amount,
-                ..
-            })
-            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop {
-                position: amount,
-                ..
-            })
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
-                count: amount,
-                ..
-            })
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
-                count: amount,
-                ..
-            })
-            | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage {
-                amount: Some(amount),
-                ..
-            }) => replace_modal_header_x_in_value(amount, replacement, clause)?,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count, .. }) => {
-                replace_modal_header_x_in_value(amount, replacement, clause)?;
-                replace_modal_header_x_in_value(count, replacement, clause)?;
-            }
-            SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventDamageToTargetPutCounters {
-                    amount: Some(amount),
-                    ..
-                },
-            ) => {
-                replace_modal_header_x_in_value(amount, replacement, clause)?;
-            }
-            SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters {
-                put_count,
-                remove_count,
-                ..
-            }) => {
-                replace_modal_header_x_in_value(put_count, replacement, clause)?;
-                replace_modal_header_x_in_value(remove_count, replacement, clause)?;
-            }
-            SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
-                power,
-                toughness,
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::SetBasePowerToughness {
-                    power, toughness, ..
-                },
-            )
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
-                power,
-                toughness,
-                ..
-            }) => {
-                replace_modal_header_x_in_value(power, replacement, clause)?;
-                replace_modal_header_x_in_value(toughness, replacement, clause)?;
-            }
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower {
-                power,
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness {
-                toughness: power,
-                ..
-            }) => {
-                replace_modal_header_x_in_value(power, replacement, clause)?;
-            }
-            SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
-                count, ..
-            }) => {
-                replace_modal_header_x_in_value(count, replacement, clause)?;
-            }
-            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
-            | SubjectVerbActionAst::LifeResources(
-                LifeResourceActionAst::DrawForEachTaggedMatching { .. },
-            )
-            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand)
-            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
-            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. })
-            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand {
-                ..
-            })
-            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
-            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FirstResolutionEachTurn { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAbilitiesByClass { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ActivateAbilityWithoutCosts { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
-            // This node contains an EffectId, literal zone and output tag, not X.
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::GrantExileControllerInspection { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
-                ..
-            })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollPlanarDie)
-            | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
-            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
-            | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::ExcessDamageToController { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FightIterated { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
-            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
-            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
-            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
-            | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
-            | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
-            | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
-            | SubjectVerbActionAst::Library(
-                LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
-            )
-            | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary {
-                ..
-            })
-            | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
-            | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { .. })
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::RedistributeLifeTotals)
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
-            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeLifeTotals { .. })
-            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { .. })
-            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeZones { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary)
-            | SubjectVerbActionAst::Mana(
-                ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn { .. },
-            )
-            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeValues { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileInsteadOfGraveyardThisTurn)
-            | SubjectVerbActionAst::Control(ControlActionAst::ControlCombatChoicesThisTurn {
-                ..
-            })
-            | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. })
-            | SubjectVerbActionAst::PutSticker { .. }
-            | SubjectVerbActionAst::PermanentState(
-                PermanentStateActionAst::SwitchPowerToughness { .. },
-            )
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaEqualToManaCost { .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaImprintedColors)
-            | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
-            | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
-            | SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand)
-            | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
-            | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
-            | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
-            | SubjectVerbActionAst::Game(GameActionAst::RedirectEnteringSource { .. })
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
-            | SubjectVerbActionAst::TurnStructure(
-                TurnStructureActionAst::SkipNextCombatPhaseThisTurn,
-            )
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn)
-            | SubjectVerbActionAst::TurnStructure(
-                TurnStructureActionAst::SkipCombatPhasesThisTurn,
-            )
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled {
-                ..
-            })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
-            | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
-            | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
-            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { .. })
-            | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
-                ..
-            })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
-                ..
-            })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon {
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeMonarch)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TakeInitiative)
-            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateEmblem { .. })
-            | SubjectVerbActionAst::Game(GameActionAst::LoseGame)
-            | SubjectVerbActionAst::Game(GameActionAst::WinGame)
-            | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
-            | SubjectVerbActionAst::ZoneMoves(
-                ZoneMoveActionAst::ReturnSourceTransformedFromExile | ZoneMoveActionAst::ReturnSourceWithHasteAndExileDeadline | ZoneMoveActionAst::ExchangeSourceWithHandAura,
-            )
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Casualty { .. })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyEnergy { .. })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::PayMana { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomeForetold { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
-                ..
-            })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
-                ..
-            })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap {
-                ..
-            })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll {
-                ..
-            })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOut { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll {
-                ..
-            })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll {
-                ..
-            })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllOfChosenColor {
-                ..
-            })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. })
-            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { .. })
-            | SubjectVerbActionAst::Stack(StackActionAst::Counter { .. })
-            | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor {
-                ..
-            })
-            | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnEach { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
-                ..
-            })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
-                ..
-            })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. })
-            | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::ReorderTopOfLibrary { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
-                ..
-            })
-            | SubjectVerbActionAst::PermanentState(
-                PermanentStateActionAst::ScalePowerToughnessAll { .. },
-            )
-            | SubjectVerbActionAst::Stack(StackActionAst::ScaleXValue { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantProtectionChoice { .. })
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventAllCombatDamage { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::AssignNoCombatDamage { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventAllCombatDamageFromSource { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventAllCombatDamageToPlayers { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventAllCombatDamageToYou { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventNextTimeDamage { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::ReplaceNextDamageToTarget { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::RedirectNextTimeDamageToSource { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
-                    ..
-                },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventAllDamageToTarget { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventAllDamageFromSourceFilter { .. },
-            )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::PreventDamageToTargetPutCounters {
-                    amount: None, ..
-                },
-            )
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Meld { .. })
-            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenChoice { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrarySlotsToHand {
-                ..
-            })
-            | SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilityToSource { .. })
-            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControl { .. })
-            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControlHeterogeneous {
-                ..
-            })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllAttachedTo { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { .. })
-            | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
-            | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAdditionalTime { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves {
-                ..
-            })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves {
-                ..
-            })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
-                ..
-            })
-            | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterFutureZoneReplacement { .. },
-            )
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
-                ..
-            })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite {
-                ..
-            })
-            | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterManaSpendPermission { .. },
-            )
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
-                ..
-            })
-            | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
-            )
-            | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterDamageMultiplier { .. }
-                | ReplacementActionAst::RegisterDamageAddition { .. }
-                | ReplacementActionAst::RegisterTokenCreationMultiplier { .. },
-            )
-            | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
-            )
-            | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterEnterUnderControlReplacement { .. },
-            )
-            | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterEnterTappedReplacement { .. },
-            )
-            | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterEnterWithCountersReplacement { .. },
-            )
-            | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterNextBatchEnterWithCounters { .. },
-            )
-            | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterNextBatchEnterAsCopy { .. },
-            )
-            | SubjectVerbActionAst::Control(ControlActionAst::Enchant { .. })
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory { .. })
-            | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. })
-            | SubjectVerbActionAst::Library(
-                LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
-            )
-            | SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
-                ..
-            })
-            | SubjectVerbActionAst::Stack(StackActionAst::CastTagged { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
-                ..
-            })
-            | SubjectVerbActionAst::Grants(
-                GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
-                    ..
-                },
-            )
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
-                ..
-            })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
-                ..
-            })
-            | SubjectVerbActionAst::Grants(
-                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
-                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { .. },
-            )
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
-                ..
-            })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves {
-                ..
-            })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
-                ..
-            })
-            | SubjectVerbActionAst::TargetOnly { .. }
-            | SubjectVerbActionAst::TagMatchingObjects { .. }
-            | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::BecomeBasePtCreature { .. },
-            )
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes {
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes {
-                ..
-            })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
-                ..
-            })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { .. })
-            | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::SetCreatureSubtypes { .. },
-            )
-            | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { .. },
-            )
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors {
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::AddAllSubtypesOfFamily { .. },
-            )
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily {
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::BecomeAuraEnchantment { .. },
-            )
-            | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::BecomeBasicLandType { .. },
-            )
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors {
-                ..
-            })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless { .. })
-            | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::BecomeBasicLandTypeChoice { .. },
-            )
-            | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::BecomeCreatureTypeChoice { .. },
-            )
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
-                ..
-            } | CharacteristicActionAst::RemoveOptionalTextFragment {
-                ..
-            }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
-                ..
-            })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { .. })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
-                ..
-            })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantKeywordAbilitiesFrom { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { .. })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
-                ..
-            })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
-                ..
-            })
-            | SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { .. })
-            | SubjectVerbActionAst::Cant { .. }
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases {
-                ..
-            })
-            | SubjectVerbActionAst::Game(GameActionAst::ReverseTurnOrder)
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
-                ..
-            })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown {
-                ..
-            })
-            | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary) => {}
-            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
-                count: amount, ..
-            })
-            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                count: amount,
-                ..
-            }) => {
-                replace_modal_header_x_in_value(amount, replacement, clause)?;
-            }
-            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
-                count: amount,
-                dynamic_power_toughness,
-                ..
-            }) => {
-                replace_modal_header_x_in_value(amount, replacement, clause)?;
-                if let Some((power, toughness)) = dynamic_power_toughness {
-                    replace_modal_header_x_in_value(power, replacement, clause)?;
-                    replace_modal_header_x_in_value(toughness, replacement, clause)?;
-                }
-            }
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Learn)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockRoomDoor) => {}
-        },
-        _ => {
-            try_for_each_nested_effects_mut(effect, true, |nested| {
-                replace_modal_header_x_in_effects_ast(nested, replacement, clause)
-            })?;
-        }
-    }
-
-    Ok(())
-}
+pub use crate::effect_sentences::replace_modal_header_x_in_effects_ast;
 
 fn parse_modal_header_prefix_effects(
     tokens: &[OwnedLexToken],
@@ -1394,12 +663,18 @@ fn is_loyalty_shorthand_cost_text(text: &str) -> bool {
 
 #[test]
 fn numeric_keyword_actions_preserve_modal_header_x_binding() {
+    use crate::cards::builders::{KeywordActionAst, SubjectVerbActionAst};
+
     for mut effect in [
         EffectAst::subject_verb_collect_evidence(Value::X),
         EffectAst::subject_verb_empower_jace(Value::X),
     ] {
-        replace_modal_header_x_in_effect_ast(&mut effect, &Value::Fixed(3), "typed keyword action")
-            .unwrap();
+        replace_modal_header_x_in_effects_ast(
+            std::slice::from_mut(&mut effect),
+            &Value::Fixed(3),
+            "typed keyword action",
+        )
+        .unwrap();
         let EffectAst::SubjectVerb(subject) = effect else {
             panic!("subject/verb action");
         };
@@ -1411,5 +686,94 @@ fn numeric_keyword_actions_preserve_modal_header_x_binding() {
             _ => panic!("typed numeric keyword action"),
         };
         assert_eq!(amount, Value::Fixed(3));
+    }
+}
+
+#[cfg(test)]
+mod x_scope_tests {
+    use super::*;
+    use crate::cards::builders::{
+        GrantActionAst, GrantedAbilityAst, LifeResourceActionAst, StaticAbilityAst,
+        SubjectVerbActionAst, TargetAst,
+    };
+    use crate::effect::Until;
+    use crate::effect_sentences::replace_unbound_x_in_effects_anywhere;
+    use crate::model::CompilerStaticAbilityCore;
+    use crate::object::CounterType;
+    use crate::tag::CompilerReferenceTag;
+    use crate::target::{ChooseSpec, SourceReferenceSurface};
+
+    #[test]
+    fn outer_x_does_not_capture_a_granted_activation() {
+        let text = r#"Target creature gains "{X}: Draw X cards." until end of turn."#;
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let grant = parse_effect_sentences_lexed(&tokens).unwrap();
+        let [EffectAst::SubjectVerb(subject)] = grant.as_slice() else {
+            panic!("expected a grant: {grant:?}");
+        };
+        let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+            abilities, ..
+        }) = &subject.action
+        else {
+            panic!("expected targeted grant: {subject:?}")
+        };
+        let [GrantedAbilityAst::ParsedObjectAbility { ability, .. }] = abilities.as_slice() else {
+            panic!("expected a parsed ability: {abilities:?}");
+        };
+        let Some([EffectAst::SubjectVerb(draw)]) = ability.effects_ast.as_deref() else {
+            panic!("expected a draw: {ability:?}");
+        };
+        assert!(matches!(&draw.action, SubjectVerbActionAst::LifeResources(
+            LifeResourceActionAst::Draw { count }
+        ) if super::super::modal_helpers::value_contains_unbound_x(count)));
+
+        for rewrite in [
+            replace_modal_header_x_in_effects_ast,
+            replace_unbound_x_in_effects_anywhere,
+        ] {
+            let mut effects = grant.clone();
+            effects.push(EffectAst::subject_verb_collect_evidence(Value::XTimes(2)));
+            rewrite(&mut effects, &Value::Fixed(3), text).unwrap();
+            assert_eq!(effects[0], grant[0]);
+            assert_eq!(
+                effects[1],
+                EffectAst::subject_verb_collect_evidence(Value::Fixed(6))
+            );
+        }
+    }
+
+    #[test]
+    fn only_where_x_binds_granted_entry_counters_and_rebases_it() {
+        let grant = |count| {
+            EffectAst::subject_verb_grant_abilities_to_target(
+                TargetAst::Tagged(CompilerReferenceTag::It.bind(), None),
+                vec![GrantedAbilityAst::StaticAbility(Box::new(
+                    StaticAbilityAst::Static(
+                        CompilerStaticAbilityCore::enters_with_counters_value(
+                            CounterType::PlusOnePlusOne,
+                            count,
+                        ),
+                    ),
+                ))],
+                Until::EndOfTurn,
+            )
+        };
+        let replacement =
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(CompilerReferenceTag::It.key())));
+        let mut effects = [grant(Value::X)];
+        replace_modal_header_x_in_effects_ast(&mut effects, &replacement, "modal header").unwrap();
+        assert_eq!(effects, [grant(Value::X)]);
+        replace_unbound_x_in_effects_anywhere(
+            &mut effects,
+            &replacement,
+            "where X is its mana value",
+        )
+        .unwrap();
+        let recipient = ChooseSpec::Source.with_surface_hint(
+            ironsmith_core::ChooseSpecSurfaceHint::SourceReference(
+                SourceReferenceSurface::ThisPermanentType("it".into()),
+            ),
+        );
+        assert_eq!(effects, [grant(Value::ManaValueOf(Box::new(recipient)))]);
     }
 }

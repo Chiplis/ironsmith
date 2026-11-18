@@ -617,7 +617,9 @@ fn counter_type_from_preview_name(raw_name: &str) -> ironsmith::object::CounterT
     match normalized.as_str() {
         "+1/+1" | "plus one plus one" => ironsmith::object::CounterType::PlusOnePlusOne,
         "-1/-1" | "minus one minus one" => ironsmith::object::CounterType::MinusOneMinusOne,
+        "loyalty" => ironsmith::object::CounterType::Loyalty,
         "charge" => ironsmith::object::CounterType::Charge,
+        "storage" => ironsmith::object::CounterType::Storage,
         "time" => ironsmith::object::CounterType::Time,
         "stun" => ironsmith::object::CounterType::Stun,
         "lore" => ironsmith::object::CounterType::Lore,
@@ -1845,6 +1847,11 @@ impl WasmGame {
     pub fn finish_puzzle_setup(&mut self) -> Result<(), JsValue> {
         // Imported positions already supply their hands and battlefield.
         // Start the turn runner directly, without opening-hand decisions or draws.
+        if self.match_format == MatchFormatInput::Planechase
+            && self.game.face_up_planar_objects().is_empty()
+        {
+            self.game.reveal_starting_plane().map_err(|error| JsValue::from_str(&error))?;
+        }
         self.reset_runtime_state();
         self.recompute_ui_decision()
     }
@@ -2465,20 +2472,8 @@ impl WasmGame {
             }
         }
 
-        if let Some(mut planar_decks) = prepared_planar_decks {
-            if planar_decks.len() == 1 {
-                self.game
-                    .enable_planechase_communal(planar_decks.pop().expect("one planar deck"))?;
-            } else {
-                let players = self
-                    .game
-                    .players
-                    .iter()
-                    .map(|player| player.id)
-                    .collect::<Vec<_>>();
-                self.game
-                    .enable_planechase(players.into_iter().zip(planar_decks).collect())?;
-            }
+        if let Some(planar_decks) = prepared_planar_decks {
+            self.install_planar_decks(planar_decks)?;
         }
 
         if let Some(vanguards) = prepared_vanguards {
@@ -3896,6 +3891,70 @@ impl WasmGame {
             .map_err(|e| JsValue::from_str(&format!("objectDetails encode failed: {e}")))
     }
 
+    /// Read a battlefield object's current mana value from its characteristic snapshot.
+    #[wasm_bindgen(js_name = objectManaValue)]
+    pub fn object_mana_value(&self, object_id: u64) -> Result<u32, JsValue> {
+        let id = ObjectId::from_raw(object_id);
+        if !self.game.object(id).is_some_and(|object| object.zone == Zone::Battlefield) {
+            return Err(JsValue::from_str("Mana value inspection requires a battlefield object"));
+        }
+        ironsmith::snapshot::ObjectSnapshot::try_from_object_id(&self.game, id)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?
+            .map(|object| object.mana_value())
+            .ok_or_else(|| JsValue::from_str(&format!("unknown object id: {object_id}")))
+    }
+
+    /// Read the active goaded designation of a battlefield object.
+    #[wasm_bindgen(js_name = objectGoaded)]
+    pub fn object_goaded(&self, object_id: u64) -> Result<bool, JsValue> {
+        let id = ObjectId::from_raw(object_id);
+        if !self.game.object(id).is_some_and(|object| object.zone == Zone::Battlefield) {
+            return Err(JsValue::from_str("Goad inspection requires a battlefield object"));
+        }
+        Ok(self.game.is_goaded(id))
+    }
+
+    /// Report both-face identity and the back-face state of a battlefield object.
+    #[wasm_bindgen(js_name = objectTransformState)]
+    pub fn object_transform_state(&self, object_id: u64) -> Result<JsValue, JsValue> {
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct TransformState {
+            double_faced: bool,
+            transformed: bool,
+        }
+
+        let id = ObjectId::from_raw(object_id);
+        let object = self.game.object(id).filter(|object| object.zone == Zone::Battlefield)
+            .ok_or_else(|| JsValue::from_str("Transform state requires a battlefield object"))?;
+        serde_wasm_bindgen::to_value(&TransformState {
+            double_faced: object.linked_face_layout == ironsmith::card::LinkedFaceLayout::TransformLike
+                && (object.other_face.is_some() || object.other_face_name.is_some()),
+            transformed: self.game.is_transformed_permanent(id),
+        }).map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    /// Inspect the active venture marker for one player.
+    #[wasm_bindgen(js_name = playerDungeon)]
+    pub fn player_dungeon(&self, player_index: u8) -> Result<JsValue, JsValue> {
+        #[derive(serde::Serialize)]
+        struct Progress<'a> {
+            dungeon: &'a str,
+            room: &'a str,
+        }
+
+        let player = PlayerId::from_index(player_index);
+        if self.game.player(player).is_none() {
+            return Err(JsValue::from_str("invalid player index"));
+        }
+        let progress = self.game.active_dungeon(player).map(|marker| Progress {
+            dungeon: &marker.dungeon_name,
+            room: &marker.room_name,
+        });
+        serde_wasm_bindgen::to_value(&progress)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
     /// Return game snapshot as pretty JSON.
     #[wasm_bindgen(js_name = snapshotJson)]
     pub fn snapshot_json(&mut self) -> Result<String, JsValue> {
@@ -4096,6 +4155,29 @@ impl WasmGame {
         }
         if let Some(continuation) = self.pending_live_continuation.as_mut() {
             continuation.checkpoint.game.force_next_die_roll(result);
+        }
+    }
+
+    /// Queue the physical face of the next coin flip in a deterministic fixture.
+    #[wasm_bindgen(js_name = forceNextCoinFlip)]
+    pub fn force_next_coin_flip(&mut self, heads: bool) {
+        let face = if heads {
+            ironsmith::CoinFace::Heads
+        } else {
+            ironsmith::CoinFace::Tails
+        };
+        self.game.force_next_coin_flip(face);
+        if let Some(checkpoint) = self.priority_epoch_checkpoint.as_mut() {
+            checkpoint.game.force_next_coin_flip(face);
+        }
+        if let Some(action) = self.pending_replay_action.as_mut() {
+            action.checkpoint.game.force_next_coin_flip(face);
+        }
+        if let Some(checkpoint) = self.pending_action_checkpoint.as_mut() {
+            checkpoint.game.force_next_coin_flip(face);
+        }
+        if let Some(continuation) = self.pending_live_continuation.as_mut() {
+            continuation.checkpoint.game.force_next_coin_flip(face);
         }
     }
 
@@ -4480,6 +4562,85 @@ impl WasmGame {
         self.add_cards_to_zones_impl(cards_js, false)
     }
 
+    /// Install validated planar decks for a puzzle before the first turn.
+    #[wasm_bindgen(js_name = stagePuzzlePlanarDecks)]
+    pub fn stage_puzzle_planar_decks(&mut self, decks_js: JsValue) -> Result<(), JsValue> {
+        if self.runner.is_some() || self.pregame.is_some() || !self.loaded_decks.is_empty()
+            || self.pending_decision.is_some() || self.game.planechase.is_some()
+        {
+            return Err(JsValue::from_str("Planar deck staging requires a resetEmpty puzzle before play"));
+        }
+        let decks: Vec<Vec<PlanarCardInput>> = serde_wasm_bindgen::from_value(decks_js)
+            .map_err(|error| JsValue::from_str(&format!("invalid planar decks: {error}")))?;
+        self.ensure_card_definitions_loaded(decks.iter().flatten().map(|card| card.name.as_str()));
+        let prepared = self.load_planar_decks_for_setup(&decks, self.game.players.len())
+            .map_err(|error| JsValue::from_str(&error))?;
+        self.install_planar_decks(prepared).map_err(|error| JsValue::from_str(&error))?;
+        self.match_format = MatchFormatInput::Planechase;
+        Ok(())
+    }
+
+    /// Stage emblems with compiled abilities before the puzzle's first decision.
+    #[wasm_bindgen(js_name = stagePuzzleEmblems)]
+    pub fn stage_puzzle_emblems(&mut self, emblems_js: JsValue) -> Result<(), JsValue> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct EmblemInput {
+            player_index: u8,
+            name: String,
+            ability_source: String,
+        }
+
+        if self.runner.is_some() || self.pregame.is_some() || !self.loaded_decks.is_empty()
+            || self.pending_decision.is_some()
+        {
+            return Err(JsValue::from_str("Emblem staging requires a resetEmpty puzzle before play"));
+        }
+        let emblems: Vec<EmblemInput> = serde_wasm_bindgen::from_value(emblems_js)
+            .map_err(|error| JsValue::from_str(&format!("invalid emblem fixture: {error}")))?;
+        self.ensure_card_definitions_loaded(emblems.iter().map(|emblem| emblem.ability_source.as_str()));
+        let mut staged = Vec::with_capacity(emblems.len());
+        for emblem in emblems {
+            let owner = PlayerId::from_index(emblem.player_index);
+            if self.game.player(owner).is_none() || emblem.name.trim().is_empty() {
+                return Err(JsValue::from_str("invalid emblem fixture owner or name"));
+            }
+            let definition = self.load_compilable_card_definition(&emblem.ability_source)?;
+            let abilities: Vec<_> = definition.abilities.iter()
+                .map(|ability| ability.clone().in_zones(vec![Zone::Command]))
+                .collect();
+            if abilities.is_empty() {
+                return Err(JsValue::from_str(&format!("emblem ability source has no abilities: {}", emblem.ability_source)));
+            }
+            staged.push((owner, emblem.name, abilities));
+        }
+        for (owner, name, abilities) in staged {
+            let id = self.game.new_object_id();
+            self.game.add_object(ironsmith::object::Object::new_emblem(id, owner, name, abilities));
+        }
+        Ok(())
+    }
+
+    /// Set the seating order for an empty puzzle, before staging objects.
+    #[wasm_bindgen(js_name = setPuzzleTurnOrder)]
+    pub fn set_puzzle_turn_order(&mut self, order_js: JsValue) -> Result<(), JsValue> {
+        if self.runner.is_some() || self.pregame.is_some() || !self.loaded_decks.is_empty()
+            || self.pending_decision.is_some() || !self.game.objects_in_deterministic_order().is_empty() {
+            return Err(JsValue::from_str("Puzzle turn order requires an empty resetEmpty runtime"));
+        }
+        let seats: Vec<u8> = serde_wasm_bindgen::from_value(order_js)
+            .map_err(|error| JsValue::from_str(&format!("invalid puzzle turn order: {error}")))?;
+        let order: Vec<PlayerId> = seats.into_iter().map(PlayerId::from_index).collect();
+        if order.len() != self.game.players.len()
+            || order.first() != Some(&self.game.turn.active_player)
+            || self.game.players.iter().any(|player| !order.contains(&player.id))
+        {
+            return Err(JsValue::from_str("Puzzle turn order must list each seat once, starting with the active player"));
+        }
+        self.game.turn_store.turn_order = order;
+        Ok(())
+    }
+
     fn add_cards_to_zones_impl(&mut self, cards_js: JsValue, recompute: bool) -> Result<JsValue, JsValue> {
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -4489,6 +4650,8 @@ impl WasmGame {
             zone_name: String,
             #[serde(default = "default_skip_triggers")]
             skip_triggers: bool,
+            #[serde(default)]
+            tapped: bool,
         }
 
         struct ValidatedAddCardToZone {
@@ -4496,6 +4659,7 @@ impl WasmGame {
             definition_index: usize,
             zone: Zone,
             skip_triggers: bool,
+            tapped: bool,
         }
 
         fn default_skip_triggers() -> bool {
@@ -4541,6 +4705,9 @@ impl WasmGame {
                 return Err(JsValue::from_str("invalid player index"));
             }
             let zone = zone_from_ui_name(&card.zone_name).map_err(|err| JsValue::from_str(&err))?;
+            if card.tapped && (recompute || zone != Zone::Battlefield) {
+                return Err(JsValue::from_str("Tapped fixtures require puzzle battlefield staging"));
+            }
             self.validate_commander_manual_zone_addition(zone)
                 .map_err(|error| JsValue::from_str(&error))?;
             if zone == Zone::Battlefield && !card.skip_triggers {
@@ -4558,6 +4725,7 @@ impl WasmGame {
                 definition_index,
                 zone,
                 skip_triggers: card.skip_triggers,
+                tapped: card.tapped,
             });
         }
 
@@ -4577,6 +4745,9 @@ impl WasmGame {
                 }
                 if entry.zone == Zone::Command {
                     self.game.set_as_commander(object_id, entry.player_id);
+                }
+                if entry.tapped {
+                    self.game.tap(object_id);
                 }
                 object_ids.push(object_id.0);
             } else {

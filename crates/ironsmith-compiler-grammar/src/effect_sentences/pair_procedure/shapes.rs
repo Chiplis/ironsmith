@@ -535,32 +535,14 @@ pub(super) fn each_player_pay_life_tokens(
             max_iterations: None,
         }),
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-            effects: vec![EffectAst::subject_verb(
-                SubjectVerbRoleAst::Actor,
-                PlayerAst::That,
-                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
-                    name: "1/1 black Rat creature".to_string(),
-                    definition: crate::effect_sentences::sequence_rules::generic_subject_verb_sequences::rat_token_definition(),
-                    count: Value::PendingEffectMetric {
-                        source: ironsmith_core::EffectMetricSource::Outcome,
-                        metric: ironsmith_core::EffectMetric::Count,
-                    },
-                    dynamic_power_toughness: None,
-                    player: PlayerAst::That,
-                    actor_surface_explicit: false,
-                    attached_to: None,
-                    tapped: false,
-                    attacking: false,
-                    attack_target_player: None,
-                    combat_entry: Default::default(),
-                    exile_at_end_of_combat: false,
-                    sacrifice_at_end_of_combat: false,
-                    sacrifice_at_next_end_step: false,
-                    exile_at_next_end_step: false,
-                    next_end_step_player: PlayerFilter::Any,
-                    granted_abilities: Vec::new(),
-                    ability_presentation: None,
-                }),
+            effects: vec![crate::effect_sentences::simple_token_creation(
+                "1/1 black Rat creature",
+                crate::effect_sentences::sequence_rules::generic_subject_verb_sequences::rat_token_definition(),
+                Value::PendingEffectMetric {
+                    source: ironsmith_core::EffectMetricSource::Outcome,
+                    metric: ironsmith_core::EffectMetric::Count,
+                },
+                PlayerAst::That, false, None,
             )],
         }),
     ]))

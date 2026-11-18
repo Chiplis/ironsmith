@@ -62,7 +62,7 @@ fn shared_characteristic_cost_reduction_uses_candidate_spell_and_linked_exile_se
     let spell = game.object(spell_id).expect("candidate spell should exist");
 
     assert_eq!(
-        resolve_cost_reduction_amount(&game, spell, source_id, alice, &reduction),
+        resolve_cost_reduction_amount_for_caster(&game, spell, source_id, alice, alice, &reduction),
         2,
         "the duplicate artifact and unrelated land must not inflate the two shared spell card types"
     );
@@ -158,6 +158,43 @@ fn black_life_permission_scan_is_needed_only_for_costs_with_a_black_symbol() {
     assert!(mana_cost_has_black_symbol(&hybrid_black));
     assert!(mana_cost_has_black_symbol(&phyrexian_black));
     assert!(!mana_cost_has_black_symbol(&nonblack_x));
+}
+
+#[test]
+fn activated_ability_cost_replacement_resets_the_optional_reduction_allowance() {
+    use crate::ability::Ability;
+    use crate::static_abilities::{ActivatedAbilityCostReduction, StaticAbility};
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let payer = PlayerId::from_index(0);
+    let generic = |n| ManaCost::from_symbols(vec![ManaSymbol::Generic(n)]);
+    let discount = |amount, optional| ActivatedAbilityCostReduction {
+        optional,
+        ..ActivatedAbilityCostReduction::new(ObjectFilter::source(), amount)
+    };
+    let mut card = CardDefinitionBuilder::new(CardId::new(), "Replacement source")
+        .card_types(vec![CardType::Artifact]);
+    for rule in [
+        discount(3, true),
+        discount(5, false),
+        ActivatedAbilityCostReduction::replacement_mana_cost(ObjectFilter::source(), generic(9), "Pay {9}"),
+        discount(2, false),
+        discount(4, true),
+    ] {
+        card = card.with_ability(Ability::static_ability(StaticAbility::new(rule)));
+    }
+    let source = game.create_object_from_definition(&card.build(), payer, Zone::Battlefield);
+    for (limit, expected) in [(0, 7), (1, 6), (4, 3)] {
+        let facts = ActivationCostAbility {
+            optional_generic_reduction_limit: Some(limit),
+            ..Default::default()
+        };
+        assert_eq!(optional_activation_reduction_capacity(&game, source, &[], &facts), 4);
+        let total = calculate_effective_activation_total_cost_for_ability(
+            &game, payer, source, &crate::cost::TotalCost::mana(generic(12)), &[], Some(&facts),
+        );
+        assert_eq!(total.mana_cost(), Some(&generic(expected)));
+    }
 }
 
 #[test]
@@ -478,6 +515,38 @@ fn target_count_without_a_target_predicate_can_match_zero_targets() {
 }
 
 #[test]
+fn payment_pips_keep_bound_x_and_stable_payment_order() {
+    use ManaSymbol::{Black, Generic, Life, Red, Snow, X};
+
+    let cost = ManaCost::from_pips(vec![
+        vec![Generic(0)],
+        vec![Black],
+        vec![X],
+        vec![Generic(2), Red],
+        vec![Snow],
+    ])
+    .with_waterbend()
+    .bind_x_payment(2);
+
+    // Payment uses the component's declaration and pays constrained pips first.
+    assert_eq!(
+        GameState::expanded_payment_pips(&cost, 0, true),
+        [
+            vec![Snow],
+            vec![Black, Life(2)],
+            vec![Generic(2), Red],
+            vec![Generic(1)],
+            vec![Generic(1)]
+        ],
+    );
+    // The affordability solver supplies its own X and orders the result itself.
+    assert_eq!(
+        crate::mana::unit_payment_pips(&cost, 0, false),
+        [vec![Black], vec![Generic(2), Red], vec![Snow]],
+    );
+}
+
+#[test]
 fn mana_symbol_cost_modifiers_scale_by_target_count() {
     let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let filter = ObjectFilter::default();
@@ -489,6 +558,55 @@ fn mana_symbol_cost_modifiers_scale_by_target_count() {
     assert_eq!(repetitions(false, 3), 1);
     assert_eq!(repetitions(true, 0), 0);
     assert_eq!(repetitions(true, 3), 3);
+}
+
+#[test]
+fn spell_and_battlefield_taxes_keep_their_caster_context_in_preview_and_payment() {
+    use crate::ability::Ability;
+    use crate::effect::Value;
+    use crate::static_abilities::{CostIncrease, StaticAbility};
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let caster = PlayerId::from_index(0);
+    let opponent = PlayerId::from_index(1);
+    game.player_mut(caster).unwrap().life = 3;
+    game.player_mut(opponent).unwrap().life = 7;
+    let tax = |player| {
+        Ability::static_ability(StaticAbility::new(CostIncrease::new(
+            ObjectFilter::default(),
+            Value::LifeTotal(player),
+        )))
+    };
+    let base = ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Taxed Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(base.clone())
+        .with_ability(tax(PlayerFilter::You).in_zones(vec![Zone::Hand]))
+        .with_ability(tax(PlayerFilter::IteratedPlayer).in_zones(vec![Zone::Hand]))
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, caster, Zone::Hand);
+    let assert_cost = |game: &GameState, expected| {
+        let spell = game.object(spell_id).unwrap();
+        let preview = calculate_effective_mana_cost(game, caster, spell, &base);
+        let payment = calculate_effective_mana_cost_for_payment_with_chosen_targets(
+            game,
+            caster,
+            spell,
+            &base,
+            &[],
+        );
+        assert_eq!(preview.to_oracle(), expected);
+        assert_eq!(payment, preview);
+    };
+
+    // The spell sees its controller. Only external modifiers bind the iterated caster.
+    assert_cost(&game, "{4}");
+    let source = CardDefinitionBuilder::new(CardId::new(), "Opponent's Tax")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(tax(PlayerFilter::IteratedPlayer))
+        .build();
+    game.create_object_from_definition(&source, opponent, Zone::Battlefield);
+    assert_cost(&game, "{7}");
 }
 
 #[test]
@@ -869,4 +987,93 @@ fn independent_reduction_order_is_a_payer_choice_not_source_enumeration_order() 
     let mut options=totals.apply_options(&ManaCost::from_symbols(vec![ManaSymbol::White,ManaSymbol::Blue,ManaSymbol::Black]))
         .iter().map(ManaCost::to_oracle).collect::<Vec<_>>();options.sort();
     assert_eq!(options,vec!["{B}","{U}","{U}{B}"]);
+}
+
+#[test]
+fn resource_payment_previews_preserve_pips_and_tap_order() {
+    use crate::color::ColorSet;
+    use ManaSymbol::{Generic, Red, White};
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let mut permanents = Vec::new();
+    for colors in [ColorSet::WHITE, ColorSet::RED, ColorSet::RED] {
+        let card = CardBuilder::new(CardId::new(), "Helper")
+            .card_types(vec![CardType::Creature, CardType::Artifact])
+            .color_indicator(colors)
+            .build();
+        permanents.push(game.create_object_from_card(&card, alice, Zone::Battlefield));
+    }
+
+    let cost = ManaCost::from_pips(vec![
+        vec![Generic(0)],
+        vec![Generic(1)],
+        vec![Red],
+        vec![Generic(3)],
+        vec![White, Red],
+        vec![Generic(0)],
+    ])
+    .with_spending_restriction(crate::mana::ManaSpendingRestriction::Snow);
+    let (creatures, after_convoke) = calculate_convoke_cost(&game, alice, &cost);
+    assert_eq!(creatures, [permanents[1], permanents[0], permanents[2]]);
+    assert_eq!(
+        after_convoke,
+        cost.with_pips(vec![vec![Generic(2)], vec![White, Red], vec![Generic(0)],])
+    );
+    let (artifacts, after_improvise) = calculate_improvise_cost(&game, alice, &cost);
+    assert_eq!(artifacts, permanents);
+    assert_eq!(
+        after_improvise,
+        cost.with_pips(vec![
+            vec![Red],
+            vec![Generic(1)],
+            vec![White, Red],
+            vec![Generic(0)],
+        ])
+    );
+}
+
+#[test]
+fn tap_previews_apply_affinity_and_delve_before_assigning_permanents() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Shared price")
+        .card_types(vec![CardType::Sorcery])
+        .affinity_for_artifacts()
+        .delve()
+        .convoke()
+        .improvise()
+        .build();
+    let spell = game.create_object_from_definition(&definition, alice, Zone::Hand);
+    let helper = CardBuilder::new(CardId::new(), "Helper")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let creature = game.create_object_from_card(&helper, alice, Zone::Battlefield);
+    game.create_object_from_card(&helper, alice, Zone::Graveyard);
+    let artifact = CardBuilder::new(CardId::new(), "Tool")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+    let spell = game.object(spell).unwrap();
+    for (generic, creatures, artifacts) in [
+        (2, vec![], vec![]),
+        (3, vec![creature], vec![]),
+        (4, vec![creature], vec![artifact]),
+    ] {
+        let cost = ManaCost::from_symbols(vec![ManaSymbol::Generic(generic)]);
+        assert_eq!(
+            calculate_convoke_creatures_to_tap(&game, alice, spell, &cost),
+            creatures
+        );
+        assert_eq!(
+            calculate_improvise_artifacts_to_tap(&game, alice, spell, &cost),
+            artifacts
+        );
+        let after_delve = ManaCost::from_symbols(vec![ManaSymbol::Generic(generic - 1)]);
+        assert_eq!(
+            calculate_optimal_delve(&game, alice, &cost),
+            (1, after_delve.clone())
+        );
+        assert_eq!(calculate_delve_effective_cost(&cost, 1), after_delve);
+    }
 }

@@ -1,7 +1,6 @@
 //! Immutable lexical real-card catalogs retained by programs, not game globals.
 use crate::{CardDefinition,Effect,GameState};
 use crate::effects::{EffectExecutor,ExecutionContext,ExecutionError,CompletedEffectOutputs};
-use crate::effect::EffectOutcome;
 use ironsmith_core::CardId;
 
 pub type CardDefinitionScopeEffect=ironsmith_core::card_creation::CardDefinitionScopeEffect<CardDefinition,Effect>;
@@ -89,9 +88,7 @@ impl EffectExecutor for CardDefinitionScopeEffect {
     fn visit_child_effects(&self,visitor:&mut dyn FnMut(&Effect)){visitor(&self.effect)}
     fn visit_card_definitions(&self,visitor:&mut dyn FnMut(&CardDefinition)){for definition in &self.definitions{visitor(definition)}}
     fn get_target_spec(&self)->Option<&crate::target::ChooseSpec>{self.effect.0.get_target_spec()}
-    fn execute(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<EffectOutcome,ExecutionError>{
-        self.execute_with_outputs(game,ctx).map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<CompletedEffectOutputs,ExecutionError>{
         let previous=ctx.card_definition_scopes.clone();
         ctx.card_definition_scopes.retain(|scope|scope.scope!=self.scope);

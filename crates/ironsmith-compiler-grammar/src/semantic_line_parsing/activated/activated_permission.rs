@@ -62,11 +62,7 @@ use crate::recognition::ParseOutcome;
 #[path = "activated_permission/activated_effects_readings.rs"]
 mod activated_effects_readings;
 
-pub(super) fn parse_activated_effects_lexed(
-    _effect_text: &str,
-    tokens: &[OwnedLexToken],
-    _line_index: usize,
-) -> Result<Vec<EffectAst>, CardTextError> {
+pub(super) fn parse_activated_effects_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
     let input = activated_effects_readings::ActivatedBody { tokens };
     // A typed program's committed error stands only when the source-boundary
     // sentence grammar, the fallback for what no typed program reads, has no
@@ -153,85 +149,112 @@ pub fn parse_activated_line(
     {
         compiler_cost = crate::model::CompilerTotalCost::from_core_total_cost(cost);
     }
-    parse_activated_line_impl(
-        &RewriteActivatedLine {
-            functional_zones: activated_grammar::parse_activated_functional_zones_tokens(
-                &cost_parse_tokens,
-                &effect_parse_tokens,
-            ),
-            presentation_kind: activated_grammar::parse_activated_presentation_kind_tokens(
-                &info.source_tokens,
-            ),
-            presentation,
-            info,
-            compiler_cost,
-            cost_parse_tokens: cost_parse_tokens.clone(),
-            effect_parse_tokens: effect_parse_tokens.clone(),
-            timing_hint,
-            is_loyalty_ability,
-            chosen_option,
-        },
-        &effect_parse_tokens,
-    )
+    let line = RewriteActivatedLine {
+        functional_zones: activated_grammar::parse_activated_functional_zones_tokens(
+            &cost_parse_tokens,
+            &effect_parse_tokens,
+        ),
+        presentation_kind: activated_grammar::parse_activated_presentation_kind_tokens(
+            &info.source_tokens,
+        ),
+        presentation,
+        info,
+        compiler_cost,
+        cost_parse_tokens,
+        effect_parse_tokens,
+        timing_hint,
+        is_loyalty_ability,
+        chosen_option,
+    };
+    parse_activated_line_impl(line)
 }
 
-pub(super) fn parse_activated_line_impl(
-    line: &RewriteActivatedLine,
-    original_effect_parse_tokens: &[OwnedLexToken],
-) -> Result<ParsedActivatedLine, CardTextError> {
+fn parse_activated_line_impl(line: RewriteActivatedLine) -> Result<ParsedActivatedLine, CardTextError> {
+    let original_effect_parse_tokens = line.effect_parse_tokens.as_slice();
     let mut body_without_cost_modifier = Vec::new();
     let mut reduce_by_source_mana_cost_on_entry_turn = false;
-    let mut activation_label = None;
-    let mut activation_designations: Vec<String> = activated_presentation_display(line).into_iter().map(|label| label.to_ascii_lowercase()).collect();
-    let mut activation_sorcery_exceptions = Vec::new();
+    let presentation_display = line
+        .presentation
+        .as_ref()
+        .and_then(PresentationLabel::display_prefix)
+        .or_else(|| {
+            line.presentation_kind
+                .map(|kind| kind.display().to_string())
+        });
+    let mut program = ironsmith_core::ResolutionProgram::default();
+    program.activation_designations = presentation_display
+        .iter()
+        .map(|label| label.to_ascii_lowercase())
+        .collect();
     for sentence in split_lexed_sentences(original_effect_parse_tokens) {
-        let prose = crate::lexer::render_token_slice(sentence).to_ascii_lowercase();
+        if let Some(action) = crate::grammar::restriction_facts::split_sorcery_timing_exception(
+            sentence,
+            &mut body_without_cost_modifier,
+        ) {
+            program.activation_sorcery_exceptions.push(action);
+            crate::word_claims::claim_tokens(sentence);
+            continue;
+        }
         let words = token_word_refs(sentence);
-        if let ["activate", "only", "as", "a", "sorcery", "or", "during", action, "actions"] = words.as_slice() {
-            activation_sorcery_exceptions.push((*action).to_string());
-            body_without_cost_modifier.extend(crate::lexer::lex_line("Activate only as a sorcery.", 0)?);
-            crate::word_claims::claim_tokens(sentence); continue;
-        }
-        if words.starts_with(&["activate", "only", "as", "a", "sorcery", "unless", "you're"])
-            && words.len() > 7 {
-            activation_sorcery_exceptions.push(words[7..].join("-"));
-            body_without_cost_modifier.extend(crate::lexer::lex_line("Activate only as a sorcery.", 0)?);
-            crate::word_claims::claim_tokens(sentence); continue;
-        }
-        if let ["this", "activated", "ability", "has", "designation", designation @ ..] = words.as_slice()
-            && !designation.is_empty() {
+        if let [
+            "this",
+            "activated",
+            "ability",
+            "has",
+            "designation",
+            designation @ ..,
+        ] = words.as_slice()
+            && !designation.is_empty()
+        {
             let designation = designation.join(" ");
-            if !activation_designations.contains(&designation) { activation_designations.push(designation); }
-            crate::word_claims::claim_tokens(sentence); continue;
-        }
-        if let ["this", "ability's" | "abilitys", "sorcery", "timing", "restriction", "does", "not", "apply", "during", action, "actions"] = words.as_slice() {
-            activation_sorcery_exceptions.push((*action).to_string());
-            crate::word_claims::claim_tokens(sentence); continue;
-        }
-        if let ["this", "is", "the", label, "activated", "ability"] = words.as_slice() {
-            if activation_label.replace((*label).to_string()).is_some() {
-                return Err(CardTextError::ParseError("duplicate activation label".into()));
+            if !program.activation_designations.contains(&designation) {
+                program.activation_designations.push(designation);
             }
             crate::word_claims::claim_tokens(sentence);
             continue;
         }
-        if prose.trim_end_matches('.').trim() == "if this permanent entered this turn, this ability's cost is reduced by this permanent's mana cost" {
+        if let ["this", "is", "the", label, "activated", "ability"] = words.as_slice() {
+            if program
+                .activation_label
+                .replace((*label).to_string())
+                .is_some()
+            {
+                return Err(CardTextError::ParseError(
+                    "duplicate activation label".into(),
+                ));
+            }
+            crate::word_claims::claim_tokens(sentence);
+            continue;
+        }
+        if sentence.first().is_some_and(|token| token.is_word("if"))
+            && crate::lexer::render_token_slice(sentence)
+                .to_ascii_lowercase()
+                .trim_end_matches('.')
+                .trim()
+                == "if this permanent entered this turn, this ability's cost is reduced by this permanent's mana cost"
+        {
             reduce_by_source_mana_cost_on_entry_turn = true;
         } else {
             body_without_cost_modifier.extend_from_slice(sentence);
-            body_without_cost_modifier.extend(crate::lexer::lex_line(".", 0)?);
+            body_without_cost_modifier
+                .push(OwnedLexToken::period(crate::cards::TextSpan::synthetic()));
         }
     }
-    let original_effect_parse_tokens = if reduce_by_source_mana_cost_on_entry_turn || activation_label.is_some() || !activation_designations.is_empty() || !activation_sorcery_exceptions.is_empty() {
+    let original_effect_parse_tokens = if reduce_by_source_mana_cost_on_entry_turn
+        || program.activation_label.is_some()
+        || !program.activation_designations.is_empty()
+        || !program.activation_sorcery_exceptions.is_empty()
+    {
         body_without_cost_modifier.as_slice()
-    } else { original_effect_parse_tokens };
+    } else {
+        original_effect_parse_tokens
+    };
     let linked_copy_effects = crate::effect_sentences::parse_linked_card_copy_with_announced_x(original_effect_parse_tokens)?;
     let x_definition_value = if linked_copy_effects.is_some() { None } else {
         activated_x_definition_value(original_effect_parse_tokens)
     };
     let has_x_definition_value = x_definition_value.is_some();
     let SplitRewriteActivatedEffectText {
-        effect_text,
         effect_parse_tokens,
         restrictions,
         mana_restrictions,
@@ -241,7 +264,7 @@ pub(super) fn parse_activated_line_impl(
         creature_tap_payment,
         artifact_tap_payment,
     } = split_rewrite_activated_effect_text(original_effect_parse_tokens);
-    if effect_text.is_empty() {
+    if effect_parse_tokens.iter().all(|token| token.slice.trim().is_empty()) {
         return Err(CardTextError::ParseError(format!(
             "rewrite activated lowering produced no parsed effect text for '{}'",
             line.info.raw_line
@@ -292,7 +315,6 @@ pub(super) fn parse_activated_line_impl(
     };
     let original_effect_mentions_where_x =
         activated_grammar::contains_where_x_definition(original_effect_parse_tokens);
-    let presentation_display = activated_presentation_display(line);
     let is_forecast = presentation_display
         .as_deref()
         .is_some_and(|display| display.eq_ignore_ascii_case("Forecast"));
@@ -308,7 +330,9 @@ pub(super) fn parse_activated_line_impl(
                 .is_some_and(|timing| timing != ActivationTiming::AnyTime)
         })
         .and_then(|idx| restrictions.activation[idx].timing);
-    let activation_timing = if line.info.raw_line.to_ascii_lowercase().contains("return an unblocked attacker you control") {
+    let raw_line_lower = line.info.raw_line.to_ascii_lowercase();
+    let returns_unblocked_attacker = raw_line_lower.contains("return an unblocked attacker you control");
+    let activation_timing = if returns_unblocked_attacker {
         ActivationTiming::DuringCombat
     } else if is_forecast {
         ActivationTiming::DuringSourceOwnersUpkeep
@@ -399,138 +423,78 @@ pub(super) fn parse_activated_line_impl(
         });
     }
 
-    if !line.is_loyalty_ability
-        && let Some(spec) = parse_fixed_mana_output_clause_spec_lexed(&effect_parse_tokens)
-    {
-        let functional_zones = infer_rewrite_activated_functional_zones(line)?;
-        let mut parsed = ParsedAbility {
-            ability: Ability {
-                kind: AbilityKind::Activated(ActivatedAbility {
-                    keyword: activated_presentation_display(line).as_deref().and_then(ironsmith_core::ActivatedAbilityKeyword::from_group_label)
-                        .or_else(|| line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword)),
-                    mana_cost: normalized_cost.clone(),
-                    effects: { let mut program = ironsmith_core::ResolutionProgram::default(); program.activation_label = activation_label.clone(); program.activation_designations = activation_designations.clone(); program.activation_sorcery_exceptions = activation_sorcery_exceptions.clone(); program },
-                    choices: vec![],
-                    timing: activation_timing,
-                    is_loyalty_ability: line.is_loyalty_ability,
-                    additional_restrictions: additional_activation_restrictions.clone(),
-                    activation_restrictions: activation_restrictions.clone(),
-                    mana_output: Some(spec.mana),
-                    activation_condition: None,
-                    mana_usage_restrictions: vec![],
-                }),
-                designations: Default::default(),
-                functional_zones: if functional_zones.is_empty() {
-                    vec![Zone::Battlefield]
-                } else {
-                    functional_zones
-                },
-            }
-            .into(),
-            effects_ast: None,
-            reference_imports: ReferenceImports::default(),
-            trigger_spec: None,
-        };
-        apply_pending_mana_restrictions(&mut parsed, &mana_restrictions)?;
-        apply_chosen_option_condition_to_activated(&mut parsed, line.chosen_option.as_ref());
-        return Ok(ParsedActivatedLine {
-            chunk: LineAst::Ability(parsed),
-            restrictions,
-        });
-    }
-
-    if !line.is_loyalty_ability
+    let fixed_mana = if line.is_loyalty_ability {
+        None
+    } else {
+        parse_fixed_mana_output_clause_spec_lexed(&effect_parse_tokens)
+    };
+    let (mana_output, effects_ast) = if let Some(spec) = fixed_mana {
+        (Some(spec.mana), None)
+    } else if !line.is_loyalty_ability
         && activated_effect_may_be_mana_ability_lexed(&effect_parse_tokens)
     {
-        let effects_ast = normalize_mana_replacement_effects(parse_activated_effects_lexed(
-            effect_text.as_str(),
+        let effects = normalize_mana_replacement_effects(parse_activated_effects_lexed(
             &effect_parse_tokens,
-            line.info.line_index,
         )?);
-        if effects_ast_can_lower_as_mana_ability(&effects_ast)
-            || effects_ast
+        if !effects_ast_can_lower_as_mana_ability(&effects)
+            && !effects
                 .first()
                 .is_some_and(effect_ast_starts_with_mana_effect)
         {
-            let functional_zones = infer_rewrite_activated_functional_zones(line)?;
-            let reference_imports = compiler_activation_cost_reference_imports(&normalized_cost);
-            let mut parsed = ParsedAbility {
-                ability: Ability {
-                    kind: AbilityKind::Activated(ActivatedAbility {
-                        keyword: activated_presentation_display(line).as_deref().and_then(ironsmith_core::ActivatedAbilityKeyword::from_group_label)
-                        .or_else(|| line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword)),
-                        mana_cost: normalized_cost.clone(),
-                        effects: { let mut program = ironsmith_core::ResolutionProgram::default(); program.activation_label = activation_label.clone(); program.activation_designations = activation_designations.clone(); program.activation_sorcery_exceptions = activation_sorcery_exceptions.clone(); program },
-                        choices: vec![],
-                        timing: activation_timing,
-                        is_loyalty_ability: line.is_loyalty_ability,
-                        additional_restrictions: additional_activation_restrictions.clone(),
-                        activation_restrictions: activation_restrictions.clone(),
-                        mana_output: Some(vec![]),
-                        activation_condition: None,
-                        mana_usage_restrictions: vec![],
-                    }),
-                    designations: Default::default(),
-                    functional_zones: if functional_zones.is_empty() {
-                        vec![Zone::Battlefield]
-                    } else {
-                        functional_zones
-                    },
-                }
-                .into(),
-                effects_ast: Some(effects_ast),
-                reference_imports,
-                trigger_spec: None,
-            };
-            apply_pending_mana_restrictions(&mut parsed, &mana_restrictions)?;
-            apply_chosen_option_condition_to_activated(&mut parsed, line.chosen_option.as_ref());
-
-            return Ok(ParsedActivatedLine {
-                chunk: LineAst::Ability(parsed),
-                restrictions,
-            });
+            return Err(CardTextError::ParseError(format!(
+                "rewrite activated lowering does not yet support mana-style activated effect '{}'",
+                line.info.raw_line
+            )));
         }
-        return Err(CardTextError::ParseError(format!(
-            "rewrite activated lowering does not yet support mana-style activated effect '{}'",
-            line.info.raw_line
-        )));
-    }
-
-    let mut effects_ast = if let Some(effects) = linked_copy_effects { effects } else {
-        parse_activated_effects_lexed(
-            effect_text.as_str(),
-            &effect_parse_tokens,
-            line.info.line_index,
-        )?
+        (Some(vec![]), Some(effects))
+    } else {
+        let mut effects = match linked_copy_effects {
+            Some(effects) => effects,
+            None => parse_activated_effects_lexed(&effect_parse_tokens)?,
+        };
+        recognize_named_source_action_surfaces(&line.info, &mut effects);
+        (None, Some(effects))
     };
-    recognize_named_source_action_surfaces(&line.info, &mut effects_ast);
-    let functional_zones = infer_rewrite_activated_functional_zones(line)?;
-    let reference_imports = compiler_activation_cost_reference_imports(&normalized_cost);
+    let functional_zones = if returns_unblocked_attacker && raw_line_lower.contains("put this card onto the battlefield from your hand or the command zone tapped and attacking") {
+        vec![Zone::Hand, Zone::Command]
+    } else if returns_unblocked_attacker && raw_line_lower.contains("put this card onto the battlefield from your hand tapped and attacking") {
+        vec![Zone::Hand]
+    } else if line.functional_zones.is_empty() {
+        vec![Zone::Battlefield]
+    } else {
+        line.functional_zones
+    };
+    let reference_imports = if effects_ast.is_some() {
+        compiler_activation_cost_reference_imports(&normalized_cost)
+    } else {
+        ReferenceImports::default()
+    };
     let mut parsed = ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
-                keyword: activated_presentation_display(line).as_deref().and_then(ironsmith_core::ActivatedAbilityKeyword::from_group_label)
-                        .or_else(|| line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword)),
+                keyword: presentation_display
+                    .as_deref()
+                    .and_then(ironsmith_core::ActivatedAbilityKeyword::from_group_label)
+                    .or_else(|| {
+                        line.presentation_kind
+                            .and_then(crate::ir::ActivatedPresentationKind::keyword)
+                    }),
                 mana_cost: normalized_cost,
-                effects: { let mut program = ironsmith_core::ResolutionProgram::default(); program.activation_label = activation_label.clone(); program.activation_designations = activation_designations.clone(); program.activation_sorcery_exceptions = activation_sorcery_exceptions.clone(); program },
+                effects: program,
                 choices: vec![],
                 timing: activation_timing,
                 is_loyalty_ability: line.is_loyalty_ability,
                 additional_restrictions: additional_activation_restrictions,
                 activation_restrictions,
-                mana_output: None,
+                mana_output,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
             }),
             designations: Default::default(),
-            functional_zones: if functional_zones.is_empty() {
-                vec![Zone::Battlefield]
-            } else {
-                functional_zones
-            },
+            functional_zones,
         }
         .into(),
-        effects_ast: Some(effects_ast),
+        effects_ast,
         reference_imports,
         trigger_spec: None,
     };
@@ -541,29 +505,4 @@ pub(super) fn parse_activated_line_impl(
         chunk: LineAst::Ability(parsed),
         restrictions,
     })
-}
-
-pub(super) fn activated_presentation_display(line: &RewriteActivatedLine) -> Option<String> {
-    line.presentation
-        .as_ref()
-        .and_then(PresentationLabel::display_prefix)
-        .or_else(|| {
-            line.presentation_kind
-                .map(|kind| kind.display().to_string())
-        })
-}
-
-pub(super) fn infer_rewrite_activated_functional_zones(
-    line: &RewriteActivatedLine,
-) -> Result<Vec<Zone>, CardTextError> {
-    let text = line.info.raw_line.to_ascii_lowercase();
-    if text.contains("return an unblocked attacker you control") {
-        if text.contains("put this card onto the battlefield from your hand or the command zone tapped and attacking") {
-            return Ok(vec![Zone::Hand, Zone::Command]);
-        }
-        if text.contains("put this card onto the battlefield from your hand tapped and attacking") {
-            return Ok(vec![Zone::Hand]);
-        }
-    }
-    Ok(line.functional_zones.clone())
 }

@@ -172,105 +172,78 @@ pub(crate) fn blocking_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<S
 fn typed_attack_tax_static_ability(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let Some(cant) = tokens.iter().position(|token| {
-        token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")
-    }) else {
+    crate::word_claims::speculative_keep_if(
+        || read_static_attack_tax(tokens),
+        |parsed| matches!(parsed, Ok(Some(_))),
+    )
+}
+
+fn read_static_attack_tax(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    use ironsmith_core::value_model::AttackTaxDefenders;
+    let Some(tax) = cant_shapes::parse_attack_tax_clause(tokens) else {
         return Ok(None);
     };
-    let Some(unless) = tokens.iter().position(|token| token.is_word("unless")) else {
-        return Ok(None);
-    };
-    if unless <= cant {
-        return Ok(None);
+    let general = tax.general_tax();
+    if let Some(fixed) = general.and_then(|payment| tax.fixed_controller_tax(payment)) {
+        return Ok(Some(if fixed.covers_planeswalkers {
+            StaticAbility::cant_attack_you_or_planeswalkers_unless_controller_pays_per_attacker(
+                fixed.amount,
+            )
+        } else {
+            StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(fixed.amount)
+        }));
     }
-    let scope = crate::lexer::token_word_refs(&tokens[cant + 1..unless]);
-    let covers_planeswalkers = match scope.as_slice() {
-        ["attack", "you"] => false,
-        ["attack", "you", "or", "planeswalkers", "you", "control"]
-        | ["attack", "you", "or", "a", "planeswalker", "you", "control"] => true,
-        _ => return Ok(None),
-    };
-    let Some(pays) = tokens
-        .iter()
-        .enumerate()
-        .skip(unless + 1)
-        .find_map(|(index, token)| token.is_word("pays").then_some(index))
-    else {
-        return Ok(None);
-    };
-    // "Each creature ... can't attack you ... unless its controller pays
-    // {X}, where X is ... on that creature" (Nils): a per-attacker tax whose
-    // amount reads the attacker being taxed.
-    let singular_payer = match crate::lexer::token_word_refs(&tokens[unless + 1..pays]).as_slice() {
-        ["their", "controller"] => false,
-        ["its", "controller"] => true,
-        _ => return Ok(None),
-    };
-    let where_index = tokens
-        .iter()
-        .enumerate()
-        .skip(pays + 1)
-        .find_map(|(index, token)| token.is_word("where").then_some(index));
-    let per = if singular_payer {
-        tokens
-            .iter()
-            .enumerate()
-            .skip(pays + 1)
-            .find_map(|(index, token)| token.is_word("for").then_some(index))
-            .filter(|per| where_index.is_none_or(|where_index| *per < where_index))
-            .unwrap_or(where_index.unwrap_or(tokens.len()))
-    } else {
-        let Some(per) = tokens
-            .iter()
-            .enumerate()
-            .skip(pays + 1)
-            .find_map(|(index, token)| token.is_word("for").then_some(index))
-        else {
+    if tax.defenders == AttackTaxDefenders::ControllerPlaneswalkers {
+        let Some(general) = general else {
             return Ok(None);
         };
-        per
-    };
-    let per_words =
-        crate::lexer::token_word_refs(&tokens[per..where_index.unwrap_or(tokens.len())]);
-    let per_words = per_words
-        .iter()
-        .copied()
-        .filter(|word| !matches!(*word, "," | "."))
-        .collect::<Vec<_>>();
-    if !(singular_payer && per_words.is_empty())
-        && !matches!(
-            per_words.as_slice(),
-            ["for", "each", "of", "those", "creatures"]
-                | [
-                    "for",
-                    "each",
-                    "creature",
-                    "they",
-                    "control",
-                    "that's" | "thats",
-                    "attacking",
-                    "you"
-                ]
-        )
-    {
+        let mut parts = Vec::new();
+        match general.mana {
+            Some(cant_shapes::AttackTaxManaAmount::Generic(n)) if n > 0 => parts.push(
+                crate::model::CompilerCost::Mana(ManaCost::from_generic(n)),
+            ),
+            None | Some(cant_shapes::AttackTaxManaAmount::Generic(_)) => {}
+            _ => return Ok(None), // A static tax has no announced X.
+        }
+        if general.life > 0 {
+            let Ok(life) = i32::try_from(general.life) else {
+                return Ok(None);
+            };
+            parts.push(crate::model::CompilerCost::Life(
+                crate::effect::Value::Fixed(life),
+            ));
+        }
+        return Ok((!parts.is_empty()).then(|| {
+            StaticAbility::attack_cost(
+                ObjectFilter::creature(),
+                true,
+                ironsmith_core::TotalCost::from_costs(parts),
+                format_negated_restriction_display(tokens),
+            )
+            .with_attack_cost_planeswalkers_only()
+        }));
+    }
+    if tax.defenders == AttackTaxDefenders::Anyone {
         return Ok(None);
     }
-    let Some(attackers) = parse_subject_object_filter(&tokens[..cant])? else {
+    let Some(attackers) = parse_subject_object_filter(tax.attackers)? else {
         return Ok(None);
     };
-    let Some(mut cost) = parse_payment_clause_as_total_cost(&tokens[pays + 1..per])? else {
+    let Some(mut cost) = parse_payment_clause_as_total_cost(tax.payment)? else {
         return Err(CardTextError::ParseError(
             "unsupported attack payment cost".into(),
         ));
     };
-    if let Some(where_index) = where_index {
-        let where_words = crate::lexer::token_word_refs(&tokens[where_index..]);
+    if let Some(binding) = tax.binding {
+        let where_words = crate::lexer::token_word_refs(binding);
         let names_taxed_attacker =
             crate::word_primitives::sequence_occurs(
                 &where_words,
                 &["counters", "on", "that", "creature"],
             ) || crate::word_primitives::sequence_occurs(&where_words, &["counters", "on", "it"]);
-        let value = if singular_payer && names_taxed_attacker {
+        let value = if tax.singular_payer && names_taxed_attacker {
             // The attacker being taxed is bound under this tag when the
             // cost is locked in at declaration (CR 508.1d/h).
             crate::effect::Value::CountersOn(
@@ -280,7 +253,7 @@ fn typed_attack_tax_static_ability(
                 None,
             )
         } else {
-            parse_value_binding_clause_lexed(&tokens[where_index..]).ok_or_else(|| {
+            parse_value_binding_clause_lexed(binding).ok_or_else(|| {
                 CardTextError::ParseError("unsupported attack-cost X definition".into())
             })?
         };
@@ -318,50 +291,10 @@ fn typed_attack_tax_static_ability(
     }
     Ok(Some(StaticAbility::attack_cost(
         attackers,
-        covers_planeswalkers,
+        tax.defenders == AttackTaxDefenders::ControllerOrPlaneswalkers,
         cost,
         format_negated_restriction_display(tokens),
     )))
-}
-
-/// "Creatures can't attack planeswalkers you control unless their controller
-/// pays {1} for each creature they control that's attacking a planeswalker
-/// you control." (Onakke Oathkeeper): attacks on the controller are free; only
-/// attacks on that player's planeswalkers are taxed (CR 508.1g-h). The
-/// player-inclusive wordings stay with the typed attack-tax reader above.
-fn planeswalker_attack_tax_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
-    let fact = cant_shapes::parse_general_attack_tax_tokens(tokens)?;
-    if fact.defenders != ironsmith_core::value_model::AttackTaxDefenders::ControllerPlaneswalkers {
-        return None;
-    }
-    let mut costs = Vec::new();
-    match fact.mana {
-        Some(cant_shapes::AttackTaxManaAmount::Generic(amount)) if amount > 0 => {
-            costs.push(crate::model::CompilerCost::Mana(ManaCost::from_pips(vec![vec![
-                ManaSymbol::Generic(u8::try_from(amount).ok()?),
-            ]])));
-        }
-        Some(cant_shapes::AttackTaxManaAmount::Generic(_)) | None => {}
-        // A static ability has no announced X.
-        Some(cant_shapes::AttackTaxManaAmount::X) => return None,
-    }
-    if fact.life > 0 {
-        costs.push(crate::model::CompilerCost::Life(crate::effect::Value::Fixed(
-            i32::try_from(fact.life).ok()?,
-        )));
-    }
-    if costs.is_empty() {
-        return None;
-    }
-    Some(
-        StaticAbility::attack_cost(
-            ObjectFilter::creature(),
-            true,
-            ironsmith_core::TotalCost::from_costs(costs),
-            format_negated_restriction_display(tokens),
-        )
-        .with_attack_cost_planeswalkers_only(),
-    )
 }
 
 fn attack_unless_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
@@ -1549,25 +1482,16 @@ fn parse_cant_clauses_unbound(
         return Ok(None);
     }
 
-    if let Some(segments) = split_cant_clause_on_or(tokens) {
+    let segments = split_cant_clause_on_or(tokens).or_else(|| {
+        cant_shapes::parse_cant_conjunction_expansion_tokens(tokens).map(|split| split.segments)
+    });
+    if let Some(segments) = segments {
+        // A conjunction inside the attack payment belongs to that payment.
+        if let Some(ability) = typed_attack_tax_static_ability(tokens)? {
+            return Ok(Some(vec![ability]));
+        }
         let mut abilities = Vec::new();
         for segment in segments {
-            let Some(ability) = parse_cant_clause(&segment)? else {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported cant clause segment (clause: '{}')",
-                    crate::lexer::token_word_refs(&segment).join(" ")
-                )));
-            };
-            abilities.push(ability);
-        }
-        if !abilities.is_empty() {
-            return Ok(Some(abilities));
-        }
-    }
-
-    if let Some(expansion) = cant_shapes::parse_cant_conjunction_expansion_tokens(tokens) {
-        let mut abilities = Vec::new();
-        for segment in expansion.segments {
             let Some(ability) = parse_cant_clause(&segment)? else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported cant clause segment (clause: '{}')",
@@ -1691,21 +1615,7 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
         return Ok(Some(ability));
     }
 
-    if let Some(fact) = cant_shapes::parse_per_attacker_cant_tax_tokens(tokens) {
-        return Ok(Some(if fact.covers_planeswalkers {
-            StaticAbility::cant_attack_you_or_planeswalkers_unless_controller_pays_per_attacker(
-                fact.amount,
-            )
-        } else {
-            StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(fact.amount)
-        }));
-    }
-
     if let Some(ability) = typed_attack_tax_static_ability(tokens)? {
-        return Ok(Some(ability));
-    }
-
-    if let Some(ability) = planeswalker_attack_tax_static_ability(tokens) {
         return Ok(Some(ability));
     }
 

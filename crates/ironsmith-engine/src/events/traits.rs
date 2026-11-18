@@ -206,25 +206,13 @@ impl RedirectValidTypes {
     }
 }
 
+crate::boxed_clone::define_boxed_clone!(GameEventTypeClone, GameEventType);
+
 /// Core trait for all game events.
 ///
 /// All event types (DamageEvent, LifeGainEvent, etc.) implement this trait.
 /// This provides a unified interface for the event processor while allowing
 /// type-specific behavior through the trait methods.
-pub trait GameEventTypeClone {
-    /// Clone this event into a boxed trait object.
-    fn clone_boxed(&self) -> Box<dyn GameEventType>;
-}
-
-impl<T> GameEventTypeClone for T
-where
-    T: GameEventType + Clone + 'static,
-{
-    fn clone_boxed(&self) -> Box<dyn GameEventType> {
-        Box::new(self.clone())
-    }
-}
-
 pub trait GameEventType: Debug + Send + Sync + GameEventTypeClone {
     /// Get the event kind for fast dispatch without downcasting.
     fn event_kind(&self) -> EventKind;
@@ -359,24 +347,12 @@ pub enum ReplacementPriority {
     Other = 4,
 }
 
+crate::boxed_clone::define_boxed_clone!(ReplacementMatcherClone, ReplacementMatcher);
+
 /// Trait for checking if a replacement effect matches an event.
 ///
 /// All replacement condition types implement this trait. Each matcher is responsible
 /// for determining if it applies to a given event.
-pub trait ReplacementMatcherClone {
-    /// Clone this matcher into a boxed trait object.
-    fn clone_boxed(&self) -> Box<dyn ReplacementMatcher>;
-}
-
-impl<T> ReplacementMatcherClone for T
-where
-    T: ReplacementMatcher + Clone + 'static,
-{
-    fn clone_boxed(&self) -> Box<dyn ReplacementMatcher> {
-        Box::new(self.clone())
-    }
-}
-
 pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone + Any {
 
     /// Exact mana-event predicate for compact evaluation. Wrappers with

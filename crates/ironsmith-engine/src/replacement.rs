@@ -525,6 +525,9 @@ pub enum EventModification {
     ReplaceCardDefinition(String),
     /// Modify a named operation's retained original modal plan, not its numeric amount.
     NamedActionFirstThenOtherMode { first_mode: u32 },
+
+    /// Cap a removal so its object retains this many counters of the removed kind.
+    PreserveObjectCounterMinimum(u32),
 }
 
 /// Where to redirect an effect.

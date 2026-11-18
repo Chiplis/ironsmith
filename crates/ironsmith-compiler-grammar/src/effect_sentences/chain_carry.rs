@@ -418,8 +418,7 @@ pub(super) fn parse_optional_other_player_token_copy(tokens: &[OwnedLexToken]) -
     let mut bind_copy = |effects: &mut Vec<EffectAst>| {
         for effect in effects {
             if let EffectAst::SubjectVerb(subject) = effect {
-                if let SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenCopy { player, .. }
-                    | crate::cards::builders::TokenActionAst::CreateTokenCopyFromSource { player, .. }) = &mut subject.action {
+                if let SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenCopy { player, .. }) = &mut subject.action {
                     *player = PlayerAst::That;
                     subject.subject.player = PlayerAst::That;
                     found = true;
@@ -751,8 +750,7 @@ fn parse_atomic_token_copy_exception(
     Ok(matches!(
         &effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. }),
+            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. }),
             ..
         })
     )
@@ -1850,11 +1848,6 @@ fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    // "audition for <quality>" reached as a chain body ("you may audition
-    // for white"): the same named audition program as the sentence reader.
-    if let Some(effects) = super::dispatch_inner::parse_audition_sentence(tokens)? {
-        return Ok(effects);
-    }
     // "Create Sulmina, the Final Age, a legendary ... token with "<rule>",
     // then attach ...": once the quoted rule is lifted out of the sentence
     // its ", then" boundary is gone, so the named appositive is read here
@@ -3158,62 +3151,7 @@ pub enum CarryContext {
     ForEachOpponent,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Verb {
-    Assimilate,
-    Add,
-    Move,
-    Deal,
-    Draw,
-    Counter,
-    Destroy,
-    Exile,
-    Untap,
-    Unlock,
-    Scry,
-    Discard,
-    Transform,
-    Convert,
-    Flip,
-    Roll,
-    Regenerate,
-    Heal,
-    Mill,
-    Get,
-    Reveal,
-    Look,
-    Lose,
-    Gain,
-    Put,
-    Sacrifice,
-    Create,
-    Investigate,
-    Proliferate,
-    Tap,
-    Attach,
-    Unattach,
-    Remove,
-    Return,
-    Exchange,
-    Become,
-    Switch,
-    Skip,
-    Surveil,
-    Incubate,
-    Shuffle,
-    Reorder,
-    Reverse,
-    Pay,
-    Take,
-    Detain,
-    Assign,
-    Goad,
-    Suspect,
-    Note,
-    End,
-    /// "activate(s) a mana ability of each land they control".
-    Activate,
-}
+pub use crate::grammar::effects::chain_splitting::ChainVerbKind as Verb;
 
 #[path = "chain_carry/chain_carry_zone.rs"]
 mod chain_carry_zone_programs;
@@ -3234,11 +3172,10 @@ pub use chain_carry_reference_programs::{
 };
 use chain_carry_reference_programs::{
     bind_it_metric_to_explicit_target, bind_source_exiled_effect,
-    bind_trailing_it_predicate_to_explicit_effect_target, effect_uses_that_player,
+    bind_trailing_it_predicate_to_explicit_effect_target,
     explicit_effect_object_tag, explicit_effect_object_target, explicit_tagged_target,
     maybe_apply_carried_player_with_clause_facts, normalize_imperative_create_player,
-    parse_leading_player_may_words, player_target_carry_context, subject_verb_player_action_player,
-    subject_verb_player_action_player_mut, target_ast_is_source,
+    parse_leading_player_may_words, player_target_carry_context, target_ast_is_source,
 };
 #[path = "chain_carry/chain_carry_combat.rs"]
 mod chain_carry_combat_programs;

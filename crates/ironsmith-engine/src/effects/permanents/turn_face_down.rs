@@ -7,10 +7,6 @@ use crate::game_state::GameState;
 pub type TurnFaceDownEffect = ironsmith_core::TurnFaceDownEffect;
 
 impl EffectExecutor for TurnFaceDownEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

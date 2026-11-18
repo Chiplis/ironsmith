@@ -6,6 +6,7 @@
 //! beside the helpers that do the binding, and both recognition and lowering
 //! reach the same answer through it.
 
+use crate::model::reference_state::SnapshotAntecedent;
 use crate::cards::builders::TurnHistoryPredicateAst;
 use crate::cards::builders::{
     CardTextError, PlayerPredicateAst, PredicateAst, SourcePredicateAst, TagKey,
@@ -112,16 +113,14 @@ pub fn resolve_condition_from_predicate(
             // "Put a +1/+1 counter on Venom. If that creature was a Villain,
             // ...": an explicit source subject superseded the trigger's event
             // object, but a past-tense identity test still reads that object's
-            // last-known snapshot, which the superseded-antecedent alias keeps.
+            // last-known snapshot, retained as the superseded antecedent.
             let superseded = || {
                 if !refs.has_source_object_antecedent() {
                     return None;
                 }
-                let alias = crate::reference_helpers::source_superseded_antecedent_alias();
-                refs.snapshot_tag_aliases
-                    .iter()
-                    .find(|(existing, _)| existing == &alias)
-                    .map(|(_, previous)| previous.clone())
+                refs.snapshot_bindings
+                    .antecedent(SnapshotAntecedent::SourceSuperseded)
+                    .cloned()
             };
             let tag = saved_last_tag.clone().or_else(superseded).ok_or_else(|| {
                 CardTextError::ParseError(

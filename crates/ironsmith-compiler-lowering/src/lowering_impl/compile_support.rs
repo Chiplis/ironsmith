@@ -52,7 +52,7 @@ use super::reference_helpers::{
     watch_tag_from_filter, with_target_reference_surface_hint,
 };
 use super::reference_resolution::{
-    EffectReferenceResolutionConfig, annotate_effect_sequence,
+    EffectReferenceResolutionConfig, annotate_effect_sequence_owned,
     effect_references_prior_prevention_amount, effect_references_outer_metric_through_iteration,
     preserves_existing_it_for_power_self_damage_followup,
 };
@@ -170,7 +170,14 @@ pub fn compile_effects(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    let annotated = annotate_effect_sequence(
+    compile_effects_owned(effects.to_vec(), ctx)
+}
+
+fn compile_effects_owned(
+    effects: Vec<EffectAst>,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let annotated = annotate_effect_sequence_owned(
         effects,
         &ReferenceImports::from_lowering_frame(&ctx.lowering_frame()),
         EffectReferenceResolutionConfig {

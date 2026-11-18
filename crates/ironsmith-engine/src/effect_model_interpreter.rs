@@ -1,5 +1,4 @@
 use crate::effect::{Effect, EffectMode};
-use crate::effects::EffectExecutor;
 
 pub trait EffectModel {
     type Effect: Clone + 'static;
@@ -215,44 +214,32 @@ where
     M: EffectModel,
     H: EffectModelInterpreterHooks<M>,
 {
+    macro_rules! clone_direct {
+        ($($ty:path),+ $(,)?) => {
+            $(
+                if let Some(payload) = M::downcast_ref::<$ty>(&effect) {
+                    return Ok(Effect::new(payload.clone()));
+                }
+            )+
+        };
+    }
+
     if let Some(payload) = M::downcast_ref::<ironsmith_core::TaggedEffect<M::Effect>>(&effect) {
         let mut tagged =
             payload.with_effect(interpret_effect_model((*payload.effect).clone(), hooks)?);
         tagged.outcome_only = payload.outcome_only;
         return Ok(Effect::new(tagged));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::TargetOnlyEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::SearchLibraryEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::SearchLibrarySlotsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::DealDamageToRecipientsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::DealDamageEachEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::DealDamageBySourcesEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::DealDamageEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::PutCountersEffect>(&effect) {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::TargetOnlyEffect,
+        crate::effects::SearchLibraryEffect,
+        crate::effects::SearchLibrarySlotsEffect,
+        crate::effects::DealDamageToRecipientsEffect,
+        crate::effects::DealDamageEachEffect,
+        crate::effects::DealDamageBySourcesEffect,
+        crate::effects::DealDamageEffect,
+        crate::effects::PutCountersEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseModeEffect<M::Effect>>(&effect) {
         let mut converted = crate::effects::ChooseModeEffect::new(
             payload
@@ -350,10 +337,10 @@ where
             haunt_choices: payload.haunt_choices.clone(), descriptive: payload.descriptive,
         }));
     }
-    if let Some(converted)=clone_direct_effect::<M,crate::effects::NoteObjectNamesEffect>(&effect){return Ok(converted);}
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::DrawCardsEffect>(&effect) {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::NoteObjectNamesEffect,
+        crate::effects::DrawCardsEffect,
+    );
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::DrawForEachTaggedMatchingEffect>(&effect)
     {
@@ -436,39 +423,20 @@ where
         converted.must_attack_player_this_turn = payload.must_attack_player_this_turn.clone();
         return Ok(Effect::new(converted));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::CreateLinkedFaceTokenEffect>(&effect) { return Ok(converted); }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::LinkExiledCardsEffect>(&effect) { return Ok(converted); }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::TapEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::UntapEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::RemoveCountersEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::UnearthEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::NinjutsuCostEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::SneakCostEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ConspireCostEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::NinjutsuEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::CastSourceEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::CipherEffect>(&effect) {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::CreateLinkedFaceTokenEffect,
+        crate::effects::LinkExiledCardsEffect,
+        crate::effects::TapEffect,
+        crate::effects::UntapEffect,
+        crate::effects::RemoveCountersEffect,
+        crate::effects::UnearthEffect,
+        crate::effects::NinjutsuCostEffect,
+        crate::effects::SneakCostEffect,
+        crate::effects::ConspireCostEffect,
+        crate::effects::NinjutsuEffect,
+        crate::effects::CastSourceEffect,
+        crate::effects::CipherEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::CounterEffect>(&effect) {
         if !payload.exile_permission_target_is_supported() {
             return Err(hooks.unsupported_effect(
@@ -730,9 +698,7 @@ where
             payload.player.clone(),
         )));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::GainLifeEffect>(&effect) {
-        return Ok(converted);
-    }
+    clone_direct!(crate::effects::GainLifeEffect);
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SacrificeEffect>(&effect) {
         let mut sacrifice = crate::effects::SacrificeEffect::you(
             payload.filter.clone(),
@@ -746,11 +712,7 @@ where
         }
         return Ok(Effect::new(sacrifice));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::zones::SacrificePlayerEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(crate::effects::zones::SacrificePlayerEffect);
     if let Some(payload) = M::downcast_ref::<ironsmith_core::DestroyEffect>(&effect) {
         return Ok(Effect::new(crate::effects::DestroyEffect::with_spec(
             payload.spec.clone(),
@@ -780,106 +742,39 @@ where
                 .with_ordinary_destruction_replacement(payload.ordinary_destruction_replacement),
         ));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::AddManaFromCommanderColorIdentityEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::AddManaOfAnyColorEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::AddManaOfAnyOneColorEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::AddManaOfColorsAmongEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::AddManaEqualToManaCostEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::AddManaLostThisWayEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::AddOneManaOfAnyColorAmongEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::AddManaEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::PreventAllCombatDamageEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::AssignNoCombatDamageEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::PerformNamedActionEffect>(&effect)
-            .or_else(|| clone_direct_effect::<M, crate::effects::EmitKeywordActionEffect>(&effect))
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::AscendEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::RenownEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::SolveCaseEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::SetClassLevelEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ChoosePlayerOptionEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ControlVotesThisTurnEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::SetDayNightEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::RestartGameEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ReverseTurnOrderEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::AddManaFromCommanderColorIdentityEffect,
+        crate::effects::AddManaOfAnyColorEffect,
+        crate::effects::AddManaOfAnyOneColorEffect,
+        crate::effects::AddManaOfColorsAmongEffect,
+        crate::effects::AddManaEqualToManaCostEffect,
+        crate::effects::AddManaLostThisWayEffect,
+        crate::effects::AddOneManaOfAnyColorAmongEffect,
+        crate::effects::AddManaEffect,
+        crate::effects::PreventAllCombatDamageEffect,
+        crate::effects::AssignNoCombatDamageEffect,
+        crate::effects::PerformNamedActionEffect,
+        crate::effects::EmitKeywordActionEffect,
+        crate::effects::AscendEffect,
+        crate::effects::RenownEffect,
+        crate::effects::SolveCaseEffect,
+        crate::effects::SetClassLevelEffect,
+        crate::effects::ChoosePlayerOptionEffect,
+        crate::effects::ControlVotesThisTurnEffect,
+        crate::effects::SetDayNightEffect,
+        crate::effects::RestartGameEffect,
+        crate::effects::ReverseTurnOrderEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PlaySubgameEffect<M::Effect>>(&effect)
     {
         return Ok(Effect::new(crate::effects::PlaySubgameEffect::new(
             convert_effects(payload.nonwinner_effects.iter().cloned(), hooks)?,
         )));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::BolsterEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::FlipEffect>(&effect) {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::BolsterEffect,
+        crate::effects::FlipEffect,
+    );
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::PreventAllDamageEffect<M::Effect>>(&effect)
     {
@@ -927,9 +822,7 @@ where
         prevent.protect_all = payload.protect_all;
         return Ok(Effect::new(prevent));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::LoseTheGameEffect>(&effect) {
-        return Ok(converted);
-    }
+    clone_direct!(crate::effects::LoseTheGameEffect);
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::CreateEmblemEffect<M::EmblemDescription>>(&effect)
     {
@@ -937,81 +830,26 @@ where
             hooks.runtime_emblem_hook(payload.emblem.clone())?,
         )));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::DiscardHandEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RemoveAnyCountersAmongEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RemoveAnyCountersFromSourceEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ChooseCardTypeEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ShuffleObjectsIntoLibraryEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::RemoveOptionalTextFragmentEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ChangeTextEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ExchangeTextBoxesEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::EnergyCountersEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::TicketCountersEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::DiscoverEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::SetBasePowerToughnessEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::CantEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ExtraTurnEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ExtraTurnAfterNextTurnEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::AdditionalPhasesEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::AdditionalStepsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ModifyPowerToughnessForEachEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::DiscardHandEffect,
+        crate::effects::RemoveAnyCountersAmongEffect,
+        crate::effects::RemoveAnyCountersFromSourceEffect,
+        crate::effects::ChooseCardTypeEffect,
+        crate::effects::ShuffleObjectsIntoLibraryEffect,
+        crate::effects::RemoveOptionalTextFragmentEffect,
+        crate::effects::ChangeTextEffect,
+        crate::effects::ExchangeTextBoxesEffect,
+        crate::effects::EnergyCountersEffect,
+        crate::effects::TicketCountersEffect,
+        crate::effects::DiscoverEffect,
+        crate::effects::SetBasePowerToughnessEffect,
+        crate::effects::CantEffect,
+        crate::effects::ExtraTurnEffect,
+        crate::effects::ExtraTurnAfterNextTurnEffect,
+        crate::effects::AdditionalPhasesEffect,
+        crate::effects::AdditionalStepsEffect,
+        crate::effects::ModifyPowerToughnessForEachEffect,
+    );
     if let Some(payload) = M::downcast_ref::<
         ironsmith_core::CastTaggedEffect<ironsmith_core::Cost<M::Effect>>,
     >(&effect)
@@ -1020,62 +858,21 @@ where
             interpret_core_cost_model::<M, H>(cost, hooks)
         })?));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RemoveUpToAnyCountersEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::TagTriggeringObjectEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::TagSplicedCardsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted)=clone_direct_effect::<M,crate::effects::LinkObjectsToGroupEffect>(&effect){return Ok(converted);}
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::TagLastDamageSourceEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::TagTriggeringBlockersEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::TagTriggeringAttackerEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::TagTriggeringSourceEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::AttachToEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ReconfigureEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::AttachObjectsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::UnattachObjectsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+        crate::effects::RemoveUpToAnyCountersEffect,
+        crate::effects::TagTriggeringObjectEffect,
+        crate::effects::TagSplicedCardsEffect,
+        crate::effects::LinkObjectsToGroupEffect,
+        crate::effects::TagLastDamageSourceEffect,
+        crate::effects::TagTriggeringBlockersEffect,
+        crate::effects::TagTriggeringAttackerEffect,
+        crate::effects::TagTriggeringSourceEffect,
+        crate::effects::AttachToEffect,
+        crate::effects::ReconfigureEffect,
+        crate::effects::AttachObjectsEffect,
+        crate::effects::UnattachObjectsEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SequenceEffect<M::Effect>>(&effect) {
         let effects = convert_effects(payload.effects.iter().cloned(), hooks)?;
         let mut sequence = match payload.surface {
@@ -1138,14 +935,10 @@ where
         converted.payment_receipt=payload.payment_receipt.clone();
         return Ok(Effect::new(converted));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::RevealTopEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::TagAttachedToSourceEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::RevealTopEffect,
+        crate::effects::TagAttachedToSourceEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::CollectManaPaymentsEffect<M::Effect>>(&effect) {
         return Ok(Effect::new(crate::effects::CollectManaPaymentsEffect::new(
             convert_effects(payload.effects.iter().cloned(), hooks)?,
@@ -1312,36 +1105,14 @@ where
             payload.player.clone(),
         )));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ReturnFromGraveyardToBattlefieldEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<
-        M,
+    clone_direct!(
+        crate::effects::ReturnFromGraveyardToBattlefieldEffect,
         crate::effects::ReturnFromGraveyardOrExileToBattlefieldEffect,
-    >(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ReturnFromGraveyardToHandEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::PutOntoBattlefieldEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ShuffleLibraryEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::MayMoveToZoneEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+        crate::effects::ReturnFromGraveyardToHandEffect,
+        crate::effects::PutOntoBattlefieldEffect,
+        crate::effects::ShuffleLibraryEffect,
+        crate::effects::MayMoveToZoneEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ExileTopOfLibraryEffect>(&effect) {
         let mut converted = crate::effects::ExileTopOfLibraryEffect::new(
             payload.count.clone(),
@@ -1361,27 +1132,13 @@ where
         }
         return Ok(Effect::new(converted));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::LookAtTopCardsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ReorderTopPlanarDeckEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::LookAtObjectsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ChooseCardNameEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ControlPlayerEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::LookAtTopCardsEffect,
+        crate::effects::ReorderTopPlanarDeckEffect,
+        crate::effects::LookAtObjectsEffect,
+        crate::effects::ChooseCardNameEffect,
+        crate::effects::ControlPlayerEffect,
+    );
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::GrantEffect<M::Grantable, M::GrantDuration>>(&effect)
     {
@@ -1401,33 +1158,20 @@ where
             hooks.runtime_grant_duration_hook(payload.duration)?,
         )));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::MergePermanentsEffect>(&effect)
-            .or_else(||clone_direct_effect::<M, crate::effects::MoveAllCountersEffect>(&effect))
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::MoveCountersEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::MoveOneCounterEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ProliferateEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::GrantActivationCostAlternativeEffect>(&effect) { return Ok(converted); }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::GrantExileControllerInspectionEffect>(&effect) { return Ok(converted); }
-    if let Some(converted) = clone_direct_effect::<M, ironsmith_core::effect::RememberOriginalMovementArrivalsEffect>(&effect) { return Ok(converted); }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::SetPermanentDesignationEffect>(&effect) { return Ok(converted); }
-    if let Some(converted) = clone_direct_effect::<M, ironsmith_core::RecordSourceCollectionEffect>(&effect) { return Ok(converted); }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::MonstrosityEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::TransformEffect>(&effect) {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::MergePermanentsEffect,
+        crate::effects::MoveAllCountersEffect,
+        crate::effects::MoveCountersEffect,
+        crate::effects::MoveOneCounterEffect,
+        crate::effects::ProliferateEffect,
+        crate::effects::GrantActivationCostAlternativeEffect,
+        crate::effects::GrantExileControllerInspectionEffect,
+        ironsmith_core::effect::RememberOriginalMovementArrivalsEffect,
+        crate::effects::SetPermanentDesignationEffect,
+        ironsmith_core::RecordSourceCollectionEffect,
+        crate::effects::MonstrosityEffect,
+        crate::effects::TransformEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::FirstResolutionEachTurnEffect<M::Effect>>(&effect) {
         return Ok(Effect::new(crate::effects::FirstResolutionEachTurnEffect {
             label: payload.label.clone(), effects: convert_effects(payload.effects.iter().cloned(), hooks)?,
@@ -1477,11 +1221,7 @@ where
             payload.kind,
         ).with_decider(payload.decider.clone())));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RearrangeLookedCardsInLibraryEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(crate::effects::RearrangeLookedCardsInLibraryEffect);
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChoosePlayerEffect>(&effect) {
         let mut converted = crate::effects::ChoosePlayerEffect::new(
             payload.chooser.clone(),
@@ -1804,16 +1544,10 @@ where
         };
         return Ok(Effect::new(effect));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::PutCounterOfKindChosenFromEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::PutCounterOfRandomKindEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::PutCounterOfKindChosenFromEffect,
+        crate::effects::PutCounterOfRandomKindEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PutCounterOfChosenKindEffect>(&effect)
     {
         return Ok(Effect::new(
@@ -1884,11 +1618,7 @@ where
             .with_kind(payload.kind),
         ));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ChooseNewTargetsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(crate::effects::ChooseNewTargetsEffect);
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RegisterZoneReplacementEffect>(&effect)
     {
         let mut converted = crate::effects::RegisterZoneReplacementEffect::new(
@@ -1911,11 +1641,7 @@ where
         }
         return Ok(Effect::new(converted));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterFutureZoneReplacementEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(crate::effects::RegisterFutureZoneReplacementEffect);
     if let Some(payload)=M::downcast_ref::<ironsmith_core::RegisterEventReplacementEffect<M::Effect>>(&effect) {
         return Ok(Effect::new(crate::effects::RegisterEventReplacementEffect {
             event:payload.event.clone(),target:payload.target.clone(),resolving_object_only:payload.resolving_object_only,
@@ -1936,98 +1662,26 @@ where
         registration.lose_game = payload.lose_game;
         return Ok(Effect::new(registration));
     }
-    if let Some(converted) = clone_direct_effect::<
-        M,
+    clone_direct!(
         crate::effects::RegisterDamagedBySourceZoneReplacementEffect,
-    >(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<
-        M,
         crate::effects::RegisterEnterUnderControlReplacementEffect,
-    >(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterEnterTappedReplacementEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<
-        M,
+        crate::effects::RegisterEnterTappedReplacementEffect,
         crate::effects::RegisterEnterWithCountersReplacementEffect,
-    >(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterNextBatchEnterWithCountersEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterNextBatchEnterAsCopyEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterManaSpendPermissionEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterManaRewriteEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterManaReplacementEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterDamageMultiplierEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterDamageCounterReplacementEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterDamageAdditionEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterTokenCreationMultiplierEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RegisterCounterPlacementReplacementEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ExileInsteadOfGraveyardEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::DrawTheGameEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::WinTheGameEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ConsultTopOfLibraryEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+        crate::effects::RegisterNextBatchEnterWithCountersEffect,
+        crate::effects::RegisterNextBatchEnterAsCopyEffect,
+        crate::effects::RegisterManaSpendPermissionEffect,
+        crate::effects::RegisterManaRewriteEffect,
+        crate::effects::RegisterManaReplacementEffect,
+        crate::effects::RegisterDamageMultiplierEffect,
+        crate::effects::RegisterDamageCounterReplacementEffect,
+        crate::effects::RegisterDamageAdditionEffect,
+        crate::effects::RegisterTokenCreationMultiplierEffect,
+        crate::effects::RegisterCounterPlacementReplacementEffect,
+        crate::effects::ExileInsteadOfGraveyardEffect,
+        crate::effects::DrawTheGameEffect,
+        crate::effects::WinTheGameEffect,
+        crate::effects::ConsultTopOfLibraryEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ExploreEffect>(&effect) {
         let mut runtime = crate::effects::ExploreEffect::new(payload.target.clone());
         runtime.descriptive = payload.descriptive;
@@ -2040,16 +1694,10 @@ where
             payload.target.clone(),
         )));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RollToVisitAttractionsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::RollPlanarDieEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::RollToVisitAttractionsEffect,
+        crate::effects::RollPlanarDieEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::OpenAttractionEffect>(&effect) {
         return Ok(Effect::new(
             crate::effects::OpenAttractionEffect::new().with_reminder(payload.reminder),
@@ -2099,11 +1747,7 @@ where
             crate::effects::ManifestCardFromHandEffect::new(),
         ));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::ManifestObjectsEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(crate::effects::ManifestObjectsEffect);
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SupportEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SupportEffect::with_value(
             payload.value(),
@@ -2114,12 +1758,10 @@ where
         runtime.descriptive = payload.descriptive;
         return Ok(Effect::new(runtime));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::RippleEffect>(&effect) {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ChooseNumberEffect>(&effect) {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::RippleEffect,
+        crate::effects::ChooseNumberEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseNumberAtRandomEffect>(&effect) {
         return Ok(Effect::new(
             crate::effects::ChooseNumberAtRandomEffect::new(payload.choices.clone()),
@@ -2318,11 +1960,7 @@ where
         };
         return Ok(Effect::new(secret_choice));
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::DirectionalAdjacentPlayerControlEffect>(&effect)
-    {
-        return Ok(converted);
-    }
+    clone_direct!(crate::effects::DirectionalAdjacentPlayerControlEffect);
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SetLifeTotalEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SetLifeTotalEffect::new(
             payload.amount.clone(),
@@ -2332,13 +1970,10 @@ where
     if M::downcast_ref::<ironsmith_core::NoteLifeTotalEffect>(&effect).is_some() {
         return Ok(Effect::note_life_total());
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::IncreaseSpeedEffect>(&effect)
-    {
-        return Ok(converted);
-    }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ReduceSpeedEffect>(&effect) {
-        return Ok(converted);
-    }
+    clone_direct!(
+        crate::effects::IncreaseSpeedEffect,
+        crate::effects::ReduceSpeedEffect,
+    );
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ExchangeLifeTotalsEffect>(&effect) {
         return Ok(Effect::new(crate::effects::ExchangeLifeTotalsEffect::new(
             payload.player1.clone(),
@@ -2350,7 +1985,7 @@ where
             payload.player.clone(),
         )));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::ActivateAbilityWithoutCostsEffect>(&effect) { return Ok(converted); }
+    clone_direct!(crate::effects::ActivateAbilityWithoutCostsEffect);
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ActivateManaAbilityOfEachLandEffect>(&effect)
     {
@@ -2601,16 +2236,6 @@ where
         )));
     }
 
-    macro_rules! clone_direct {
-        ($($ty:path),* $(,)?) => {
-            $(
-                if let Some(converted) = clone_direct_effect::<M, $ty>(&effect) {
-                    return Ok(converted);
-                }
-            )*
-        };
-    }
-
     clone_direct!(
         crate::effects::AmassEffect,
         crate::effects::CollectEvidenceEffect,
@@ -2633,9 +2258,7 @@ where
         crate::effects::CopySpellForEachTargetEffect,
         crate::effects::CounterEffect,
         crate::effects::CrewCostEffect,
-        crate::effects::DealDamageEffect,
         crate::effects::HealDamageEffect,
-        crate::effects::DrawCardsEffect,
         crate::effects::EachPlayerScryEffect,
         crate::effects::EarthbendEffect,
         crate::effects::EvolveEffect,
@@ -2649,12 +2272,9 @@ where
         crate::effects::GrantTaggedSpellLifeCostByManaValueEffect,
         crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect,
         crate::effects::LookAtHandEffect,
-        crate::effects::CreateLinkedFaceTokenEffect,
-        crate::effects::LinkExiledCardsEffect,
         crate::effects::MeldEffect,
         crate::effects::MillEffect,
         crate::effects::ModifyPowerToughnessEffect,
-        crate::effects::MoveCountersEffect,
         crate::effects::MoveToLibraryNthFromTopEffect,
         crate::effects::MoveToLibraryTopOrBottomChoiceEffect,
         crate::effects::PayAnyEnergyEffect,
@@ -2671,8 +2291,6 @@ where
         crate::effects::RedirectEnteringSourceEffect,
         crate::effects::PayManaEffect,
         crate::effects::PopulateEffect,
-        crate::effects::PutCountersEffect,
-        crate::effects::RemoveCountersEffect,
         crate::effects::ReorderLibraryTopEffect,
         crate::effects::RetainManaUntilEndOfTurnEffect,
         crate::effects::TurnFaceDownEffect,
@@ -2692,15 +2310,10 @@ where
         crate::effects::RevealTaggedEffect,
         crate::effects::SacrificeTargetEffect,
         crate::effects::ScryEffect,
-        crate::effects::SearchLibraryEffect,
-        crate::effects::SearchLibrarySlotsEffect,
         crate::effects::LinkPermanentsEffect,
         crate::effects::SoulbondPairEffect,
         crate::effects::TagMatchingObjectsEffect,
         crate::effects::TagOtherBlockParticipantEffect,
-        crate::effects::TargetOnlyEffect,
-        crate::effects::TapEffect,
-        crate::effects::UntapEffect,
         crate::effects::VariableCasualtyPlaneswalkerCopyEffect,
         crate::effects::AddManaOfChosenColorEffect,
         crate::effects::AddManaOfNotedTypeEffect,
@@ -2710,10 +2323,6 @@ where
         crate::effects::NoteActivationManaPaymentEffect,
         crate::effects::NoteTriggeringCreatureTypeEffect,
         crate::effects::NoteCountersEffect,
-        crate::effects::AddManaOfColorsAmongEffect,
-        crate::effects::AddManaEqualToManaCostEffect,
-        crate::effects::AddManaLostThisWayEffect,
-        crate::effects::AddOneManaOfAnyColorAmongEffect,
         crate::effects::mana::AddManaOfImprintedColorsEffect,
         crate::effects::AddScaledManaEffect,
     );
@@ -2790,14 +2399,6 @@ where
         .into_iter()
         .map(|effect| interpret_effect_model(effect, hooks))
         .collect()
-}
-
-fn clone_direct_effect<M, T>(effect: &M::Effect) -> Option<Effect>
-where
-    M: EffectModel,
-    T: Clone + EffectExecutor + 'static,
-{
-    M::downcast_ref::<T>(effect).map(|payload| Effect::new(payload.clone()))
 }
 
 fn convert_exchange_value_operand(

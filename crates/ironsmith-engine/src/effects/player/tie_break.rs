@@ -23,10 +23,6 @@ fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
 }
 
 impl EffectExecutor for TagPlayersEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,
@@ -44,10 +40,6 @@ impl EffectExecutor for TagPlayersEffect {
 }
 
 impl EffectExecutor for KeepGreatestManaValuePlayersEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         _game: &mut GameState,
@@ -83,10 +75,6 @@ impl EffectExecutor for KeepGreatestManaValuePlayersEffect {
 }
 
 impl EffectExecutor for RollDieKeepHighestPlayersEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

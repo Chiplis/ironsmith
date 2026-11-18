@@ -12,14 +12,7 @@ pub use ironsmith_core::PutCounterOfChosenKindEffect;
 use super::kind_selection::{choose_binding, counter_label, kinds_on, put_kind_on_recipients};
 
 impl EffectExecutor for PutCounterOfChosenKindEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -47,14 +40,7 @@ pub use ironsmith_core::PutCounterOfKindChosenFromEffect;
 pub use ironsmith_core::PutCounterOfRandomKindEffect;
 
 impl EffectExecutor for PutCounterOfRandomKindEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -119,14 +105,7 @@ impl EffectExecutor for PutCounterOfRandomKindEffect {
 }
 
 impl EffectExecutor for PutCounterOfKindChosenFromEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

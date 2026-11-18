@@ -164,11 +164,7 @@ fn bind_tapped_this_way_to_tap_all(effects: &mut Vec<EffectAst>) {
             index += 1;
             continue;
         };
-        let mut referenced = false;
-        for later in &effects[index + 1..] {
-            later.for_each_tag_key(&mut |tag| referenced |= tag.as_str() == marker);
-        }
-        if !referenced {
+        if !effects[index + 1..].iter().any(|later| later.contains_tag_key(marker)) {
             index += 1;
             continue;
         }

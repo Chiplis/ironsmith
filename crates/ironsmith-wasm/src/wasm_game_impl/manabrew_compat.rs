@@ -315,7 +315,17 @@ fn manabrew_missing_printed_stats(card: &Value) -> Vec<String> {
 fn manabrew_card_source_block(card_value: &Value) -> String {
     let card = object_value(card_value);
     let mut lines = Vec::new();
-    if let Some(mana_cost) = scalar_string(first_value(card, &["manaCost", "mana_cost"])) {
+    // A two-part card that shares one image (split, adventure, prepare, flip)
+    // reaches the adapter as its front half, yet Scryfall-derived hosts leave
+    // the card-level cost joined ("{1}{R} // {1}{U}"). This block describes
+    // one face, so it takes that face's half.
+    if let Some(mana_cost) = scalar_string(first_value(card, &["manaCost", "mana_cost"]))
+        && let Some(mana_cost) = mana_cost
+            .split("//")
+            .map(str::trim)
+            .next()
+            .filter(|cost| !cost.is_empty())
+    {
         lines.push(format!("Mana cost: {mana_cost}"));
     }
     lines.push(format!("Type: {}", manabrew_type_line(card)));
@@ -392,15 +402,29 @@ fn manabrew_card_source(card: &Value) -> Option<ExternalCardSourceFile> {
             scalar_string(first_value(card_object, &["combinedName", "combined_name"]))
                 .or_else(|| deck_name.contains(" // ").then(|| deck_name.clone()))
                 .unwrap_or_else(|| format!("{} // {}", linked_faces[0].name, linked_faces[1].name));
+        // Scryfall layout names. Adventure and modal double-faced cards are
+        // transform-like groups (the engine tells an Adventure by its subtype);
+        // aftermath and Room cards are printed with the split layout.
         let layout = scalar_string(card_object.get("layout")).unwrap_or_default();
-        let layout = if layout.eq_ignore_ascii_case("split") {
-            "split"
-        } else {
-            "transform_like"
+        let layout = match layout.to_ascii_lowercase().as_str() {
+            "split" | "aftermath" | "room" => "split",
+            "prepare" => "prepare",
+            "flip" => "flip",
+            "transform" => "transform",
+            _ => "transform_like",
         };
         let has_fuse = first_value(card_object, &["hasFuse", "has_fuse"])
             .and_then(Value::as_bool)
-            .unwrap_or(false);
+            .unwrap_or_else(|| {
+                manabrew_string_array(card_object, "keywords")
+                    .iter()
+                    .any(|keyword| keyword.eq_ignore_ascii_case("fuse"))
+                    || linked_faces.iter().any(|face| {
+                        face.block
+                            .lines()
+                            .any(|line| line.trim_start().starts_with("Fuse ("))
+                    })
+            });
         let mut aliases = Vec::new();
         for alias in [&deck_name, &combined_name] {
             if !alias.eq_ignore_ascii_case(&front_name)
@@ -664,6 +688,7 @@ fn manabrew_replan_command(
             .collect(),
         prefer_life: preferences.prefer_life,
         x_allocation: preferences.x_allocation.map(|allocation| allocation.0),
+        actual_mana_allocation: preferences.actual_mana_allocation.map(|allocation| allocation.0),
         required_life_pips: preferences
             .required_life_pips
             .into_iter()
@@ -4312,11 +4337,92 @@ mod manabrew_tests {
         else {
             panic!("two supplied faces should produce a linked source");
         };
-        assert_eq!(layout, "transform_like");
+        assert_eq!(layout, "transform");
         assert_eq!(combined_name, "Daybound Adept // Nightbound Adept");
         assert!(faces[0].block.contains("Loyalty: 4"));
         assert!(faces[1].block.contains("Defense: 5"));
         assert!(faces[0].block.contains("+1: Draw a card."));
+    }
+
+    /// Scryfall-derived deck cards for single-image two-part cards: the host
+    /// keeps the front half's name and the card-level joined mana cost.
+    #[test]
+    fn deck_sources_take_the_front_half_of_a_joined_mana_cost() {
+        let decks = vec![serde_json::json!({
+            "cards": [{
+                "identity": { "name": "Fire" },
+                "layout": "split",
+                "manaCost": "{1}{R} // {1}{U}",
+                "types": ["Instant"],
+                "text": "Fire deals 2 damage divided as you choose among one or two targets."
+            }]
+        })];
+
+        let sources = manabrew_deck_sources(&decks);
+        let ExternalCardSourceGroup::Single { name, block, .. } = &sources[0].group else {
+            panic!("a front-only half stays a single source");
+        };
+        assert_eq!(name, "Fire");
+        assert!(block.starts_with("Mana cost: {1}{R}\n"), "{block}");
+    }
+
+    #[test]
+    fn deck_sources_link_single_image_two_part_cards_by_layout() {
+        let two_part = |name: &str, layout: &str, back: serde_json::Value| {
+            serde_json::json!({
+                "identity": { "name": name },
+                "layout": layout,
+                "manaCost": "{1}{R} // {W}",
+                "cardFaces": [{
+                    "name": name,
+                    "mana_cost": "{1}{R}",
+                    "type_line": "Instant",
+                    "oracle_text": "Destroy target artifact.\nFuse (You may cast one or both halves of this card from your hand.)"
+                }, back]
+            })
+        };
+        let decks = vec![serde_json::json!({
+            "cards": [
+                two_part("Wear", "split", serde_json::json!({
+                    "name": "Tear", "mana_cost": "{W}", "type_line": "Instant",
+                    "oracle_text": "Destroy target enchantment.\nFuse (You may cast one or both halves of this card from your hand.)"
+                })),
+                two_part("Shieldbreaker", "adventure", serde_json::json!({
+                    "name": "Battle Display", "mana_cost": "{R}",
+                    "type_line": "Sorcery — Adventure", "oracle_text": "Destroy target artifact."
+                })),
+                two_part("Emeritus", "prepare", serde_json::json!({
+                    "name": "Regrowth", "mana_cost": "{1}{G}", "type_line": "Sorcery",
+                    "oracle_text": "Return target card from your graveyard to your hand."
+                })),
+            ]
+        })];
+
+        let sources = manabrew_deck_sources(&decks);
+        let linked = sources
+            .iter()
+            .map(|source| {
+                let ExternalCardSourceGroup::Linked {
+                    layout,
+                    combined_name,
+                    has_fuse,
+                    faces,
+                } = &source.group
+                else {
+                    panic!("two supplied faces should produce a linked source");
+                };
+                assert!(faces[0].block.starts_with("Mana cost: {1}{R}\n"));
+                (layout.as_str(), combined_name.as_str(), *has_fuse)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            linked,
+            vec![
+                ("split", "Wear // Tear", true),
+                ("transform_like", "Shieldbreaker // Battle Display", true),
+                ("prepare", "Emeritus // Regrowth", true),
+            ]
+        );
     }
 
     #[test]

@@ -8,9 +8,7 @@ use crate::zone::Zone;
 use super::runtime_helpers::{EffectDrivenCastOption, EffectDrivenCastPayment};
 impl EffectExecutor for CastFaceDownUsingActivationManaEffect {
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> { Some(crate::effect::PriorEffectAction::Cast) }
-    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx).map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<CompletedEffectOutputs, ExecutionError> {
         crate::effects::composition::execute_transaction(game, ctx,
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)), |game, ctx| {

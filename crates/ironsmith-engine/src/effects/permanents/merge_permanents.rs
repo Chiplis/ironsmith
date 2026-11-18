@@ -7,7 +7,7 @@ use crate::target::ChooseSpec;
 use crate::zone::Zone;
 pub use ironsmith_core::MergePermanentsEffect;
 impl EffectExecutor for MergePermanentsEffect {
- fn execute(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<EffectOutcome,ExecutionError>{self.execute_with_outputs(game,ctx).map(CompletedEffectOutputs::into_outcome)}
+ #[crate::effects::project_effect_outcome]
  fn execute_with_outputs(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<CompletedEffectOutputs,ExecutionError>{
   crate::effects::composition::execute_transaction(game,ctx,||CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),|game,ctx|{
    let incoming=resolve_objects_for_effect(game,ctx,&ChooseSpec::Object(self.incoming.clone()).with_count(crate::effect::ChoiceCount::exactly(1)))?.first().copied();

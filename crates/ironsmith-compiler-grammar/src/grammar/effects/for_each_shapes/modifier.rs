@@ -81,6 +81,8 @@ fn duration_prefix(tokens: &[OwnedLexToken]) -> (Until, &[OwnedLexToken]) {
     let duration = match parsed.duration {
         leaf::LeafDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
         leaf::LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
+        leaf::LeafDurationPhrase::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
+        leaf::LeafDurationPhrase::UntilBeginningOfYourNextEndStep => Until::YourNextEndStep,
         leaf::LeafDurationPhrase::UntilEndOfCombat => Until::EndOfCombat,
         _ => return (Until::EndOfTurn, tokens),
     };

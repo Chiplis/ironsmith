@@ -1,5 +1,6 @@
 //! Gain life effect implementation.
 
+#[cfg(test)]
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
@@ -55,15 +56,7 @@ impl EffectExecutor for GainLifeEffect {
         Ok(Some(prepare_proposal(self, game, ctx)?.event(ctx)))
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

@@ -4,6 +4,10 @@
 //! recognizer (which reports the keyword as a fact) and lowering (which
 //! materializes it) need the same construction, so it lives here.
 
+mod static_ability;
+pub use static_ability::{keyword_static_ability, static_ability_for_keyword_action};
+
+use crate::model::ast::TokenCopySourceAst;
 use ironsmith_core::TotalCost;
 
 use crate::cards::builders::{
@@ -159,9 +163,9 @@ pub fn attack_keyword_granted_ability(action: &crate::cards::builders::KeywordAc
         ),
         crate::cards::builders::KeywordAction::Myriad => {
             let create = EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
-                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
             without_mana_cost: false,
-                    source: TargetAst::Source(None), count: Value::Fixed(1), player: PlayerAst::You,
+                    source: TokenCopySourceAst::Target(TargetAst::Source(None)), count: Value::Fixed(1), player: PlayerAst::You,
                     enters_tapped: true, enters_attacking: true, entry_tapped_attacking_followup: false,
                     attack_target_player_or_planeswalker_controlled_by: Some(PlayerAst::That),
                     attack_target_player_only: false, half_power_toughness_round_up: false,

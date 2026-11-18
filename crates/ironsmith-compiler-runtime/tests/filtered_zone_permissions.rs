@@ -321,6 +321,53 @@ fn modal(
     game.create_object_from_definition(&front, owner, zone)
 }
 #[test]
+fn split_zone_permission_uses_the_chosen_halfs_mana_value_from_menu_through_payment() {
+    use ironsmith::grant::Grantable;
+    use ironsmith::grant_registry::GrantSource;
+    use ironsmith::target::ObjectFilter;
+    use ironsmith_core::value_model::ManaSpendMode;
+
+    for mode in [ManaSpendMode::Normal, ManaSpendMode::AnyColor] {
+        for required_value in [1, 2, 3] {
+            let mut game = game();
+            let host = resource(&mut game, A, "Type: Enchantment", Zone::Battlefield);
+            let front = CardId::new();
+            let back = CardId::new();
+            let half = |id, name, other, other_name, cost| {
+                CardDefinitionBuilder::new(id, name)
+                    .card_types(vec![CardType::Sorcery])
+                    .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(cost)]))
+                    .linked_face_layout(LinkedFaceLayout::Split)
+                    .other_face(other)
+                    .other_face_name(other_name)
+                    .build()
+            };
+            let left = half(front, "Left", back, "Right", 1);
+            let right = half(back, "Right", front, "Left", 2);
+            game.register_linked_face_definition(&left);
+            game.register_linked_face_definition(&right);
+            let card = game.create_object_from_definition(&left, A, Zone::Exile);
+            game.effect_store.grant_registry.grant_to_filter(
+                ObjectFilter::default().with_mana_value(ironsmith::filter::Comparison::Equal(required_value)),
+                Zone::Exile, A, Grantable::PlayFrom, GrantSource::until_end_of_turn(host, game.turn.turn_number),
+            );
+            game.effect_store.grant_registry.grants.last_mut().unwrap().play_from_constraints.cast_mana_spend_mode = mode;
+            let actions = casts(&game, A, card);
+            assert_eq!(game.object(card).unwrap().split_combined_mana_cost().unwrap().mana_value(), 3);
+            assert_eq!(actions.len(), usize::from(required_value != 3), "{mode:?}, value {required_value}: {actions:?}");
+            if let Some(action) = actions.into_iter().next() {
+                let LegalAction::CastSpell { casting_method, .. } = &action else { unreachable!() };
+                assert_eq!(matches!(casting_method, CastingMethod::ExactPermission { .. }), mode == ManaSpendMode::AnyColor);
+                assert_eq!(matches!(casting_method.origin_method(), CastingMethod::SplitOtherHalfPlayFrom { .. }), required_value == 2);
+                let stack = announce(&mut game, A, action);
+                let spell = game.object(stack).unwrap();
+                assert_eq!(spell.name.as_ref(), if required_value == 1 { "Left" } else { "Right" });
+                assert_eq!(spell.mana_spent_to_cast.total(), required_value as u32);
+            }
+        }
+    }
+}
+#[test]
 fn alternate_spell_face_retains_grant_identity_and_matches_its_own_power() {
     for definition in definitions("Assemble the Players") {
         for (front_creature, back_power, allowed) in [(false, 2, true), (true, 3, false)] {

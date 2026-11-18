@@ -219,20 +219,14 @@ impl SelectedBranchProjection for ClauseProjection {
 }
 
 pub(super) fn selected_clause_cursor(
-    effects: &[Effect],
+    effects: Vec<Effect>,
     identity: Vec<usize>,
     scope: ProgramActionScope,
-) -> Box<dyn crate::effects::ActionProgramCursor> {
-    selected_clause_cursor_with_selection(effects, identity, scope, None)
-}
-
-pub(super) fn selected_clause_cursor_with_selection(
-    effects: &[Effect], identity: Vec<usize>, scope: ProgramActionScope,
     selected: Option<Vec<crate::ids::ObjectId>>,
 ) -> Box<dyn ActionProgramCursor> {
     selected_branch_cursor_with_projection(
         vec![SelectedProgramBranch {
-            effects: effects.to_vec(),
+            effects,
             identity,
             repetitions: 1,
             scope,

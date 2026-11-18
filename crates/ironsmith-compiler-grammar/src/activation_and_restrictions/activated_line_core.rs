@@ -78,16 +78,9 @@ fn parse_designated_activated_line(
     let mut exceptions = Vec::new();
     let mut rider_sentences = Vec::new();
     for sentence in crate::lexer::split_lexed_sentences(&body[after_colon..]) {
-        let words = crate::lexer::token_word_refs(sentence);
-        let action_start = match words.as_slice() {
-            ["activate", "only", "as", "a", "sorcery", "unless", "you're" | "youre" | "you’re", ..] => Some(7),
-            ["activate", "only", "as", "a", "sorcery", "unless", "you", "are", ..] => Some(8),
-            _ => None,
-        };
-        if let Some(action_start) = action_start.filter(|start| words.len() > *start) {
-            exceptions.push(words[action_start..].join("-"));
+        if let Some(action) = crate::grammar::restriction_facts::split_sorcery_timing_exception(sentence, &mut rewritten) {
+            exceptions.push(action);
             rider_sentences.push(sentence);
-            rewritten.extend(crate::lexer::lex_line("Activate only as a sorcery.", 0)?);
         } else {
             rewritten.extend_from_slice(sentence);
             rewritten.push(OwnedLexToken::period(crate::cards::TextSpan::synthetic()));

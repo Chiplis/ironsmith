@@ -9,15 +9,7 @@ use crate::game_state::{GameState, Target};
 struct CounterPlacement(Event, Option<u32>);
 
 impl EffectExecutor for CounterPlacement {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -148,14 +140,7 @@ pub(super) fn execute_counter_batch_with_limit_outputs(
 struct CounterRemoval(Event);
 
 impl EffectExecutor for CounterRemoval {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -379,14 +364,7 @@ pub(crate) fn prepare_counter_removal_cost(
 struct CounterRemovalCost(Vec<Event>);
 
 impl EffectExecutor for CounterRemovalCost {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

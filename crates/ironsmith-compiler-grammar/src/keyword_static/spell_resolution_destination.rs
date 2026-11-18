@@ -22,57 +22,38 @@ fn phrase(tokens: &[OwnedLexToken], cursor: &mut usize, words: &[&str]) -> bool 
 /// ability, so the line's static family owns it even on an instant or
 /// sorcery, whose other lines are resolution statements.
 pub(crate) fn opens_spell_resolution_destination_program_line(tokens: &[OwnedLexToken]) -> bool {
+    spell_resolution_destination_header(tokens).is_some()
+}
+
+fn spell_resolution_destination_header(tokens: &[OwnedLexToken]) -> Option<(Zone, usize)> {
     let mut cursor = 0;
-    phrase(tokens, &mut cursor, &["if", "this", "spell", "was", "cast", "from", "your"])
-        && (phrase(tokens, &mut cursor, &["hand"]) || phrase(tokens, &mut cursor, &["graveyard"]))
-        && phrase(
-            tokens,
-            &mut cursor,
-            &[
-                "instead", "of", "putting", "it", "into", "your", "graveyard", "as", "it",
-                "resolves", "exile", "it",
-            ],
-        )
+    if !phrase(tokens, &mut cursor, &["if", "this", "spell", "was", "cast", "from", "your"]) {
+        return None;
+    }
+    let origin = if phrase(tokens, &mut cursor, &["hand"]) {
+        Zone::Hand
+    } else if phrase(tokens, &mut cursor, &["graveyard"]) {
+        Zone::Graveyard
+    } else {
+        return None;
+    };
+    phrase(
+        tokens,
+        &mut cursor,
+        &[
+            "instead", "of", "putting", "it", "into", "your", "graveyard", "as", "it",
+            "resolves", "exile", "it",
+        ],
+    )
+    .then_some((origin, cursor))
 }
 
 pub(super) fn parse_spell_resolution_destination_program_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let mut cursor = 0;
-    if !phrase(
-        tokens,
-        &mut cursor,
-        &["if", "this", "spell", "was", "cast", "from", "your"],
-    ) {
-        return Ok(None);
-    }
-    let origin_zone = if phrase(tokens, &mut cursor, &["hand"]) {
-        Zone::Hand
-    } else if phrase(tokens, &mut cursor, &["graveyard"]) {
-        Zone::Graveyard
-    } else {
+    let Some((origin_zone, mut cursor)) = spell_resolution_destination_header(tokens) else {
         return Ok(None);
     };
-    if !phrase(
-        tokens,
-        &mut cursor,
-        &[
-            "instead",
-            "of",
-            "putting",
-            "it",
-            "into",
-            "your",
-            "graveyard",
-            "as",
-            "it",
-            "resolves",
-            "exile",
-            "it",
-        ],
-    ) {
-        return Ok(None);
-    }
     let mut multiplicity =
         ironsmith_core::static_ability_model::SpellResolutionProgramMultiplicity::PerInstance;
     if tokens
@@ -153,35 +134,14 @@ pub(super) fn parse_spell_resolution_destination_program_line(
     if effects.is_empty() {
         return Ok(None);
     }
-    let free =
-        ironsmith_compiler_resolve::tag_support::granted_cast_object_reference_imports(&effects);
-    let receipt = crate::tag::declared_key(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG);
-    let mut scope = vec![
-        crate::cards::builders::EffectAst::subject_verb_filtered_tagged_objects(
-            crate::target::ObjectFilter::default(),
-            receipt.clone(),
-            vec![receipt.clone()],
-        ),
-    ];
-    if free.contains(&crate::tag::CompilerReferenceTag::PriorExiledCard.key()) {
-        scope.push(
-            crate::cards::builders::EffectAst::subject_verb_filtered_tagged_objects(
-                crate::target::ObjectFilter::default(),
-                crate::tag::CompilerReferenceTag::PriorExiledCard.bind(),
-                vec![receipt],
-            ),
-        );
-    }
-    scope.extend(effects);
-    // One lexical sequence supplies the header's exact receipt before its
-    // children, including when this static ability is nested inside a grant.
-    let effects = vec![crate::cards::builders::EffectAst::Sequence { effects: scope }];
     crate::word_claims::claim_tokens(&tokens[..cursor]);
     Ok(Some(
         StaticAbility::spell_resolution_destination_program(
             Some(origin_zone),
             Zone::Exile,
-            ironsmith_core::ResolutionProgram::from_effects(effects),
+            ironsmith_core::ResolutionProgram::from_effects(vec![
+                crate::cards::builders::EffectAst::WithExiledSpell { effects },
+            ]),
         )
         .with_spell_resolution_program_multiplicity(multiplicity),
     ))
@@ -204,14 +164,15 @@ mod tests {
             let parsed = parse_spell_resolution_destination_program_line(&tokens)
                 .unwrap()
                 .unwrap();
-            assert!(matches!(
-                parsed.payload,
-                ironsmith_core::StaticAbilityPayload::SpellResolutionDestinationProgram {
-                    origin_zone: Some(Zone::Hand),
-                    destination: Zone::Exile,
-                    ..
-                }
-            ));
+            let ironsmith_core::StaticAbilityPayload::SpellResolutionDestinationProgram {
+                origin_zone: Some(Zone::Hand), destination: Zone::Exile, follow_up, ..
+            } = parsed.payload else { panic!("expected a hand-to-exile replacement") };
+            let nodes = follow_up.all_effects();
+            let [crate::cards::builders::EffectAst::WithExiledSpell { effects }] = nodes.as_slice()
+            else { panic!("expected the callback to bind the exiled spell") };
+            let body_start = tokens.iter().position(|token| token.is_word("and")).unwrap() + 1;
+            let authored = crate::clause_support::parse_effect_sentences_lexed(&tokens[body_start..]).unwrap();
+            assert_eq!(*effects, authored);
         }
     }
     #[test]
@@ -278,7 +239,7 @@ mod declared_recipe_tests {
                 fn token_actions<'a>(effect: &'a crate::cards::builders::EffectAst, out: &mut Vec<&'a crate::cards::builders::TokenActionAst>) {
                     use crate::cards::builders::{EffectAst, SubjectVerbActionAst};
                     match effect {
-                        EffectAst::Sequence { effects } => for child in effects { token_actions(child, out); },
+                        EffectAst::WithExiledSpell { effects } | EffectAst::Sequence { effects } => for child in effects { token_actions(child, out); },
                         EffectAst::SubjectVerb(verb) => if let SubjectVerbActionAst::Tokens(token) = &verb.action { out.push(token); },
                         _ => {},
                     }

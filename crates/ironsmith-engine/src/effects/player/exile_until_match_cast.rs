@@ -1,7 +1,7 @@
 //! Exile cards from the top of a library until one matches a filter, then offer
 //! that card to be cast and put the rest on the bottom in random order.
 
-use crate::effect::{Effect, EffectOutcome};
+use crate::effect::Effect;
 use crate::effects::CompletedEffectOutputs;
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{LibraryBottomOrder, LibraryConsultMode};
@@ -89,14 +89,7 @@ impl EffectExecutor for ExileUntilMatchCastEffect {
             retain_result_snapshots: false,
         }))
     }
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

@@ -1,5 +1,73 @@
 use super::*;
 
+/// Read the partition from the executable instructions, including both move
+/// targets. No source text or saved parser decision is used by the audit.
+pub(in crate::compiled_text) fn read_library_hand_partition<'a>(
+    viewed: &crate::TagKey,
+    effects: [&'a Effect; 4],
+) -> Option<ironsmith_core::effect::LibraryHandDisposition<crate::effects::LibraryPlacementOrder>> {
+    use crate::effects::{ChooseObjectsEffect, MoveToZoneEffect, TagMatchingObjectsEffect};
+    use ironsmith_core::effect::{LibraryHandDisposition::*, LibraryHandPartition};
+
+    let [choose, capture, hand, rest] = effects;
+    let choose = choose.downcast_ref::<ChooseObjectsEffect>()?;
+    let capture = capture.downcast_ref::<TagMatchingObjectsEffect>()?;
+    // Spell lowering may label a move result. Only ignore its ordinary bookkeeping
+    // tag when it leaves the choice and remainder bindings intact.
+    let move_payload = |effect: &'a Effect| {
+        let payload = match effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            Some(tagged) => {
+                let ordinal = tagged.tag.as_str().strip_prefix("moved_")?;
+                ordinal.parse::<usize>().ok()?;
+                if tagged.action.is_some() || &tagged.tag == viewed
+                    || tagged.tag == choose.tag || tagged.tag == capture.tag
+                {
+                    return None;
+                }
+                tagged.effect.as_ref()
+            }
+            None => effect,
+        };
+        payload.downcast_ref::<MoveToZoneEffect>()
+    };
+    let hand = move_payload(hand)?;
+    let rest = move_payload(rest)?;
+    if viewed == &choose.tag || viewed == &capture.tag || choose.tag == capture.tag {
+        return None;
+    }
+    let partition = LibraryHandPartition {
+        viewed: viewed.clone(),
+        hand: choose.tag.clone(),
+        rest: capture.tag.clone(),
+        disposition: match rest.zone {
+            Zone::Graveyard => HandAndGraveyard,
+            Zone::Exile => HandAndExile,
+            Zone::Library => HandAndLibraryBottom(rest.library_order.clone()?),
+            _ => return None,
+        },
+    };
+    if choose != &ChooseObjectsEffect::new(
+        partition.candidates(), ChoiceCount::exactly(1), PlayerFilter::You, choose.tag.clone(),
+    ).in_zone(Zone::Library)
+        || capture != &TagMatchingObjectsEffect::new(partition.complement(), capture.tag.clone())
+            .in_zone(Zone::Library)
+    {
+        return None;
+    }
+    for ((tag, zone, order), actual) in partition.moves().into_iter().zip([hand, rest]) {
+        let mut expected = MoveToZoneEffect::new(ChooseSpec::Tagged(tag.clone()), zone, false)
+            .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put);
+        expected.library_order = order;
+        if matches!(zone, Zone::Hand | Zone::Graveyard)
+            && actual.destination_player_surface == Some(PlayerFilter::You)
+        {
+            expected.destination_player_surface = Some(PlayerFilter::You);
+        }
+        if actual != &expected { return None; }
+    }
+    Some(partition.disposition)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LookedPartitionDestination {
     Hand,

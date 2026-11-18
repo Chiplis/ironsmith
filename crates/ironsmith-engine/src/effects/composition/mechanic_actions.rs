@@ -9,7 +9,7 @@ use crate::effect::{ChoiceCount, Effect, EffectOutcome, ExecutionFact, Until, Va
 #[cfg(test)]
 use crate::effect::OutcomeValue;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{normalize_object_selection, resolve_value};
+use crate::effects::helpers::resolve_value;
 use crate::effects::permanents::face_down_entry::{
     manifest_card_with_outputs, prepare_manifest_card, prepare_manifest_entry,
     rollback_manifest_preparation,
@@ -22,7 +22,6 @@ use crate::effects::zones::{
     move_to_battlefield_with_options,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::Event;
 
 use crate::events::processing::{
     EventOutcome,
@@ -48,10 +47,6 @@ pub use ironsmith_core::{
 };
 
 impl EffectExecutor for ResolvesDespiteIllegalTargetsEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         _game: &mut GameState,
@@ -97,19 +92,7 @@ impl EffectExecutor for BackupEffect {
         }
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -163,15 +146,98 @@ pub struct ExploreEffect {
 
 impl ExploreEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target, descriptive: false }
+        Self {
+            target,
+            descriptive: false,
+        }
     }
-}
 
-#[derive(Debug, Clone)]
-struct ExploreInstruction {
-    object_id: ObjectId,
-    controller: PlayerId,
-    snapshot: Option<ObjectSnapshot>,
+    fn explore_once(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        action: &KeywordActionEvent,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let controller = action.player;
+        let target_id = action.source;
+        let mut children = Vec::new();
+
+        let revealed_card_id = game
+            .player(controller)
+            .and_then(|entry| entry.library.last().copied());
+        let revealed_snapshot = revealed_card_id.and_then(|card_id| {
+            game.object(card_id)
+                .map(|object| ObjectSnapshot::from_object(object, game))
+        });
+        let reveal = crate::effects::cards::reveal_objects_with_outputs(
+            game,
+            ctx,
+            revealed_snapshot.clone().into_iter().collect(),
+            Some(controller),
+            "Reveal the top card of a library",
+            None,
+        )?;
+        children.push(reveal);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+
+        let revealed_is_land = revealed_card_id
+            .and_then(|card_id| game.object(card_id))
+            .is_some_and(|object| object.has_card_type(crate::types::CardType::Land));
+
+        let target = game
+            .object(target_id)
+            .is_some()
+            .then_some(ChooseSpec::SpecificObject(target_id));
+        for effect in explore_followup_program(
+            target,
+            revealed_card_id.map(|id| (ChooseSpec::SpecificObject(id), revealed_is_land)),
+            PlayerFilter::Specific(controller),
+        ) {
+            children.push(effect.0.execute_child_with_outputs(game, ctx)?);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+        }
+
+        let action_snapshot = game
+            .object(target_id)
+            .map(|object| ObjectSnapshot::from_object(object, game))
+            .or_else(|| action.snapshot.clone());
+        let object_tags = revealed_snapshot
+            .map(|snapshot| {
+                HashMap::from([(
+                    TagKey::from(crate::effects::PUBLIC_REVEALED_TAG),
+                    vec![snapshot],
+                )])
+            })
+            .unwrap_or_default();
+        let completion =
+            KeywordActionEvent::new(KeywordActionKind::Explore, controller, target_id, 1)
+                .with_snapshot(action_snapshot.clone())
+                .with_object_tags(object_tags);
+        let original =
+            crate::effects::CompletedEffectOutputs::from_children(children, |children| {
+                EffectOutcome::aggregate_replacement_outcomes(
+                    EffectOutcome::with_objects(vec![target_id]).with_execution_fact(
+                        crate::effect::ExecutionFact::ResultObjectMemory(
+                            action_snapshot.into_iter().collect(),
+                        ),
+                    ),
+                    children,
+                )
+            });
+        if self.descriptive {
+            Ok(original)
+        } else {
+            super::complete_keyword_action_with_outputs(game, ctx, original, completion)
+        }
+    }
 }
 
 fn explore_snapshot_for_object(
@@ -195,10 +261,6 @@ fn explore_snapshot_for_object(
         .flat_map(|snapshots| snapshots.iter())
         .find(|snapshot| snapshot.object_id == object_id)
         .cloned()
-}
-
-fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
-    game.team_apnap_player_order()
 }
 
 pub(crate) fn execute_keyword_action_replacement_effects_with_outputs(
@@ -243,19 +305,7 @@ impl EffectExecutor for ExploreEffect {
         }
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -318,7 +368,7 @@ impl EffectExecutor for ExploreEffect {
                     ));
                 }
 
-                let mut remaining = target_ids
+                let actions = target_ids
                     .into_iter()
                     .filter_map(|object_id| {
                         let snapshot = explore_snapshot_for_object(game, ctx, object_id);
@@ -326,14 +376,13 @@ impl EffectExecutor for ExploreEffect {
                             .object(object_id)
                             .map(|object| game.controller_of(object))
                             .or_else(|| snapshot.as_ref().map(|snap| snap.controller))?;
-                        Some(ExploreInstruction {
-                            object_id,
-                            controller,
-                            snapshot,
-                        })
+                        Some(
+                            KeywordActionEvent::new(KeywordActionKind::Explore, controller, object_id, 1)
+                                .with_snapshot(snapshot),
+                        )
                     })
                     .collect::<Vec<_>>();
-                if remaining.is_empty() {
+                if actions.is_empty() {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         if self.target.is_target() {
                             EffectOutcome::target_invalid()
@@ -343,190 +392,11 @@ impl EffectExecutor for ExploreEffect {
                     ));
                 }
 
-                let mut children = Vec::new();
-                let mut explored_objects = Vec::new();
-                let player_order = players_in_apnap_order(game);
-
-                for player in player_order {
-                    while let Some(candidate_indices) = (!remaining.is_empty()).then(|| {
-                        remaining
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(index, instruction)| {
-                                (instruction.controller == player).then_some(index)
-                            })
-                            .collect::<Vec<_>>()
-                    }) {
-                        if candidate_indices.is_empty() {
-                            break;
-                        }
-
-                        let chosen_index = if candidate_indices.len() == 1 {
-                            candidate_indices[0]
-                        } else {
-                            let choices = candidate_indices
-                                .iter()
-                                .map(|&index| remaining[index].object_id)
-                                .collect::<Vec<_>>();
-                            let spec = ChooseObjectsSpec::new(
-                                ctx.source,
-                                "Choose a permanent to explore next",
-                                choices.clone(),
-                                1,
-                                Some(1),
-                            );
-                            let selection: Vec<ObjectId> = make_decision(
-                                game,
-                                ctx.decision_maker,
-                                player,
-                                Some(ctx.source),
-                                spec,
-                            );
-                            if ctx.decision_maker.awaiting_choice() {
-                                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                                    EffectOutcome::with_objects(explored_objects),
-                                ));
-                            }
-                            let normalized = normalize_object_selection(selection, &choices, 1);
-                            let chosen_object = normalized.first().copied().unwrap_or(choices[0]);
-                            candidate_indices
-                                .into_iter()
-                                .find(|index| remaining[*index].object_id == chosen_object)
-                                .unwrap_or(0)
-                        };
-
-                        let instruction = remaining.remove(chosen_index);
-                        let controller = instruction.controller;
-                        let pre_snapshot = instruction.snapshot.clone();
-
-                        let would_event = Event::new_with_provenance(
-                            KeywordActionEvent::new(
-                                KeywordActionKind::Explore,
-                                controller,
-                                instruction.object_id,
-                                1,
-                            )
-                            .with_snapshot(pre_snapshot.clone()),
-                            ctx.provenance,
-                        );
-                        let run = |game: &mut GameState, ctx: &mut ExecutionContext, action: &KeywordActionEvent| {
-                                    let controller = action.player;
-                                    let target_id = action.source;
-                                    let mut explored_objects = Vec::new();
-                                    let mut children = Vec::new();
-
-                                    let revealed_card_id = game
-                                        .player(controller)
-                                        .and_then(|entry| entry.library.last().copied());
-                                    let revealed_snapshot = revealed_card_id.and_then(|card_id| {
-                                        game.object(card_id)
-                                            .map(|object| ObjectSnapshot::from_object(object, game))
-                                    });
-                                    let reveal =
-                                        crate::effects::cards::reveal_objects_with_outputs(
-                                            game,
-                                            ctx,
-                                            revealed_snapshot.clone().into_iter().collect(),
-                                            Some(controller),
-                                            "Reveal the top card of a library",
-                                            None,
-                                        )?;
-                                    children.push(reveal);
-                                    if ctx.decision_maker.awaiting_choice() {
-                                        return Ok(
-                                            crate::effects::CompletedEffectOutputs::aggregate_only(
-                                                EffectOutcome::count(0),
-                                            ),
-                                        );
-                                    }
-
-                                    let revealed_is_land = revealed_card_id
-                                        .and_then(|card_id| game.object(card_id))
-                                        .is_some_and(|object| {
-                                            object.has_card_type(crate::types::CardType::Land)
-                                        });
-
-                                    let target = game.object(target_id).is_some()
-                                        .then_some(ChooseSpec::SpecificObject(target_id));
-                                    for effect in explore_followup_program(target,
-                                        revealed_card_id.map(|id| (ChooseSpec::SpecificObject(id), revealed_is_land)),
-                                        PlayerFilter::Specific(controller)) {
-                                        children.push(effect.0.execute_child_with_outputs(game, ctx)?);
-                                        if ctx.decision_maker.awaiting_choice() {
-                                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
-                                        }
-                                    }
-
-                                    let action_snapshot = game
-                                        .object(target_id)
-                                        .map(|object| ObjectSnapshot::from_object(object, game))
-                                        .or_else(|| action.snapshot.clone());
-                                    let object_tags = revealed_snapshot
-                                        .clone()
-                                        .map(|snapshot| {
-                                            HashMap::from([(
-                                                TagKey::from(crate::effects::PUBLIC_REVEALED_TAG),
-                                                vec![snapshot],
-                                            )])
-                                        })
-                                        .unwrap_or_default();
-                                    let completion = KeywordActionEvent::new(
-                                        KeywordActionKind::Explore,
-                                        controller,
-                                        target_id,
-                                        1,
-                                    )
-                                    .with_snapshot(action_snapshot.clone())
-                                    .with_object_tags(object_tags);
-                                    explored_objects.push(target_id);
-                                    let original =
-                                        crate::effects::CompletedEffectOutputs::from_children(
-                                            children,
-                                            |children| {
-                                                EffectOutcome::aggregate_replacement_outcomes(
-                                                    EffectOutcome::with_objects(explored_objects)
-                                                        .with_execution_fact(crate::effect::ExecutionFact::ResultObjectMemory(
-                                                            action_snapshot.into_iter().collect(),
-                                                        )),
-                                                    children,
-                                                )
-                                            },
-                                        );
-                                    if self.descriptive { Ok(original) } else {
-                                        super::complete_keyword_action_with_outputs(game, ctx, original, completion)
-                                    }
-                                };
-                        let iteration_outcome = if self.descriptive {
-                            let action = KeywordActionEvent::new(KeywordActionKind::Explore, controller, instruction.object_id, 1).with_snapshot(pre_snapshot);
-                            run(game, ctx, &action)?
-                        } else {
-                            crate::effects::composition::execute_keyword_action_with_outputs(
-                                game, ctx, would_event,
-                                crate::effects::composition::KeywordActionOutput::Objects,
-                                crate::effects::composition::KeywordActionAmount::Repetitions, run,
-                            )?
-                        };
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::count(0),
-                            ));
-                        }
-                        if let Some(objects) = iteration_outcome.outcome.objects() {
-                            explored_objects.extend_from_slice(objects);
-                        }
-                        children.push(iteration_outcome);
-                    }
-                }
-
-                Ok(crate::effects::CompletedEffectOutputs::from_children(
-                    children,
-                    |children| {
-                        EffectOutcome::aggregate_with_primary_result(
-                            EffectOutcome::with_objects(explored_objects),
-                            children,
-                        )
-                    },
-                ))
+                super::execute_ordered_permanent_actions(
+                    game, ctx, actions, "Choose a permanent to explore next", self.descriptive,
+                    super::KeywordActionAmount::Repetitions,
+                    |game, ctx, action| self.explore_once(game, ctx, action),
+                )
             },
         )
     }
@@ -563,19 +433,7 @@ impl OpenAttractionEffect {
 }
 
 impl EffectExecutor for OpenAttractionEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -741,19 +599,7 @@ impl ManifestCardFromHandEffect {
 }
 
 impl EffectExecutor for ManifestObjectsEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -1030,19 +876,7 @@ impl EffectExecutor for ManifestDreadEffect {
         visitor(&Effect::new(crate::effects::MoveToZoneEffect::new(ChooseSpec::tagged(DREAD_LOOKED), Zone::Graveyard, false)));
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -1238,19 +1072,7 @@ fn manifest_selected_card(
 }
 
 impl EffectExecutor for ManifestTopCardOfLibraryEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -1272,19 +1094,7 @@ impl EffectExecutor for ManifestTopCardOfLibraryEffect {
 }
 
 impl EffectExecutor for ManifestCardFromHandEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -1362,19 +1172,7 @@ impl EffectExecutor for PopulateEffect {
         )));
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -1475,19 +1273,7 @@ impl EffectExecutor for BolsterEffect {
         )));
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -1583,19 +1369,7 @@ impl EffectExecutor for CipherEffect {
                     .as_copy().without_paying_mana_cost())])]))));
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(*self)
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -1796,19 +1570,7 @@ impl EffectExecutor for CastEncodedCardCopyEffect {
         )]))
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -1851,19 +1613,7 @@ fn source_is_entering_or_on_battlefield(game: &GameState, ctx: &ExecutionContext
 }
 
 impl EffectExecutor for DevourEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -1994,19 +1744,7 @@ impl EffectExecutor for DevourEffect {
 }
 
 impl EffectExecutor for AmplifyEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -2238,19 +1976,6 @@ impl SupportEffect {
 }
 
 impl EffectExecutor for SupportEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
     fn canonical_program(&self) -> Option<Effect> {
         Some(Effect::new(super::KeywordCompletionProgram {
             action: KeywordActionKind::Support,
@@ -2262,6 +1987,7 @@ impl EffectExecutor for SupportEffect {
         }))
     }
 
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self, game: &mut GameState, ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
@@ -2301,19 +2027,7 @@ impl EffectExecutor for AdaptEffect {
         visitor(&Effect::new(self.counter_program()));
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -2400,10 +2114,6 @@ fn ability_counter_primitive() -> &'static Effect {
 }
 
 impl EffectExecutor for CounterAbilityEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn transparent_child_effect(&self) -> Option<&Effect> {
         Some(ability_counter_primitive())
     }
@@ -2416,15 +2126,7 @@ impl EffectExecutor for CounterAbilityEffect {
         ability_counter_primitive().0.result_action()
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

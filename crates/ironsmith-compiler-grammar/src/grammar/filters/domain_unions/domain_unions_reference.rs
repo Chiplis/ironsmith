@@ -184,6 +184,10 @@ fn elides_shared_terminal_spell_or_permanent_noun(segments: &[&[OwnedLexToken]])
 
 fn is_elided_card_noun_type_arm(segment: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(segment).word_refs();
+    let words = match words.as_slice() {
+        ["each" | "all", rest @ ..] => rest,
+        words => words,
+    };
     !words.is_empty()
         && words.iter().all(|word| {
             !word.ends_with('s')

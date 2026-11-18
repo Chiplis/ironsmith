@@ -1,6 +1,6 @@
 //! Create a card copy from captured copiable characteristics and offer an
 //! immediate free cast. The original card need not remain in its old zone.
-use crate::effect::{Effect, EffectOutcome};
+use crate::effect::Effect;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::Object;
@@ -16,14 +16,7 @@ impl CastStoredCardCopyEffect {
     }
 }
 impl EffectExecutor for CastStoredCardCopyEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

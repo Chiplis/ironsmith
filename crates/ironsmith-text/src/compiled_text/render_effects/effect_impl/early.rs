@@ -3792,7 +3792,7 @@ if filter.zone == Some(Zone::Hand)
         }
         // "a card type other than creature (or land)": options are every card
         // type except a few.
-        let all_card_types = crate::effects::ChooseCardTypeEffect::all_card_types();
+        let all_card_types = crate::types::CardType::ALL;
         let excluded = all_card_types
             .iter()
             .filter(|card_type| !choose_card_type.options.contains(card_type))
@@ -9708,6 +9708,18 @@ if filter.zone == Some(Zone::Hand)
         } else {
             describe_possessive_player_filter(&look_at_top.player)
         };
+        if look_at_top.reveal && look_at_top.player == PlayerFilter::You
+            && let Value::PowerOf(source) = look_at_top.count.unhinted()
+            && let ChooseSpec::Tagged(tag) = source.unhinted()
+            && matches!(ironsmith_core::tag::SacrificeCostTag::parse(tag),
+                Some(ironsmith_core::tag::SacrificeCostTag::OriginalResult(_)))
+            && look_at_top.count.has_surface_hint(ironsmith_core::ValueSurfaceHint::SacrificedObject(
+                ironsmith_core::SacrificedObjectKind::Creature,
+            ))
+        {
+            return format!("Reveal a number of cards from the top of your library equal to {}",
+                describe_value(&look_at_top.count));
+        }
         if matches!(
             look_at_top.count.unhinted(),
             Value::EventValue(EventValueSpec::Amount)

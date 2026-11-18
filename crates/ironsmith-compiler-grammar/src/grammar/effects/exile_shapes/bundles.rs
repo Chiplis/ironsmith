@@ -6,6 +6,13 @@ use crate::grammar::{leaf, permission_shapes, primitives};
 use crate::lexer::{LexStream, OwnedLexToken, TokenWordView};
 use crate::zone::Zone;
 
+pub(crate) fn independently_counted_exile_operands(left: &[OwnedLexToken], right: &[OwnedLexToken]) -> bool {
+    [left, right].into_iter().all(|operand| {
+        matches!(operand.iter().find_map(OwnedLexToken::as_word), Some("a" | "an"))
+            || leaf::parse_leaf_choice_count_prefix_tokens(operand).is_some()
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttachedObjectExileShape {
     pub target: Vec<OwnedLexToken>,

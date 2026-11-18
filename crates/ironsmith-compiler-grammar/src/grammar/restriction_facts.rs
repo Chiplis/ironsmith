@@ -14,6 +14,53 @@ use super::restriction_normalization::{
     parse_text_only_activation_restriction_tokens,
 };
 
+/// Extract the named action that lifts sorcery timing. An inline exception
+/// leaves the authored timing clause in the body. A separate exception
+/// sentence qualifies an existing restriction and adds no timing of its own.
+pub(crate) fn split_sorcery_timing_exception(
+    sentence: &[OwnedLexToken],
+    body: &mut Vec<OwnedLexToken>,
+) -> Option<String> {
+    const TIMING: &[&str] = &["activate", "only", "as", "a", "sorcery"];
+    let words = crate::lexer::token_word_refs(sentence);
+    if let [
+        "this",
+        "ability's" | "abilitys",
+        "sorcery",
+        "timing",
+        "restriction",
+        "does",
+        "not",
+        "apply",
+        "during",
+        action,
+        "actions",
+    ] = words.as_slice()
+    {
+        return Some((*action).to_owned());
+    }
+    let tail = words.strip_prefix(TIMING)?;
+    let action = match tail {
+        ["or", "during", action, "actions"] => (*action).to_owned(),
+        ["unless", "you're" | "youre" | "you’re", action @ ..]
+        | ["unless", "you", "are", action @ ..]
+            if !action.is_empty() =>
+        {
+            action.join("-")
+        }
+        _ => return None,
+    };
+    body.extend(
+        sentence
+            .iter()
+            .filter(|token| token.as_word().is_some())
+            .take(TIMING.len())
+            .cloned(),
+    );
+    body.push(OwnedLexToken::period(crate::cards::TextSpan::synthetic()));
+    Some(action)
+}
+
 pub fn parse_activation_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ParsedActivationRestriction> {

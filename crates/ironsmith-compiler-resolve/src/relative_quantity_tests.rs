@@ -169,8 +169,8 @@ fn returned_quantity_alias_is_required_and_survives_an_intervening_target() {
     .unwrap();
     let first = annotated.effects[0]
         .out_env
-        .snapshot_tag_aliases
-        .iter()
+        .snapshot_bindings
+        .aliases()
         .find(|(alias, _)| alias.as_str() == crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG)
         .unwrap()
         .1

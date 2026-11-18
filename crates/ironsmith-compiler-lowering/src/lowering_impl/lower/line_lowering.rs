@@ -12,8 +12,6 @@ use crate::cards::builders::{
 use crate::model::facts::{LineInfo, LineSemanticFacts};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
-#[cfg(test)]
-use ironsmith_compiler::ParseCardText;
 
 use super::super::effect_pipeline::{
     NormalizedLineChunk, NormalizedParsedAbility, NormalizedPreparedAbility,

@@ -9,6 +9,7 @@
 //! group to "put it into your hand".
 
 use super::dispatch_entry::SentenceInput;
+use super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::append_library_hand_partition;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, ObjectChoiceEffectAst, PlayerAst,
     ReturnControllerAst, TargetAst,
@@ -73,22 +74,6 @@ fn search_reveal(sentence: &SentenceInput) -> Option<SearchReveal> {
     Some(SearchReveal { count, filter })
 }
 
-fn partition_destination(
-    sentence: &SentenceInput,
-) -> Option<effect_grammar::LookedPartitionDestination> {
-    match effect_grammar::parse_looked_card_disposition(trim(sentence.lowered()))? {
-        effect_grammar::LookedCardDisposition::HandAndGraveyard => {
-            Some(effect_grammar::LookedPartitionDestination::Graveyard)
-        }
-        effect_grammar::LookedCardDisposition::HandAndExile => {
-            Some(effect_grammar::LookedPartitionDestination::Exile)
-        }
-        effect_grammar::LookedCardDisposition::HandAndLibraryBottom(order) => {
-            Some(effect_grammar::LookedPartitionDestination::LibraryBottom(order))
-        }
-    }
-}
-
 fn is_then_shuffle(sentence: &SentenceInput) -> bool {
     let tokens = trim(sentence.lowered());
     primitives::parse_all(
@@ -120,25 +105,22 @@ pub(super) fn open(
     if let Some(group) = open_counted_battlefield_partition(sentences, sentence_idx, &search)? {
         return Ok(Some(group));
     }
-    let Some(remainder_destination) = partition_destination(next) else {
+    let Some(disposition) = effect_grammar::parse_looked_card_disposition(trim(next.lowered())) else {
         return Ok(None);
     };
     let searched = helper_tag_for_tokens(sentence.lowered(), "searched_partition_pool");
-    let hand = helper_tag_for_tokens(next.lowered(), "searched_partition_hand");
-    let remainder = helper_tag_for_tokens(next.lowered(), "searched_partition_rest");
-    let pool = |excluded: &[crate::tag::TagRef]| {
-        let mut filter = ObjectFilter::tagged(searched.clone()).in_zone(Zone::Library);
-        for tag in excluded {
-            filter = filter.not_tagged(tag.clone());
-        }
-        filter
+    let partition = ironsmith_core::effect::LibraryHandPartition {
+        viewed: searched.key.clone(),
+        hand: helper_tag_for_tokens(next.lowered(), "searched_partition_hand").into(),
+        rest: helper_tag_for_tokens(next.lowered(), "searched_partition_rest").into(),
+        disposition,
     };
     let search_mode = if search.count.min == 0 {
         crate::effect::SearchSelectionMode::Optional
     } else {
         crate::effect::SearchSelectionMode::Exact
     };
-    let effects = vec![
+    let mut effects = vec![
         // CR 701.23: the searched cards are found and revealed as one group.
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             optional_search_zones: false,
@@ -151,55 +133,14 @@ pub(super) fn open(
             search_mode: Some(search_mode),
         }),
         EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(searched.clone())),
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter: pool(&[]),
-            count: ChoiceCount::exactly(1),
-            player: PlayerAst::You,
-            tag: crate::tag::TagRef::of(hand.clone()),
-            zone: Zone::Library,
-        }),
-        EffectAst::subject_verb_tag_matching_objects(
-            pool(&[crate::tag::TagRef::of(hand.clone())]),
-            vec![Zone::Library],
-            crate::tag::TagRef::of(remainder.clone()),
-        ),
-        move_group(hand, effect_grammar::LookedPartitionDestination::Hand),
-        move_group(remainder, remainder_destination),
     ];
+    append_library_hand_partition(&mut effects, &partition, PlayerAst::You, None);
     Ok(Some(SearchPartitionGroup {
         effects,
         stage: Stage::AwaitShuffle,
         first_sentence: sentence_idx,
         consumed: 2,
     }))
-}
-
-fn move_group(
-    tag: crate::tag::TagRef,
-    destination: effect_grammar::LookedPartitionDestination,
-) -> EffectAst {
-    let (zone, order) = match destination {
-        effect_grammar::LookedPartitionDestination::Hand => (Zone::Hand, None),
-        effect_grammar::LookedPartitionDestination::Graveyard => (Zone::Graveyard, None),
-        effect_grammar::LookedPartitionDestination::Exile => (Zone::Exile, None),
-        effect_grammar::LookedPartitionDestination::LibraryTop(order)
-        | effect_grammar::LookedPartitionDestination::LibraryBottom(order) => {
-            (Zone::Library, Some(order))
-        }
-    };
-    let to_top = matches!(
-        destination,
-        effect_grammar::LookedPartitionDestination::LibraryTop(_)
-    );
-    EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(tag, None),
-        zone,
-        to_top,
-        ReturnControllerAst::Preserve,
-        false,
-        None,
-    )
-    .with_library_order(order, PlayerAst::You)
 }
 
 pub(super) fn continue_with(
@@ -407,9 +348,9 @@ fn open_counted_battlefield_partition(
         vec![Zone::Library],
         crate::tag::TagRef::of(remainder.clone()),
     ));
-    effects.push(move_group(
-        crate::tag::TagRef::of(remainder),
-        effect_grammar::LookedPartitionDestination::Hand,
+    effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(crate::tag::TagRef::of(remainder), None),
+        Zone::Hand, false, ReturnControllerAst::Preserve, false, None,
     ));
     let consumed = 1 + taken.len();
     Ok(Some(SearchPartitionGroup {

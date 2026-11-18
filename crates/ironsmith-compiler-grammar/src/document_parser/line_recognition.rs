@@ -794,14 +794,14 @@ pub(super) fn recognize_static_line(
             | "you may activate equip abilities any time you could cast an instant."
             | "during your turn, you may activate equip abilities any time you could cast an instant."
     ) || keyword_static_lines::parse_additional_vote_tokens(lexed).is_some()
-        || is_first_equip_cost_alternative_line(lexed)
         || is_additional_land_play_static_line(lexed)
         || is_can_block_additional_creatures_static_line(lexed)
-        || is_any_number_named_deck_construction_line(lexed)
         || matches!(
             semantic_lowering::parse_static_special_line_tokens(lexed),
             Some(
-                semantic_lowering::StaticSpecialLineShape::HiddenAgenda
+                semantic_lowering::StaticSpecialLineShape::FirstEquipCostAlternative
+                    | semantic_lowering::StaticSpecialLineShape::DeckConstruction(_)
+                    | semantic_lowering::StaticSpecialLineShape::HiddenAgenda
                     | semantic_lowering::StaticSpecialLineShape::DoubleAgenda
                     | semantic_lowering::StaticSpecialLineShape::StartingPlayer
                     // Rulebreaker deck-construction allowances.
@@ -831,22 +831,6 @@ pub(super) fn recognize_static_line(
     }
 
     Ok(None)
-}
-
-fn is_any_number_named_deck_construction_line(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
-        semantic_lowering::parse_static_special_line_tokens(tokens),
-        Some(semantic_lowering::StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
-    )
-}
-
-/// Recognizes "you may pay {COST} rather than pay the equip cost of the first
-/// equip ability you activate each turn." and the variant "during each of your turns."
-fn is_first_equip_cost_alternative_line(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
-        semantic_lowering::parse_static_special_line_tokens(tokens),
-        Some(semantic_lowering::StaticSpecialLineShape::FirstEquipCostAlternative)
-    )
 }
 
 fn is_additional_land_play_static_line(tokens: &[OwnedLexToken]) -> bool {

@@ -563,17 +563,8 @@ pub fn visit_total_cost_owned_effects(
     cost: &crate::cost::TotalCost,
     visitor: &mut dyn FnMut(&crate::effect::Effect),
 ) {
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => {
-            for cost in costs {
-                visit_cost_owned_effects(cost, visitor);
-            }
-        }
-        ironsmith_core::TotalCostKind::OneOf(branches) => {
-            for branch in branches {
-                visit_total_cost_owned_effects(branch, visitor);
-            }
-        }
+    for component in cost.payment_branches().flatten() {
+        visit_cost_owned_effects(component, visitor);
     }
 }
 

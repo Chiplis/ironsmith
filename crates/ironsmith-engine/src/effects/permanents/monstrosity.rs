@@ -1,6 +1,5 @@
 //! Monstrosity effect implementation.
 
-use crate::effect::EffectOutcome;
 use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -29,15 +28,6 @@ pub use ironsmith_core::MonstrosityEffect;
 /// let effect = MonstrosityEffect::new(Value::X);
 /// ```
 impl EffectExecutor for MonstrosityEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
     fn canonical_program(&self) -> Option<crate::effect::Effect> {
         Some(crate::effect::Effect::new(
             super::designation::DesignationProgram {
@@ -48,6 +38,7 @@ impl EffectExecutor for MonstrosityEffect {
         ))
     }
 
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

@@ -29,11 +29,9 @@ pub fn parse_redirect_next_damage_tokens(
 
 fn parse_scoped_all_damage<'a>(input: &mut LexStream<'a>) -> WResult<RedirectNextDamageShape<'a>> {
     let mode = opt((
-        primitives::kw("until"),
-        alt((primitives::phrase(&["end", "of", "turn"]).value(ironsmith_core::ReplacementApplyMode::UntilEndOfTurn),
-             primitives::phrase(&["your", "next", "turn"]).value(ironsmith_core::ReplacementApplyMode::UntilYourNextTurn))),
+        crate::grammar::keyword_static_lines::replacement_turn_duration,
         primitives::comma(),
-    ).map(|(_, mode, _)| mode)).parse_next(input)?;
+    ).map(|(mode, _)| mode)).parse_next(input)?;
     let conditional = opt(primitives::kw("if")).parse_next(input)?.is_some();
     if !conditional { primitives::kw("all").parse_next(input)?; }
     let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();

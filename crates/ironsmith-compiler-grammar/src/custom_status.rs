@@ -154,7 +154,7 @@ pub(crate) fn source_effect(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
         return Some(EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals {
                 from: crate::effect::EffectId::PENDING_PRIOR_ACTION, zone: crate::zone::Zone::Exile,
-                tag: crate::tag::TagRef::of(crate::tag::TagKey::from("__remembered_original_arrivals__")),
+                tag: crate::tag::CompilerReferenceTag::RememberedOriginalArrivals.bind(),
             })));
     }
     if words(tokens).starts_with(&["remove", "the"]) {
@@ -282,7 +282,7 @@ fn source_collection_effect(tokens:&[OwnedLexToken])->Option<EffectAst>{
     let label=name(&tokens[start+2..collection])?;
     let source_tag=match words(&tokens[collection+2..while_at]).as_slice(){
         ["this","card"|"permanent"|"object"]=>None,
-        ["the","created","token"]|["the","created","tokens"]=>Some(crate::tag::TagRef::of(crate::tag::TagKey::from("__named_action_created_objects"))),
+        ["the","created","token"]|["the","created","tokens"]=>Some(crate::tag::TagRef::of(ironsmith_core::tag::NAMED_ACTION_CREATED_OBJECTS_TAG)),
         ["the","exiled","card"]=>Some(crate::tag::CompilerReferenceTag::PriorExiledCard.bind()),
         ["the","iterated","card"|"object"]=>Some(crate::tag::CompilerReferenceTag::CurrentIteratedObject.bind()),
         _=>return None,
@@ -304,7 +304,7 @@ fn source_collection_effect(tokens:&[OwnedLexToken])->Option<EffectAst>{
     } else { (None, tail.as_slice()) };
     let member_zone=zone(members.strip_prefix(&["those","members","remain"])?)?;
     let target=if words(&tokens[1..start]).as_slice()==["the","remembered","cards"] {
-        crate::cards::builders::TargetAst::Tagged(crate::tag::TagRef::of(crate::tag::TagKey::from("__remembered_original_arrivals__")),None)
+        crate::cards::builders::TargetAst::Tagged(crate::tag::CompilerReferenceTag::RememberedOriginalArrivals.bind(),None)
     } else {crate::util::parse_target_phrase(&tokens[1..start]).ok()?};
     crate::word_claims::claim_tokens(tokens);
     Some(EffectAst::subject_verb(SubjectVerbRoleAst::Actor,PlayerAst::You,

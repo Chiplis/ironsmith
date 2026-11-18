@@ -12,6 +12,12 @@ pub use tag_walk::{TagKeyWalk, tag_keys_of};
 use std::borrow::Borrow;
 use std::fmt;
 
+/// Object bindings published by named action proposals and completions.
+pub const NAMED_ACTION_PERFORMER_TAG: &str = "__named_action_source";
+pub const NAMED_ACTION_PARTICIPANTS_TAG: &str = "__named_action_objects";
+pub const NAMED_ACTION_CREATED_OBJECTS_TAG: &str = "__named_action_created_objects";
+pub const PROPOSED_ACTION_OBJECTS_TAG: &str = "__proposed_action_objects";
+
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 /// Cards milled to pay an activation cost ("Mill a card: ... the milled

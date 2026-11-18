@@ -27,15 +27,11 @@ const LEXING_FUNCTIONS: &[&str] = &[
     // Existing sites measured during the 2026-10-09 suite reconciliation.
     // These remain explicit debt, documented in parser-refactor-ledger.md.
     "document_parser/characteristic_modes.rs::recognize_characteristics_mode",
-    "effect_sentences/dispatch_entry.rs::parse_temporary_counter_placement_replacement",
     "effect_sentences/dispatch_entry/subject_verb_followups.rs::pre_rule_search_exiled_cards_owner",
     "effect_sentences/dispatch_entry/subject_verb_followups/subject_verb_followups_object_action.rs::parse_instead_create_that_token_and",
     "effect_sentences/misc_actions.rs::parse_roll_plus_dice_per_mana_spent",
     "effect_sentences/subject_verb_primitives/choice_damage_family.rs::parse_sentence_target_player_reveals_random_card_from_hand",
     "keyword_static/costs_replacements_and_permissions.rs::parse_token_creation_templates_line",
-    "preprocess.rs::authored_rules_tokens",
-    "preprocess.rs::station_reminder_threshold",
-    "preprocess.rs::supported_sneak_reminder",
     "semantic_line_parsing/lines/lines_ability/static_line_readings.rs::read_standard_menace_reminder",
     // Sites added by the custom-mechanics checkpoint (23b10081a) and the keyword
     // reminder definitions (cec9897a8), recorded as
@@ -63,7 +59,6 @@ const LEXING_FUNCTIONS: &[&str] = &[
     "preprocess/reminder_actions.rs::expand_counter_threshold_activation",
     "preprocess/reminder_actions.rs::front_postposed_entry_trigger",
     "preprocess/reminder_actions.rs::strip_definition_header",
-    "semantic_line_parsing/activated/activated_permission.rs::parse_activated_line_impl",
     "semantic_line_parsing/lines/lines_ability.rs::parse_descriptive_static_program",
     // The tokenizer entry point the document phase calls.
     "util.rs::lex_fragment",

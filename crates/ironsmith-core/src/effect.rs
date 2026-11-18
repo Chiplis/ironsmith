@@ -3761,6 +3761,43 @@ impl BattlefieldEntryCounterSpec {
     }
 }
 
+/// Destinations for “put one into your hand and move the rest”.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LibraryHandDisposition<Order> {
+    HandAndLibraryBottom(Order),
+    HandAndGraveyard,
+    HandAndExile,
+}
+
+/// A partition of one previously viewed or revealed library group. Capture the
+/// complement before moving the selected card, so replacements cannot redefine it.
+pub struct LibraryHandPartition<Order> {
+    pub viewed: TagKey,
+    pub hand: TagKey,
+    pub rest: TagKey,
+    pub disposition: LibraryHandDisposition<Order>,
+}
+
+impl<Order: Clone> LibraryHandPartition<Order> {
+    pub fn candidates(&self) -> ObjectFilter {
+        ObjectFilter::tagged(self.viewed.clone()).in_zone(Zone::Library)
+    }
+
+    pub fn complement(&self) -> ObjectFilter {
+        self.candidates().not_tagged(self.hand.clone())
+    }
+
+    pub fn moves(&self) -> [(&TagKey, Zone, Option<Order>); 2] {
+        use LibraryHandDisposition::*;
+        let (zone, order) = match &self.disposition {
+            HandAndLibraryBottom(order) => (Zone::Library, Some(order.clone())),
+            HandAndGraveyard => (Zone::Graveyard, None),
+            HandAndExile => (Zone::Exile, None),
+        };
+        [(&self.hand, Zone::Hand, None), (&self.rest, zone, order)]
+    }
+}
+
 /// How a multi-card move to the top or bottom of a library is ordered.
 ///
 /// The choosing player is explicit because the player performing the

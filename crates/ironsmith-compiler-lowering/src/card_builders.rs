@@ -1,3 +1,4 @@
+use crate::effects::CreateTokenEffect;
 use crate::ability::{ActivationTiming, PresentationKeyword, PresentationLabel};
 use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness};
 pub use crate::cards::CardDefinition;
@@ -503,47 +504,29 @@ impl CardDefinitionBuilder {
     pub fn afterlife(self, amount: u32) -> Self {
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_dies(),
-            vec![crate::effect::Effect::new(Self::keyword_token_instruction(
-                Self::afterlife_spirit_token(),
-                amount,
-            ))],
+            vec![crate::effect::Effect::new(
+                CreateTokenEffect::afterlife_spirits(
+                    amount,
+                    crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::flying(),
+                    ),
+                ),
+            )],
         ))
     }
 
     pub fn fabricate(self, amount: u32) -> Self {
-        let put_description = if amount == 1 {
-            "Put a +1/+1 counter on this creature".to_string()
-        } else {
-            format!("Put {amount} +1/+1 counters on this creature")
-        };
-        let create_description = if amount == 1 {
-            "Create a 1/1 colorless Servo artifact creature token".to_string()
-        } else {
-            format!("Create {amount} 1/1 colorless Servo artifact creature tokens")
-        };
-        let modes = vec![
-            crate::effect::EffectMode::new(
-                put_description,
-                vec![crate::effect::Effect::put_counters(
-                    crate::object::CounterType::PlusOnePlusOne,
-                    amount as i32,
-                    crate::target::ChooseSpec::Source,
-                )],
+        let choice = crate::effects::ChooseModeEffect::fabricate(
+            amount,
+            crate::effect::Effect::put_counters_on_source(
+                crate::object::CounterType::PlusOnePlusOne,
+                amount as i32,
             ),
-            crate::effect::EffectMode::new(
-                create_description,
-                vec![crate::effect::Effect::new(Self::keyword_token_instruction(
-                    Self::fabricate_servo_token(),
-                    amount,
-                ))],
-            ),
-        ];
-
+            crate::effect::Effect::new(CreateTokenEffect::fabricate_servos(amount)),
+        );
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
-            // CR 702.123a: if the counters can't be put on it, the Servos are
-            // created (the same counters-else-token shape as endure).
-            vec![crate::effect::Effect::choose_one_endure(modes)],
+            vec![crate::effect::Effect::new(choice)],
         ))
     }
 
@@ -2167,43 +2150,37 @@ impl CardDefinitionBuilder {
     }
 
     pub fn for_mirrodin(self) -> Self {
-        let created_tag = crate::tag::CompilerReferenceTag::ForMirrodinCreated.bind();
-        self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_enters_battlefield(),
-            vec![
-                crate::effect::Effect::new(Self::keyword_token_instruction(Self::for_mirrodin_rebel_token(), 1))
-                    .tag(created_tag.clone()),
-                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
-                    created_tag.key.clone(),
-                )),
-            ],
-        ))
+        self.attach_to_keyword_token(
+            CreateTokenEffect::for_mirrodin_rebel(),
+            crate::tag::CompilerReferenceTag::ForMirrodinCreated,
+        )
     }
 
     pub fn job_select(self) -> Self {
-        let created_tag = crate::tag::CompilerReferenceTag::JobSelectCreated.bind();
-        self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_enters_battlefield(),
-            vec![
-                crate::effect::Effect::new(Self::keyword_token_instruction(Self::job_select_hero_token(), 1))
-                    .tag(created_tag.clone()),
-                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
-                    created_tag.key.clone(),
-                )),
-            ],
-        ))
+        self.attach_to_keyword_token(
+            CreateTokenEffect::job_select_hero(),
+            crate::tag::CompilerReferenceTag::JobSelectCreated,
+        )
     }
 
     pub fn living_weapon(self) -> Self {
-        let created_tag = crate::tag::CompilerReferenceTag::LivingWeaponCreated.bind();
+        self.attach_to_keyword_token(
+            CreateTokenEffect::living_weapon_germ(),
+            crate::tag::CompilerReferenceTag::LivingWeaponCreated,
+        )
+    }
+
+    fn attach_to_keyword_token(
+        self,
+        token: CreateTokenEffect,
+        tag: crate::tag::CompilerReferenceTag,
+    ) -> Self {
+        let created = tag.bind();
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
             vec![
-                crate::effect::Effect::new(Self::keyword_token_instruction(Self::living_weapon_germ_token(), 1))
-                    .tag(created_tag.clone()),
-                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
-                    created_tag.key.clone(),
-                )),
+                crate::effect::Effect::new(token).tag(created.clone()),
+                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(created.key)),
             ],
         ))
     }
@@ -2240,13 +2217,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn mobilize_value(self, amount: crate::effect::Value) -> Self {
-        let effect = Self::keyword_token_instruction(
-            Self::mobilize_warrior_token(),
-            amount,
-        )
-        .tapped()
-        .attacking()
-        .sacrifice_at_next_end_step();
+        let effect = CreateTokenEffect::mobilize_warriors(amount);
 
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_attacks(),
@@ -2775,75 +2746,6 @@ impl CardDefinitionBuilder {
             designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard],
         })
-    }
-
-    /// These callers own wordless keyword expansions. Do not use this profile
-    /// for an ordinary described token or infer it from a finished card name.
-    fn keyword_token_instruction(token: CardDefinition, count: impl Into<crate::effect::Value>)
-        -> crate::effects::CreateTokenEffect
-    {
-        let roles = ironsmith_core::TokenTextRoles::rules_implied(
-            ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len());
-        crate::effects::CreateTokenEffect::you(token, count).with_text_roles(roles)
-    }
-
-    fn fabricate_servo_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Servo Token")
-            .token()
-            .card_types(vec![CardType::Artifact, CardType::Creature])
-            .subtypes(vec![Subtype::Servo])
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .build()
-    }
-
-    fn afterlife_spirit_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Spirit Token")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Spirit])
-            .color_indicator(ColorSet::WHITE.union(ColorSet::BLACK))
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .flying()
-            .build()
-    }
-
-    fn for_mirrodin_rebel_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Rebel Token")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Rebel])
-            .color_indicator(ColorSet::RED)
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build()
-    }
-
-    fn job_select_hero_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Hero Token")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Hero])
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .build()
-    }
-
-    fn living_weapon_germ_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Phyrexian Germ Token")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Phyrexian, Subtype::Germ])
-            .color_indicator(ColorSet::BLACK)
-            .power_toughness(PowerToughness::fixed(0, 0))
-            .build()
-    }
-
-    fn mobilize_warrior_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Warrior Token")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Warrior])
-            .color_indicator(ColorSet::RED)
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .build()
     }
 
     pub fn build(self) -> CardDefinition {

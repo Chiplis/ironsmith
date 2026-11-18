@@ -19,15 +19,7 @@ pub type RollAndStoreDieResultsEffect = ironsmith_core::RollAndStoreDieResultsEf
 pub type RerollStoredDieResultsEffect = ironsmith_core::RerollStoredDieResultsEffect;
 
 impl EffectExecutor for RollAndStoreDieResultsEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -65,15 +57,7 @@ impl EffectExecutor for RollAndStoreDieResultsEffect {
 }
 
 impl EffectExecutor for RerollStoredDieResultsEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

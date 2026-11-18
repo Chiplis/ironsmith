@@ -3673,10 +3673,10 @@ fn reminder_identity_described_incubator_has_entry_counters_transform_and_no_nat
     use ironsmith::decision::{compute_legal_actions, LegalAction, SelectFirstDecisionMaker};
     use ironsmith::object::CounterType;
     for native in [false, true] {
-        for amount in [1, 3] {
+        for (amount, word) in [(1, "a"), (3, "three"), (21, "twenty-one")] {
             for doubled in [false, true] {
                 let text = if native { format!("Incubate {amount}.") } else {
-                    format!("Create an Incubator token with {} +1/+1 {} on it and \"{{2}}: Transform this token.\" It transforms into a 0/0 Phyrexian artifact creature.", if amount == 1 { "a" } else { "three" }, if amount == 1 { "counter" } else { "counters" })
+                    format!("Create an Incubator token with {} +1/+1 {} on it and \"{{2}}: Transform this token.\" It transforms into a 0/0 Phyrexian artifact creature.", word, if amount == 1 { "counter" } else { "counters" })
                 };
                 let mut builder = compiler::CardDefinitionBuilder::new(compiler::ids::CardId::new(), "Incubator maker");
                 if !native { builder = builder.with_custom_keyword("Nurture"); }

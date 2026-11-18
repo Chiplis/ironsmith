@@ -7,7 +7,7 @@ fn chooses_a_color_from_the_filtered_objects_instead_of_an_object() {
         0,
     )
     .expect("dynamic color-choice sentence should lex");
-    let effects = parse_activated_effects_lexed("", &tokens, 0)
+    let effects = parse_activated_effects_lexed(&tokens)
         .expect("dynamic color-choice sentence should parse");
     let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
         panic!("expected one typed mana effect, got {effects:#?}");
@@ -32,7 +32,7 @@ fn chooses_a_color_of_a_typed_permanent_without_erasing_that_type() {
         0,
     )
     .expect("typed color-choice sentence should lex");
-    let effects = parse_activated_effects_lexed("", &tokens, 0)
+    let effects = parse_activated_effects_lexed(&tokens)
         .expect("typed color-choice sentence should parse");
     let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
         panic!("expected one typed mana effect, got {effects:#?}");

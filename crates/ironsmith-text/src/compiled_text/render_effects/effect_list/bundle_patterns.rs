@@ -194,8 +194,7 @@
     if let Some(compact) = describe_graveyard_mana_ladder_return_bundle(&filtered) {
         return compact;
     }
-    if let Some(compact) =
-        describe_effect_list_linked_graveyard_choices_then_may_return_bundle(&filtered)
+    if let Some(compact) = describe_linked_graveyard_return(&filtered, downcast_move_to_zone)
     {
         return compact;
     }

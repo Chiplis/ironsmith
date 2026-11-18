@@ -11,7 +11,7 @@
 use super::super::dispatch_entry::SentenceInput;
 use super::super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_may_exile_filtered_looked_card;
 use super::super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::{
-    looked_library_owner_filter, move_looked_partition_group, move_tagged_to_looked_destination,
+    append_library_hand_partition, looked_library_owner_filter, move_looked_partition_group, move_tagged_to_looked_destination,
     tagged_library_candidate_filter,
 };
 use super::{ViewStyle, ViewedGroup, it};
@@ -194,7 +194,7 @@ pub(super) fn shuffle_statement(group: &mut ViewedGroup, sentence: &SentenceInpu
     super::selections::spell_pending(group, None);
     group.effects.push(EffectAst::subject_verb(
         SubjectVerbRoleAst::LibraryOwner,
-        super::remainder_owner(group.owner),
+        group.owner.in_followup(),
         SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
     ));
     true
@@ -445,7 +445,7 @@ pub(super) fn open_exiled_face_down(
         view_tokens: first_tokens.to_vec(),
         selected: Some(exiled_tag.clone().into()),
         pending: None,
-        remainder_player: super::remainder_owner(owner),
+        remainder_player: owner.in_followup(),
         gated: false,
         optional: false,
         awaiting_permission: Some(exiled_tag.key.clone()),
@@ -486,7 +486,6 @@ pub(super) fn partition_shape(
 /// library": one card to hand, the rest to a second destination.
 pub(super) fn singleton_hand_disposition(
     sentence: &SentenceInput,
-    _revealed: bool,
 ) -> Option<LookedCardDisposition> {
     parse_looked_card_disposition(crate::lexer::trim_lexed_commas(sentence.lowered()))
 }
@@ -545,7 +544,7 @@ pub(super) fn first_statement(group: &mut ViewedGroup, sentence: &SentenceInput)
         partition(group, sentence, shape);
         return true;
     }
-    if let Some(disposition) = singleton_hand_disposition(sentence, group.revealed) {
+    if let Some(disposition) = singleton_hand_disposition(sentence) {
         singleton_hand_partition(group, sentence, disposition);
         return true;
     }
@@ -669,42 +668,14 @@ fn singleton_hand_partition(
     disposition: LookedCardDisposition,
 ) {
     let tokens = crate::lexer::trim_lexed_commas(sentence.lowered());
-    let hand_tag = helper_tag_for_tokens(tokens, "hand");
-    let remainder_tag = helper_tag_for_tokens(tokens, "remainder");
-    let remainder_destination = match disposition {
-        LookedCardDisposition::HandAndLibraryBottom(order) => {
-            LookedPartitionDestination::LibraryBottom(order)
-        }
-        LookedCardDisposition::HandAndGraveyard => LookedPartitionDestination::Graveyard,
-        LookedCardDisposition::HandAndExile => LookedPartitionDestination::Exile,
+    let partition = ironsmith_core::effect::LibraryHandPartition {
+        viewed: group.tag.clone(),
+        hand: helper_tag_for_tokens(tokens, "hand").into(),
+        rest: helper_tag_for_tokens(tokens, "remainder").into(),
+        disposition,
     };
-    group.effects.push(EffectAst::ObjectChoices(
-        ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter: tagged_library_candidate_filter(&group.tag, &[]),
-            count: ChoiceCount::exactly(1),
-            player: group.owner,
-            tag: crate::tag::TagRef::of(hand_tag.clone()),
-            zone: Zone::Library,
-        },
-    ));
-    group
-        .effects
-        .push(EffectAst::subject_verb_tag_matching_objects(
-            tagged_library_candidate_filter(&group.tag, std::slice::from_ref(&hand_tag)),
-            vec![Zone::Library],
-            crate::tag::TagRef::of(remainder_tag.clone()),
-        ));
-    group.effects.push(move_looked_partition_group(
-        hand_tag.clone().into(),
-        LookedPartitionDestination::Hand,
-        group.owner,
-    ));
-    group.effects.push(move_looked_partition_group(
-        remainder_tag.key.clone(),
-        remainder_destination,
-        group.owner,
-    ));
-    group.selected = Some(hand_tag.key.clone());
+    append_library_hand_partition(&mut group.effects, &partition, group.owner, Some(group.owner));
+    group.selected = Some(partition.hand);
 }
 
 fn three_way(

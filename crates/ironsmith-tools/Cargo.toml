@@ -12,6 +12,7 @@ path = "src/bin/card_score_probe.rs"
 test = false
 
 [dependencies]
+ironsmith-card-source = { path = "../ironsmith-card-source" }
 ironsmith-core = { path = "../ironsmith-core", default-features = false }
 ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime", default-features = false, features = ["serialization", "analysis", "compiler-bridge"] }
 ironsmith-registry = { path = "../ironsmith-registry", default-features = false }

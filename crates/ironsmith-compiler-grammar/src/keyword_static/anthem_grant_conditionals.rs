@@ -4440,6 +4440,11 @@ pub fn static_grant_has_outer_sentence_boundary(tokens: &[OwnedLexToken]) -> boo
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // A recipient's derived preparation price belongs to the grant as a whole.
+    // Parsing the quote as a self-paid fixed activation loses its card reference.
+    if let Some(abilities) = parse_described_preparation_cost_grant_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(abilities)=parse_quoted_alternative_method_grant(tokens)? {return Ok(Some(abilities));}
     // A malformed protection grant is rejected before any sentence-boundary
     // decline, so no other reader can trim its delimiters away.
@@ -4447,24 +4452,17 @@ pub fn parse_filter_has_granted_ability_line(
         crate::clause_support::validate_protection_static_line(tokens)?;
     }
 
-    if static_grant_has_outer_sentence_boundary(tokens)
-        && !has_owned_granted_cost_companion(tokens)? { return Ok(None); }
-    // A flashback grant with its complete derived-cost companion ("... has
-    // flashback. The flashback cost is equal to that card's mana cost.") is
-    // one typed permission. Both sibling routes retain the same grant,
-    // including a leading duration condition ("During your turn, ...").
-    if static_grant_has_outer_sentence_boundary(tokens)
-        && let Some(head) = anthem_grant_grammar::parse_granted_keyword_verb_facts(tokens)
-        && let Some(first) = crate::grammar::primitives::split_lexed_slices_on_period(
-            &trim_edge_punctuation(&tokens[head.have_token + 1..]),
-        )
-        .first()
-        .map(|first| trim_edge_punctuation(first))
-        && anthem_grant_grammar::parse_granted_alternative_cast_keyword_tokens(&first)
-            == Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Flashback)
-        && let Some(abilities) = parse_granted_keyword_static_line_inner(tokens)?
-    {
-        return Ok(Some(abilities));
+    if static_grant_has_outer_sentence_boundary(tokens) {
+        match parse_grant_cost_companion(tokens)? {
+            GrantCostCompanion::Unowned => return Ok(None),
+            GrantCostCompanion::Complete(abilities) => return Ok(Some(abilities)),
+            GrantCostCompanion::Keyword(Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Flashback)) => {
+                if let Some(abilities) = parse_granted_keyword_static_line_inner(tokens)? {
+                    return Ok(Some(abilities));
+                }
+            }
+            GrantCostCompanion::Keyword(_) => {}
+        }
     }
     // A bare blitz declaration, with its optional complete mana-cost
     // companion, grants an alternative casting method over card zones.
@@ -4513,9 +4511,6 @@ pub fn parse_filter_has_granted_ability_line(
         return Ok(None);
     }
     crate::clause_support::validate_protection_static_line(tokens)?;
-    if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
-    if let Some(abilities) = parse_complete_foretell_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
-    if let Some(abilities) = parse_complete_plot_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
 
     // A complete comma-separated predicate list owns every clause and every
     // local condition; this family cannot suffix-match one of its `has` verbs.
@@ -6092,7 +6087,7 @@ fn granted_miracle_tail_captures_dynamic_cost_reduction() {
         0,
     )
     .expect("line should lex");
-    let parsed = parse_granted_miracle_cost_reduction_tail_clause(&tokens)
+    let parsed = anthem_grant_grammar::parse_granted_miracle_cost_reduction_tail_clause(&tokens)
         .expect("miracle tail should parse");
     let (cost, used) = crate::util::leading_mana_cost_from_tokens(parsed.reduction_cost_tokens)
         .expect("captured cost should parse");
@@ -6549,7 +6544,7 @@ fn parse_quoted_alternative_method_grant(tokens:&[OwnedLexToken])->Result<Option
     // A complete quoted announcement is an ordinary recipient ability, not a
     // cast-from-zone permission. Its own static program retains payer choice,
     // price and outcome label under that receiving spell's source context.
-    let mut announcement=if method.is_none() {
+    let announcement=if method.is_none() {
         crate::keyword_static::parse_casting_announcement_program_line(body)?
     } else { None };
     // A quoted text-adding cost ("As you cast an instant or sorcery spell,
@@ -6558,7 +6553,19 @@ fn parse_quoted_alternative_method_grant(tokens:&[OwnedLexToken])->Result<Option
     if method.is_none() && announcement.is_none()
         && let Some(rule)=crate::keyword_payloads::add_spell_text_static(body)?
     {
-        announcement=Some(vec![StaticAbilityAst::Static(rule)]);
+        // A text donor gains an ability in its current zone. Its own
+        // characteristics are what the splice announcement reads.
+        let filter = crate::object_filters::parse_object_filter(&tokens[..verb], false)?;
+        let abilities = marker.into_iter().chain([rule]).map(|rule| {
+            StaticAbilityAst::GrantStaticAbility {
+                filter: filter.clone(),
+                ability: Box::new(StaticAbilityAst::Static(rule)),
+                condition: None,
+            }
+        }).collect();
+        crate::word_claims::claim_tokens(&tokens[verb..=open]);
+        crate::word_claims::claim_tokens(&tokens[close..]);
+        return Ok(Some(abilities));
     }
     if method.is_none() && announcement.is_none() { return Ok(None); }
     let mut filter=crate::object_filters::parse_object_filter(&tokens[..verb],false)?;

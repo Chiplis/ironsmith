@@ -1430,11 +1430,7 @@ pub fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                        player,
-                        ..
-                    }),
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. }),
                 ..
             }) => {
                 if matches!(*player, PlayerAst::Implicit) {

@@ -24,10 +24,6 @@ impl EmitGiftGivenEffect {
 }
 
 impl EffectExecutor for EmitGiftGivenEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

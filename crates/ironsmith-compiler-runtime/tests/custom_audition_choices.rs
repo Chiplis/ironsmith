@@ -44,3 +44,28 @@ fn role_choice_without_friendly_creature_never_attaches_to_an_opponent(){
  let fixture:serde_json::Value=serde_json::from_str(include_str!("../../../fixtures/custom_mechanics/msem-audition-choices.json")).unwrap();let program=fixture["mechanics"][0]["executable_reminder"].as_str().unwrap();
  for definition in definitions(program){let mut game=GameState::new(vec!["A".into(),"B".into()],20);let enemy=game.create_object_from_definition(&body(),B,Zone::Battlefield);execute(&mut game,&definition,1);ironsmith::rules::state_based::apply_state_based_actions_with(&mut game,&mut SelectFirstDecisionMaker).unwrap();assert_eq!(game.calculated_power(enemy),Some(7));assert!(!game.battlefield.iter().any(|id|game.object(*id).unwrap().subtypes.contains(&ironsmith::Subtype::Role)));}
 }
+
+#[test]
+fn audition_and_draw_resolve_in_authored_order() {
+    use ironsmith::effects::{DrawCardsEffect, NamedActionProgramEffect};
+    for (text, audition_first) in [
+        ("Audition for blue and draw a card.", true),
+        ("Draw a card, then audition for blue.", false),
+    ] {
+        for definition in definitions(text) {
+            let effects = definition.spell_effect.as_ref().unwrap().all_effects_owned();
+            let effects = match effects.as_slice() {
+                [effect] => effect.downcast_ref::<ironsmith::effects::SequenceEffect>().unwrap().effects.as_slice(),
+                list => list,
+            };
+            assert_eq!(effects.len(), 2, "{text}");
+            let (action, draw) = if audition_first {
+                (&effects[0], &effects[1])
+            } else {
+                (&effects[1], &effects[0])
+            };
+            assert_eq!(action.downcast_ref::<NamedActionProgramEffect>().unwrap().label, "audition");
+            assert!(draw.downcast_ref::<DrawCardsEffect>().is_some(), "{text}");
+        }
+    }
+}

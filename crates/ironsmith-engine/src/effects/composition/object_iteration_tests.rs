@@ -638,3 +638,109 @@ fn resource_failure_after_retained_iterator_draw_restores_the_entire_shuffle() {
         assert!(game.take_pending_trigger_events().is_empty());
     }
 }
+
+#[test]
+fn simultaneous_damage_loops_preserve_object_order_and_tagged_controller_counts() {
+    for tagged in [false, true] {
+        for shared_damage in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId(0);
+            let bob = PlayerId(1);
+            let source = game.new_object_id();
+            let mut objects = [alice, bob, alice]
+                .map(|controller| card(&mut game, controller, Zone::Battlefield, "Recipient"));
+            objects.reverse();
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            ctx.tag_objects("selected", objects.map(|id| snapshot(&game, id)).to_vec());
+            let effect = iterator(
+                tagged,
+                "selected",
+                vec![Effect::deal_damage(Value::Fixed(1), ChooseSpec::Iterated)],
+            );
+
+            let outcome = if shared_damage {
+                crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap()
+            } else {
+                let mut proposal = effect
+                    .prepare_simultaneous_player_action(&game, &mut ctx)
+                    .unwrap();
+                proposal.prepare_selection(&mut game, &mut ctx).unwrap();
+                proposal.prepare_original(&mut game, &mut ctx).unwrap();
+                proposal.seal_original(&mut game, &mut ctx).unwrap();
+                proposal.commit(&mut game, &mut ctx).unwrap()
+            };
+
+            let recipients: Vec<_> = outcome
+                .events
+                .iter()
+                .filter_map(|event| event.downcast::<crate::events::DamageEvent>())
+                .map(|event| event.target)
+                .collect();
+            assert_eq!(recipients, objects.map(crate::events::DamageTarget::Object));
+            assert_eq!(objects.map(|id| game.damage_on(id)), [1, 1, 1]);
+            assert_eq!(outcome.as_count(), Some(3));
+            assert_eq!(
+                outcome.player_counts(),
+                tagged.then_some(&[(alice, 2), (bob, 1)][..])
+            );
+        }
+    }
+}
+
+#[test]
+fn stopped_iteration_restores_parent_bindings_and_projects_only_acknowledged_children() {
+    for tagged in [false, true] {
+        for finish_stopped in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId(0);
+            let bob = PlayerId(1);
+            let parent = card(&mut game, alice, Zone::Battlefield, "Parent");
+            let first = card(&mut game, bob, Zone::Battlefield, "First");
+            let second = card(&mut game, alice, Zone::Battlefield, "Second");
+            let mut ctx = ExecutionContext::new_default(parent, alice);
+            ctx.iteration.iterated_player = Some(alice);
+            ctx.iteration.iterated_object = Some(parent);
+            ctx.tag_object("__it__", snapshot(&game, parent));
+            ctx.tag_object(
+                ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG,
+                snapshot(&game, parent),
+            );
+            ctx.tag_objects(
+                "selected",
+                vec![snapshot(&game, first), snapshot(&game, second)],
+            );
+            let effect = iterator(
+                tagged,
+                "selected",
+                vec![Effect::gain_life(2), Effect::gain_life(8)],
+            );
+            let mut cursor = effect
+                .select_prepared_action_program(&mut game, &mut ctx)
+                .unwrap()
+                .unwrap();
+            let action = cursor.next_action(&mut game, &mut ctx).unwrap().unwrap();
+            assert_eq!(ctx.iteration.iterated_object, Some(first));
+            assert_eq!(ctx.iteration.iterated_player, Some(bob));
+            let outputs =
+                crate::effects::execute_effect_with_outputs(&mut game, &action.effect, &mut ctx)
+                    .unwrap();
+            cursor.accept_action(outputs).unwrap();
+            ctx.stop_resolution();
+            let completed = if finish_stopped {
+                cursor.finish_stopped(&mut game, &mut ctx).unwrap()
+            } else {
+                assert!(cursor.next_action(&mut game, &mut ctx).unwrap().is_none());
+                cursor.finish().unwrap()
+            };
+            let outcome = completed.outputs.outcome;
+            assert_eq!(outcome.as_count(), Some(2));
+            assert_eq!(outcome.player_counts(), tagged.then_some(&[(bob, 2)][..]));
+            assert_eq!(game.player(alice).unwrap().life, 22);
+            assert_eq!(ctx.iteration.iterated_object, Some(parent));
+            assert_eq!(ctx.iteration.iterated_player, Some(alice));
+            for tag in ["__it__", ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG] {
+                assert_eq!(ctx.get_tagged_all(tag).unwrap()[0].object_id, parent);
+            }
+        }
+    }
+}

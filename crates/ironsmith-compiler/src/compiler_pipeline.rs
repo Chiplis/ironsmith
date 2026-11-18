@@ -1,7 +1,7 @@
+#[cfg(any(test, feature = "test-support"))]
 use crate::cards::ParseAnnotations;
 #[cfg(any(test, feature = "test-support"))]
 use crate::cards::builders::CardDefinition;
-use ironsmith_core::card::CardBuilder;
 
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
 use crate::lowering::CardAstMaterializer;
@@ -9,37 +9,16 @@ use crate::model::ParsedCardAst;
 use crate::parse_context::ParseContext;
 use crate::parse_trace;
 
-use super::document_parser;
-use super::effect_pipeline::{LoweredCardDocument, NormalizedCardAst};
-use super::ir::RewriteSemanticDocument;
-use super::lower;
+use crate::effect_pipeline::LoweredCardDocument;
+#[cfg(test)]
+use crate::ir::RewriteSemanticDocument;
 
-pub fn parse_text_to_semantic_document_with_context(
-    context: &mut ParseContext,
-    card: CardBuilder,
-    text: String,
-) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
-    document_parser::parse_text_to_semantic_document_with_context(context, card, text)
-}
-
-pub fn parse_semantic_document(
-    doc: RewriteSemanticDocument,
-) -> Result<ParsedCardAst, CardTextError> {
-    crate::semantic_document::parse_semantic_document(doc)
-}
-
-pub fn normalize_parsed_document(
-    ast: ParsedCardAst,
-    seed: CardDefinitionBuilder,
-) -> Result<NormalizedCardAst, CardTextError> {
-    lower::normalize_parsed_card_ast_for_lowering(ast, seed)
-}
-
-pub fn lower_prepared_document_with_facts(
-    ast: NormalizedCardAst,
-) -> Result<LoweredCardDocument, CardTextError> {
-    lower::lower_normalized_card_ast_with_facts(ast)
-}
+pub use ironsmith_compiler_grammar::document_parser::parse_text_to_semantic_document_with_context;
+pub use ironsmith_compiler_grammar::semantic_document::parse_semantic_document;
+pub use ironsmith_compiler_lowering::lower::{
+    lower_normalized_card_ast_with_facts as lower_prepared_document_with_facts,
+    normalize_parsed_card_ast_for_lowering as normalize_parsed_document,
+};
 
 #[cfg(any(test, feature = "test-support"))]
 pub fn parse_text_with_annotations_lowered(
@@ -108,10 +87,61 @@ mod tests {
     use crate::CardId;
     use crate::ability::AbilityKind;
     use crate::alternative_cast::AlternativeCastingMethod;
-    use crate::effect_pipeline::NormalizedCardItem;
+    use crate::effect_pipeline::{NormalizedCardItem, NormalizedLineChunk, NormalizedPreparedAbility};
     use crate::model::compiler_semantic::ParsedCardItem;
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    #[test]
+    fn rewrite_triggered_normalization_keeps_explicit_intervening_if_predicate()
+    -> Result<(), CardTextError> {
+        let card = CardDefinitionBuilder::new(CardId::new(), "Portcullis Variant")
+            .card_types(vec![CardType::Artifact]);
+        let (doc, _) = parse_text_to_semantic_document(
+            card,
+            "Whenever a creature enters, if there are two or more other creatures on the battlefield, exile that creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield.".to_string(),
+            false,
+        )?;
+        let normalized =
+            normalize_parsed_document(parse_semantic_document(doc)?, CardDefinitionBuilder::seed())?;
+        let parsed = normalized
+            .items
+            .into_iter()
+            .find_map(|item| match item {
+                NormalizedCardItem::Line(line) => line.chunks.into_iter().find_map(|chunk| {
+                    if let NormalizedLineChunk::Ability(parsed) = chunk {
+                        Some(parsed)
+                    } else {
+                        None
+                    }
+                }),
+                _ => None,
+            })
+            .expect("expected Portcullis-style line to normalize into a triggered ability");
+
+        let crate::model::CompilerAbilityKindCore::Triggered(_triggered) = parsed.parsed.kind()
+        else {
+            panic!(
+                "expected Portcullis-style line to normalize into a triggered ability, got {:?}",
+                parsed.parsed.kind()
+            );
+        };
+        let debug = format!("{:?}", parsed.prepared);
+        assert!(
+            matches!(
+                parsed.prepared.as_ref(),
+                Some(NormalizedPreparedAbility::Triggered { prepared, .. })
+                    if prepared.intervening_if.is_some()
+            ),
+            "expected trigger predicate to survive normalization, got {debug}"
+        );
+        assert!(
+            debug.contains("ValueComparison"),
+            "expected battlefield-count predicate to survive normalization, got {debug}"
+        );
+
+        Ok(())
+    }
 
     #[test]
     fn delayed_exile_all_cardinality_survives_the_semantic_pipeline() -> Result<(), CardTextError> {

@@ -246,7 +246,7 @@ pub fn parse_choice_card_type_phrase_words(words: &[&str]) -> Option<ChoiceCardT
 }
 
 fn card_types_other_than(excluded: &[CardType]) -> Vec<CardType> {
-    crate::effects::ChooseCardTypeEffect::all_card_types()
+    CardType::ALL
         .iter()
         .copied()
         .filter(|card_type| !excluded.contains(card_type))

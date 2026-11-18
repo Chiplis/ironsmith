@@ -148,6 +148,7 @@ pub fn parse_effect_with_verb(
         }
         Verb::Sacrifice => parse_sacrifice(tokens, subject, None),
         Verb::Create => parse_create(tokens, subject),
+        Verb::Audition => super::audition::parse(tokens, subject),
         Verb::Investigate => parse_investigate(tokens, subject),
         Verb::Assimilate => parse_assimilate(tokens, subject),
         Verb::Incubate => parse_incubate(tokens, subject),

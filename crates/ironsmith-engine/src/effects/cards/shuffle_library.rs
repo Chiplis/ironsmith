@@ -21,15 +21,7 @@ struct ShuffleLibraryAction {
 }
 
 impl EffectExecutor for ShuffleLibraryAction {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -152,27 +144,13 @@ pub(crate) fn shuffle_library_with_outputs(
     position_from_top: usize,
     reason: &str,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    crate::effects::execute_effect_with_outputs(
-        game,
-        &shuffle_library_action(player, retained, position_from_top, reason),
-        ctx,
-    )
-}
-
-/// Compose the existing shuffle owner as an actual child instruction, keeping
-/// the selected player, retained insertion ordering and authored reason.
-pub(crate) fn shuffle_library_action(
-    player: crate::ids::PlayerId,
-    retained: &[crate::ids::ObjectId],
-    position_from_top: usize,
-    reason: &str,
-) -> crate::effect::Effect {
-    crate::effect::Effect::new(ShuffleLibraryAction {
+    let action = crate::effect::Effect::new(ShuffleLibraryAction {
         player,
         retained: retained.to_vec(),
         position_from_top,
         reason: reason.into(),
-    })
+    });
+    crate::effects::execute_effect_with_outputs(game, &action, ctx)
 }
 
 /// Effect that shuffles a player's library.
@@ -202,15 +180,7 @@ impl EffectExecutor for ShuffleLibraryEffect {
         }))
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

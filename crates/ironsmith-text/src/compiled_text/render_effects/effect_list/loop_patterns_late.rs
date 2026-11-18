@@ -249,9 +249,7 @@
         }
         if idx + 2 < filtered.len()
             && let Some(rendered) =
-                describe_effect_list_linked_graveyard_choices_then_may_return_bundle(
-                    &filtered[idx..idx + 3],
-                )
+                describe_linked_graveyard_return(&filtered[idx..idx + 3], downcast_move_to_zone)
         {
             parts.push(rendered);
             idx += 3;

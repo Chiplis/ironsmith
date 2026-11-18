@@ -2488,6 +2488,15 @@ impl Object {
         self.copy_copiable_values_from_values(&values);
     }
 
+    pub(crate) fn apply_alternative_cast_characteristics(&mut self, method: &AlternativeCastingMethod) {
+        if method.is_bestow() {
+            self.apply_bestow_cast_overlay();
+        }
+        if let Some((cost, power_toughness)) = method.casting_characteristics() {
+            self.apply_cast_characteristic_overlay(cost, power_toughness);
+        }
+    }
+
     /// Apply the temporary "cast with bestow" Aura overlay.
     ///
     /// This stores original copiable fields so state-based actions can restore
@@ -2884,6 +2893,22 @@ impl Object {
         self.optional_costs = restore.optional_costs;
         self.additional_cost = restore.additional_cost;
         true
+    }
+
+    /// A spell cast as one face has only that face's characteristics (CR 709.3a).
+    pub(crate) fn into_single_face(mut self) -> Self {
+        self.split_combined = None;
+        if self.linked_face_layout == LinkedFaceLayout::Split {
+            self.linked_face_mana_cost = None;
+        }
+        self
+    }
+
+    /// Only split cards need a separate object to represent their front half.
+    pub(crate) fn projected_front_half(&self) -> Option<Self> {
+        (self.split_combined.is_some()
+            || (self.linked_face_layout == LinkedFaceLayout::Split && self.linked_face_mana_cost.is_some()))
+            .then(|| self.clone().into_single_face())
     }
 
     /// Combined split-card characteristics, when they apply: a split card

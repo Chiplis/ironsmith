@@ -560,7 +560,24 @@ struct AdaptedOriginalCompletion {
     adapter: Box<dyn OriginalOutcomeAdapter>,
 }
 
-impl AdaptedOriginalCompletion {
+impl crate::effects::composition::CompletionDecorator for AdaptedOriginalCompletion {
+    fn phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner.original_phase_status()
+    }
+
+    fn freeze_inner(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        self.inner.freeze(game)
+    }
+
+    fn observe_inner(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: &mut EffectOutcome,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        self.inner.observe_original(game, ctx, original)
+    }
+
     fn advance(
         self: Box<Self>,
         game: &mut GameState,
@@ -586,117 +603,6 @@ impl AdaptedOriginalCompletion {
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let result = original.dispatch(self.inner, game, ctx);
         self.adapter.finish_with_outputs(game, ctx, result)
-    }
-}
-
-impl crate::effects::SimultaneousEffectCompletion for AdaptedOriginalCompletion {
-    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
-        self.inner.original_phase_status()
-    }
-
-    fn complete_original_phase_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::OriginalOutcome(original),
-        )
-    }
-
-    fn complete_original_phase_from_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::OriginalOutputs(original),
-        )
-    }
-
-    fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::DrawOutcome(original),
-        )
-    }
-
-    fn prepare_draw_boundary_from_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::DrawOutputs(original),
-        )
-    }
-
-    fn observe_original(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut crate::effects::ExecutionContext,
-        original: &mut EffectOutcome,
-    ) -> Result<(), crate::effects::ExecutionError> {
-        self.inner.observe_original(game, ctx, original)
-    }
-
-    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        self.inner.freeze(game)
-    }
-
-    fn complete(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.complete_with_outputs(game, ctx, original)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
-    fn complete_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        self.finish(
-            game,
-            ctx,
-            crate::effects::composition::CompletionInput::Outcome(original),
-        )
-    }
-
-    fn complete_from_original_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        self.finish(
-            game,
-            ctx,
-            crate::effects::composition::CompletionInput::Outputs(original),
-        )
     }
 }
 
@@ -753,6 +659,29 @@ impl ScopedOriginalCompletion {
         }
         result
     }
+}
+
+impl crate::effects::composition::CompletionDecorator for ScopedOriginalCompletion {
+    fn phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner.original_phase_status()
+    }
+
+    fn freeze_inner(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        self.inner.freeze(game)
+    }
+
+    fn observe_inner(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: &mut EffectOutcome,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        self.context.restore_ref(ctx);
+        let result = self.inner.observe_original(game, ctx, original);
+        parent.restore(ctx);
+        result
+    }
 
     fn advance(
         self: Box<Self>,
@@ -777,121 +706,6 @@ impl ScopedOriginalCompletion {
         self.run(game, ctx, |inner, game, ctx| {
             original.dispatch(inner, game, ctx)
         })
-    }
-}
-
-impl crate::effects::SimultaneousEffectCompletion for ScopedOriginalCompletion {
-    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
-        self.inner.original_phase_status()
-    }
-
-    fn complete_original_phase_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::OriginalOutcome(original),
-        )
-    }
-
-    fn complete_original_phase_from_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::OriginalOutputs(original),
-        )
-    }
-
-    fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::DrawOutcome(original),
-        )
-    }
-
-    fn prepare_draw_boundary_from_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::DrawOutputs(original),
-        )
-    }
-
-    fn observe_original(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut crate::effects::ExecutionContext,
-        original: &mut EffectOutcome,
-    ) -> Result<(), crate::effects::ExecutionError> {
-        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        self.context.restore_ref(ctx);
-        let result = self.inner.observe_original(game, ctx, original);
-        parent.restore(ctx);
-        result
-    }
-
-    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        self.inner.freeze(game)
-    }
-
-    fn complete(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.complete_with_outputs(game, ctx, original)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
-    fn complete_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        self.finish(
-            game,
-            ctx,
-            crate::effects::composition::CompletionInput::Outcome(original),
-        )
-    }
-
-    fn complete_from_original_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        self.finish(
-            game,
-            ctx,
-            crate::effects::composition::CompletionInput::Outputs(original),
-        )
     }
 }
 

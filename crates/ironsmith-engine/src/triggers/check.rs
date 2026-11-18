@@ -2204,7 +2204,7 @@ fn tagged_objects_for_matched_trigger_with_view(
                 && participant_filter.matches_snapshot(object, &ctx.filter_ctx, game)
         }).cloned().collect::<Vec<_>>();
         tagged.insert("__it__".into(), participants.clone());
-        tagged.insert("__named_action_objects".into(), participants);
+        tagged.insert(crate::tag::NAMED_ACTION_PARTICIPANTS_TAG.into(), participants);
     }
     // Freeze entry-program action receipts with the triggered ability so its
     // source or the exiled card may leave before the ability resolves.
@@ -2533,8 +2533,8 @@ fn tagged_objects_for_trigger_event_impl(
     }
     if let Some(action) = trigger_event.downcast::<crate::events::NamedActionEvent>() {
         // Immutable producer snapshots bind references even after later moves.
-        tagged.insert("__named_action_objects".into(), action.objects.clone());
-        tagged.insert("__named_action_source".into(), if action.player_only_performer { Vec::new() } else { vec![action.snapshot.clone()] });
+        tagged.insert(crate::tag::NAMED_ACTION_PARTICIPANTS_TAG.into(), action.objects.clone());
+        tagged.insert(crate::tag::NAMED_ACTION_PERFORMER_TAG.into(), if action.player_only_performer { Vec::new() } else { vec![action.snapshot.clone()] });
         tagged.insert("__it__".into(),if action.objects.is_empty() && !action.player_only_performer {vec![action.snapshot.clone()]}else{action.objects.clone()});
     }
     if let Some(action_event) = trigger_event.downcast::<crate::events::KeywordActionEvent>() {

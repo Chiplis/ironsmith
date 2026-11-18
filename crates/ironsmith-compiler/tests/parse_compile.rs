@@ -69,6 +69,290 @@ fn find_damage(effect: &Effect) -> Option<ironsmith_compiler::effects::DealDamag
 }
 
 #[test]
+fn doubled_pump_keeps_the_multiplier_when_it_grants_a_block() {
+    use ironsmith_compiler::continuous::Modification;
+    use ironsmith_compiler::effects::continuous::RuntimeModification;
+    use ironsmith_compiler::static_abilities::StaticAbilityPayload;
+
+    let card = CardDefinitionBuilder::new(CardId::new(), "Extra block")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target creature gets twice +1/-2 until end of turn and can block an additional creature this turn.")
+        .unwrap();
+    let program = card.spell_effect.unwrap();
+    let [pump, grant] = program.flattened_default_effects() else {
+        panic!("expected a pump followed by a block permission");
+    };
+    let pumped = pump.as_tagged().unwrap();
+    let pump = pumped.effect.as_apply_continuous().unwrap();
+    assert!(matches!(
+        pump.runtime_modifications.as_slice(),
+        [RuntimeModification::ModifyPowerToughness {
+            power: Value::Fixed(2),
+            toughness: Value::Fixed(-4)
+        }]
+    ));
+    assert_eq!(pump.until, Until::EndOfTurn);
+    let grant = grant
+        .as_tagged()
+        .unwrap()
+        .effect
+        .as_apply_continuous()
+        .unwrap();
+    assert_eq!(
+        grant.target_spec,
+        Some(ChooseSpec::Tagged(pumped.tag.clone()))
+    );
+    assert_eq!(grant.until, Until::EndOfTurn);
+    let Some(Modification::AddAbility(ability)) = &grant.modification else {
+        panic!("expected a granted ability");
+    };
+    assert!(matches!(
+        ability.payload,
+        StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(1)
+    ));
+}
+
+#[test]
+fn doubled_counted_pump_scales_both_stats_for_each_card_in_hand() {
+    use ironsmith_compiler::effects::ModifyPowerToughnessForEachEffect;
+
+    let card = CardDefinitionBuilder::new(CardId::new(), "Counted pump")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Target creature gets twice +1/-2 until end of turn for each card in your hand.",
+        )
+        .unwrap();
+    let program = card.spell_effect.unwrap();
+    let [declare, pump] = program.flattened_default_effects() else {
+        panic!("expected one target and its counted pump");
+    };
+    let pump = pump
+        .as_tagged()
+        .unwrap()
+        .effect
+        .downcast_ref::<ModifyPowerToughnessForEachEffect>()
+        .unwrap();
+    assert_eq!(pump.target, declare.as_target_only().unwrap().target);
+    assert_eq!((pump.power_per, pump.toughness_per), (2, -4));
+    assert_eq!(pump.duration, Until::EndOfTurn);
+    let Value::Count(cards) = pump.count.unhinted() else {
+        panic!("expected a card count");
+    };
+    assert_eq!(cards.zone, Some(Zone::Hand));
+    assert_eq!(cards.owner, Some(PlayerFilter::You));
+}
+
+#[test]
+fn counted_pump_uses_the_blocking_creature_from_its_trigger() {
+    use ironsmith_compiler::effects::ModifyPowerToughnessForEachEffect;
+
+    let card = CardDefinitionBuilder::new(CardId::new(), "Flanking")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Whenever a creature blocks this creature, the blocking creature gets -1/-1 until end of turn for each card in your hand.")
+        .unwrap();
+    let AbilityKind::Triggered(triggered) = &card.abilities[0].kind else {
+        panic!("expected a blocking trigger");
+    };
+    let [pump] = triggered.effects.flattened_default_effects() else {
+        panic!("expected one counted pump");
+    };
+    let pump = pump
+        .downcast_ref::<ModifyPowerToughnessForEachEffect>()
+        .unwrap();
+    assert_eq!(
+        pump.target.unhinted(),
+        &ChooseSpec::Tagged(TagKey::from("blocking"))
+    );
+    assert_eq!((pump.power_per, pump.toughness_per), (-1, -1));
+}
+
+fn active_opponent() -> PlayerFilter {
+    PlayerFilter::excluding(PlayerFilter::Active, PlayerFilter::your_team())
+}
+
+#[test]
+fn qualified_opponent_actions_keep_one_target_and_its_reference() {
+    use ironsmith_compiler::effects::MillEffect;
+
+    for (text, expected_filter) in [
+        (
+            "Target opponent whose turn it is draws two cards.",
+            active_opponent(),
+        ),
+        (
+            "Target opponent whose turn it is mills three cards.",
+            active_opponent(),
+        ),
+        ("Target opponent draws two cards.", PlayerFilter::Opponent),
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Opponent action")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(text)
+            .unwrap();
+        let program = definition.spell_effect.unwrap();
+        let [declaration, action] = program.flattened_default_effects() else {
+            panic!("expected one target and one action for {text}");
+        };
+        let target = declaration.as_target_only().unwrap();
+        assert_eq!(
+            target.target,
+            ChooseSpec::Target(Box::new(ChooseSpec::Player(expected_filter.clone())))
+        );
+        let player = if let Some(draw) = action.as_draw_cards() {
+            assert_eq!(draw.count, Value::Fixed(2));
+            &draw.player
+        } else {
+            let mill = action
+                .as_tagged()
+                .unwrap()
+                .effect
+                .downcast_ref::<MillEffect>()
+                .unwrap();
+            assert_eq!(mill.count, Value::Fixed(3));
+            &mill.player
+        };
+        let reference = if expected_filter == PlayerFilter::Opponent {
+            PlayerFilter::Target(Box::new(expected_filter))
+        } else {
+            PlayerFilter::AliasedTarget(Box::new(expected_filter))
+        };
+        assert_eq!(player, &reference);
+    }
+}
+
+#[test]
+fn qualified_opponent_as_damage_recipient_keeps_the_same_target_filter() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Opponent damage")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Deal 3 damage to target opponent whose turn it is.")
+        .unwrap();
+    let program = definition.spell_effect.unwrap();
+    let [action] = program.flattened_default_effects() else {
+        panic!("expected a single damage action");
+    };
+    let damage = action
+        .downcast_ref::<ironsmith_compiler::effects::DealDamageEffect>()
+        .unwrap();
+    assert_eq!(damage.amount, Value::Fixed(3));
+    assert_eq!(
+        damage.target,
+        ChooseSpec::Target(Box::new(ChooseSpec::Player(active_opponent())))
+    );
+}
+
+#[test]
+fn outcome_condition_requires_a_consequence_in_the_public_effect_parser() {
+    for clause in ["If they don't, .", "If they do, instead."] {
+        let tokens = lex_line(clause, 0).unwrap();
+        assert!(
+            ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens).is_err(),
+            "{clause}"
+        );
+    }
+}
+
+#[test]
+fn qualified_cast_offer_binds_the_card_copy_and_both_outcomes() {
+    use ironsmith_compiler::effect::EffectPredicate;
+    use ironsmith_compiler::effects::{
+        ChooseNewTargetsEffect, CopySpellEffect, MayCastMatchingSpellWithoutPayingManaCostEffect,
+        MayEffect,
+    };
+
+    let instructions = "Target opponent whose turn it is may cast a spell from their hand without paying its mana cost. If they do, you copy that spell. You may choose new targets for the copy. If they don't, you draw a card.";
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Cast offer")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(instructions)
+        .unwrap();
+    let troi = CardDefinitionBuilder::new(CardId::new(), "Cmdr. Troi, Outgoing Empath")
+        .card_types(vec![CardType::Creature])
+        .parse_text(format!("Vigilance\n{{T}}: {instructions}"))
+        .unwrap();
+    let activation = troi
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(&activated.effects),
+            _ => None,
+        })
+        .unwrap();
+    for program in [spell.spell_effect.as_ref().unwrap(), activation] {
+        let [declaration, offer, accepted, declined] = program.flattened_default_effects() else {
+            panic!("expected a declared target, an offer, and both outcomes");
+        };
+        let filter = active_opponent();
+        assert_eq!(
+            declaration.as_target_only().unwrap().target,
+            ChooseSpec::Target(Box::new(ChooseSpec::Player(filter.clone())))
+        );
+        let selected = PlayerFilter::AliasedTarget(Box::new(filter));
+        let offer = offer.as_with_id().unwrap();
+        let may = offer.effect.downcast_ref::<MayEffect<Effect>>().unwrap();
+        assert_eq!(may.decider.as_ref(), Some(&selected));
+        let card = may.effects[0].as_tagged().unwrap();
+        let cast = card
+            .effect
+            .downcast_ref::<MayCastMatchingSpellWithoutPayingManaCostEffect>()
+            .unwrap();
+        assert_eq!(
+            (&cast.player, &cast.zone_owner, cast.zone),
+            (&selected, &selected, Zone::Hand)
+        );
+
+        assert_eq!(
+            cast.payment,
+            ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost
+        );
+        let accepted = accepted
+            .as_with_id()
+            .unwrap()
+            .effect
+            .as_if_effect()
+            .unwrap();
+        assert_eq!(
+            (accepted.condition, &accepted.predicate),
+            (offer.id, &EffectPredicate::Happened)
+        );
+        let copy = accepted.then[0]
+            .as_tagged()
+            .unwrap()
+            .effect
+            .as_with_id()
+            .unwrap();
+        let copied_spell = copy.effect.downcast_ref::<CopySpellEffect>().unwrap();
+        assert_eq!(copied_spell.target, ChooseSpec::Tagged(card.tag.clone()));
+        assert_eq!(copied_spell.copier, PlayerFilter::You);
+        let retarget = accepted.then[1]
+            .downcast_ref::<ChooseNewTargetsEffect>()
+            .unwrap();
+        assert!(retarget.may);
+        assert_eq!(retarget.chooser, Some(PlayerFilter::You));
+        assert_eq!(retarget.from_effect, copy.id);
+        let declined = declined.as_if_effect().unwrap();
+        assert_eq!(
+            (declined.condition, &declined.predicate),
+            (offer.id, &EffectPredicate::DidNotHappen)
+        );
+        let draw = declined.then[0].as_draw_cards().unwrap();
+        assert_eq!(
+            (&draw.player, &draw.count),
+            (&PlayerFilter::You, &Value::Fixed(1))
+        );
+    }
+    for text in [
+        instructions.replace("you draw a card", "you flumble a card"),
+        instructions.replace("you draw a card", ""),
+    ] {
+        assert!(
+            CardDefinitionBuilder::new(CardId::new(), "Malformed offer")
+                .card_types(vec![CardType::Sorcery])
+                .parse_text(text)
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn quantified_damage_binds_that_players_life_total_to_each_recipient() {
     let definition = CardDefinitionBuilder::new(CardId::new(), "Quantified Life Damage Probe")
         .card_types(vec![CardType::Creature])
@@ -928,36 +1212,34 @@ fn compile_each_object_power_damage_iterates_sources_and_keeps_prior_target() {
             "Choose up to one target creature or planeswalker. Each creature with power 4 or greater you control deals damage equal to its power to that permanent.",
         )
         .expect("each-object power damage should parse");
-    let debug = format!("{:#?}", def.spell_effect.expect("spell effect"));
-    let compact = debug
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .collect::<String>();
+    use ironsmith_compiler::effects::{
+        DealDamageEffect, ExecuteWithSourceEffect, ForEachObject, TaggedEffect, TargetOnlyEffect,
+    };
+    use ironsmith_compiler::filter::{Comparison, PlayerFilter};
 
-    assert!(
-        compact.contains("TaggedEffect")
-            && compact.contains("tag:TagKey(\"targeted_0\",)")
-            && compact.contains("TargetOnlyEffect"),
-        "the single chosen permanent should remain tagged outside the source loop: {debug}"
-    );
-    assert!(
-        compact.contains("ForEachObject")
-            && compact.contains("GreaterThanOrEqual(4")
-            && compact.contains("controller:Some(You"),
-        "the qualifying controlled creatures should be the iterated set: {debug}"
-    );
-    assert!(
-        compact.contains("ExecuteWithSourceEffect{source:Iterated")
-            && (compact.contains("PowerOf(Iterated")
-                || compact.contains("PowerOf(SurfaceHinted{spec:Iterated")),
-        "each iterand should be both the damage source and its own power value: {debug}"
-    );
-    assert!(
-        compact.contains("target:SurfaceHinted{spec:Object(ObjectFilter")
-            && compact.contains("\"targeted_0\"")
-            && !compact.contains("target:Iterated"),
-        "damage should stay bound to the one prior target, not the source iterand: {debug}"
-    );
+    let program = def.spell_effect.expect("spell effect");
+    let [declaration, sources] = program.flattened_default_effects() else {
+        panic!("expected a target declaration followed by a source loop");
+    };
+    let chosen = declaration.downcast_ref::<TaggedEffect>().expect("capture the chosen permanent");
+    let target = chosen.effect.downcast_ref::<TargetOnlyEffect>().expect("standalone target");
+    assert!(target.target.is_target());
+
+    let sources = sources.downcast_ref::<ForEachObject>().expect("iterate damage sources");
+    assert_eq!(sources.filter.controller, Some(PlayerFilter::You));
+    assert_eq!(sources.filter.power, Some(Comparison::GreaterThanOrEqual(4)));
+    assert_eq!(sources.filter.card_types, [CardType::Creature]);
+
+    let [effect] = sources.effects.as_slice() else {
+        panic!("expected one damage instruction per creature");
+    };
+    let effect = effect.downcast_ref::<TaggedEffect>().map_or(effect, |tagged| &tagged.effect);
+    let scoped = effect.downcast_ref::<ExecuteWithSourceEffect>().expect("set the damage source");
+    assert!(matches!(scoped.source.unhinted(), ChooseSpec::Iterated));
+    let damage = scoped.effect.downcast_ref::<DealDamageEffect>().expect("deal damage");
+    assert!(matches!(damage.amount.unhinted(), Value::PowerOf(source)
+        if matches!(source.unhinted(), ChooseSpec::Iterated)));
+    assert_eq!(damage.target.unhinted(), &ChooseSpec::Tagged(chosen.tag.clone()));
 }
 
 #[test]
@@ -2551,6 +2833,277 @@ fn test_ctx(line: &str) -> NormalizedLine {
 
 fn span_mapping_context(line: &NormalizedLine) -> SpanMappingContext<'_> {
     SpanMappingContext::new(&line.normalized, &line.original, &line.char_map)
+}
+
+#[test]
+fn upkeep_trigger_binds_the_attachment_read_only_by_a_dynamic_target_count() {
+    use ironsmith_compiler::effect_pipeline::EffectPreludeTag;
+    use ironsmith_compiler::effects::TagAttachedToSourceEffect;
+    use ironsmith_compiler::lowering_support::stage_triggered_effects_for_lowering;
+    use ironsmith_compiler::model::reference_state::ReferenceImports;
+
+    let equipped = TagKey::from("equipped");
+    for (count, expected) in [
+        (
+            Value::TaggedSnapshotCount {
+                tag: equipped.clone(),
+                filter: ObjectFilter::creature(),
+            },
+            Some(equipped.clone()),
+        ),
+        (
+            Value::LifeTotal(PlayerFilter::ControllerOf(ObjectRef::Tagged(
+                equipped.clone(),
+            ))),
+            Some(equipped),
+        ),
+        (Value::Fixed(2), None),
+    ] {
+        let target = TargetAst::WithCountValue(
+            Box::new(TargetAst::Object(ObjectFilter::creature(), None, None)),
+            ChoiceCount::dynamic_x(),
+            count,
+        );
+        let (_, triggered) = stage_triggered_effects_for_lowering(
+            TriggerSpec::BeginningOfUpkeep(PlayerFilter::You),
+            &[EffectAst::subject_verb_tap(target)],
+            ReferenceImports::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            triggered.prepared.prelude,
+            expected
+                .iter()
+                .cloned()
+                .map(EffectPreludeTag::AttachedSource)
+                .collect::<Vec<_>>()
+        );
+        let (lowered, _) = materialize_prepared_triggered_effects(&triggered).unwrap();
+        let effects = lowered.effects.flattened_default_effects();
+        let attachment = effects
+            .first()
+            .and_then(|effect| effect.downcast_ref::<TagAttachedToSourceEffect>());
+        assert_eq!(attachment.map(|effect| &effect.tag), expected.as_ref());
+        assert!(
+            effects
+                .iter()
+                .skip(1)
+                .all(|effect| effect.downcast_ref::<TagAttachedToSourceEffect>().is_none())
+        );
+    }
+}
+
+#[test]
+fn counted_slot_and_nested_actions_keep_their_own_tag_spans() {
+    let line = test_ctx("outer inner rider");
+    let span = |start, end| TextSpan {
+        line: 0,
+        start,
+        end,
+    };
+    let tag = |name: &str, start, end| {
+        TargetAst::Tagged(
+            ironsmith_compiler::tag::TagRef::of(TagKey::from(name)),
+            Some(span(start, end)),
+        )
+    };
+    let effect = EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange {
+        target_spec: TargetAst::WithCountValue(
+            Box::new(tag("outer", 0, 5)),
+            ChoiceCount::dynamic_x(),
+            Value::X,
+        ),
+        start: Value::Fixed(0),
+        count: Value::Fixed(1),
+        target_action: Box::new(EffectAst::subject_verb_tap(tag("inner", 6, 11))),
+        riders: vec![EffectAst::subject_verb_untap(tag("rider", 12, 17))],
+    });
+    let mut annotations = ParseAnnotations::default();
+    collect_tag_spans_from_effect(&effect, &mut annotations, &span_mapping_context(&line));
+    for (key, expected) in [
+        ("outer", span(0, 5)),
+        ("inner", span(6, 11)),
+        ("rider", span(12, 17)),
+    ] {
+        assert_eq!(
+            annotations.tag_spans.get(key).map(Vec::as_slice),
+            Some([expected].as_slice()),
+            "{key}"
+        );
+    }
+}
+
+#[test]
+fn conditional_exiled_card_predicate_overrides_intervening_object_memory() {
+    use ironsmith_compiler::tag::CompilerReferenceTag;
+    let concrete = TagKey::from("__sentence_helper_exiled_probe");
+    let effects = vec![
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ItMatches(ObjectFilter::spell()),
+            if_true: vec![EffectAst::Permissions(PermissionEffectAst::May {
+                effects: vec![EffectAst::subject_verb_cast_tagged(
+                    CompilerReferenceTag::SourceExiled.bind(),
+                    PlayerAst::You,
+                    false,
+                    false,
+                    true,
+                    None,
+                )],
+            })],
+            if_false: Vec::new(),
+        }),
+        EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+            CompilerReferenceTag::It.bind(),
+            PlayerAst::You,
+            false,
+            false,
+            false,
+        ),
+    ];
+    let imports = ReferenceImports {
+        last_object_tag: Some(TagKey::from("created_treasure")),
+        snapshot_bindings: vec![(CompilerReferenceTag::SourceExiled.key(), concrete.clone())]
+            .into(),
+        ..Default::default()
+    };
+    let compiled = compile_statement_effects_with_imports(&effects, &imports)
+        .expect("lower exiled-card conditional");
+    let conditional = compiled
+        .effects
+        .iter()
+        .find_map(|e| e.downcast_ref::<ironsmith_compiler::effects::ConditionalEffect>())
+        .expect("conditional cast");
+    assert!(
+        matches!(&conditional.condition, Condition::TaggedObjectMatches(tag, _) if tag == &concrete),
+        "{:?}",
+        conditional.condition
+    );
+    let offer = conditional.if_true[0]
+        .downcast_ref::<ironsmith_compiler::effects::MayEffect<Effect>>()
+        .expect("optional cast");
+    let cast = offer.effects[0]
+        .downcast_ref::<ironsmith_compiler::effects::CastTaggedEffect>()
+        .expect("cast the exiled card");
+    assert_eq!(cast.tag, concrete);
+    let grant = compiled
+        .effects
+        .iter()
+        .find_map(|e| e.downcast_ref::<ironsmith_compiler::effects::GrantPlayTaggedEffect>())
+        .expect("trailing play permission");
+    assert_eq!(grant.tag, concrete);
+}
+
+#[test]
+fn returned_object_followups_remain_references_without_new_target_choices() {
+    use ironsmith_compiler::card_builders::{
+        CharacteristicActionAst, DelayedEffectAst, SubjectVerbEffectAst, ZoneMoveActionAst,
+    };
+    use ironsmith_compiler_resolve::reference_resolution::{
+        EffectReferenceResolutionConfig, annotate_effect_sequence,
+    };
+
+    let mut graveyard_creature = ObjectFilter::creature();
+    graveyard_creature.zone = Some(Zone::Graveyard);
+    graveyard_creature.owner = Some(PlayerFilter::You);
+    let effects = vec![
+        EffectAst::subject_verb_return_to_battlefield(
+            TargetAst::Object(graveyard_creature, None, None),
+            false,
+            false,
+            false,
+            ReturnControllerAst::Preserve,
+            None,
+        ),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes {
+                target: TargetAst::Tagged(
+                    ironsmith_compiler::tag::CompilerReferenceTag::It.bind(),
+                    None,
+                ),
+                card_types: vec![CardType::Enchantment],
+                duration: Until::EndOfTurn,
+            }),
+        ),
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
+            player: PlayerFilter::Any,
+            effects: vec![EffectAst::subject_verb_exile(
+                TargetAst::Tagged(
+                    ironsmith_compiler::tag::CompilerReferenceTag::It.bind(),
+                    None,
+                ),
+                false,
+            )],
+        }),
+    ];
+
+    let annotated = annotate_effect_sequence(
+        &effects,
+        &ReferenceImports::default(),
+        EffectReferenceResolutionConfig::default(),
+        IdGenContext::default(),
+    )
+    .expect("annotate returned-object follow-ups");
+
+    assert_eq!(
+        annotated.effects[0].out_env.last_object_tag,
+        RefState::Known(TagKey::from("returned_0"))
+    );
+
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes {
+                target, ..
+            }),
+        ..
+    }) = &annotated.effects[1].effect
+    else {
+        panic!("expected immediate returned-object follow-up");
+    };
+    let (spec, choices) = resolve_target_spec_with_choices(target, &annotated.effects[1].in_env)
+        .expect("resolve immediate follow-up reference");
+    assert!(matches!(spec.unhinted(), ChooseSpec::Tagged(tag) if tag.as_str() == "returned_0"));
+    assert!(
+        choices.is_empty(),
+        "a pronoun reference is not a new target"
+    );
+
+    let EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
+        effects: delayed, ..
+    }) = &annotated.effects[2].effect
+    else {
+        panic!("expected delayed returned-object follow-up");
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }),
+            ..
+        }),
+    ] = delayed.as_slice()
+    else {
+        panic!("expected delayed exile");
+    };
+    let (spec, choices) = resolve_target_spec_with_choices(target, &annotated.effects[2].in_env)
+        .expect("resolve delayed follow-up reference");
+    assert!(matches!(spec.unhinted(), ChooseSpec::Tagged(tag) if tag.as_str() == "returned_0"));
+    assert!(choices.is_empty(), "a delayed pronoun is not a new target");
+
+    let lowered = compile_statement_effects(&effects).expect("lower returned-object follow-ups");
+    assert!(
+        lowered.iter().all(|effect| effect
+            .downcast_ref::<ironsmith_compiler::effects::TargetOnlyEffect>()
+            .is_none()),
+        "resolved follow-up references must not synthesize a target prelude"
+    );
+    let returned_tag = lowered.iter().find_map(|effect| {
+        let tagged = effect.downcast_ref::<ironsmith_compiler::effects::TaggedEffect>()?;
+        tagged
+            .effect
+            .downcast_ref::<ironsmith_compiler::effects::ReturnFromGraveyardToBattlefieldEffect>()
+            .map(|_| tagged.tag.as_str())
+    });
+    assert_eq!(returned_tag, Some("returned_0"));
 }
 
 #[test]

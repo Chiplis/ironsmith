@@ -146,6 +146,29 @@ pub fn clone_sentence_chunk_tokens(
     Some(tokens[start..end_start + last_sentence.len()].to_vec())
 }
 
+/// Indices in the enclosing instruction. An opening delimiter is visible at
+/// its outer depth, as is a closing delimiter when scanning an already-open body.
+pub(crate) fn top_level_token_indices(
+    tokens: &[OwnedLexToken],
+    matches: impl Fn(&OwnedLexToken) -> bool,
+) -> impl Iterator<Item = usize> {
+    let mut quoted = false;
+    let mut parentheses = 0usize;
+    let mut brackets = 0usize;
+    tokens.iter().enumerate().filter_map(move |(index, token)| {
+        let visible = !quoted && parentheses == 0 && brackets == 0 && !token.is_quote();
+        match token.kind {
+            TokenKind::Quote => quoted = !quoted,
+            TokenKind::LParen if !quoted => parentheses += 1,
+            TokenKind::RParen if !quoted => parentheses = parentheses.saturating_sub(1),
+            TokenKind::LBracket if !quoted => brackets += 1,
+            TokenKind::RBracket if !quoted => brackets = brackets.saturating_sub(1),
+            _ => {}
+        }
+        (visible && matches(token)).then_some(index)
+    })
+}
+
 pub fn split_em_dash_label_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {

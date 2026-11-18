@@ -18,41 +18,37 @@ pub fn parse_devour_quality_line(
     }
     let body = &tokens[1..];
     let body_words = parser_token_word_refs(body);
-    // The grammar emits the keyword action; lowering builds the as-enters
-    // devour program from it.
-    let (devour, presentation_multiplier) =
-        if crate::word_primitives::parse_sequence_complete(&body_words, DEVOURED_COUNT_TAIL) {
-            (crate::effects::DevourEffect::devoured_count_squared(), 1)
-        } else {
-            // "Devour <quality> <N>": at least one quality word and a final
-            // count; the bare "Devour N" keyword is not this rule's.
-            let Some((count_token, quality_tokens)) = body.split_last() else {
-                return Ok(None);
-            };
-            if quality_tokens.is_empty() {
-                return Ok(None);
-            }
-            let Some(multiplier) = parse_number_word_i32(count_token.parser_text())
-                .and_then(|value| u32::try_from(value).ok())
-                .filter(|value| *value > 0)
-            else {
-                return Ok(None);
-            };
-            let quality = parse_object_filter_lexed(quality_tokens, false)?;
-            if quality.card_types.is_empty() && quality.subtypes.is_empty() {
-                return Ok(None);
-            }
-            (
-                crate::effects::DevourEffect::with_quality(multiplier, quality),
-                multiplier,
-            )
+    let multiplier_is_devoured_count =
+        crate::word_primitives::parse_sequence_complete(&body_words, DEVOURED_COUNT_TAIL);
+    let (multiplier, quality) = if multiplier_is_devoured_count {
+        (1, None)
+    } else {
+        // "Devour <quality> <N>": at least one quality word and a final
+        // count; the bare "Devour N" keyword is not this rule's.
+        let Some((count_token, quality_tokens)) = body.split_last() else {
+            return Ok(None);
         };
+        if quality_tokens.is_empty() {
+            return Ok(None);
+        }
+        let Some(multiplier) = parse_number_word_i32(count_token.parser_text())
+            .and_then(|value| u32::try_from(value).ok())
+            .filter(|value| *value > 0)
+        else {
+            return Ok(None);
+        };
+        let quality = parse_object_filter_lexed(quality_tokens, false)?;
+        if quality.card_types.is_empty() && quality.subtypes.is_empty() {
+            return Ok(None);
+        }
+        (multiplier, Some(quality))
+    };
     Ok(Some(StaticAbilityAst::KeywordAction(
         KeywordAction::DevourVariant {
-            multiplier: devour.multiplier,
-            quality: devour.quality,
-            multiplier_is_devoured_count: devour.multiplier_is_devoured_count,
-            presentation_multiplier,
+            multiplier,
+            quality,
+            multiplier_is_devoured_count,
+            presentation_multiplier: multiplier,
         },
     )))
 }

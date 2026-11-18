@@ -1236,61 +1236,8 @@ fn exact_hidden_partition_permission_statement(tokens: &[OwnedLexToken]) -> Opti
     )?
 }
 
-fn exact_historical_target_return_statement(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    let sentences = split_lexed_sentences(tokens);
-    let [choose, return_them, draw] = sentences.as_slice() else {
-        return None;
-    };
-    let choose_words = crate::lexer::parser_token_word_refs(choose);
-    let return_words = crate::lexer::parser_token_word_refs(return_them);
-    let draw_words = crate::lexer::parser_token_word_refs(draw);
-    if !crate::word_primitives::parse_sequence_prefix(
-        &choose_words,
-        &[
-            "choose",
-            "up",
-            "to",
-            "three",
-            "target",
-            "permanent",
-            "cards",
-            "in",
-            "graveyards",
-            "that",
-            "were",
-            "put",
-            "there",
-            "from",
-            "the",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-    ) || !crate::word_primitives::parse_sequence_prefix(
-        &return_words,
-        &["return", "them", "to", "the", "battlefield"],
-    ) || !crate::word_primitives::parse_sequence_prefix(
-        &draw_words,
-        &[
-            "you",
-            "draw",
-            "a",
-            "card",
-            "for",
-            "each",
-            "opponent",
-            "who",
-            "controls",
-            "one",
-            "or",
-            "more",
-            "of",
-            "those",
-            "permanents",
-        ],
-    ) {
-        return None;
-    }
+fn historical_target_return_statement(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    crate::grammar::statement_shapes::historical_target_return_sentences(tokens)?;
     crate::effect_sentences::parse_effect_sentences_lexed(tokens).ok()
 }
 
@@ -1619,11 +1566,11 @@ fn parse_statement_to_chunks_impl(
     // bind the shared target or selected-card tag.
     if let Some(effects) = exact_destroy_no_regeneration_statement(&line.info.source_tokens)
         .or_else(|| exact_hidden_partition_permission_statement(&line.info.source_tokens))
-        .or_else(|| exact_historical_target_return_statement(&line.info.source_tokens))
+        .or_else(|| historical_target_return_statement(&line.info.source_tokens))
         .or_else(|| exact_registered_statement_program_chain(&line.info.source_tokens))
         .or_else(|| exact_destroy_no_regeneration_statement(parse_tokens))
         .or_else(|| exact_hidden_partition_permission_statement(parse_tokens))
-        .or_else(|| exact_historical_target_return_statement(parse_tokens))
+        .or_else(|| historical_target_return_statement(parse_tokens))
         .or_else(|| exact_registered_statement_program_chain(parse_tokens))
         .or_else(|| exact_registered_statement_sequence(&line.info.source_tokens))
         .or_else(|| exact_registered_statement_sequence(parse_tokens))

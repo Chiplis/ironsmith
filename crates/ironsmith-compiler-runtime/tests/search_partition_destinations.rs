@@ -1,6 +1,4 @@
-//! UNVALIDATED implementation-first coverage: a searched-and-revealed group
-//! partitioned "one into your hand and the other into your graveyard"
-//! (CR 701.23) keeps both destinations.
+//! A searched and revealed pair keeps both destinations through lowering and rendering.
 use ironsmith::effects::{ChooseObjectsEffect, MoveToZoneEffect, ShuffleLibraryEffect};
 use ironsmith::Zone;
 
@@ -14,6 +12,9 @@ fn searched_pair_goes_to_hand_and_graveyard() {
     for row in &rows {
         let name = row["name"].as_str().unwrap();
         for definition in common::definitions(row) {
+            let oracle = row["oracle_text"].as_str().unwrap();
+            assert_eq!(ironsmith_text::compiled_text_lines(&definition), [oracle], "{name}");
+            assert_eq!(ironsmith_text::semantic_audit_lines(&definition), [oracle], "{name}");
             let effects = common::all_effects(&definition);
             let choices: Vec<_> = effects.iter().filter_map(|e| e.downcast_ref::<ChooseObjectsEffect>()).collect();
             let search = choices.iter().find(|choice| choice.is_search).expect("search");

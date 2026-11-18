@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/ironsmith-engine-macros",
     "crates/ironsmith-tag-walk-derive",
     "crates/ironsmith-card-source",
     "crates/ironsmith-card-catalog",

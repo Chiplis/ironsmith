@@ -41,3 +41,31 @@ fn rejects_non_generic_or_incomplete_taxes() {
         assert_eq!(parse_per_attacker_cant_tax_tokens(&tokens), None);
     }
 }
+
+#[test]
+fn attack_tax_delimiters_belong_to_the_enclosing_clause() {
+    let tokens = lex_line(r#"Creatures with "This creature can't block" can't attack you unless their controller pays "for each charge counter, where X is one" for each of those creatures."#, 0).unwrap();
+    let tax = parse_attack_tax_clause(&tokens).unwrap();
+    assert!(tax.binding.is_none());
+    assert_eq!(
+        tax.attackers
+            .iter()
+            .filter(|token| token.is_quote())
+            .count(),
+        2
+    );
+    assert!(tax.payment.first().unwrap().is_quote());
+    assert!(tax.payment.last().unwrap().is_quote());
+}
+
+#[test]
+fn attack_tax_requires_the_attacker_count_to_match_its_defender() {
+    for text in [
+        "Creatures can't attack you unless their controller pays {2} for each attacking creature they control.",
+        "Creatures can't attack you or planeswalkers you control unless their controller pays 2 life for each creature they control that's attacking you.",
+        "Creatures can't attack planeswalkers you control unless their controller pays {2} for each of those creatures.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(parse_attack_tax_clause(&tokens).is_none(), "{text}");
+    }
+}

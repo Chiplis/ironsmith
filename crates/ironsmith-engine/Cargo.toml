@@ -12,6 +12,7 @@ crate-type = ["rlib"]
 doctest = false
 
 [dependencies]
+ironsmith-engine-macros = { path = "../ironsmith-engine-macros" }
 ironsmith-core = { path = "../ironsmith-core", default-features = false }
 ironsmith-semantic-compare = { path = "../ironsmith-semantic-compare", default-features = false, optional = true }
 rand = "0.10.1"

@@ -69,7 +69,8 @@ pub fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProd
             .last()
             .and_then(|statement| statement.effects.last())
             .and_then(terminal_result_producer),
-        EffectAst::Sequence { effects }
+        EffectAst::WithExiledSpell { effects }
+        | EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
@@ -89,6 +90,7 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::WithExiledSpell { effects: $effects }
             | EffectAst::Sequence { effects: $effects }
             | EffectAst::CommaThen { effects: $effects }
             | EffectAst::PlaySubgame {
@@ -325,7 +327,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::PlaySubgame { .. } => {}
         EffectAst::CollectManaPayments { .. } => {}
         EffectAst::BindX { .. } => {}
-        EffectAst::Sequence { .. } => {}
+        EffectAst::WithExiledSpell { .. } | EffectAst::Sequence { .. } => {}
         EffectAst::CommaThen { .. } => {}
         EffectAst::SourceSentence { .. } => {}
         EffectAst::Coordinated { .. } => {}

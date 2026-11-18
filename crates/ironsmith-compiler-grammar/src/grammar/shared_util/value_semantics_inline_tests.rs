@@ -672,3 +672,17 @@ fn total_power_of_creatures_that_died_this_turn_reads_death_history() {
     assert_eq!(filter.zone, None, "{filter:#?}");
     assert!(!filter.subtypes.is_empty(), "{filter:#?}");
 }
+
+#[test]
+fn numeric_comparison_distinguishes_a_compound_bound_from_discrete_values() {
+    use crate::filter::Comparison;
+    for (words, expected) in [
+        (&["twenty", "one", "or", "less"][..], Comparison::LessThanOrEqual(21)),
+        (&["one", "hundred", "or", "more"][..], Comparison::GreaterThanOrEqual(100)),
+        (&["twenty", "or", "one"][..], Comparison::OneOf(vec![20, 1])),
+    ] {
+        let (comparison, used) = parse_filter_comparison_tokens("mana value", words, words)
+            .unwrap().unwrap();
+        assert_eq!((comparison, used), (expected, words.len()));
+    }
+}

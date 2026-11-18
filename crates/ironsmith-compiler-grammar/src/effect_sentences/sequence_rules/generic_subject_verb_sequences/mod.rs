@@ -373,24 +373,9 @@ mod trigger_programs;
 /// its text parses to rather than as text to tokenize; a test keeps the two
 /// in step.
 pub(crate) fn rat_token_definition() -> crate::model::token_definition::TokenDefinitionSpec {
-    use crate::model::token_definition::{
-        CreatureTokenRulesShape, CreatureTokenShape, TokenDefinitionSpec,
-    };
-    TokenDefinitionSpec::Creature(CreatureTokenShape {
-        name: "Rat".to_string(),
-        text_roles: Some(crate::model::token_definition::TokenDescriptionTextRoles::authored(ironsmith_core::TokenNameTextRole::SubtypeDerived)),
-        card_types: vec![crate::types::CardType::Creature],
-        subtypes: vec![crate::types::Subtype::Rat],
-        power_toughness: (1, 1),
-        legendary: false,
-        snow: false,
-        colors: crate::color::ColorSet::BLACK,
-        use_source_chosen_color: false,
-        use_source_chosen_creature_type: false,
-        keywords: Vec::new(),
-        rules: CreatureTokenRulesShape::default(),
-        mana_cost: None,
-    })
+    use crate::grammar::token_definitions::{fixed_creature, TokenDescriptionTextRoles};
+    fixed_creature("Rat", vec![crate::types::Subtype::Rat], crate::color::ColorSet::BLACK, (1, 1),
+        Some(TokenDescriptionTextRoles::authored(ironsmith_core::TokenNameTextRole::SubtypeDerived)))
 }
 
 #[cfg(test)]

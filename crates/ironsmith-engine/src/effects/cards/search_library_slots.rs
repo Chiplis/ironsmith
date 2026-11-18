@@ -22,15 +22,7 @@ pub type SearchLibrarySlot = ironsmith_core::SearchLibrarySlot;
 pub type SearchLibrarySlotsEffect = ironsmith_core::SearchLibrarySlotsEffect;
 
 impl EffectExecutor for SearchLibrarySlotsEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

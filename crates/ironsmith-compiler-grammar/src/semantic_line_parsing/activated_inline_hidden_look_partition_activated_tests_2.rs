@@ -12,7 +12,7 @@ fn activated_body_keeps_one_hidden_exiled_card_and_its_permission_linked() {
             0,
         )
         .expect("activated body should lex");
-    let effects = parse_activated_effects_lexed("", &tokens, 0)
+    let effects = parse_activated_effects_lexed(&tokens)
         .expect("activated route should keep the exact hidden looked-card partition");
     let debug = format!("{effects:#?}");
     assert!(debug.contains("ChooseObjects"), "{debug}");

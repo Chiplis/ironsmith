@@ -211,43 +211,7 @@ pub struct ModalEffectSpec<'a> {
     pub allowed_mode_counts: &'a [u32],
 }
 
-/// Trait for executing effects.
-///
-/// All modular effects implement this trait. Each effect is responsible for:
-/// - Resolving any dynamic values (X, counts, etc.)
-/// - Validating targets (if applicable)
-/// - Mutating game state appropriately
-/// - Returning an appropriate `EffectOutcome` (result + events)
-///
-/// # Example
-///
-/// ```ignore
-/// use ironsmith::effects::EffectExecutor;
-///
-/// impl EffectExecutor for MyEffect {
-///     fn execute(
-///         &self,
-///         game: &mut GameState,
-///         ctx: &mut ExecutionContext,
-///     ) -> Result<EffectOutcome, ExecutionError> {
-///         // Implementation here
-///         Ok(EffectOutcome::resolved())
-///     }
-/// }
-/// ```
-pub trait EffectExecutorClone {
-    /// Clone this effect into a boxed trait object.
-    fn clone_boxed(&self) -> Box<dyn EffectExecutor>;
-}
-
-impl<T> EffectExecutorClone for T
-where
-    T: EffectExecutor + Clone + 'static,
-{
-    fn clone_boxed(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-}
+crate::boxed_clone::define_boxed_clone!(EffectExecutorClone, EffectExecutor);
 
 /// Opaque identity and captured context for one authored instruction.
 /// Cloning a scope retains that identity; independently captured instructions
@@ -1159,6 +1123,30 @@ pub trait ResolutionPreludeBinding {
     ) -> Result<EffectOutcome, ExecutionError>;
 }
 
+/// Trait for executing effects.
+///
+/// All modular effects implement this trait. Each effect is responsible for:
+/// - Resolving any dynamic values (X, counts, etc.)
+/// - Validating targets (if applicable)
+/// - Mutating game state appropriately
+/// - Returning an appropriate `EffectOutcome` (result + events)
+///
+/// # Example
+///
+/// ```ignore
+/// use ironsmith::effects::EffectExecutor;
+///
+/// impl EffectExecutor for MyEffect {
+///     fn execute(
+///         &self,
+///         game: &mut GameState,
+///         ctx: &mut ExecutionContext,
+///     ) -> Result<EffectOutcome, ExecutionError> {
+///         // Implementation here
+///         Ok(EffectOutcome::resolved())
+///     }
+/// }
+/// ```
 pub trait EffectExecutor:
     std::fmt::Debug + Any + Send + Sync + EffectExecutorClone + 'static
 {
@@ -1222,8 +1210,8 @@ pub trait EffectExecutor:
 
     /// Retain outputs supplied by the semantic owner during ordinary execution.
     /// Aggregate-only owners explicitly expose partial projection coverage.
-    /// Overrides share their execution body with `execute`; they must not
-    /// prepare or commit the action a second time to recover its outputs.
+    /// Annotate an engine-owned implementation with `#[crate::effects::project_effect_outcome]`
+    /// to also implement `execute` by projecting the same execution's outcome.
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

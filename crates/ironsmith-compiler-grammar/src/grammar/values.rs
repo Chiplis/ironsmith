@@ -494,211 +494,88 @@ pub fn parse_mana_cost_tokens(tokens: &[OwnedLexToken]) -> Result<ManaCost, Card
     super::leaf::parse_leaf_mana_cost_tokens(tokens)
 }
 
+// Inclusive phrases precede their shorter strict/equality prefixes.
+const COMPARISON_PREFIXES: &[(&[&str], ValueComparisonOperator)] = {
+    use ValueComparisonOperator::*;
+    &[
+        (&["is", "equal", "to", "or", "less", "than"], LessThanOrEqual),
+        (&["equal", "to", "or", "less", "than"], LessThanOrEqual),
+        (&["is", "equal", "to", "or", "greater", "than"], GreaterThanOrEqual),
+        (&["equal", "to", "or", "greater", "than"], GreaterThanOrEqual),
+        (&["is", "at", "least"], GreaterThanOrEqual),
+        (&["is", "at", "most"], LessThanOrEqual),
+        (&["is", "exactly"], Equal),
+        (&["exactly"], Equal),
+        (&["is", "equal", "to"], Equal),
+        (&["equal", "to"], Equal),
+        (&["is", "not", "equal", "to"], NotEqual),
+        (&["not", "equal", "to"], NotEqual),
+        (&["is", "less", "than", "or", "equal", "to"], LessThanOrEqual),
+        (&["less", "than", "or", "equal", "to"], LessThanOrEqual),
+        (&["is", "greater", "than", "or", "equal", "to"], GreaterThanOrEqual),
+        (&["greater", "than", "or", "equal", "to"], GreaterThanOrEqual),
+        (&["is", "less", "than"], LessThan),
+        (&["less", "than"], LessThan),
+        (&["is", "greater", "than"], GreaterThan),
+        (&["greater", "than"], GreaterThan),
+    ]
+};
+
+const COMPARISON_SUFFIXES: &[(&[&str], ValueComparisonOperator)] = {
+    use ValueComparisonOperator::*;
+    &[
+        (&["or", "less"], LessThanOrEqual),
+        (&["or", "fewer"], LessThanOrEqual),
+        (&["or", "greater"], GreaterThanOrEqual),
+        (&["or", "more"], GreaterThanOrEqual),
+    ]
+};
+
+/// A trailing comparison can end the operand before the next filter qualifier.
+pub(super) fn comparison_after_value(words: &[&str]) -> Option<ValueComparisonOperator> {
+    COMPARISON_SUFFIXES
+        .iter()
+        .find_map(|&(phrase, op)| words.starts_with(phrase).then_some(op))
+}
+
+fn comparison_operand<'a, T>(
+    input: &'a [T],
+    strip_prefix: impl Fn(&'a [T], &'static [&'static str]) -> Option<&'a [T]>,
+    strip_suffix: impl Fn(&'a [T], &'static [&'static str]) -> Option<&'a [T]>,
+) -> Option<(ValueComparisonOperator, &'a [T])> {
+    for &(phrase, operator) in COMPARISON_PREFIXES {
+        if let Some(rest) = strip_prefix(input, phrase) {
+            return Some((operator, rest));
+        }
+    }
+    for &(phrase, operator) in COMPARISON_SUFFIXES {
+        if let Some(operand) = strip_suffix(input, phrase).filter(|rest| !rest.is_empty()) {
+            let bare = strip_prefix(operand, &["is"]).filter(|rest| !rest.is_empty());
+            return Some((operator, bare.unwrap_or(operand)));
+        }
+    }
+    None
+}
+
 pub fn parse_value_comparison_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(ValueComparisonOperator, &[OwnedLexToken])> {
-    for (phrase, operator) in [
-        (&["is", "equal", "to", "or", "less", "than"][..], ValueComparisonOperator::LessThanOrEqual),
-        (&["equal", "to", "or", "less", "than"][..], ValueComparisonOperator::LessThanOrEqual),
-        (&["is", "equal", "to", "or", "greater", "than"][..], ValueComparisonOperator::GreaterThanOrEqual),
-        (&["equal", "to", "or", "greater", "than"][..], ValueComparisonOperator::GreaterThanOrEqual),
-        (
-            &["is", "at", "least"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-        (
-            &["is", "at", "most"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (&["is", "exactly"][..], ValueComparisonOperator::Equal),
-        (&["exactly"][..], ValueComparisonOperator::Equal),
-        (&["is", "equal", "to"][..], ValueComparisonOperator::Equal),
-        (&["equal", "to"][..], ValueComparisonOperator::Equal),
-        (
-            &["is", "not", "equal", "to"][..],
-            ValueComparisonOperator::NotEqual,
-        ),
-        (
-            &["not", "equal", "to"][..],
-            ValueComparisonOperator::NotEqual,
-        ),
-        (
-            &["is", "less", "than", "or", "equal", "to"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (
-            &["less", "than", "or", "equal", "to"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (
-            &["is", "greater", "than", "or", "equal", "to"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-        (
-            &["greater", "than", "or", "equal", "to"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-        (
-            &["is", "less", "than"][..],
-            ValueComparisonOperator::LessThan,
-        ),
-        (&["less", "than"][..], ValueComparisonOperator::LessThan),
-        (
-            &["is", "greater", "than"][..],
-            ValueComparisonOperator::GreaterThan,
-        ),
-        (
-            &["greater", "than"][..],
-            ValueComparisonOperator::GreaterThan,
-        ),
-    ] {
-        if let Some(rest) = primitives::strip_lexed_prefix_phrase(tokens, phrase) {
-            return Some((operator, rest));
-        }
-    }
-
-    for (phrase, operator) in [
-        (
-            &["or", "less"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (
-            &["or", "fewer"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (
-            &["or", "greater"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-        (
-            &["or", "more"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-    ] {
-        if let Some(after_is) = primitives::strip_lexed_prefix_phrase(tokens, &["is"])
-            && let Some(rest) = primitives::strip_lexed_suffix_phrase(after_is, phrase)
-            && !rest.is_empty()
-        {
-            return Some((operator, rest));
-        }
-
-        if let Some(rest) = primitives::strip_lexed_suffix_phrase(tokens, phrase)
-            && !rest.is_empty()
-        {
-            return Some((operator, rest));
-        }
-    }
-
-    None
+    comparison_operand(
+        tokens,
+        primitives::strip_lexed_prefix_phrase,
+        primitives::strip_lexed_suffix_phrase,
+    )
 }
 
 pub fn parse_value_comparison_words<'a>(
     words: &'a [&'a str],
 ) -> Option<(ValueComparisonOperator, &'a [&'a str], usize)> {
-    for (phrase, operator) in [
-        (&["is", "equal", "to", "or", "less", "than"][..], ValueComparisonOperator::LessThanOrEqual),
-        (&["equal", "to", "or", "less", "than"][..], ValueComparisonOperator::LessThanOrEqual),
-        (&["is", "equal", "to", "or", "greater", "than"][..], ValueComparisonOperator::GreaterThanOrEqual),
-        (&["equal", "to", "or", "greater", "than"][..], ValueComparisonOperator::GreaterThanOrEqual),
-        (&["is", "exactly"][..], ValueComparisonOperator::Equal),
-        (&["exactly"][..], ValueComparisonOperator::Equal),
-        // "power equal to or greater than the enchanted creature's
-        // toughness" (Ironclaw Curse): the inclusive ordered comparison,
-        // read before the bare "equal to" prefix claims its first words.
-        (
-            &["is", "equal", "to", "or", "greater", "than"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-        (
-            &["equal", "to", "or", "greater", "than"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-        (
-            &["is", "equal", "to", "or", "less", "than"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (
-            &["equal", "to", "or", "less", "than"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (&["is", "equal", "to"][..], ValueComparisonOperator::Equal),
-        (&["equal", "to"][..], ValueComparisonOperator::Equal),
-        (
-            &["is", "not", "equal", "to"][..],
-            ValueComparisonOperator::NotEqual,
-        ),
-        (
-            &["not", "equal", "to"][..],
-            ValueComparisonOperator::NotEqual,
-        ),
-        (
-            &["is", "less", "than", "or", "equal", "to"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (
-            &["less", "than", "or", "equal", "to"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (
-            &["is", "greater", "than", "or", "equal", "to"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-        (
-            &["greater", "than", "or", "equal", "to"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-        (
-            &["is", "less", "than"][..],
-            ValueComparisonOperator::LessThan,
-        ),
-        (&["less", "than"][..], ValueComparisonOperator::LessThan),
-        (
-            &["is", "greater", "than"][..],
-            ValueComparisonOperator::GreaterThan,
-        ),
-        (
-            &["greater", "than"][..],
-            ValueComparisonOperator::GreaterThan,
-        ),
-    ] {
-        if let Some(rest) = primitives::parse_word_sequence_prefix(words, phrase) {
-            return Some((operator, rest, phrase.len()));
-        }
-    }
-
-    for (phrase, operator) in [
-        (
-            &["or", "less"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (
-            &["or", "fewer"][..],
-            ValueComparisonOperator::LessThanOrEqual,
-        ),
-        (
-            &["or", "greater"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-        (
-            &["or", "more"][..],
-            ValueComparisonOperator::GreaterThanOrEqual,
-        ),
-    ] {
-        if let Some(after_is) = primitives::parse_word_sequence_prefix(words, &["is"])
-            && let Some(operand) = primitives::parse_word_sequence_suffix(after_is, phrase)
-            && !operand.is_empty()
-        {
-            return Some((operator, operand, words.len().saturating_sub(operand.len())));
-        }
-
-        if let Some(operand) = primitives::parse_word_sequence_suffix(words, phrase)
-            && !operand.is_empty()
-        {
-            return Some((operator, operand, words.len().saturating_sub(operand.len())));
-        }
-    }
-
-    None
+    let (operator, operand) = comparison_operand(
+        words,
+        primitives::parse_word_sequence_prefix,
+        primitives::parse_word_sequence_suffix,
+    )?;
+    Some((operator, operand, words.len() - operand.len()))
 }
 
 fn parse_type_line_tokens<'a>(input: &mut LexedInput<'a>) -> WResult<(Vec<&'a str>, Vec<&'a str>)> {

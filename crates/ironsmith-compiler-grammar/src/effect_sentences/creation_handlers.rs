@@ -1,3 +1,4 @@
+use crate::model::ast::TokenCopySourceAst;
 use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
@@ -231,40 +232,6 @@ pub fn trailing_create_at_next_end_step_clause(
 ) -> Option<(usize, PlayerFilter)> {
     creation_grammar::parse_trailing_create_delay_words(tail_words)
         .map(|spec| (spec.start_word, spec.player))
-}
-
-fn parse_copy_modifiers_from_tokens(
-    tail_tokens: &[OwnedLexToken],
-) -> Result<
-    (
-        Option<ColorSet>,
-        Option<Vec<CardType>>,
-        Option<Vec<Subtype>>,
-        Vec<CardType>,
-        Vec<Subtype>,
-        Vec<Supertype>,
-        Option<(i32, i32)>,
-        bool,
-        Option<u32>,
-        Vec<StaticAbility>,
-        bool,
-    ),
-    CardTextError,
-> {
-    let parsed = creation_grammar::parse_copy_modifier_tokens(tail_tokens)?;
-    Ok((
-        parsed.set_colors,
-        parsed.set_card_types,
-        parsed.set_subtypes,
-        parsed.added_card_types,
-        parsed.added_subtypes,
-        parsed.removed_supertypes,
-        parsed.set_base_power_toughness,
-        parsed.set_base_power_toughness_to_source_totals,
-        parsed.starting_loyalty,
-        parsed.granted_abilities,
-        parsed.loses_soulbond,
-    ))
 }
 
 fn parse_create_equal_to_dynamic_count(
@@ -1148,13 +1115,6 @@ fn attach_inline_token_granted_abilities_to_effect(
                 sacrifice_at_next_end_step_ability_surface,
                 granted_abilities,
                 ..
-            })
-            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                exile_at_end_of_combat,
-                sacrifice_at_next_end_step,
-                sacrifice_at_next_end_step_ability_surface,
-                granted_abilities,
-                ..
             }) => {
                 let mut attached = false;
                 if has_quoted_end_of_combat_exile(tokens) {
@@ -1304,10 +1264,6 @@ pub fn recognize_inline_copy_self_replacement_grants(
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                     granted_abilities,
                     ..
-                })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                    granted_abilities,
-                    ..
                 }) => granted_abilities == expected,
                 _ => false,
             },
@@ -1330,10 +1286,6 @@ pub fn recognize_inline_copy_self_replacement_grants(
             if let EffectAst::SubjectVerb(subject_verb) = effect {
                 match &mut subject_verb.action {
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
-                        granted_abilities,
-                        ..
-                    })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                         granted_abilities,
                         ..
                     }) if granted_abilities == expected => granted_abilities.clear(),
@@ -1820,18 +1772,29 @@ pub fn lower_complete_simple_create_shape(
                     crate::lexer::render_token_slice(head.name_tokens)
                 ))
             })?;
-    Ok(EffectAst::subject_verb(
+    Ok(simple_token_creation(name, definition, count, PlayerAst::Implicit, false, attached_to))
+}
+
+pub(crate) fn simple_token_creation(
+    name: impl Into<String>,
+    definition: crate::model::token_definition::TokenDefinitionSpec,
+    count: Value,
+    player: PlayerAst,
+    tapped: bool,
+    attached_to: Option<TargetAst>,
+) -> EffectAst {
+    EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
-        PlayerAst::Implicit,
+        player,
         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
-            name,
+            name: name.into(),
             definition,
             count,
             dynamic_power_toughness: None,
-            player: PlayerAst::Implicit,
+            player,
             actor_surface_explicit: false,
             attached_to,
-            tapped: false,
+            tapped,
             attacking: false,
             attack_target_player: None,
             combat_entry: Default::default(),
@@ -1843,7 +1806,7 @@ pub fn lower_complete_simple_create_shape(
             granted_abilities: Vec::new(),
             ability_presentation: None,
         }),
-    ))
+    )
 }
 
 #[path = "creation_handlers/create_clause_readings.rs"]
@@ -2282,22 +2245,8 @@ pub fn parse_create(
     let name_words_primary_len = name_words.len();
     if name_words.is_empty() {
         if tail_surface.has(CreateWord::Copy) {
-            let (
-                set_colors,
-                set_card_types,
-                set_subtypes,
-                added_card_types,
-                added_subtypes,
-                removed_supertypes,
-                set_base_power_toughness,
-                set_base_power_toughness_to_source_totals,
-                starting_loyalty,
-                granted_abilities,
-                loses_soulbond,
-            ) = parse_copy_modifiers_from_tokens(&tail_tokens)?;
-            // CR 707.9b: name and supertype exceptions of the copy.
-            let copy_identity = creation_grammar::parse_copy_modifier_tokens(&tail_tokens)?;
-            let copy_name = match copy_identity.name_words.as_deref() {
+            let modifiers = creation_grammar::parse_copy_modifier_tokens(&tail_tokens)?;
+            let copy_name = match modifiers.name_words.as_deref() {
                 Some(words) => Some(copy_exception_name_surface(&tail_tokens, words).ok_or_else(
                     || {
                         CardTextError::ParseError(
@@ -2307,8 +2256,7 @@ pub fn parse_create(
                 )?),
                 None => None,
             };
-            let added_supertypes = copy_identity.added_supertypes;
-            let mut granted_abilities: Vec<_> = granted_abilities
+            let mut granted_abilities: Vec<_> = modifiers.granted_abilities
                 .into_iter()
                 .map(|ability| {
                     GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(ability)))
@@ -2405,7 +2353,7 @@ pub fn parse_create(
             let sacrifice_at_next_end_step_ability_surface = sacrifice_at_next_end_step
                 .then(|| quoted_copy_sacrifice_ability_surface(&tail_tokens))
                 .flatten();
-            if let Some(source_clause) =
+            let explicit_source = if let Some(source_clause) =
                 creation_grammar::parse_copy_source_clause_tokens(&tail_tokens)
             {
                 enters_tapped = source_clause.enters_tapped;
@@ -2437,69 +2385,34 @@ pub fn parse_create(
                     {
                         crate::word_claims::claim_tokens(std::slice::from_ref(marker));
                     }
-                    let references_iterated_object = target_references_it(&source);
-                    let create = EffectAst::subject_verb(
-                        SubjectVerbRoleAst::Actor,
-                        player,
-                        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-            without_mana_cost: copy_identity.without_mana_cost,
-                            source,
-                            count: resolve_create_count(references_iterated_object),
-                            player,
-                            enters_tapped,
-                            enters_attacking,
-                            attack_target_player_or_planeswalker_controlled_by,
-                            entry_tapped_attacking_followup: false,
-                            attack_target_player_only,
-                            half_power_toughness_round_up: half_pt,
-                            has_haste,
-                            haste_followup_reference_surface: None,
-                            exile_at_end_of_combat: quoted_exile_at_end_of_combat,
-                            exile_at_end_of_combat_reference_surface: None,
-                            loses_soulbond,
-                            removed_ability_designations: copy_identity.removed_ability_designations.clone(),
-                            ability_loss_until: copy_identity.ability_loss_until.clone(),
-                            sacrifice_at_next_end_step,
-                            sacrifice_at_next_end_step_reference_surface: None,
-                            sacrifice_at_next_end_step_ability_surface,
-                            exile_at_next_end_step,
-                            exile_at_next_end_step_reference_surface: None,
-                            next_end_step_player: next_end_step_player.clone(),
-                            set_colors,
-                            added_colors: copy_identity.added_colors,
-                            set_card_types,
-                            set_subtypes,
-                            preserve_noncreature_subtypes: copy_identity.preserve_noncreature_subtypes,
-                            added_card_types,
-                            added_subtypes,
-                            removed_supertypes,
-                            set_base_power_toughness,
-                            set_base_power_toughness_to_source_totals,
-                            starting_loyalty,
-                            granted_abilities,
-                            set_name: copy_name,
-                            added_supertypes,
-                            attached_to: attached_to_target.clone(),
-                            blocking: blocking_target.clone(),
-                        }),
-                    );
-                    return Ok(wrap_for_each_player_condition(wrap_delayed_create(
-                        wrap_for_each_when_needed(create, references_iterated_object),
-                    )));
+                    Some(source)
+                } else {
+                    None
                 }
-            }
-            if copy_name.is_some() || !added_supertypes.is_empty() {
-                return Err(CardTextError::ParseError(
-                    "unsupported name/supertype exception on an anaphoric token copy".to_string(),
-                ));
-            }
-            let references_iterated_object = true;
+            } else {
+                None
+            };
+            let (source, references_iterated_object, blocking) = match explicit_source {
+                Some(target) => {
+                    let references_it = target_references_it(&target);
+                    (TokenCopySourceAst::Target(target), references_it, blocking_target)
+                }
+                None => {
+                    if copy_name.is_some() || !modifiers.added_supertypes.is_empty() {
+                        return Err(CardTextError::ParseError(
+                            "unsupported name/supertype exception on an anaphoric token copy".to_string(),
+                        ));
+                    }
+                    let object = ObjectRefAst::Tagged(crate::tag::CompilerReferenceTag::It.bind());
+                    (TokenCopySourceAst::Object(object), true, None)
+                }
+            };
             let create = EffectAst::subject_verb(
                 SubjectVerbRoleAst::Actor,
                 player,
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
-            without_mana_cost: copy_identity.without_mana_cost,
-                    object: ObjectRefAst::Tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                    without_mana_cost: modifiers.without_mana_cost,
+                    source,
                     count: resolve_create_count(references_iterated_object),
                     player,
                     enters_tapped,
@@ -2512,28 +2425,31 @@ pub fn parse_create(
                     haste_followup_reference_surface: None,
                     exile_at_end_of_combat: quoted_exile_at_end_of_combat,
                     exile_at_end_of_combat_reference_surface: None,
-                    loses_soulbond,
-                    removed_ability_designations: copy_identity.removed_ability_designations.clone(),
-                            ability_loss_until: copy_identity.ability_loss_until.clone(),
+                    loses_soulbond: modifiers.loses_soulbond,
+                    removed_ability_designations: modifiers.removed_ability_designations,
+                    ability_loss_until: modifiers.ability_loss_until,
                     sacrifice_at_next_end_step,
                     sacrifice_at_next_end_step_reference_surface: None,
                     sacrifice_at_next_end_step_ability_surface,
                     exile_at_next_end_step,
                     exile_at_next_end_step_reference_surface: None,
                     next_end_step_player,
-                    set_colors,
-                    added_colors: copy_identity.added_colors,
-                    set_card_types,
-                    set_subtypes,
-                    preserve_noncreature_subtypes: copy_identity.preserve_noncreature_subtypes,
-                    added_card_types,
-                    added_subtypes,
-                    removed_supertypes,
-                    set_base_power_toughness,
-                    set_base_power_toughness_to_source_totals,
-                    starting_loyalty,
+                    set_colors: modifiers.set_colors,
+                    added_colors: modifiers.added_colors,
+                    set_card_types: modifiers.set_card_types,
+                    set_subtypes: modifiers.set_subtypes,
+                    preserve_noncreature_subtypes: modifiers.preserve_noncreature_subtypes,
+                    added_card_types: modifiers.added_card_types,
+                    added_subtypes: modifiers.added_subtypes,
+                    removed_supertypes: modifiers.removed_supertypes,
+                    set_base_power_toughness: modifiers.set_base_power_toughness,
+                    set_base_power_toughness_to_source_totals: modifiers.set_base_power_toughness_to_source_totals,
+                    starting_loyalty: modifiers.starting_loyalty,
                     granted_abilities,
-                    attached_to: attached_to_target.clone(),
+                    set_name: copy_name,
+                    added_supertypes: modifiers.added_supertypes,
+                    blocking,
+                    attached_to: attached_to_target,
                 }),
             );
             return Ok(wrap_for_each_player_condition(wrap_delayed_create(
@@ -3484,6 +3400,31 @@ mod tests {
     }
 
     #[test]
+    fn token_copy_sources_keep_their_choice_and_share_the_pt_exception() {
+        for (sentence, targeted) in [
+            ("Create a token that's a copy, except it's 3/3.", false),
+            ("Create a token that's a copy of target creature, except it's 3/3.", true),
+        ] {
+            let ast = parse_create(&lex_line(sentence, 0).unwrap(), None).unwrap();
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            ctx.auto_tag_object_targets = false;
+            ctx.last_object_tag = Some("prior_copy".into());
+            ctx.token_copy_sources.push(("prior_copy".into(), "original".into()));
+            let (effects, choices) = crate::compile_support::compile_effect(&ast, &mut ctx).unwrap();
+            let copy = effects[0].as_create_token_copy().unwrap();
+            assert_eq!(copy.set_base_power_toughness, Some((3, 3)));
+            if targeted {
+                assert!(copy.target.is_target());
+                assert_eq!(choices.len(), 1);
+                assert!(choices[0].is_target());
+            } else {
+                assert_eq!(copy.target, ChooseSpec::Tagged("original".into()));
+                assert!(choices.is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn targeted_token_copy_keeps_pt_type_and_keyword_exception_bundle() {
         let tokens = lex_line(
             "Create two tokens that are copies of target noncreature permanent, except they're 3/3 Dragon creatures in addition to their other types, and they have flying.",
@@ -3495,9 +3436,9 @@ mod tests {
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                         count,
-                        source: TargetAst::Object(filter, ..),
+                        source: TokenCopySourceAst::Target(TargetAst::Object(filter, ..)),
                         added_card_types,
                         added_subtypes,
                         set_base_power_toughness,
@@ -3540,7 +3481,8 @@ mod tests {
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+                        source: TokenCopySourceAst::Target(_),
                         set_base_power_toughness,
                         added_subtypes,
                         ..
@@ -4529,7 +4471,8 @@ mod tests {
             };
             assert!(matches!(
                 &copy.action,
-                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+                    source: TokenCopySourceAst::Target(_),
                     half_power_toughness_round_up: true,
                     ..
                 })
@@ -4549,7 +4492,8 @@ mod tests {
         let EffectAst::SubjectVerb(subject_verb) = parsed else {
             panic!("expected token creation");
         };
-        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+            source: TokenCopySourceAst::Target(_),
             granted_abilities,
             exile_at_next_end_step,
             ..

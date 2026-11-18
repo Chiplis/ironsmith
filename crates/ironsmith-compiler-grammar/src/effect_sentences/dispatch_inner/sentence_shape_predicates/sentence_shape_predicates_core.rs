@@ -1,3 +1,4 @@
+use crate::model::ast::TokenCopySourceAst;
 use super::*;
 use crate::cards::builders::CharacteristicActionAst;
 use crate::cards::builders::ConditionalEffectAst;
@@ -151,32 +152,15 @@ fn parse_effect_sentence_lexed_uncached(
     }
     if let Some(effect)=crate::keyword_static::parse_resolving_spell_replacement_program(tokens)? {return Ok(vec![effect]);}
     if let Some(effect)=parse_owner_bottom_or_beneath_top_x(tokens)? {return Ok(vec![effect]);}
-    if let Some(effects)=parse_audition_sentence(tokens)? {return Ok(effects);}
     if let Some(effect)=crate::keyword_static::parse_timed_event_replacement_program(tokens)? {return Ok(vec![effect]);}
     if let Some(effect) = crate::effect_sentences::for_each_helpers::parse_for_each_participant_you_clause(tokens)? {
         return Ok(vec![effect]);
     }
     if let Some(effects)=crate::effect_sentences::face_state_actions::parse(tokens)?{return Ok(effects);}
     if let Some(effects)=crate::effect_sentences::object_group_instructions::parse(tokens)?{return Ok(effects);}
-    if let Some(program) = crate::effect_sentences::bounded_source_programs::parse(tokens)? { return Ok(program); }
-    let mut trimmed_payment = tokens;
-    while trimmed_payment.last().is_some_and(|token| matches!(token.kind, crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Semicolon)) { trimmed_payment = &trimmed_payment[..trimmed_payment.len()-1]; }
-    let payment_actor = [
-        (&["you"][..], crate::cards::builders::PlayerAst::You),
-        (&["they"][..], crate::cards::builders::PlayerAst::That),
-        (&["that", "player"][..], crate::cards::builders::PlayerAst::That),
-        (&["its", "controller"][..], crate::cards::builders::PlayerAst::ItsController),
-        (&["its", "owner"][..], crate::cards::builders::PlayerAst::ItsOwner),
-    ].into_iter().find_map(|(words, player)| {
-        (trimmed_payment.len() > words.len() && trimmed_payment[..words.len()].iter().zip(words).all(|(token, word)| token.is_word(word))
-            && trimmed_payment[words.len()].is_word("may")).then_some((words.len() + 1, player))
-    });
-    if let Some((prefix, player)) = payment_actor
-        && let Some(result) = crate::grammar::activation_costs::parse_quoted_cost_program_tokens(&trimmed_payment[prefix..])
-    {
-        let effects = result?;
-        crate::word_claims::claim_tokens(&trimmed_payment[..prefix]);
-        return Ok(vec![EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::MayPay { player, effects, payment_receipt: None })]);
+    if let Some(program) = crate::effect_sentences::parse_scoped_following_tokens(tokens)? { return Ok(program); }
+    if let Some(effect) = crate::effect_sentences::clause_primitives::parse_optional_quoted_cost(tokens)? {
+        return Ok(vec![effect]);
     }
     if let Some(effects) = parse_distinct_color_representatives(tokens)? { return Ok(effects); }
     // "<target> gains <keyword> until end of turn if <source> had <keyword>"
@@ -896,6 +880,9 @@ mod readings;
 pub(super) fn parse_effect_sentence_lexed_inner_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = crate::effect_sentences::dispatch_entry::parse_target_active_opponent_sentence(tokens)? {
+        return Ok(effects);
+    }
     if let Some(effects)=crate::effect_sentences::object_group_instructions::parse(tokens)?{return Ok(effects);}
     if let Some(menu)=crate::instruction_menu::parse(tokens)?{return Ok(menu);}
     if let Some(menu)=crate::effect_sentences::parse_bounded_inline_modal_tokens(tokens)?{return Ok(menu);}
@@ -1307,8 +1294,8 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
                 bind_dynamic_target_count(creature1, replacement);
                 bind_dynamic_target_count(creature2, replacement);
             }
-            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                source,
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+                source: TokenCopySourceAst::Target(source),
                 ..
             }) => {
                 bind_dynamic_target_count(source, replacement);
@@ -1715,33 +1702,4 @@ fn parse_owner_bottom_or_beneath_top_x(tokens: &[OwnedLexToken]) -> Result<Optio
             target, top_position: 0, top_position_value: Some(value),
         }),
     )))
-}
-
-
-/// "audition for <quality> [or for <quality>]" reached without the line
-/// preprocessor (a named-source trigger re-lexes its body): the same named
-/// audition program (custom CR 701.101).
-pub(crate) fn parse_audition_sentence(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let words = crate::lexer::parser_token_word_refs(tokens);
-    let colors = ["white", "blue", "black", "red", "green"];
-    // "audition for blue, then audition for blue again": sequential
-    // operations, each its own named program.
-    let mut operations = Vec::new();
-    for segment in words.split(|word| *word == "then") {
-        let segment = segment.strip_suffix(&["again"]).unwrap_or(segment);
-        let shape = match segment {
-            ["audition", "for", color] if colors.contains(color) => true,
-            ["audition", "for", first, "or", "for", second] if colors.contains(first) && colors.contains(second) => true,
-            _ => false,
-        };
-        if !shape { return Ok(None); }
-        operations.push(segment.join(" "));
-    }
-    let program = operations.iter().map(|operation| crate::preprocess::rewrite_audition_line(operation))
-        .collect::<Vec<_>>().join(". ");
-    let lexed = crate::lexer::lex_line(&program, 0)?;
-    let effects = crate::clause_support::parse_effect_sentences_lexed(&lexed)?;
-    crate::word_claims::claim_tokens(tokens);
-    Ok(Some(effects))
 }

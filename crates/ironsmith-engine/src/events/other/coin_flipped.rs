@@ -58,8 +58,4 @@ impl GameEventType for CoinFlippedEvent {
     fn as_any(&self) -> &dyn Any {
         self
     }
-
-    fn clone_box(&self) -> Box<dyn GameEventType> {
-        Box::new(self.clone())
-    }
 }

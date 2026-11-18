@@ -295,7 +295,7 @@ fn read_attack_state_xy_attached_anthem_line(
             (
                 3,
                 PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(
-                    crate::tag::TagKey::from("enchanted"),
+                    crate::tag::CompilerReferenceTag::Enchanted.key(),
                 )),
             )
         } else if words.ends_with(&["you", "control"]) {

@@ -209,7 +209,6 @@ fn quantified_effect_by(mut effects: Vec<EffectAst>, value: Value) -> Vec<Effect
                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. })
                 | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. })
                 | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { count, .. })
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }) => Some(count),
                 _ => None,
             };

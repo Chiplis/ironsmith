@@ -1,101 +1,18 @@
 //! English cardinal helpers shared by parser and renderer code.
 
-fn small_cardinal_word(n: u32) -> Option<&'static str> {
-    match n {
-        0 => Some("zero"),
-        1 => Some("one"),
-        2 => Some("two"),
-        3 => Some("three"),
-        4 => Some("four"),
-        5 => Some("five"),
-        6 => Some("six"),
-        7 => Some("seven"),
-        8 => Some("eight"),
-        9 => Some("nine"),
-        10 => Some("ten"),
-        11 => Some("eleven"),
-        12 => Some("twelve"),
-        13 => Some("thirteen"),
-        14 => Some("fourteen"),
-        15 => Some("fifteen"),
-        16 => Some("sixteen"),
-        17 => Some("seventeen"),
-        18 => Some("eighteen"),
-        19 => Some("nineteen"),
-        _ => None,
-    }
-}
-
-fn tens_cardinal_word(tens: u32) -> Option<&'static str> {
-    match tens {
-        2 => Some("twenty"),
-        3 => Some("thirty"),
-        4 => Some("forty"),
-        5 => Some("fifty"),
-        6 => Some("sixty"),
-        7 => Some("seventy"),
-        8 => Some("eighty"),
-        9 => Some("ninety"),
-        _ => None,
-    }
-}
+use crate::number_words::CARDINAL;
 
 /// Return the English cardinal phrase for numbers 0 through 100.
 pub fn cardinal_word(n: u32) -> Option<String> {
-    match n {
-        0..=19 => small_cardinal_word(n).map(str::to_string),
-        20..=99 => {
-            let tens = n / 10;
-            let ones = n % 10;
-            if ones == 0 {
-                tens_cardinal_word(tens).map(str::to_string)
-            } else {
-                Some(format!(
-                    "{}-{}",
-                    tens_cardinal_word(tens)?,
-                    small_cardinal_word(ones)?
-                ))
-            }
-        }
-        100 => Some("one hundred".to_string()),
-        _ => None,
-    }
-}
-
-fn parse_numeric_cardinal_word(word: &str) -> Option<u32> {
-    word.parse::<u32>().ok()
-}
-
-fn parse_single_cardinal_word(word: &str) -> Option<u32> {
-    let word = word.to_ascii_lowercase();
-    if matches!(word.as_str(), "a" | "an") {
-        return Some(1);
-    }
-    if let Some(value) = parse_numeric_cardinal_word(&word) {
-        return Some(value);
-    }
-    cardinal_word_value(&word)
-}
-
-/// Inverse of [`cardinal_word`] for a lowercase word, without building the
-/// spelling of every candidate number.
-fn cardinal_word_value(word: &str) -> Option<u32> {
-    if word == "one hundred" {
-        return Some(100);
-    }
-    let small = |word: &str| (0..=19).find(|&value| small_cardinal_word(value) == Some(word));
-    let tens = |word: &str| (2..=9).find(|&tens| tens_cardinal_word(tens) == Some(word));
-    if let Some((tens_word, ones_word)) = word.split_once('-') {
-        let tens = tens(tens_word)?;
-        let ones = small(ones_word).filter(|ones| (1..=9).contains(ones))?;
-        return Some(tens * 10 + ones);
-    }
-    small(word).or_else(|| tens(word).map(|tens| tens * 10))
+    CARDINAL.spell(n)
 }
 
 /// Parse one cardinal token, accepting hyphenated words and raw numeric forms.
 pub fn parse_cardinal_word(word: &str) -> Option<u32> {
-    parse_single_cardinal_word(word)
+    if word.eq_ignore_ascii_case("a") || word.eq_ignore_ascii_case("an") {
+        return Some(1);
+    }
+    word.parse().ok().or_else(|| CARDINAL.read(word))
 }
 
 /// Parse a cardinal phrase from the start of a word slice.
@@ -105,28 +22,19 @@ pub fn parse_cardinal_word(word: &str) -> Option<u32> {
 /// `one hundred`.
 pub fn parse_cardinal_words(words: &[&str]) -> Option<(u32, usize)> {
     let first = words.first().copied()?;
-    if words.len() >= 2 {
-        let first = first.to_ascii_lowercase();
-        let second = words[1].to_ascii_lowercase();
-        if matches!(first.as_str(), "a" | "an" | "one") && second == "hundred" {
+    if let Some(&second) = words.get(1) {
+        if second.eq_ignore_ascii_case("hundred")
+            && ["a", "an", "one"]
+                .iter()
+                .any(|word| first.eq_ignore_ascii_case(word))
+        {
             return Some((100, 2));
         }
-        for tens in 2..=9 {
-            if tens_cardinal_word(tens) == Some(first.as_str()) {
-                for ones in 1..=9 {
-                    if small_cardinal_word(ones) == Some(second.as_str()) {
-                        return Some((tens * 10 + ones, 2));
-                    }
-                }
-            }
+        if let Some(n) = CARDINAL.compound(first, second) {
+            return Some((n, 2));
         }
     }
-
-    if let Some(value) = parse_cardinal_word(first) {
-        return Some((value, 1));
-    }
-
-    None
+    Some((parse_cardinal_word(first)?, 1))
 }
 
 #[cfg(test)]
@@ -137,10 +45,18 @@ mod tests {
     fn cardinal_word_value_inverts_every_spelling() {
         for value in 0..=100 {
             let word = cardinal_word(value).unwrap();
-            assert_eq!(cardinal_word_value(&word), Some(value), "{word}");
+            assert_eq!(parse_cardinal_word(&word), Some(value), "{word}");
         }
-        for word in ["twenty-", "-one", "twenty-zero", "twenty-ten", "one-twenty", "hundred", ""] {
-            assert_eq!(cardinal_word_value(word), None, "{word}");
+        for word in [
+            "twenty-",
+            "-one",
+            "twenty-zero",
+            "twenty-ten",
+            "one-twenty",
+            "hundred",
+            "",
+        ] {
+            assert_eq!(parse_cardinal_word(word), None, "{word}");
         }
     }
 

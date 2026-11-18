@@ -69,15 +69,7 @@ impl EffectExecutor for ExileUntilEffect {
         Ok(super::movement_instruction::prepare_movement_instruction(self.clone(), ctx))
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(&self, game: &mut GameState, ctx: &mut ExecutionContext)
         -> Result<CompletedEffectOutputs, ExecutionError> {
         super::movement_instruction::execute_movement_instruction(self.clone(), game, ctx)

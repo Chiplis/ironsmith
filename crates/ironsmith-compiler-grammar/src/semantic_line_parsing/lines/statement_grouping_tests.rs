@@ -1,3 +1,4 @@
+use crate::model::ast::TokenCopySourceAst;
 use super::*;
 
 #[cfg(test)]
@@ -167,6 +168,11 @@ fn historical_target_return_preempts_statement_group_splitting() {
     let [LineAst::Statement { effects }] = parsed.as_slice() else {
         panic!("expected one linked statement: {parsed:#?}");
     };
+    assert_eq!(effects.len(), 3, "{effects:#?}");
+    assert!(
+        effects.iter().all(|effect| !matches!(effect, EffectAst::SourceSentence { .. })),
+        "expected one resolution group: {effects:#?}"
+    );
     let debug = format!("{effects:#?}");
     assert!(
         debug.contains("entered_graveyard_from_battlefield_this_turn: true"),
@@ -238,7 +244,8 @@ fn quoted_token_copy_replacement_stays_grouped_with_its_granted_ability() {
         .find_map(|effect| match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+                        source: TokenCopySourceAst::Target(_),
                         granted_abilities,
                         ..
                     }),

@@ -1,28 +1,13 @@
 use super::*;
 
-fn generic_mana_cost(amount: u32) -> crate::mana::ManaCost {
-    if amount == 0 {
-        return crate::mana::ManaCost::new();
-    }
-
-    let mut pips = Vec::new();
-    let mut remaining = amount;
-    while remaining > 0 {
-        let chunk = remaining.min(u8::MAX as u32) as u8;
-        pips.push(vec![ManaSymbol::Generic(chunk)]);
-        remaining -= chunk as u32;
-    }
-    crate::mana::ManaCost::from_pips(pips)
-}
-
 fn static_abilities_for_attack_preview(
     view: &DerivedGameView<'_>,
-    attacker: &crate::object::Object,
+    object: &crate::object::Object,
 ) -> Vec<crate::static_abilities::StaticAbility> {
-    view.calculated_characteristics_arc(attacker.id)
+    view.calculated_characteristics_arc(object.id)
         .map(|chars| chars.static_abilities.to_vec())
         .unwrap_or_else(|| {
-            attacker
+            object
                 .abilities
                 .iter()
                 .filter_map(|ability| match &ability.kind {
@@ -46,79 +31,6 @@ fn required_attack_players_for_attack_preview(
             ability.required_attack_player(game, attacker.id, game.controller_of(attacker))
         })
         .collect()
-}
-
-fn generic_attack_tax_preview(
-    game: &GameState,
-    target: &AttackTarget,
-    defending_player: PlayerId,
-    view: &DerivedGameView<'_>,
-) -> u32 {
-    let mut tax = 0u32;
-    let target_kind = crate::static_abilities::AttackTaxTargetKind::from(target);
-
-    for &object_id in &game.battlefield {
-        let Some(object) = game.object(object_id) else {
-            continue;
-        };
-        if game.controller_of(object) != defending_player {
-            continue;
-        }
-
-        let abilities = view
-            .calculated_characteristics_arc(object_id)
-            .map(|chars| chars.static_abilities.to_vec())
-            .unwrap_or_else(|| {
-                object
-                    .abilities
-                    .iter()
-                    .filter_map(|ability| match &ability.kind {
-                        crate::ability::AbilityKind::Static(static_ability) => {
-                            Some(static_ability.clone())
-                        }
-                        _ => None,
-                    })
-                    .collect()
-            });
-
-        tax = abilities.into_iter().fold(tax, |acc, ability| {
-            if !ability.generic_attack_tax_applies_to(target_kind) {
-                return acc;
-            }
-            acc.saturating_add(
-                ability
-                    .generic_attack_tax_per_attacker_against_you(game, object_id, defending_player)
-                    .unwrap_or(0),
-            )
-        });
-    }
-
-    for restriction in &game.effect_store.restriction_effects {
-        if restriction.controller != defending_player
-            || !restriction.is_active(game, game.turn.turn_number)
-        {
-            continue;
-        }
-        if let crate::effect::Restriction::AttackYouUnlessControllerPaysPerAttacker(
-            per_attacker_tax,
-            covers_planeswalkers,
-        ) = &restriction.restriction
-        {
-            let applies = matches!(
-                target_kind,
-                crate::static_abilities::AttackTaxTargetKind::Player
-            ) || (*covers_planeswalkers
-                && matches!(
-                    target_kind,
-                    crate::static_abilities::AttackTaxTargetKind::Planeswalker
-                ));
-            if applies {
-                tax = tax.saturating_add(*per_attacker_tax);
-            }
-        }
-    }
-
-    tax
 }
 
 fn can_declare_attack_target_preview(
@@ -165,7 +77,7 @@ fn can_declare_attack_target_preview(
         )
     });
 
-    let mut mana_options = vec![generic_mana_cost(total_generic_cost)];
+    let mut mana_options = vec![crate::mana::ManaCost::from_generic(total_generic_cost)];
     for imposed in
         crate::static_abilities::imposed_attack_costs_for_target(game, attacker.id, target, view)
     {
@@ -315,8 +227,12 @@ pub(crate) fn compute_legal_attackers_with_view(
         let mut target_ranks = Vec::new();
 
         for (target, defending_player) in &attack_targets {
-            let generic_attack_tax =
-                generic_attack_tax_preview(game, target, *defending_player, view);
+            let generic_attack_tax = crate::static_abilities::generic_attack_tax_against_defender(
+                game,
+                *defending_player,
+                crate::static_abilities::AttackTaxTargetKind::from(target),
+                |object| static_abilities_for_attack_preview(view, object),
+            );
             if can_declare_attack_target_preview(
                 game,
                 perm,

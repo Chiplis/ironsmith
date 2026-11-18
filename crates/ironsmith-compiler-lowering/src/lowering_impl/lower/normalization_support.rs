@@ -3,8 +3,6 @@ use crate::cards::builders::GrantActionAst;
 use crate::cards::builders::{
     CardDefinitionBuilder, GrantedAbilityAst, StaticAbilityAst, TargetAst,
 };
-#[cfg(test)]
-use ironsmith_compiler::ir::RewriteSemanticDocument;
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct RewriteNormalizationState {
@@ -73,7 +71,7 @@ impl RewriteNormalizationState {
             // Effect-backed discard payments export their own concrete tag.
             // Bind the explicit cost reference before body effects can advance
             // ordinary object memory (for example, by drawing more cards).
-            additional_cost_imports.snapshot_tag_aliases.push((
+            additional_cost_imports.snapshot_bindings.add_alias((
                 crate::tag::CompilerReferenceTag::DiscardedCost.key(),
                 tag.clone(),
             ));
@@ -84,7 +82,7 @@ impl RewriteNormalizationState {
             // "As an additional cost ..., reveal a card ... the revealed
             // card's power": the reveal payment is the public reveal the body
             // names.
-            additional_cost_imports.snapshot_tag_aliases.push((
+            additional_cost_imports.snapshot_bindings.add_alias((
                 crate::tag::CompilerReferenceTag::PublicRevealed.key(),
                 tag.clone(),
             ));
@@ -431,11 +429,8 @@ fn normalize_line_chunk(
                     // last-object reference before the cost-linked reference is
                     // lowered. Snapshot the explicit additional-cost alias now.
                     imports
-                        .snapshot_tag_aliases
-                        .retain(|(existing, _)| *existing != alias.key);
-                    imports
-                        .snapshot_tag_aliases
-                        .push((alias.key.clone(), cost_tag.clone()));
+                        .snapshot_bindings
+                        .replace_alias((alias.key.clone(), cost_tag.clone()));
                 }
             }
             if let Some(cost_tag) = imports.last_object_tag.as_ref()
@@ -455,10 +450,7 @@ fn normalize_line_chunk(
                 // demonstrative can initially carry the generic `it` marker
                 // and only become recognizable as cost-linked after an
                 // intervening source move advances ordinary object memory.
-                imports.snapshot_tag_aliases.retain(|(alias, _)| {
-                    alias != &crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
-                });
-                imports.snapshot_tag_aliases.push((
+                imports.snapshot_bindings.replace_alias((
                     (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
                     cost_tag.clone(),
                 ));
@@ -546,7 +538,7 @@ fn normalize_line_chunk(
 /// the preceding optional action.  The line fact above proves the pronoun
 /// surface; this traversal then retargets only the matching typed
 /// entry-counter grant.
-use ironsmith_compiler_resolve::reference_resolution::resolve_as_enters_source_counter_grants;
+use crate::model::ast::resolve_as_enters_source_counter_grants;
 
 fn normalize_modal_ast(
     modal: ParsedModalAst,
@@ -570,10 +562,7 @@ fn normalize_modal_ast(
         modal.header.trigger.is_none() && (spell_has_announced_x || cost_has_announced_x)
     };
     if spell_modal && let Some(cost_tag) = imports.last_object_tag.clone() {
-        imports.snapshot_tag_aliases.retain(|(alias, _)| {
-            alias != &crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
-        });
-        imports.snapshot_tag_aliases.push((
+        imports.snapshot_bindings.replace_alias((
             (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
             cost_tag,
         ));
@@ -750,14 +739,4 @@ pub fn normalize_parsed_card_ast_for_lowering(
         optional_text_variants,
         allow_unsupported,
     })
-}
-
-#[cfg(test)]
-pub fn document_to_normalized_card_ast(
-    doc: RewriteSemanticDocument,
-) -> Result<NormalizedCardAst, CardTextError> {
-    normalize_parsed_card_ast_for_lowering(
-        ironsmith_compiler::semantic_document::parse_semantic_document(doc)?,
-        CardDefinitionBuilder::seed(),
-    )
 }

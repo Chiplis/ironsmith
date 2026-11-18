@@ -8,6 +8,7 @@ use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_co
 use ironsmith::compiled_text::compiled_text_lines;
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::strip_reminder_text_for_comparison;
+use ironsmith_card_source::{basic_metadata_lines, get_first_face, pick_field};
 use ironsmith_tools::{default_cards_path, parse_card_definition_with_runtime_builder};
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use serde_json::Value;
@@ -105,30 +106,6 @@ fn parse_args() -> Result<Args, String> {
     })
 }
 
-fn value_to_string(value: &Value) -> Option<String> {
-    if value.is_null() {
-        return None;
-    }
-    if let Some(value) = value.as_str() {
-        return Some(value.to_string());
-    }
-    Some(value.to_string())
-}
-
-fn get_first_face(card: &Value) -> Option<&Value> {
-    card.get("card_faces")
-        .and_then(Value::as_array)
-        .and_then(|faces| faces.first())
-}
-
-fn pick_field(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
-    if let Some(value) = card.get(key).and_then(value_to_string) {
-        return Some(value);
-    }
-    face.and_then(|value| value.get(key))
-        .and_then(value_to_string)
-}
-
 fn build_card_input(card: &Value) -> Option<CardInput> {
     let face = get_first_face(card);
     let name = pick_field(card, face, "name")?.trim().to_string();
@@ -141,36 +118,9 @@ fn build_card_input(card: &Value) -> Option<CardInput> {
         return None;
     }
 
-    let mana_cost = pick_field(card, face, "mana_cost");
-    let type_line = pick_field(card, face, "type_line");
-    let power = pick_field(card, face, "power");
-    let toughness = pick_field(card, face, "toughness");
-    let loyalty = pick_field(card, face, "loyalty");
-    let defense = pick_field(card, face, "defense");
-
-    let mut metadata_lines = Vec::new();
-    if let Some(mana_cost) = mana_cost.filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Mana cost: {}", mana_cost.trim()));
-    }
-    if let Some(type_line) = type_line.filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Type: {}", type_line.trim()));
-    }
-    if let (Some(power), Some(toughness)) = (power, toughness)
-        && !power.trim().is_empty()
-        && !toughness.trim().is_empty()
-    {
-        metadata_lines.push(format!(
-            "Power/Toughness: {}/{}",
-            power.trim(),
-            toughness.trim()
-        ));
-    }
-    if let Some(loyalty) = loyalty.filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Loyalty: {}", loyalty.trim()));
-    }
-    if let Some(defense) = defense.filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Defense: {}", defense.trim()));
-    }
+    let metadata_lines = basic_metadata_lines(|key| {
+        pick_field(card, face, key).map(|value| value.trim().to_owned())
+    });
     let parse_input = build_parse_input(&metadata_lines, &oracle_text);
     let comparison_oracle_text = strip_reminder_text_for_comparison(&oracle_text);
     let comparison_parse_input = build_parse_input(&metadata_lines, &comparison_oracle_text);

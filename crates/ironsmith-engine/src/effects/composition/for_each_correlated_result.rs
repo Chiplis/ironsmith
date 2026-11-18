@@ -25,10 +25,6 @@ fn restore_tag(ctx: &mut ExecutionContext, tag: TagKey, original: Option<Vec<Obj
 }
 
 impl EffectExecutor for ForEachObjectCorrelatedResultEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         for effect in &self.producer_effects {
             visitor(effect);
@@ -42,15 +38,7 @@ impl EffectExecutor for ForEachObjectCorrelatedResultEffect {
         vec![ChooseSpec::All(self.filter.clone())]
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

@@ -57,7 +57,7 @@ impl SpecialAction {
             Self::UnlockRoomDoor { room_id, door } => (room_id, adjusted_room_unlock_cost(game, player, room_id, door)?, PaymentReason::UnlockDoor),
             Self::RollPlanarDie => {
                 let source = game.face_up_planar_objects().first().copied().ok_or(ActionError::InvalidTiming)?;
-                (source, TotalCost::mana(planar_die_cost(game.planar_die_roll_cost(player).ok_or(ActionError::InvalidTiming)?)), PaymentReason::Other)
+                (source, TotalCost::mana(crate::mana::ManaCost::from_generic(game.planar_die_roll_cost(player).ok_or(ActionError::InvalidTiming)?)), PaymentReason::Other)
             }
             Self::IgnoreAttachedRestriction { source_id, ability_index } => (source_id, ignore_attached_restriction_total_cost(game, source_id, ability_index), PaymentReason::Other),
             Self::IgnoreSourceEffect { source_id, ability_index } => (source_id, ignore_source_effect_total_cost(game, source_id, ability_index)?, PaymentReason::Other),
@@ -237,30 +237,24 @@ pub(crate) fn pay_resolution_cost_with_outputs(
 /// cannot consume the only color needed by the next component. Preserve the
 /// order of non-mana costs and normalize alternative branches recursively.
 fn normalized_payment_cost(cost: &crate::cost::TotalCost) -> crate::cost::TotalCost {
-    use crate::cost::TotalCost;
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::OneOf(branches) => {
-            TotalCost::one_of(branches.iter().map(normalized_payment_cost).collect())
-        }
-        ironsmith_core::TotalCostKind::All(components) => {
-            let mut normalized = Vec::new();
-            let mut mana = ManaCost::new();
-            for component in components {
-                if let Some(part) = component.mana_cost_ref() {
-                    mana = crate::decision::add_mana_cost(&mana, part);
-                } else {
-                    if !mana.is_empty() {
-                        normalized.push(crate::costs::Cost::mana(std::mem::take(&mut mana)));
-                    }
-                    normalized.push(component.clone());
+    let mut result = cost.clone();
+    result.edit_payment_branches(&mut |components| {
+        let mut mana = ManaCost::new();
+        for component in std::mem::take(components) {
+            if let Some(part) = component.mana_cost_ref() {
+                mana = crate::decision::add_mana_cost(&mana, part);
+            } else {
+                if !mana.is_empty() {
+                    components.push(crate::costs::Cost::mana(std::mem::take(&mut mana)));
                 }
+                components.push(component);
             }
-            if !mana.is_empty() {
-                normalized.push(crate::costs::Cost::mana(mana));
-            }
-            TotalCost::from_costs(normalized)
         }
-    }
+        if !mana.is_empty() {
+            components.push(crate::costs::Cost::mana(mana));
+        }
+    });
+    result
 }
 
 pub(super) fn pay_special_action_payment(

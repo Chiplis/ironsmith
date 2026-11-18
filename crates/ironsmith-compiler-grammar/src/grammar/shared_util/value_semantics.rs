@@ -270,14 +270,6 @@ fn is_and_or_word(word: &str) -> bool {
     matches!(word, "and" | "or" | "and/or")
 }
 
-fn is_comparison_tail_word(word: &str) -> bool {
-    matches!(word, "less" | "fewer" | "greater" | "more")
-}
-
-fn is_less_or_fewer_word(word: &str) -> bool {
-    matches!(word, "less" | "fewer")
-}
-
 fn aggregate_effect_metric(
     aggregate: value_helper_shapes::AggregateKind,
     value_kind: value_helper_shapes::AggregateValueKind,

@@ -7,10 +7,6 @@ use crate::game_state::GameState;
 pub use ironsmith_core::TagOtherBlockParticipantEffect;
 
 impl EffectExecutor for TagOtherBlockParticipantEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn as_resolution_prelude(&self) -> Option<&dyn crate::effects::ResolutionPreludeBinding> {
         Some(self)
     }

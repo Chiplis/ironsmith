@@ -5,9 +5,7 @@ use crate::effect::EffectOutcome;
 use crate::{GameState,Zone};
 pub use ironsmith_core::LinkExiledCardsEffect;
 impl EffectExecutor for LinkExiledCardsEffect {
-    fn execute(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<EffectOutcome,ExecutionError>{
-        self.execute_with_outputs(game,ctx).map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<CompletedEffectOutputs,ExecutionError>{
         crate::effects::composition::execute_transaction(game,ctx,
             ||CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),|game,ctx|{

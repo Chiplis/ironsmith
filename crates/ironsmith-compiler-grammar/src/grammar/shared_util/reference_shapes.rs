@@ -4,6 +4,15 @@ use crate::lexer::{OwnedLexToken, TokenWordView};
 use crate::static_abilities::StaticAbilityId;
 use crate::target::PlayerFilter;
 
+pub(crate) fn named_action_role(words: &[&str]) -> Option<&'static str> {
+    use ironsmith_core::tag::{NAMED_ACTION_PARTICIPANTS_TAG, NAMED_ACTION_PERFORMER_TAG};
+    match words {
+        ["the", "performer", "of", "this", "action"] => Some(NAMED_ACTION_PERFORMER_TAG),
+        ["the", "participant" | "participants", "in", "this", "action"] => Some(NAMED_ACTION_PARTICIPANTS_TAG),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FilterKeywordConstraint {
     Static(StaticAbilityId),

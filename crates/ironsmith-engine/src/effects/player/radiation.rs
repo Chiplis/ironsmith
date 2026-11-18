@@ -24,14 +24,7 @@ impl EffectExecutor for RadiationEffect {
         visitor(&Self::body(PlayerFilter::You, crate::effect::Value::PlayerCounters(PlayerFilter::You, CounterType::Rad)));
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

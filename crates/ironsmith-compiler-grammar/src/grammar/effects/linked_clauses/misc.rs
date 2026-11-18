@@ -607,24 +607,7 @@ pub fn is_filtered_future_exile_return_next_end_step_shape(
 
 fn parse_fixed_limit_word(input: &mut LexStream<'_>) -> WResult<i32> {
     let token = super::next_word(input)?;
-    let word = token.parser_text();
-    crate::util::decimal_amount(word)
-        .or_else(|| {
-            Some(match word {
-                "zero" => 0,
-                "one" => 1,
-                "two" => 2,
-                "three" => 3,
-                "four" => 4,
-                "five" => 5,
-                "six" => 6,
-                "seven" => 7,
-                "eight" => 8,
-                "nine" => 9,
-                "ten" => 10,
-                _ => return None,
-            })
-        })
+    crate::util::parse_number_word_i32(token.parser_text())
         .ok_or_else(|| primitives::backtrack_err("mana value limit", "fixed number"))
 }
 

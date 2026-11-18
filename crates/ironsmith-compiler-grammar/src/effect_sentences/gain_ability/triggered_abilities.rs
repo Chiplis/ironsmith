@@ -764,38 +764,23 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
         let mut mana_restrictions = Vec::new();
         let mut activation_label: Option<String> = None;
         let mut sorcery_exceptions: Vec<String> = Vec::new();
-        let mut restriction_sentences: Vec<Vec<OwnedLexToken>> = Vec::new();
+        let mut restriction_sentences = Vec::new();
+        let mut restrictions = Vec::new();
         if let Some(colon) = semantic_tokens.iter().position(|token| token.kind == TokenKind::Colon) {
             activation_tokens = semantic_tokens[..=colon].to_vec();
             for sentence in crate::lexer::split_lexed_sentences(&semantic_tokens[colon + 1..]) {
-                // "Activate only as a sorcery unless you're making a pledge.":
-                // sorcery timing whose named action is excepted. The timing is
-                // read below with the other restrictions; the exception is
-                // kept here, never dropped with the "unless" tail.
-                let rider_words = crate::lexer::token_word_refs(sentence);
-                let action_start = match rider_words.as_slice() {
-                    ["activate", "only", "as", "a", "sorcery", "unless", "you're" | "youre" | "you’re", ..] => Some(7),
-                    ["activate", "only", "as", "a", "sorcery", "unless", "you", "are", ..] => Some(8),
-                    _ => None,
-                };
-                if let Some(action_start) = action_start.filter(|start| rider_words.len() > *start) {
-                    sorcery_exceptions.push(rider_words[action_start..].join("-"));
-                    activation_tokens.extend(crate::lexer::lex_line("Activate only as a sorcery.", 0)?);
+                let restriction = crate::grammar::restriction_facts::parse_activation_restriction_tokens(sentence);
+                if let Some(action) = crate::grammar::restriction_facts::split_sorcery_timing_exception(sentence, &mut activation_tokens) {
+                    sorcery_exceptions.push(action);
                     crate::word_claims::claim_tokens(sentence);
-                    continue;
-                }
-                // "This is the revive activated ability.": the authored
-                // activation identity, exactly as on a printed activation.
-                if let ["this", "is", "the", label, "activated", "ability"] =
+                } else if let ["this", "is", "the", label, "activated", "ability"] =
                     crate::lexer::parser_token_word_refs(sentence).as_slice()
                 {
                     if activation_label.replace((*label).to_string()).is_some() {
                         return Err(CardTextError::ParseError("duplicate activation label".into()));
                     }
                     crate::word_claims::claim_tokens(sentence);
-                    continue;
-                }
-                if let Some(restriction) = crate::grammar::restriction_facts::parse_activation_restriction_tokens(sentence) {
+                } else if let Some(restriction) = &restriction {
                     // A surface-shaped restriction is not necessarily executable.
                     // Never remove an unknown condition and grant an unrestricted ability.
                     let conditional = sentence.windows(2)
@@ -812,7 +797,7 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
                         )));
                     }
                     crate::word_claims::claim_tokens(sentence);
-                    restriction_sentences.push(sentence.to_vec());
+                    restriction_sentences.push(sentence);
                 } else if let Some(restriction) = crate::grammar::restriction_facts::parse_mana_restriction_tokens(sentence) {
                     // Use the ordinary compiler-owned restriction transport;
                     // nested on-spend programs are lowered with the ability.
@@ -827,6 +812,7 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
                     activation_tokens.extend_from_slice(sentence);
                     activation_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
                 }
+                restrictions.extend(restriction);
             }
         }
         let Some(mut parsed) = parse_activated_line(&activation_tokens)? else {
@@ -835,7 +821,7 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
                 clause_words.join(" ")
             )));
         };
-        apply_quoted_activation_restrictions(&mut parsed, &semantic_tokens);
+        apply_quoted_activation_restrictions(&mut parsed, restrictions);
         // "Activate only ... if this card is exiled." (Q, Stacking the Deck):
         // the restriction sentence was separated from the activation above,
         // but it still names where the ability functions (CR 113.6). Read it
@@ -843,10 +829,9 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
         if parsed.ability.functional_zones == [Zone::Battlefield]
             && let Some(colon) = activation_tokens.iter().position(|token| token.kind == TokenKind::Colon)
         {
-            let sentences = restriction_sentences.iter().map(Vec::as_slice).collect::<Vec<_>>();
             let zones = crate::grammar::functional_zones::parse_activated_functional_zones_tokens(
                 &activation_tokens[..colon],
-                &sentences,
+                &restriction_sentences,
             );
             if !zones.is_empty() {
                 parsed.ability.functional_zones = zones;
@@ -888,7 +873,10 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
 /// Untap this creature. Activate only once.", Touch of Vitae) has no such
 /// line, so its restriction sentences are read here into the same typed
 /// timing and conditions (CR 602.5b).
-fn apply_quoted_activation_restrictions(parsed: &mut ParsedAbility, tokens: &[OwnedLexToken]) {
+fn apply_quoted_activation_restrictions(
+    parsed: &mut ParsedAbility,
+    restrictions: Vec<crate::model::compiler_semantic::ParsedActivationRestriction>,
+) {
     let ironsmith_core::AbilityKind::Activated(activated) = &mut parsed.ability.kind else {
         return;
     };
@@ -909,46 +897,22 @@ fn apply_quoted_activation_restrictions(parsed: &mut ParsedAbility, tokens: &[Ow
             other => out.push(other),
         }
     }
-    let Some(colon) = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Colon)
-    else {
-        return;
-    };
-    for sentence in crate::lexer::split_lexed_sentences(&tokens[colon + 1..]) {
-        let Some(restriction) =
-            crate::grammar::restriction_facts::parse_activation_restriction_tokens(sentence)
-        else {
-            continue;
-        };
-        if let Some(usage) = restriction.mana_usage_restriction.clone()
+    for restriction in restrictions {
+        if let Some(usage) = restriction.mana_usage_restriction
             && !activated.mana_usage_restrictions.contains(&usage)
         {
             activated.mana_usage_restrictions.push(usage);
         }
+        let mut stated = Vec::new();
         if let Some(timing) = restriction.timing
             && timing != activated.timing
         {
             if activated.timing == crate::ability::ActivationTiming::AnyTime {
                 activated.timing = timing;
             } else {
-                let timing_condition = PredicateAst::ActivationTiming(timing);
-                if !activated
-                    .activation_condition
-                    .as_ref()
-                    .is_some_and(|existing| contains_conjunct(existing, &timing_condition))
-                {
-                    activated.activation_condition =
-                        Some(match activated.activation_condition.take() {
-                            Some(existing) => {
-                                PredicateAst::And(Box::new(existing), Box::new(timing_condition))
-                            }
-                            None => timing_condition,
-                        });
-                }
+                stated.push(PredicateAst::ActivationTiming(timing));
             }
         }
-        let mut stated = Vec::new();
         if let Some(condition) = restriction.condition {
             conjuncts(condition, &mut stated);
         }

@@ -13,12 +13,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
 
-    let role=match crate::lexer::parser_token_word_refs(tokens).as_slice(){
-        ["the","performer","of","this","action"]=>Some("__named_action_source"),
-        ["the","participant"|"participants","in","this","action"]=>Some("__named_action_objects"),
-        _=>None,
-    };
-    if let Some(role)=role {
+    if let Some(role) = reference_shapes::named_action_role(&crate::lexer::parser_token_word_refs(tokens)) {
         crate::word_claims::claim_tokens(tokens);
         return Ok(TargetAst::Tagged(ironsmith_compiler_ast::TagRef::of(role),token_slice_span(tokens)));
     }

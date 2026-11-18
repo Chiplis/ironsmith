@@ -327,3 +327,24 @@ fn qualified_union_returns_selected_card_with_entry_counters_and_spirit_animatio
         }
     }
 }
+
+#[test]
+fn compound_mana_value_bound_limits_graveyard_cast_targets() {
+    let text = "Type: Sorcery\nYou may cast target artifact, instant, or sorcery card with mana value twenty-one or less from your graveyard without paying its mana cost. If that spell would be put into your graveyard, exile it instead.";
+    let spell = compile_to_runtime_definition("Graveyard casting", text, false).unwrap();
+    let alice = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let source = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    let candidates = [2, 20, 21, 22].map(|mana_value| {
+        let card = fixture(vec![CardType::Artifact], vec![], mana_value);
+        game.create_object_from_definition(&card, alice, Zone::Graveyard)
+    });
+    let requirements = extract_target_requirements_from_program_with_modes(
+        &game, spell.spell_effect.as_ref().unwrap(), alice, Some(source), None,
+    );
+    assert_eq!(requirements.len(), 1);
+    assert_eq!(
+        candidates.map(|id| requirements[0].legal_targets.contains(&Target::Object(id))),
+        [true, true, true, false]
+    );
+}

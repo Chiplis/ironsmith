@@ -9355,48 +9355,38 @@ fn split_compiled_lines_for_semantic_compare(lines: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn replace_case_insensitive(text: &str, needle: &str, replacement: &str) -> String {
-    let replacement_text = text.to_string();
-    let haystack = replacement_text.to_ascii_lowercase();
-    let needle = needle.to_ascii_lowercase();
+fn replace_case_insensitive(
+    text: &str,
+    needle: &str,
+    replacement: &str,
+    whole_words: bool,
+) -> String {
     if needle.is_empty() {
-        return replacement_text;
+        return text.to_string();
     }
-    if !haystack.contains(&needle) {
-        return replacement_text;
-    }
-
-    let mut result = String::with_capacity(replacement_text.len());
-    let mut src_idx = 0usize;
-    let mut search_idx = 0usize;
-
-    while let Some(found) = haystack[search_idx..].find(&needle) {
-        let abs_idx = search_idx + found;
-        // Word-boundary guard: a name must not rewrite inside a longer word
-        // ("Curse" inside "Curses" would leave "thiss" behind).
-        let word_edge_ok = haystack[abs_idx + needle.len()..]
-            .chars()
-            .next()
-            .is_none_or(|ch| !ch.is_ascii_alphanumeric())
-            && (abs_idx == 0
-                || !haystack[..abs_idx]
+    let haystack = text.to_ascii_lowercase();
+    let needle = needle.to_ascii_lowercase();
+    let mut result = String::with_capacity(text.len());
+    let mut copied = 0;
+    for (start, matched) in haystack.match_indices(&needle) {
+        let end = start + matched.len();
+        if whole_words
+            && (haystack[..start]
+                .chars()
+                .next_back()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric())
+                || haystack[end..]
                     .chars()
-                    .next_back()
-                    .is_some_and(|ch| ch.is_ascii_alphanumeric()));
-        if !word_edge_ok {
-            let skip = abs_idx + needle.len();
-            result.push_str(&replacement_text[src_idx..skip]);
-            src_idx = skip;
-            search_idx = skip;
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_alphanumeric()))
+        {
             continue;
         }
-        result.push_str(&replacement_text[src_idx..abs_idx]);
+        result.push_str(&text[copied..start]);
         result.push_str(replacement);
-        src_idx = abs_idx + needle.len();
-        search_idx = src_idx;
+        copied = end;
     }
-
-    result.push_str(&replacement_text[src_idx..]);
+    result.push_str(&text[copied..]);
     result
 }
 
@@ -9472,6 +9462,22 @@ pub fn normalize_card_self_references_for_compare_in_context(
     card_name: &str,
     context: &str,
 ) -> String {
+    if card_name.trim().is_empty() {
+        return text.to_string();
+    }
+    let normalized = normalize_named_self_references(text, card_name, Some(context))
+        .replace("Sacrifice this enchantment", "Sacrifice this")
+        .replace("sacrifice this enchantment", "sacrifice this")
+        .replace("Sacrifice this permanent", "Sacrifice this")
+        .replace("sacrifice this permanent", "sacrifice this")
+        .replace("Sacrifice this, then", "Sacrifice this then")
+        .replace("sacrifice this, then", "sacrifice this then");
+    normalize_self_reference_nouns(&normalized)
+}
+
+// Cluster reports use printed names. Card scoring also recognizes a lead name
+// from the oracle context and requires word boundaries when replacing it.
+fn normalize_named_self_references(text: &str, card_name: &str, context: Option<&str>) -> String {
     let full_name = card_name.trim();
     if full_name.is_empty() {
         return text.to_string();
@@ -9487,80 +9493,68 @@ pub fn normalize_card_self_references_for_compare_in_context(
         .next()
         .map(str::trim)
         .unwrap_or(left_half);
-    let lead_name = left_half
-        .split_whitespace()
-        .next()
-        .map(str::trim)
-        // "Yenna, Redtooth Regent" leads with "Yenna,": the comma belongs to
-        // the title separator, not the printed short name.
-        .map(|lead| lead.trim_end_matches(','))
-        .unwrap_or(left_half);
-
     let mut names = vec![full_name, left_half, short_name];
-    let lead_name_lower = lead_name.to_ascii_lowercase();
-    if lead_name.len() >= 3
-        && lead_name_lower != "the"
-        && lead_name_lower != "a"
-        && lead_name_lower != "an"
-        && (left_half.contains(" of ")
+    let mut alchemy_names = names.clone();
+    if let Some(context) = context {
+        let lead_name = left_half
+            .split_whitespace()
+            .next()
+            .map(str::trim)
+            // "Yenna, Redtooth Regent" leads with "Yenna,": the comma belongs to
+            // the title separator, not the printed short name.
+            .map(|lead| lead.trim_end_matches(','))
+            .unwrap_or(left_half);
+
+        let lead_name_lower = lead_name.to_ascii_lowercase();
+        if lead_name.len() >= 3
+            && lead_name_lower != "the"
+            && lead_name_lower != "a"
+            && lead_name_lower != "an"
+            && (left_half.contains(" of ")
             || left_half.contains(',')
             // "Hazduhr the Abbot" is printed as "Hazduhr".
             || left_half.contains(" the "))
-    {
-        names.push(lead_name);
-    } else if lead_name.len() >= 4
-        && lead_name_lower != "the"
-        && lead_name.chars().next().is_some_and(|ch| ch.is_uppercase())
-        && let Some(second_word) = left_half.split_whitespace().nth(1)
-        && lead_name_used_as_self_reference(context, lead_name, second_word)
-    {
-        // "Rasputin Dreamweaver" is printed as "Rasputin enters ...": the
-        // lead word stands alone as the card's short name.
-        names.push(lead_name);
+        {
+            names.push(lead_name);
+        } else if lead_name.len() >= 4
+            && lead_name_lower != "the"
+            && lead_name.chars().next().is_some_and(|ch| ch.is_uppercase())
+            && let Some(second_word) = left_half.split_whitespace().nth(1)
+            && lead_name_used_as_self_reference(context, lead_name, second_word)
+        {
+            // "Rasputin Dreamweaver" is printed as "Rasputin enters ...": the
+            // lead word stands alone as the card's short name.
+            names.push(lead_name);
+        }
+        alchemy_names.push(lead_name);
     }
-    if let Some(stripped) = full_name
-        .strip_prefix("A-")
-        .or_else(|| full_name.strip_prefix("a-"))
-    {
-        names.push(stripped);
-    }
-    if let Some(stripped) = left_half
-        .strip_prefix("A-")
-        .or_else(|| left_half.strip_prefix("a-"))
-    {
-        names.push(stripped);
-    }
-    if let Some(stripped) = short_name
-        .strip_prefix("A-")
-        .or_else(|| short_name.strip_prefix("a-"))
-    {
-        names.push(stripped);
-    }
-    if let Some(stripped) = lead_name
-        .strip_prefix("A-")
-        .or_else(|| lead_name.strip_prefix("a-"))
-    {
-        names.push(stripped);
-    }
+    names.extend(
+        alchemy_names
+            .into_iter()
+            .filter_map(|name| name.strip_prefix("A-").or_else(|| name.strip_prefix("a-"))),
+    );
     names.sort_by_key(|name| std::cmp::Reverse(name.len()));
     names.dedup();
 
+    let replace_name = |text: &str, name: &str, replacement: &str| {
+        replace_case_insensitive(text, name, replacement, context.is_some())
+    };
     let mut normalized = text.to_string();
     for name in names {
         if name.len() < 3 {
             continue;
         }
         let possessive = format!("{name}'s");
-        normalized = replace_case_insensitive(&normalized, &possessive, "this");
-        normalized = replace_case_insensitive(&normalized, &possessive.replace('\'', "’"), "this");
-        normalized = replace_case_insensitive(&normalized, name, "this");
+        normalized = replace_name(&normalized, &possessive, "this");
+        normalized = replace_name(&normalized, &possessive.replace('\'', "’"), "this");
+        normalized = replace_name(&normalized, name, "this");
     }
     if let Some(lead) = short_name.split_whitespace().next() {
         let lead = lead.trim();
         if lead.len() >= 3 {
             let lead_or = format!("{lead} or Whenever");
-            normalized = replace_case_insensitive(&normalized, &lead_or, "this or Whenever");
-            normalized = replace_case_insensitive(
+            normalized = replace_name(&normalized, &lead_or, "this or Whenever");
+            normalized = replace_name(
                 &normalized,
                 &lead_or.to_ascii_lowercase(),
                 "this or whenever",
@@ -9569,14 +9563,7 @@ pub fn normalize_card_self_references_for_compare_in_context(
     }
     normalized = normalized
         .replace("That object's controller", "its controller")
-        .replace("that object's controller", "its controller")
-        .replace("Sacrifice this enchantment", "Sacrifice this")
-        .replace("sacrifice this enchantment", "sacrifice this")
-        .replace("Sacrifice this permanent", "Sacrifice this")
-        .replace("sacrifice this permanent", "sacrifice this")
-        .replace("Sacrifice this, then", "Sacrifice this then")
-        .replace("sacrifice this, then", "sacrifice this then");
-    normalized = normalize_self_reference_nouns(&normalized);
+        .replace("that object's controller", "its controller");
     normalized
 }
 

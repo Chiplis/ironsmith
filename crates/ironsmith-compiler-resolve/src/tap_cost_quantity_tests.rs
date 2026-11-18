@@ -31,6 +31,39 @@ fn count(effect: &EffectAst) -> &Value {
     count
 }
 #[test]
+fn cost_lookup_sees_antecedents_in_order_without_treating_them_as_aliases() {
+    let mut env = ReferenceEnv::default();
+    let role = SnapshotAntecedent::SourceSuperseded;
+    // A named alias can use the old marker's spelling independently.
+    let alias = "__source_superseded_antecedent__";
+    env.snapshot_bindings
+        .add_alias((alias.into(), "tap_cost_1".into()));
+    env.snapshot_bindings
+        .set_antecedent(role, Some("tap_cost_2".into()));
+
+    assert_eq!(
+        env.snapshot_bindings.lookup(alias).unwrap().as_str(),
+        "tap_cost_1"
+    );
+    assert_eq!(tap_cost_tag_from_env(&env).unwrap().as_str(), "tap_cost_2");
+    assert_eq!(cost_tag_index_from_env(&env, "tap_cost_"), Some(2));
+
+    let mut branch = env.clone();
+    branch
+        .snapshot_bindings
+        .replace_alias((alias.into(), "tap_cost_3".into()));
+    assert_eq!(
+        tap_cost_tag_from_env(&branch).unwrap().as_str(),
+        "tap_cost_3"
+    );
+    assert_eq!(
+        branch.snapshot_bindings.antecedent(role),
+        env.snapshot_bindings.antecedent(role)
+    );
+    assert_eq!(cost_tag_index_from_env(&env, "tap_cost_"), Some(2));
+}
+
+#[test]
 fn imported_tap_groups_keep_the_exact_namespace_and_authored_predicate() {
     for tag in ["tapped_0", "tap_cost_2"] {
         let annotated = annotate_effect_sequence(
@@ -171,8 +204,8 @@ fn tapped_power_is_a_live_object_alias_with_local_body_precedence_over_a_cost() 
     .unwrap();
     let concrete = &body.effects[0]
         .out_env
-        .snapshot_tag_aliases
-        .iter()
+        .snapshot_bindings
+        .aliases()
         .find(|(alias, _)| alias.as_str() == crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG)
         .unwrap()
         .1;

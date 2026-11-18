@@ -96,9 +96,6 @@ pub fn collapse_token_copy_end_of_combat_exile_followup_lexed(
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
                         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                            ..
-                        })
                         | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                     ..
                 }),
@@ -126,11 +123,6 @@ pub fn collapse_token_copy_end_of_combat_exile_followup_lexed(
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
-                        exile_at_end_of_combat,
-                        exile_at_end_of_combat_reference_surface,
-                        ..
-                    })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                         exile_at_end_of_combat,
                         exile_at_end_of_combat_reference_surface,
                         ..

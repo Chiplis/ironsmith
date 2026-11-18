@@ -194,7 +194,6 @@ fn effects_ast_can_lower_as_mana_ability(effects: &[EffectAst]) -> bool {
 }
 
 struct SplitRewriteActivatedEffectText {
-    effect_text: String,
     effect_parse_tokens: Vec<OwnedLexToken>,
     restrictions: ParsedRestrictions,
     mana_restrictions: Vec<ParsedManaRestriction>,
@@ -313,7 +312,6 @@ fn finalize_rewrite_activated_effect_sentences(
     mut restrictions: ParsedRestrictions,
     sentence_tokens: Vec<Vec<OwnedLexToken>>,
 ) -> SplitRewriteActivatedEffectText {
-    let mut effect_sentences = Vec::new();
     let mut effect_sentence_tokens = Vec::new();
     let mut mana_restrictions = Vec::new();
     let mut x_cant_be_zero = false;
@@ -323,7 +321,6 @@ fn finalize_rewrite_activated_effect_sentences(
     let mut artifact_tap_payment = false;
 
     for tokens in merge_copy_retarget_sentences(sentence_tokens) {
-        let sentence = render_token_slice(&tokens).trim().to_string();
         let restriction_kind = activated_grammar::classify_activated_restriction_sentence(&tokens);
         if crate::consumer_mana::is_creature_tap_payment_sentence(&tokens) {
             creature_tap_payment = true;
@@ -379,13 +376,11 @@ fn finalize_rewrite_activated_effect_sentences(
                 .activation
                 .push(parse_activation_restriction_surface_tokens(&tokens));
         } else {
-            effect_sentences.push(sentence);
             effect_sentence_tokens.push(tokens);
         }
     }
 
     SplitRewriteActivatedEffectText {
-        effect_text: effect_sentences.join(". "),
         effect_parse_tokens: join_sentences_with_period(&effect_sentence_tokens),
         restrictions,
         mana_restrictions,
@@ -676,10 +671,8 @@ mod trailing_sorcery_speed_surface_tests;
 #[path = "activated/activated_permission.rs"]
 mod activated_permission_programs;
 pub use activated_permission_programs::parse_activated_line;
-use activated_permission_programs::{
-    activated_presentation_display, infer_rewrite_activated_functional_zones,
-    parse_activated_effects_lexed, parse_activated_line_impl,
-};
+#[cfg(test)]
+use activated_permission_programs::parse_activated_effects_lexed;
 #[path = "activated/activated_choice.rs"]
 mod activated_choice_programs;
 use activated_choice_programs::apply_chosen_option_condition_to_activated;

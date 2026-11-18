@@ -6,7 +6,7 @@ use crate::game_state::GameState;
 pub use ironsmith_core::ActivateAbilityWithoutCostsEffect;
 impl EffectExecutor for ActivateAbilityWithoutCostsEffect {
     fn own_preflight_object_specs(&self)->Vec<crate::target::ChooseSpec>{vec![self.source.clone()]}
-    fn execute(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<EffectOutcome,ExecutionError>{self.execute_with_outputs(game,ctx).map(CompletedEffectOutputs::into_outcome)}
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<CompletedEffectOutputs,ExecutionError>{
         let objects=match crate::effects::helpers::resolve_objects_for_effect(game,ctx,&self.source){Ok(objects)=>objects,Err(ExecutionError::InvalidTarget)=>Vec::new(),Err(error)=>return Err(error)};
         if ctx.decision_maker.awaiting_choice()||objects.is_empty(){return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));}

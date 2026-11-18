@@ -522,7 +522,16 @@ mod tests {
 
             let outcome = execute_effect(&mut game, &each_player, &mut ctx)
                 .expect("face-only flips should execute for every player");
-            assert_eq!(outcome.events.len(), 2);
+            let bob = PlayerId::from_index(1);
+            let flips: Vec<_> = outcome.events_of_type::<CoinFlippedEvent>()
+                .map(|event| (event.player, event.face))
+                .collect();
+            assert_eq!(flips, [(alice, face), (bob, face)]);
+            let actions: Vec<_> = outcome.events_of_type::<crate::events::KeywordActionEvent>()
+                .filter(|event| event.action == crate::events::KeywordActionKind::FlipCoins)
+                .map(|event| (event.player, event.amount))
+                .collect();
+            assert_eq!(actions, [(alice, 1), (bob, 1)]);
             outcome
                 .player_counts()
                 .expect("each-player flips retain one result per player")

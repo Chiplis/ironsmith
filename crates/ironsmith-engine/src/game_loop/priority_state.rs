@@ -320,6 +320,13 @@ pub struct PendingCast {
 }
 
 impl PendingCast {
+    /// Generic mana in the announced total that another player could contribute.
+    pub(super) fn assist_limit(&self) -> u32 {
+        self.mana_cost_to_pay
+            .as_ref()
+            .map_or(0, |cost| cost.generic_mana_total_at_x(self.x_value.unwrap_or(0)))
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         spell_id: ObjectId,

@@ -1,9 +1,10 @@
 //! Prepared cost components compose their action owners and retain receipts.
 
 use super::PaymentReason;
+use crate::effects::composition::PreparedBindings;
 use crate::effect::EffectOutcome;
 use crate::effects::{
-    ExecutionContext, ExecutionError, SimultaneousEffectCommit, SimultaneousEffectCompletion,
+    ExecutionContext, ExecutionError, SimultaneousEffectCommit,
     SimultaneousEffectProposal,
 };
 use crate::game_state::GameState;
@@ -81,145 +82,16 @@ struct PreparedPayment {
     components: Vec<PreparedCostComponent>,
 }
 
-struct PaymentCompletion {
-    scope: PaymentScope,
-    inner: Box<dyn SimultaneousEffectCompletion>,
-}
-impl PaymentCompletion {
-    fn advance(
-        self: Box<Self>,
-        game: &mut GameState,
+impl PreparedBindings for PaymentScope {
+    fn with_bindings<T>(
+        &self,
         ctx: &mut ExecutionContext,
-        phase: crate::effects::composition::CompletionPhase,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        let Self { scope, inner } = *self;
-        let mut receipt = scope.run(ctx, |ctx| phase.dispatch(inner, game, ctx))?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentCompletion { scope, inner }) as Box<dyn SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
-    }
-
-    fn finish(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::composition::CompletionInput,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let Self { scope, inner } = *self;
-        scope.run(ctx, |ctx| original.dispatch(inner, game, ctx))
+        body: impl FnOnce(&mut ExecutionContext) -> Result<T, ExecutionError>,
+    ) -> Result<T, ExecutionError> {
+        self.run_value(ctx, body)
     }
 }
-impl SimultaneousEffectCompletion for PaymentCompletion {
-    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
-        self.inner.original_phase_status()
-    }
 
-    fn complete_original_phase_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::OriginalOutcome(original),
-        )
-    }
-
-    fn complete_original_phase_from_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::OriginalOutputs(original),
-        )
-    }
-
-    fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::DrawOutcome(original),
-        )
-    }
-
-    fn prepare_draw_boundary_from_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
-    {
-        self.advance(
-            game,
-            ctx,
-            crate::effects::composition::CompletionPhase::DrawOutputs(original),
-        )
-    }
-
-    fn observe_original(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut crate::effects::ExecutionContext,
-        original: &mut EffectOutcome,
-    ) -> Result<(), crate::effects::ExecutionError> {
-        self.scope
-            .run(ctx, |ctx| self.inner.observe_original(game, ctx, original))
-    }
-
-    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        self.inner.freeze(game)
-    }
-    fn complete(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.complete_with_outputs(game, ctx, original)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-    fn complete_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        self.finish(
-            game,
-            ctx,
-            crate::effects::composition::CompletionInput::Outcome(original),
-        )
-    }
-
-    fn complete_from_original_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        self.finish(
-            game,
-            ctx,
-            crate::effects::composition::CompletionInput::Outputs(original),
-        )
-    }
-}
 impl SimultaneousEffectProposal for PreparedPayment {
     fn prepare_selection(
         &mut self,
@@ -344,9 +216,7 @@ impl SimultaneousEffectProposal for PreparedPayment {
             }
             Ok(crate::effects::composition::compose_original_commits_with_outputs(receipts))
         })?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentCompletion { scope, inner }) as Box<dyn SimultaneousEffectCompletion>
-        });
+        receipt.completion = receipt.completion.map(|inner| scope.bind_completion(inner));
         if acknowledge_program && !ctx.decision_maker.awaiting_choice() {
             // This is the total-cost owner's acknowledgement, not an inferred
             // quantity or a physical action. Component receipts retain history.

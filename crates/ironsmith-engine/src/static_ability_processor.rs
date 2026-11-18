@@ -341,19 +341,24 @@ fn assign_inferred_static_effect_groups(
     group_roots: &StaticGroupRoots,
     next_group_ordinal: &mut u16,
 ) {
-    let mut assigned = vec![false; effects.len()];
+    // Scope equality partitions the eligible branches. A single-layer scope
+    // is finished too, even though none of its members receive a group ID.
+    let mut visited: Vec<_> = effects.iter()
+        .map(|effect| effect.group.is_some() || effect.originating_ability.is_none())
+        .collect();
 
     for i in 0..effects.len() {
-        if assigned[i] || effects[i].group.is_some() {
+        if visited[i] {
             continue;
         }
 
         let mut group_indices = Vec::new();
         for j in i..effects.len() {
-            if assigned[j] || effects[j].group.is_some() {
+            if visited[j] {
                 continue;
             }
             if static_effects_share_scope(&effects[i], &effects[j], group_roots) {
+                visited[j] = true;
                 group_indices.push(j);
             }
         }
@@ -368,7 +373,6 @@ fn assign_inferred_static_effect_groups(
         }
         for idx in group_indices {
             effects[idx].group = Some(group);
-            assigned[idx] = true;
         }
     }
 }
@@ -1314,6 +1318,33 @@ mod inferred_group_occurrence_gameplay_tests {
         (Modification::AddCardTypes(vec![CardType::Creature]),
             Modification::SetPowerToughness { power: Value::Fixed(7), toughness: Value::Fixed(7),
                 sublayer: PtSublayer::Setting })
+    }
+
+    #[test]
+    fn interleaved_static_scopes_preserve_explicit_groups_and_assign_only_multipart_groups() {
+        use crate::continuous::{AbilityOrigin, ContinuousAbilityOrigin, Modification};
+        let source = ObjectId::from_raw(1);
+        let alice = PlayerId::from_index(0);
+        let (typed, pt) = type_and_pt();
+        let mut effects = Vec::new();
+        for (branch, (slot, modification)) in [
+            (0, Modification::ModifyPower(1)), (1, pt), (0, Modification::ModifyPower(2)),
+            (2, Modification::ModifyPower(3)), (1, typed),
+        ].into_iter().enumerate() {
+            let mut effect = ContinuousEffect::new(source, alice, EffectTarget::Source, modification);
+            effect.originating_ability = Some(Box::new(ContinuousAbilityOrigin {
+                host: source, ability: AbilityOrigin::Printed(slot), printed_face: None, branch,
+            }));
+            effects.push(effect);
+        }
+        let explicit = ContinuousEffectGroupId::static_source(source, 1);
+        effects[3].group = Some(explicit);
+        let mut next = 1;
+        assign_inferred_static_effect_groups(&mut effects, source, &StaticGroupRoots::default(), &mut next);
+        let inferred = ContinuousEffectGroupId::static_source(source, 2);
+        assert_eq!(effects.iter().map(|effect| effect.group).collect::<Vec<_>>(),
+            [None, Some(inferred), None, Some(explicit), Some(inferred)]);
+        assert_eq!(next, 3);
     }
 
     #[test]

@@ -43,9 +43,6 @@ pub(super) trait SelectedIterationPlan: Send {
     fn entry_attachment_hints(&self) -> bool {
         false
     }
-    fn postlude(&mut self) -> Vec<Effect> {
-        Vec::new()
-    }
     fn project(
         &self,
         outcomes: Vec<EffectOutcome>,
@@ -98,36 +95,35 @@ pub(super) fn selected_iteration_cursor(
         plan,
         iteration: 0,
         child: 0,
-        scope: None,
-        input: None,
+        active: None,
         tags,
         result,
         child_pending: false,
-        range_start: 0,
         ranges: Vec::new(),
         unit_ends,
         ends_unit: false,
-        postlude: None,
-        postlude_next: 0,
         outputs,
         outcomes: Vec::new(),
     })
 }
+struct ActiveIteration {
+    scope: IterationScope,
+    object: Option<ObjectId>,
+    player: PlayerId,
+    range_start: usize,
+}
+
 struct IterationProgramCursor {
     plan: Box<dyn SelectedIterationPlan>,
     iteration: usize,
     child: usize,
-    scope: Option<IterationScope>,
-    input: Option<IterationInput>,
+    active: Option<ActiveIteration>,
     tags: Option<IterationTagScope>,
     result: Option<IterationResultScope>,
     child_pending: bool,
-    range_start: usize,
     ranges: Vec<(PlayerId, usize, usize)>,
     unit_ends: Vec<usize>,
     ends_unit: bool,
-    postlude: Option<Vec<Effect>>,
-    postlude_next: usize,
     outputs: CompletedEffectOutputs,
     outcomes: Vec<EffectOutcome>,
 }
@@ -139,16 +135,30 @@ impl std::fmt::Debug for IterationProgramCursor {
             .finish_non_exhaustive()
     }
 }
+impl IterationProgramCursor {
+    fn leave_iteration(&mut self, ctx: &mut ExecutionContext) {
+        if let Some(active) = self.active.take() {
+            active.scope.leave(ctx);
+            self.ranges.push((active.player, active.range_start, self.outcomes.len()));
+        }
+    }
+
+    fn leave_plan(&mut self, ctx: &mut ExecutionContext) {
+        self.leave_iteration(ctx);
+        if let Some(tags) = self.tags.take() {
+            tags.leave(ctx);
+        }
+        if let Some(result) = self.result.take() {
+            result.leave(ctx);
+        }
+    }
+}
+
 impl ActionProgramCursor for IterationProgramCursor {
     fn finish_stopped(mut self: Box<Self>, _game: &mut GameState, ctx: &mut ExecutionContext)
         -> Result<ProgramCompletion, ExecutionError> {
         self.child_pending = false;
-        if let Some(scope) = self.scope.take() { scope.leave(ctx); }
-        if let Some(input) = self.input.take() {
-            self.ranges.push((input.player, self.range_start, self.outcomes.len()));
-        }
-        if let Some(tags) = self.tags.take() { tags.leave(ctx); }
-        if let Some(result) = self.result.take() { result.leave(ctx); }
+        self.leave_plan(ctx);
         self.finish()
     }
     fn next_action(
@@ -165,33 +175,26 @@ impl ActionProgramCursor for IterationProgramCursor {
             ));
         }
         if ctx.resolution_stopped() {
-            if let Some(scope) = self.scope.take() { scope.leave(ctx); }
-            if let Some(input) = self.input.take() {
-                self.ranges.push((input.player, self.range_start, self.outcomes.len()));
-            }
-            if let Some(tags) = self.tags.take() { tags.leave(ctx); }
-            if let Some(result) = self.result.take() { result.leave(ctx); }
+            self.leave_plan(ctx);
             return Ok(None);
         }
         while self.iteration < self.plan.len() {
-            if self.input.is_none() {
+            if self.active.is_none() {
                 let input = self.plan.select(game, ctx, self.iteration)?;
-                self.scope = Some(IterationScope::enter(
-                    ctx,
-                    input.object,
-                    Some(input.player),
-                    input.tags.clone(),
-                ));
-                self.input = Some(input);
+                self.active = Some(ActiveIteration {
+                    scope: IterationScope::enter(ctx, input.object, Some(input.player), input.tags),
+                    object: input.object,
+                    player: input.player,
+                    range_start: self.outcomes.len(),
+                });
                 self.child = 0;
-                self.range_start = self.outcomes.len();
             }
             if let Some(effect) = self.plan.effects().get(self.child) {
-                let input = self.input.as_ref().expect("active iteration");
+                let active = self.active.as_ref().expect("active iteration");
                 let scope = ProgramActionScope {
                     targets: self.plan.target_scope(self.iteration),
-                    iterated_object: input.object.map(Some),
-                    iterated_player: Some(Some(input.player)),
+                    iterated_object: active.object.map(Some),
+                    iterated_player: Some(Some(active.player)),
                     entry_attachment_receipts: Some(if self.plan.entry_attachment_hints()
                         && self.child > 0
                         && crate::effects::permanents::entry_attachment_for_move(
@@ -222,31 +225,10 @@ impl ActionProgramCursor for IterationProgramCursor {
                 self.child_pending = true;
                 return Ok(Some(action));
             }
-            self.scope.take().expect("iteration scope").leave(ctx);
-            let input = self.input.take().expect("iteration input");
-            self.ranges
-                .push((input.player, self.range_start, self.outcomes.len()));
+            self.leave_iteration(ctx);
             self.iteration += 1;
         }
-        if let Some(tags) = self.tags.take() {
-            tags.leave(ctx);
-        }
-        if let Some(result) = self.result.take() {
-            result.leave(ctx);
-        }
-        let postlude = self.postlude.get_or_insert_with(|| self.plan.postlude());
-        if let Some(effect) = postlude.get(self.postlude_next) {
-            let action = ProgramAction {
-                effect: effect.clone(),
-                scope: ProgramActionScope::default(),
-                native: None,
-                identity: vec![1, self.postlude_next],
-            };
-            self.postlude_next += 1;
-            self.ends_unit = true;
-            self.child_pending = true;
-            return Ok(Some(action));
-        }
+        self.leave_plan(ctx);
         Ok(None)
     }
     fn accept_action(&mut self, child: CompletedEffectOutputs) -> Result<(), ExecutionError> {
@@ -265,7 +247,7 @@ impl ActionProgramCursor for IterationProgramCursor {
     }
     fn finish(self: Box<Self>) -> Result<ProgramCompletion, ExecutionError> {
         if self.child_pending
-            || self.scope.is_some()
+            || self.active.is_some()
             || self.tags.is_some()
             || self.result.is_some()
         {

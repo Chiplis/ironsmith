@@ -4618,12 +4618,7 @@ fn describe_search_revealed_pair_hand_graveyard_sequence(effects: &[&Effect]) ->
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let reveal = unwrap_basic_tag_wrappers(reveal_effect)
         .downcast_ref::<crate::effects::RevealTaggedEffect>()?;
-    let choose = unwrap_basic_tag_wrappers(choose_effect)
-        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let rest = unwrap_basic_tag_wrappers(rest_effect)
-        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
-    let hand = downcast_search_split_move_to_zone(hand_effect)?;
-    let grave = downcast_search_split_move_to_zone(grave_effect)?;
+    let partition = [*choose_effect, *rest_effect, *hand_effect, *grave_effect];
     let shuffle = unwrap_basic_tag_wrappers(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
     if !search.is_search
@@ -4636,26 +4631,8 @@ fn describe_search_revealed_pair_hand_graveyard_sequence(effects: &[&Effect]) ->
         || search.filter.owner != Some(PlayerFilter::You)
         || choose_search_zones(search)? != vec![Zone::Library]
         || reveal.tag != search.tag
-        || choose.is_search
-        || choose.chooser != PlayerFilter::You
-        || choose.count != crate::effect::ChoiceCount::exactly(1)
-        || choose.count_value.is_some()
-        || choose.aggregate_constraint.is_some()
-        || choose.filter != ObjectFilter::tagged(search.tag.clone()).in_zone(Zone::Library)
-        || choose_search_zones(choose)? != vec![Zone::Library]
-        || rest.filter != ObjectFilter::tagged(search.tag.clone())
-            .in_zone(Zone::Library)
-            .not_tagged(choose.tag.clone())
-        || rest.zone != Some(Zone::Library)
-        || !rest.additional_zones.is_empty()
-        || !rest.source_tags.is_empty()
-        || rest.filter_source_snapshots
-        || !search_split_move_to_zone_uses_tag(hand, choose.tag.as_str(), Zone::Hand)
-        || !search_split_move_to_zone_uses_tag(grave, rest.tag.as_str(), Zone::Graveyard)
-        || hand.to_top
-        || grave.to_top
-        || hand.library_order.is_some()
-        || grave.library_order.is_some()
+        || !matches!(read_library_hand_partition(&search.tag, partition)?,
+            ironsmith_core::effect::LibraryHandDisposition::HandAndGraveyard)
         || shuffle.player != PlayerFilter::You
     {
         return None;

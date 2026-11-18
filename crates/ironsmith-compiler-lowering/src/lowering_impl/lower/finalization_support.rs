@@ -4,40 +4,10 @@ use crate::cards::builders::ZoneMoveActionAst;
 use crate::effect::Value;
 use crate::target::PlayerFilter;
 
-pub fn derive_triggered_ability_functional_zones_from_facts(
-    trigger: &TriggerSpec,
-    facts: &crate::model::facts::TriggerFunctionalZoneFacts,
-) -> Vec<Zone> {
-    if let TriggerSpec::WithIntro { trigger, .. } = trigger {
-        return derive_triggered_ability_functional_zones_from_facts(trigger, facts);
-    }
-    let mut zones = base_trigger_functional_zones(trigger);
-
-    if let Some(explicit_zone) = &facts.explicit_zone
-        && !ironsmith_compiler_semantic::model::trigger_zones::explicit_zone_belongs_to_branch(trigger, *explicit_zone)
-    {
-        zones = vec![*explicit_zone];
-        if facts.explicit_zone_or_battlefield && *explicit_zone != Zone::Battlefield {
-            zones.push(Zone::Battlefield);
-        }
-    }
-    // A self-discard trigger observes the card in hand, even when its
-    // resolution returns that card from the graveyard.
-    if facts.discards_this_card {
-        zones = vec![Zone::Hand];
-    } else if facts.returns_self_from_graveyard && !trigger_references_attached_object(trigger) {
-        zones = vec![Zone::Graveyard];
-    }
-    zones
-}
-
-/// The zones from which the trigger's event can be observed, before
-/// whole-ability facts are applied. CR 113.6: an ability functions only
-/// from its zones; an "A or B" trigger functions wherever either arm does
-/// ("When you cast or cycle this card", CR 603.2 + CR 702.29c).
-pub fn base_trigger_functional_zones(trigger: &TriggerSpec) -> Vec<Zone> {
-    ironsmith_compiler_semantic::model::trigger_zones::base_trigger_functional_zones(trigger)
-}
+use ironsmith_core::tag::TagKeyWalk;
+pub use ironsmith_compiler_semantic::model::trigger_zones::{
+    base_trigger_functional_zones, derive_triggered_ability_functional_zones_from_facts,
+};
 
 /// A complete intervening-if source-location alternative owns all its zones.
 /// Keep this typed result after lowering, rather than narrowing it to the
@@ -87,94 +57,16 @@ pub fn mark_trigger_only_intervening_if(ability: &mut Ability, trigger_only: boo
     }
 }
 
-fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
-    match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => trigger_references_attached_object(trigger),
-        TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
-            filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
-        }
-        TriggerSpec::PutIntoGraveyardFromZone { filter, .. }
-        | TriggerSpec::PutIntoGraveyardFromAnyExcept { filter, .. } => {
-            filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
-        }
-        TriggerSpec::Either(left, right) => {
-            trigger_references_attached_object(left) || trigger_references_attached_object(right)
-        }
-        _ => false,
-    }
-}
-
-fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
-    filter
-        .tagged_constraints
-        .iter()
-        .any(|constraint| constraint.tag.as_str() == tag)
-        || filter
-            .could_be_targeted_by
-            .as_ref()
-        .is_some_and(|constraint| {
-            matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
-        })
-        || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
-        || matches!(&filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
-        || filter
-            .targets_object
-            .as_deref()
-            .is_some_and(|targets| filter_references_tag(targets, tag))
-        || filter
-            .targets_only_object
-            .as_deref()
-            .is_some_and(|targets| filter_references_tag(targets, tag))
-        || filter
-            .attached_to_object
-            .as_deref()
-            .is_some_and(|attached_to| filter_references_tag(attached_to, tag))
-        || filter
-            .blocked_or_was_blocked_by_this_turn
-            .as_deref()
-            .is_some_and(|combat_partner| filter_references_tag(combat_partner, tag))
-        || filter
-            .any_of
-            .iter()
-            .any(|branch| filter_references_tag(branch, tag))
-}
-
 fn replace_filter_tag(filter: &mut ObjectFilter, old_tag: &str, new_tag: &TagKey) -> bool {
-    let mut replaced = false;
-    for constraint in &mut filter.tagged_constraints {
-        if constraint.tag.as_str() == old_tag {
-            constraint.tag = new_tag.clone();
-            replaced = true;
+    if !filter.contains_tag_key(old_tag) {
+        return false;
+    }
+    filter.map_tag_keys(&mut |tag| {
+        if tag.as_str() == old_tag {
+            *tag = new_tag.clone();
         }
-    }
-    if let Some(crate::filter::ObjectRef::Tagged(tag)) = &mut filter.blocked_by
-        && tag.as_str() == old_tag
-    {
-        *tag = new_tag.clone();
-        replaced = true;
-    }
-    if let Some(crate::filter::ObjectRef::Tagged(tag)) = &mut filter.in_combat_with
-        && tag.as_str() == old_tag
-    {
-        *tag = new_tag.clone();
-        replaced = true;
-    }
-    if let Some(targets) = filter.targets_object.as_deref_mut() {
-        replaced |= replace_filter_tag(targets, old_tag, new_tag);
-    }
-    if let Some(targets) = filter.targets_only_object.as_deref_mut() {
-        replaced |= replace_filter_tag(targets, old_tag, new_tag);
-    }
-    if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
-        replaced |= replace_filter_tag(attached_to, old_tag, new_tag);
-    }
-    if let Some(combat_partner) = filter.blocked_or_was_blocked_by_this_turn.as_deref_mut() {
-        replaced |= replace_filter_tag(combat_partner, old_tag, new_tag);
-    }
-    for branch in &mut filter.any_of {
-        replaced |= replace_filter_tag(branch, old_tag, new_tag);
-    }
-    replaced
+    });
+    true
 }
 
 pub(super) fn normalize_selected_sacrifice_tags(mut effects: Vec<EffectAst>) -> Vec<EffectAst> {
@@ -193,44 +85,15 @@ pub(super) fn normalize_selected_sacrifice_tags(mut effects: Vec<EffectAst>) -> 
     let sacrificed_tag = crate::tag::CompilerReferenceTag::Sacrificed0.bind();
     let mut replaced = false;
     for effect in rest {
-        match effect {
-            EffectAst::SubjectVerb(subject_verb)
-                if matches!(
-                    &subject_verb.action,
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, .. })
-                        if filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
-                ) =>
-            {
-                if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
-                    filter,
-                    ..
-                }) = &mut subject_verb.action
-                {
-                    replaced |= replace_filter_tag(
-                        filter,
-                        crate::tag::CompilerReferenceTag::It.as_str(),
-                        &sacrificed_tag,
-                    );
-                }
-            }
-            EffectAst::SubjectVerb(subject_verb)
-                if matches!(
-                    &subject_verb.action,
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter })
-                        if filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
-                ) =>
-            {
-                if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }) =
-                    &mut subject_verb.action
-                {
-                    replaced |= replace_filter_tag(
-                        filter,
-                        crate::tag::CompilerReferenceTag::It.as_str(),
-                        &sacrificed_tag,
-                    );
-                }
-            }
-            _ => {}
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            continue;
+        };
+        if let SubjectVerbActionAst::ZoneMoves(
+            ZoneMoveActionAst::Sacrifice { filter, .. }
+            | ZoneMoveActionAst::SacrificeAll { filter },
+        ) = &mut subject_verb.action
+        {
+            replaced |= replace_filter_tag(filter, choose_tag.as_str(), &sacrificed_tag);
         }
     }
 
@@ -2223,6 +2086,44 @@ fn correlate_additional_cost_chosen_type_search_destination(
             vec![rewritten_search],
         ));
     program.replace_segments(vec![segment]);
+}
+
+#[cfg(test)]
+mod selected_sacrifice_tests {
+    use super::*;
+
+    #[test]
+    fn sacrifice_and_selection_share_a_tag_even_inside_a_controller_filter() {
+        use crate::cards::builders::PlayerAst;
+        use crate::filter::ObjectRef;
+        use crate::tag::CompilerReferenceTag;
+
+        let selected = CompilerReferenceTag::It;
+        let other = TagKey::from("other");
+        let choose = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter: ObjectFilter::creature(),
+            count: crate::effect::ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: selected.bind(),
+        });
+        let filter = ObjectFilter::tagged(other.clone()).controlled_by(
+            PlayerFilter::ControllerOf(ObjectRef::Tagged(selected.key())),
+        );
+        let sacrifice = EffectAst::subject_verb_sacrifice_all(PlayerAst::You, filter);
+        let normalized = normalize_selected_sacrifice_tags(vec![choose, sacrifice]);
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }),
+             EffectAst::SubjectVerb(action)] = normalized.as_slice() else {
+            panic!("expected the choice and its sacrifice");
+        };
+        let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }) = &action.action else {
+            panic!("expected a sacrifice");
+        };
+        assert_eq!(tag.key, CompilerReferenceTag::Sacrificed0.key());
+        assert_eq!(filter.controller, Some(PlayerFilter::ControllerOf(ObjectRef::Tagged(tag.key.clone()))));
+        assert!(filter.contains_tag_key(other.as_str()));
+        assert!(!filter.contains_tag_key(selected.as_str()));
+    }
 }
 
 #[cfg(test)]

@@ -159,10 +159,7 @@ fn parse_search_library_sentence_single_destination(
         else {
             return;
         };
-        let player = match player {
-            PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
-            player => player,
-        };
+        let player = player.in_followup();
         for effect in search {
             super::chain_carry::bind_implicit_player_context(effect, player);
         }

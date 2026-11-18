@@ -1,4 +1,5 @@
 //! Independent CR 118.9 prices. A price never establishes an origin permission.
+use std::borrow::Cow;
 use super::{AlternativeCastingMethod, CastingMethod, GrantSelection};
 use crate::effects::ExecutionError;
 use crate::filter::ObjectFilterExt as _;
@@ -80,26 +81,23 @@ fn grant_allows_separate_price(grant: &Grant) -> bool {
 
 /// Install the proposed face for both source-relative filters and ordinary
 /// characteristic lookups. The whole query stays fallible and side-effect free.
-pub(crate) fn proposed_face(
-    game: &GameState,
-    spell: &Object,
+pub(crate) fn proposed_face<'a>(
+    game: &'a GameState,
+    spell: &'a Object,
     origin: &CastingMethod,
     prototype: Option<usize>,
-) -> Option<Object> {
+) -> Option<Cow<'a, Object>> {
     let spell = game.object(spell.id).unwrap_or(spell);
     if spell.zone == Zone::Stack {
-        return Some(spell.clone());
+        return Some(Cow::Borrowed(spell));
     }
     let mut face = match origin {
         CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. } => {
-            crate::decision::spell_view_for_split_other_half_cast(game, spell)?
+            Cow::Owned(crate::decision::spell_view_for_split_other_half_cast(game, spell)?)
         }
-        CastingMethod::Fuse => crate::decision::spell_view_for_fused_split_cast(game, spell)?,
-        _ => spell.clone(),
+        CastingMethod::Fuse => Cow::Owned(crate::decision::spell_view_for_fused_split_cast(game, spell)?),
+        _ => spell.projected_front_half().map_or(Cow::Borrowed(spell), Cow::Owned),
     };
-    if !matches!(origin, CastingMethod::Fuse) {
-        face.split_combined = None;
-    }
     let selected_index = match origin {
         CastingMethod::Alternative(index) => Some(*index),
         CastingMethod::PlayFrom { use_alternative, .. }
@@ -109,7 +107,7 @@ pub(crate) fn proposed_face(
     if let Some((cost, power_toughness)) = selected_index
         .and_then(|index| face.alternative_casts.get(index))
         .and_then(|method| method.casting_characteristics()) {
-        face.apply_cast_characteristic_overlay(cost, power_toughness);
+        face.to_mut().apply_cast_characteristic_overlay(cost, power_toughness);
     }
     if let Some(index) = prototype {
         let method = face.alternative_casts.get(index)?;
@@ -117,7 +115,7 @@ pub(crate) fn proposed_face(
             method.mana_cost()?.clone(),
             method.prototype_power_toughness()?,
         );
-        face.apply_prototype_cast_overlay(cost, power_toughness);
+        face.to_mut().apply_prototype_cast_overlay(cost, power_toughness);
     }
     Some(face)
 }
@@ -141,32 +139,21 @@ fn prototype_choices(
     choices
 }
 
-fn face_query(
-    game: &GameState,
+fn face_query<'a>(
+    game: &'a GameState,
     spell: &Object,
     origin: &CastingMethod,
     prototype: Option<usize>,
-) -> Result<Option<GameState>, ExecutionError> {
+) -> Result<Option<Cow<'a, GameState>>, ExecutionError> {
     if spell.zone == Zone::Stack {
         return Ok(None);
     }
     let Some(face) = proposed_face(game, spell, origin, prototype) else {
         return Ok(None);
     };
-    let needs_overlay = prototype.is_some()
-        || face.prototype_cast_state.is_some()
-        || spell.split_combined.is_some()
-        || matches!(
-            origin,
-            CastingMethod::SplitOtherHalf
-                | CastingMethod::SplitOtherHalfPlayFrom { .. }
-                | CastingMethod::Fuse
-        );
-    let checked = if needs_overlay {
-        crate::grant_registry::proposed_card_face_query(game, &face)?
-    } else {
-        game.continuous_query_snapshot()
-            .map_err(ExecutionError::ContinuousDiscovery)?
+    let checked = match face {
+        Cow::Borrowed(_) => game.continuous_query_view().map_err(ExecutionError::ContinuousDiscovery)?,
+        Cow::Owned(face) => Cow::Owned(crate::grant_registry::proposed_card_face_query(game, &face)?),
     };
     Ok(Some(checked))
 }

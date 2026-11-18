@@ -8,7 +8,15 @@ const A:PlayerId=PlayerId(0);const B:PlayerId=PlayerId(1);
 fn routes(name:&str,text:&str,payment:Option<&str>)->[ironsmith::CardDefinition;2]{
  let mut source=serde_json::json!({"name":name,"executable_text":text});if let Some(payment)=payment{source["custom_keyword_payments"]=serde_json::json!([payment]);}definitions(&source).unwrap()
 }
-fn lafterii()->[ironsmith::CardDefinition;2]{let value:serde_json::Value=serde_json::from_str(include_str!("../../../fixtures/custom_mechanics/msem-reverberate-emblem-source.json")).unwrap();definitions(value["mechanics"][0]["representative_cards"].as_array().unwrap().iter().find(|s|s["name"]=="Lafterii Ingenuity").unwrap()).unwrap()}
+fn lafterii() -> [ironsmith::CardDefinition; 2] {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../fixtures/custom_mechanics/msem-early-casting-whole-sources.json"
+    )).unwrap();
+    let card = fixture["mechanics"].as_array().unwrap().iter()
+        .flat_map(|family| family["representative_cards"].as_array().unwrap())
+        .find(|card| card["id"] == "msem:Lafterii Ingenuity_AFM").unwrap();
+    definitions(card).unwrap()
+}
 struct Choices{discount:usize,donors:Vec<ObjectId>,cancel:bool,optional_branches:usize}
 impl DecisionMaker for Choices{
  fn decide_options(&mut self,game:&GameState,ctx:&SelectOptionsContext)->Vec<usize>{
@@ -57,6 +65,30 @@ mod hybrid_component_prices {
   let fixture:serde_json::Value=serde_json::from_str(include_str!("../../../fixtures/custom_mechanics/msem-casting-early.json")).unwrap();
   let card=fixture["mechanics"].as_array().unwrap().iter().filter(|row|row["keyword"]=="Reprise").flat_map(|row|row["representative_cards"].as_array().unwrap()).find(|card|card["name"]=="Savrios' Timeshifter").unwrap();definitions(card).unwrap()
  }
+ #[test]
+ fn granted_text_price_applies_to_both_card_types_only_in_its_controllers_graveyard() {
+    let instant = routes("Instant donor", "Type: Instant\nYou gain 1 life.", None);
+    let sorcery = routes("Sorcery donor", "Type: Sorcery\nYou gain 1 life.", None);
+    let artifact = routes("Artifact witness", "Type: Artifact", None);
+    for (route, source) in timeshifter().into_iter().enumerate() {
+        let mut game = game();
+        game.create_object_from_definition(&source, A, Zone::Battlefield);
+        for (definition, owner, zone, eligible) in [
+            (&instant[route], A, Zone::Graveyard, true),
+            (&sorcery[route], A, Zone::Graveyard, true),
+            (&instant[route], B, Zone::Graveyard, false),
+            (&instant[route], A, Zone::Hand, false),
+            (&artifact[route], A, Zone::Graveyard, false),
+        ] {
+            let card = game.create_object_from_definition(definition, owner, zone);
+            let abilities = game.current_abilities(card).unwrap();
+            let donated = abilities.iter().any(|ability| matches!(&ability.kind,
+                ironsmith::ability::AbilityKind::Static(rule) if rule.splice_spec()
+                    .is_some_and(|spec| spec.custom_keyword.as_deref() == Some("reprise"))));
+            assert_eq!(donated, eligible, "{owner:?} {zone:?} {route}");
+        }
+    }
+ }
  fn scenario(route:usize,donor_cost:&str,base_cost:&str,pips:Vec<&'static str>,discount:usize,pool:&[(ironsmith::mana::ManaSymbol,u32)],expected_remaining:u32,expected_life:i32){
   let mut game=super::game();game.create_object_from_definition(&timeshifter()[route],A,Zone::Battlefield);game.create_object_from_definition(&lafterii()[route],A,Zone::Battlefield);
   let donor=routes("Independent hybrid donor",&format!("Mana cost: {donor_cost}\nType: Sorcery\nYou gain 1 life."),None)[route].clone();
@@ -80,6 +112,12 @@ mod hybrid_component_prices {
   assert_eq!(game.player(A).unwrap().mana_pool.total(),expected_remaining);assert_eq!(game.player(A).unwrap().life,expected_life);
   assert_eq!(game.object(game.find_object_by_stable_id(donor_stable).unwrap()).unwrap().zone,Zone::Exile);
   let spell=game.object(game.stack.last().unwrap().object_id).unwrap();let receipts:u32=spell.optional_costs_paid.costs.iter().filter(|(reference,_)|reference.custom_keyword.as_deref()==Some("reprise")).map(|(_,count)|*count).sum();assert_eq!(receipts,1,"price and hybrid continuation clones never duplicate named payment");
+  let id = spell.id;
+  game.update_cant_effects();
+  assert!(!game.can_be_countered(id), "the controller's Reprise payment protects this spell");
+  game.object_mut(id).unwrap().optional_costs_paid = Default::default();
+  game.update_cant_effects();
+  assert!(game.can_be_countered(id), "the same spell without the receipt can be countered");
  }
  #[test]
  fn actual_timeshifter_and_lafterii_discount_the_announced_generic_half_without_erasing_the_colored_half(){

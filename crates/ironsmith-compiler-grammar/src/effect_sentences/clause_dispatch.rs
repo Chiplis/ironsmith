@@ -954,6 +954,105 @@ fn split_trailing_blocking_capacity_tail(
     None
 }
 
+enum PumpRecipient {
+    Single(TargetAst),
+    All(ObjectFilter),
+}
+
+fn pump_recipient(
+    shape: &clause_grammar::PumpSubjectShape<'_>,
+    plural_as_set: bool,
+) -> Result<Option<PumpRecipient>, CardTextError> {
+    use clause_grammar::PumpSubjectKind;
+    let subject = shape.subject_tokens;
+    let tagged = |tag: crate::tag::CompilerReferenceTag| {
+        PumpRecipient::Single(TargetAst::Tagged(tag.bind(), span_from_tokens(subject)))
+    };
+    let recipient = match &shape.kind {
+        PumpSubjectKind::Tagged => tagged(crate::tag::CompilerReferenceTag::It),
+        PumpSubjectKind::Equipped => tagged(crate::tag::CompilerReferenceTag::Equipped),
+        PumpSubjectKind::Enchanted => tagged(crate::tag::CompilerReferenceTag::Enchanted),
+        PumpSubjectKind::DirectTarget(tokens) => {
+            PumpRecipient::Single(parse_target_phrase(tokens)?)
+        }
+        PumpSubjectKind::DemonstrativeTarget => {
+            let target = parse_target_phrase(subject)?;
+            if plural_as_set {
+                match target {
+                    TargetAst::Object(filter, None, _) => PumpRecipient::All(filter),
+                    TargetAst::Tagged(tag, _) => PumpRecipient::All(ObjectFilter::tagged(tag)),
+                    _ => return Ok(None),
+                }
+            } else {
+                PumpRecipient::Single(target)
+            }
+        }
+        PumpSubjectKind::ControlledFilter {
+            filter_tokens,
+            controller,
+        } => {
+            let Ok(mut filter) = parse_object_filter(filter_tokens, false) else {
+                return Ok(None);
+            };
+            if filter == ObjectFilter::default() {
+                return Ok(None);
+            }
+            filter.controller = Some(controller.clone());
+            PumpRecipient::All(filter)
+        }
+        PumpSubjectKind::FilterCandidate {
+            filter_tokens,
+            mentions_this,
+            disallowed_pronoun,
+            demonstrative_reference,
+        } => {
+            let words = crate::lexer::parser_token_word_refs(filter_tokens);
+            if words.as_slice() == ["the", "creature"] {
+                crate::word_claims::claim_tokens(filter_tokens);
+                tagged(crate::tag::CompilerReferenceTag::It)
+            } else if words.as_slice() == ["the", "blocking", "creature"] {
+                crate::word_claims::claim_tokens(filter_tokens);
+                PumpRecipient::Single(parse_target_phrase(filter_tokens)?)
+            } else if *demonstrative_reference {
+                return Ok(None);
+            } else if *mentions_this
+                && let Some(surface) = source_reference_surface_for_words(&words)
+            {
+                crate::word_claims::claim_tokens(filter_tokens);
+                PumpRecipient::Single(TargetAst::Object(
+                    ObjectFilter::source_with_surface(surface),
+                    None,
+                    span_from_tokens(filter_tokens),
+                ))
+            } else {
+                let input = match *filter_tokens {
+                    [only, rest @ ..] if !rest.is_empty() && only.is_word("only") => rest,
+                    tokens => tokens,
+                };
+                let Ok(filter) = parse_object_filter(input, false) else {
+                    return Ok(None);
+                };
+                let combat_reference = (filter.blocking && filter.in_combat_with_source)
+                    || filter
+                        .attacking_player_or_planeswalker_controlled_by
+                        .is_some();
+                if filter == ObjectFilter::default()
+                    || ((*mentions_this || *disallowed_pronoun)
+                        && !filter.other
+                        && !combat_reference)
+                {
+                    return Ok(None);
+                }
+                crate::word_claims::claim_tokens(
+                    &filter_tokens[..filter_tokens.len() - input.len()],
+                );
+                PumpRecipient::All(filter)
+            }
+        }
+    };
+    Ok(Some(recipient))
+}
+
 pub(crate) fn parse_get_pump_clause(
     subject_tokens: &[OwnedLexToken],
     action_tokens: &[OwnedLexToken],
@@ -970,24 +1069,13 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
     full_tokens: &[OwnedLexToken],
     bound_values: Option<(Value, Value)>,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if action_tokens.first().is_some_and(|token| token.is_word("twice")) {
-        let tail = &action_tokens[1..];
-        let collapsed = collapse_leading_signed_pt_modifier_tokens(tail);
-        let tail = collapsed.as_deref().unwrap_or(tail);
-        let values = bound_values.or_else(|| {
-            tail.first().and_then(|token| parse_pt_modifier_values(token.parser_text()).ok())
-        });
-        let Some((power, toughness)) = values else { return Ok(None); };
-        return parse_get_pump_clause_with_bound_values(
-            subject_tokens, tail, full_tokens,
-            Some((Value::Scaled(Box::new(power), 2), Value::Scaled(Box::new(toughness), 2))),
-        );
-    }
     // "It gets +2/+2 until end of turn and can block an additional creature
     // this turn" (Act of Heroism) — the block permission is its own granted
     // effect on the pump subject, not part of the P/T modifier tail.
     if let Some((pump_tokens, capacity)) = split_trailing_blocking_capacity_tail(action_tokens) {
-        let Some(pump) = parse_get_pump_clause(subject_tokens, pump_tokens, full_tokens)? else {
+        let Some(pump) = parse_get_pump_clause_with_bound_values(
+            subject_tokens, pump_tokens, full_tokens, bound_values,
+        )? else {
             return Ok(None);
         };
         let EffectAst::SubjectVerb(subject_verb) = &pump else {
@@ -1031,6 +1119,10 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
             &action_tokens[..action_tokens.len() - modifier_tokens.len()],
         );
     }
+    let (twice, modifier_tokens) = match modifier_tokens {
+        [twice, rest @ ..] if twice.is_word("twice") => (Some(twice), rest),
+        _ => (None, modifier_tokens),
+    };
     let collapsed_modifier_tail = collapse_leading_signed_pt_modifier_tokens(modifier_tokens);
     let modifier_tail = collapsed_modifier_tail
         .as_deref()
@@ -1050,7 +1142,10 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
             tokens.extend_from_slice(alternative.trailing_tokens);
             tokens
         };
-        let first_tokens = branch_tokens(&alternative.first_modifier);
+        let mut first_tokens = branch_tokens(&alternative.first_modifier);
+        if let Some(twice) = twice {
+            first_tokens.insert(0, twice.clone());
+        }
         let second_tokens = branch_tokens(&alternative.second_modifier);
         let first = parse_get_pump_clause(subject_tokens, &first_tokens, full_tokens)?;
         let second = parse_get_pump_clause(subject_tokens, &second_tokens, full_tokens)?;
@@ -1075,11 +1170,20 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
         }
     }
 
+    let scale_fixed = |value: i32| {
+        if twice.is_some() {
+            value.checked_mul(2).ok_or_else(|| CardTextError::ParseError(
+                format!("doubled P/T modifier exceeds supported range: {value}"),
+            ))
+        } else {
+            Ok(value)
+        }
+    };
     if let Some(modifier) = clause_grammar::parse_discarded_this_way_modifier_shape(modifier_tail) {
         let target = parse_target_phrase(subject_shape.subject_tokens)?;
         return Ok(Some(EffectAst::subject_verb_pump_for_each(
-            modifier.power,
-            modifier.toughness,
+            scale_fixed(modifier.power)?,
+            scale_fixed(modifier.toughness)?,
             target,
             Value::EventValue(EventValueSpec::Amount)
                 .with_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay),
@@ -1108,6 +1212,14 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
         crate::word_claims::claim_tokens(authored_modifier.unwrap_or_default());
         values
     };
+    let scale = |value| -> Result<Value, CardTextError> {
+        match value {
+            Value::Fixed(n) => Ok(Value::Fixed(scale_fixed(n)?)),
+            value if twice.is_some() => Ok(Value::Scaled(Box::new(value), 2)),
+            value => Ok(value),
+        }
+    };
+    let (power, toughness) = (scale(power)?, scale(toughness)?);
     let mut duration_before_for_each = false;
     let mut count = parse_get_for_each_count_value(modifier_tail)?;
     if count.is_none()
@@ -1143,7 +1255,7 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
                 )));
             }
         };
-        let duration = subject_shape.duration.unwrap_or(Until::EndOfTurn);
+        let duration = subject_shape.duration.clone().unwrap_or(Until::EndOfTurn);
         if count.has_surface_hint(ValueSurfaceHint::CreaturesChosenBeforeIt)
             && subject_shape
                 .subject_tokens
@@ -1171,179 +1283,19 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
             multiplier => Value::Scaled(Box::new(count.clone()), multiplier)
                 .with_surface_hint(ValueSurfaceHint::ForEach),
         };
-        let mut effect = match subject_shape.kind {
-            clause_grammar::PumpSubjectKind::Tagged => EffectAst::subject_verb_pump_for_each(
-                power_per,
-                toughness_per,
-                TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::It.bind(),
-                    span_from_tokens(subject_shape.subject_tokens),
-                ),
-                count,
-                duration,
-            ),
-            clause_grammar::PumpSubjectKind::DemonstrativeTarget
-                if subject_shape
-                    .subject_tokens
-                    .iter()
-                    .filter_map(OwnedLexToken::as_word)
-                    .any(|word| word == "those") =>
-            {
-                let filter = match parse_target_phrase(subject_shape.subject_tokens)? {
-                    TargetAst::Object(filter, None, _) => filter,
-                    TargetAst::Tagged(tag, _) => ObjectFilter::tagged(tag),
-                    _ => return Ok(None),
-                };
-                EffectAst::subject_verb_pump_all(
-                    filter,
-                    scale_count(power_per),
-                    scale_count(toughness_per),
-                    duration,
-                )
-            }
-            clause_grammar::PumpSubjectKind::DemonstrativeTarget => {
-                EffectAst::subject_verb_pump_for_each(
-                    power_per,
-                    toughness_per,
-                    parse_target_phrase(subject_shape.subject_tokens)?,
-                    count,
-                    duration,
-                )
-            }
-            clause_grammar::PumpSubjectKind::ControlledFilter {
-                filter_tokens,
-                controller,
-            } => {
-                let Ok(mut filter) = parse_object_filter(filter_tokens, false) else {
-                    return Ok(None);
-                };
-                if filter == ObjectFilter::default() {
-                    return Ok(None);
-                }
-                filter.controller = Some(controller);
-                EffectAst::subject_verb_pump_all(
-                    filter,
-                    scale_count(power_per),
-                    scale_count(toughness_per),
-                    duration,
-                )
-            }
-            clause_grammar::PumpSubjectKind::DirectTarget(target_tokens) => {
-                EffectAst::subject_verb_pump_for_each(
-                    power_per,
-                    toughness_per,
-                    parse_target_phrase(target_tokens)?,
-                    count,
-                    duration,
-                )
-            }
-            clause_grammar::PumpSubjectKind::Equipped => EffectAst::subject_verb_pump_for_each(
-                power_per,
-                toughness_per,
-                TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::Equipped.bind(),
-                    span_from_tokens(subject_shape.subject_tokens),
-                ),
-                count,
-                duration,
-            ),
-            clause_grammar::PumpSubjectKind::Enchanted => EffectAst::subject_verb_pump_for_each(
-                power_per,
-                toughness_per,
-                TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::Enchanted.bind(),
-                    span_from_tokens(subject_shape.subject_tokens),
-                ),
-                count,
-                duration,
-            ),
-            clause_grammar::PumpSubjectKind::FilterCandidate {
-                filter_tokens,
-                mentions_this,
-                disallowed_pronoun,
-                demonstrative_reference,
-            } => {
-                if demonstrative_reference {
-                    return Ok(None);
-                }
-                let definite_singular_antecedent = subject_shape
-                    .subject_tokens
-                    .iter()
-                    .filter_map(OwnedLexToken::as_word)
-                    .eq(["the", "creature"]);
-                if definite_singular_antecedent {
-                    EffectAst::subject_verb_pump_for_each(
-                        power_per,
-                        toughness_per,
-                        TargetAst::Tagged(
-                            crate::tag::CompilerReferenceTag::It.bind(),
-                            span_from_tokens(subject_shape.subject_tokens),
-                        ),
-                        count,
-                        duration,
-                    )
-                } else if mentions_this
-                    && let Some(surface) = source_reference_surface_for_words(
-                        &crate::lexer::parser_token_word_refs(filter_tokens),
-                    )
-                {
-                    crate::word_claims::claim_tokens(filter_tokens);
-                    EffectAst::subject_verb_pump_for_each(
-                        power_per,
-                        toughness_per,
-                        TargetAst::Object(
-                            ObjectFilter::source_with_surface(surface),
-                            None,
-                            span_from_tokens(filter_tokens),
-                        ),
-                        count,
-                        duration,
-                    )
-                } else {
-                    let Ok(filter) = parse_object_filter(filter_tokens, false) else {
-                        return Ok(None);
-                    };
-                    let directional_combat_relation = (filter.blocking
-                        && filter.in_combat_with_source)
-                        || filter
-                            .attacking_player_or_planeswalker_controlled_by
-                            .is_some();
-                    if filter == ObjectFilter::default()
-                        || (mentions_this && !filter.other && !directional_combat_relation)
-                        || (disallowed_pronoun && !filter.other && !directional_combat_relation)
-                    {
-                        return Ok(None);
-                    }
-                    EffectAst::subject_verb_pump_all(
-                        filter,
-                        scale_count(power_per),
-                        scale_count(toughness_per),
-                        duration,
-                    )
-                }
-            }
+        let plural_as_set = subject_shape.subject_tokens.iter().any(|token| token.is_word("those"));
+        let Some(recipient) = pump_recipient(&subject_shape, plural_as_set)? else {
+            return Ok(None);
         };
-        let set_quantifier_surface = match full_tokens.first() {
-            Some(token) if token.is_word("all") => Some(ironsmith_core::SetQuantifierSurface::All),
-            Some(token) if token.is_word("each") => {
-                Some(ironsmith_core::SetQuantifierSurface::Each)
-            }
-            Some(token) if token.is_word("those") => {
-                Some(ironsmith_core::SetQuantifierSurface::Those)
-            }
-            _ => None,
+        let mut effect = match recipient {
+            PumpRecipient::Single(target) => EffectAst::subject_verb_pump_for_each(
+                power_per, toughness_per, target, count, duration,
+            ),
+            PumpRecipient::All(filter) => EffectAst::subject_verb_pump_all(
+                filter, scale_count(power_per), scale_count(toughness_per), duration,
+            ),
         };
-        if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
-                    set_quantifier_surface: surface,
-                    ..
-                }),
-            ..
-        }) = &mut effect
-        {
-            *surface = set_quantifier_surface;
-        }
+        set_pump_quantifier(&mut effect, subject_tokens, full_tokens);
         // "each creature you control attacking a player gets +1/+0 ... for
         // each creature that player controls" (Jurin, Leading the Charge):
         // the count is per attacked player, so the pump runs once per player
@@ -1389,153 +1341,17 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
             toughness,
             subject_is_target,
         )?;
-    let duration = subject_shape.duration.unwrap_or(parsed_duration);
-    let demonstrative_set_surface = full_tokens
-        .first()
-        .is_some_and(|token| token.is_word("those"));
-    let mut effect = match subject_shape.kind {
-        clause_grammar::PumpSubjectKind::Tagged => EffectAst::subject_verb_pump(
-            power,
-            toughness,
-            TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.bind(),
-                span_from_tokens(subject_shape.subject_tokens),
-            ),
-            duration,
-            condition,
-        ),
-        clause_grammar::PumpSubjectKind::DemonstrativeTarget
-            if subject_shape
-                .subject_tokens
-                .first()
-                .and_then(OwnedLexToken::as_word)
-                == Some("those")
-                && condition.is_none() =>
-        {
-            let filter = match parse_target_phrase(subject_shape.subject_tokens)? {
-                TargetAst::Object(filter, None, _) => filter,
-                TargetAst::Tagged(tag, _) => ObjectFilter::tagged(tag),
-                _ => return Ok(None),
-            };
-            EffectAst::subject_verb_pump_all(filter, power, toughness, duration)
+    let duration = subject_shape.duration.clone().unwrap_or(parsed_duration);
+    let plural_as_set = condition.is_none()
+        && subject_shape.subject_tokens.first().is_some_and(|token| token.is_word("those"));
+    let Some(recipient) = pump_recipient(&subject_shape, plural_as_set)? else {
+        return Ok(None);
+    };
+    let mut effect = match recipient {
+        PumpRecipient::Single(target) => {
+            EffectAst::subject_verb_pump(power, toughness, target, duration, condition)
         }
-        clause_grammar::PumpSubjectKind::DemonstrativeTarget => EffectAst::subject_verb_pump(
-            power,
-            toughness,
-            parse_target_phrase(subject_shape.subject_tokens)?,
-            duration,
-            condition,
-        ),
-        clause_grammar::PumpSubjectKind::ControlledFilter {
-            filter_tokens,
-            controller,
-        } => {
-            let Ok(mut filter) = parse_object_filter(filter_tokens, false) else {
-                return Ok(None);
-            };
-            if filter == ObjectFilter::default() {
-                return Ok(None);
-            }
-            filter.controller = Some(controller);
-            EffectAst::subject_verb_pump_all(filter, power, toughness, duration)
-        }
-        clause_grammar::PumpSubjectKind::DirectTarget(target_tokens) => {
-            EffectAst::subject_verb_pump(
-                power,
-                toughness,
-                parse_target_phrase(target_tokens)?,
-                duration,
-                condition,
-            )
-        }
-        clause_grammar::PumpSubjectKind::Equipped => EffectAst::subject_verb_pump(
-            power,
-            toughness,
-            TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::Equipped.bind(),
-                span_from_tokens(subject_shape.subject_tokens),
-            ),
-            duration,
-            condition,
-        ),
-        clause_grammar::PumpSubjectKind::Enchanted => EffectAst::subject_verb_pump(
-            power,
-            toughness,
-            TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::Enchanted.bind(),
-                span_from_tokens(subject_shape.subject_tokens),
-            ),
-            duration,
-            condition,
-        ),
-        clause_grammar::PumpSubjectKind::FilterCandidate {
-            filter_tokens,
-            mentions_this,
-            disallowed_pronoun,
-            demonstrative_reference,
-        } => {
-            if matches!(
-                crate::lexer::parser_token_word_refs(filter_tokens).as_slice(),
-                ["the", "creature"] | ["the", "blocking", "creature"]
-            ) {
-                crate::word_claims::claim_tokens(filter_tokens);
-                return Ok(Some(EffectAst::subject_verb_pump(
-                    power,
-                    toughness,
-                    parse_target_phrase(filter_tokens)?,
-                    duration,
-                    condition,
-                )));
-            }
-            if demonstrative_reference {
-                return Ok(None);
-            }
-            if mentions_this
-                && let Some(surface) = source_reference_surface_for_words(
-                    &crate::lexer::parser_token_word_refs(filter_tokens),
-                )
-            {
-                // "This creature gets ...": the whole subject names the source.
-                crate::word_claims::claim_tokens(filter_tokens);
-                return Ok(Some(EffectAst::subject_verb_pump(
-                    power,
-                    toughness,
-                    TargetAst::Object(
-                        ObjectFilter::source_with_surface(surface),
-                        None,
-                        span_from_tokens(filter_tokens),
-                    ),
-                    duration,
-                    condition,
-                )));
-            }
-            // "instead only creatures your opponents control get -2/-2"
-            // (Golden Demise): "only" narrows the replaced set to this one.
-            let only = filter_tokens
-                .first()
-                .filter(|token| {
-                    filter_tokens.len() > 1
-                        && token.as_word().is_some_and(|word| word.eq_ignore_ascii_case("only"))
-                });
-            let filter_input = if only.is_some() { &filter_tokens[1..] } else { filter_tokens };
-            let Ok(filter) = parse_object_filter(filter_input, false) else {
-                return Ok(None);
-            };
-            let directional_combat_relation = (filter.blocking && filter.in_combat_with_source)
-                || filter
-                    .attacking_player_or_planeswalker_controlled_by
-                    .is_some();
-            if filter == ObjectFilter::default()
-                || (mentions_this && !filter.other && !directional_combat_relation)
-                || (disallowed_pronoun && !filter.other && !directional_combat_relation)
-            {
-                return Ok(None);
-            }
-            if let Some(only) = only {
-                crate::word_claims::claim_tokens(std::slice::from_ref(only));
-            }
-            EffectAst::subject_verb_pump_all(filter, power, toughness, duration)
-        }
+        PumpRecipient::All(filter) => EffectAst::subject_verb_pump_all(filter, power, toughness, duration),
     };
     // "Each creature your opponents control gets -1/-1 ... for each poison
     // counter its controller has" (Phyresis Outbreak): a per-object amount
@@ -1570,41 +1386,45 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
             effects: vec![pump],
         })));
     }
-    let authored_quantifier = if demonstrative_set_surface {
-        Some(ironsmith_core::SetQuantifierSurface::Those)
-    } else if subject_tokens
-        .first()
-        .is_some_and(|token| token.is_word("all"))
+    set_pump_quantifier(&mut effect, subject_tokens, full_tokens);
+    Ok(Some(effect))
+}
+
+fn set_pump_quantifier(
+    effect: &mut EffectAst,
+    subject: &[OwnedLexToken],
+    clause: &[OwnedLexToken],
+) {
+    use ironsmith_core::SetQuantifierSurface;
+    let EffectAst::SubjectVerb(subject_verb) = effect else {
+        return;
+    };
+    let SubjectVerbActionAst::StatChanges(
+        StatChangeActionAst::Pump {
+            set_quantifier_surface,
+            ..
+        }
+        | StatChangeActionAst::PumpAll {
+            set_quantifier_surface,
+            ..
+        },
+    ) = &mut subject_verb.action
+    else {
+        return;
+    };
+    *set_quantifier_surface = if clause.first().is_some_and(|t| t.is_word("those")) {
+        Some(SetQuantifierSurface::Those)
+    } else if subject.first().is_some_and(|t| t.is_word("all")) {
+        Some(SetQuantifierSurface::All)
+    } else if [subject.first(), subject.last()]
+        .into_iter()
+        .flatten()
+        .any(|t| t.is_word("each"))
     {
-        Some(ironsmith_core::SetQuantifierSurface::All)
-    } else if subject_tokens
-        .first()
-        .is_some_and(|token| token.is_word("each"))
-        || subject_tokens
-            .last()
-            .is_some_and(|token| token.is_word("each"))
-    {
-        Some(ironsmith_core::SetQuantifierSurface::Each)
+        Some(SetQuantifierSurface::Each)
     } else {
         None
     };
-    if let Some(authored_quantifier) = authored_quantifier
-        && let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
-                    set_quantifier_surface,
-                    ..
-                })
-                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
-                    set_quantifier_surface,
-                    ..
-                }),
-            ..
-        }) = &mut effect
-    {
-        *set_quantifier_surface = Some(authored_quantifier);
-    }
-    Ok(Some(effect))
 }
 
 /// Whether a stat amount reads the controller of the iterated `it` object

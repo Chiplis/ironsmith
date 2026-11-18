@@ -1,3 +1,4 @@
+use crate::model::ast::TokenCopySourceAst;
 use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::lexer::lex_line;
@@ -49,8 +50,8 @@ fn imperative_for_each_keeps_iterated_player_inside_object_filter() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                    source,
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+                    source: TokenCopySourceAst::Target(source),
                     player,
                     ..
                 }),

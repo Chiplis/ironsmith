@@ -2475,34 +2475,11 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         ]));
     }
 
-    if let Some(fact) =
-        super::activation_costs::cant_shapes::parse_per_attacker_cant_tax_tokens(&clause_tokens)
+    if let Some(restriction) = super::activation_costs::cant_shapes::parse_resolving_attack_tax(&clause_tokens)
     {
         return Ok(Some(vec![
             EffectAst::subject_verb_cant_starting_with_duration_surface(
-                crate::effect::Restriction::attack_you_unless_controller_pays_per_attacker(
-                    fact.amount,
-                    fact.covers_planeswalkers,
-                ),
-                duration,
-                crate::effect::RestrictionStart::Immediate,
-                duration_surface,
-                source_tapped_duration
-                    .then_some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
-            ),
-        ]));
-    }
-
-    // "This turn, creatures can't attack unless their controller pays {X}
-    // for each attacking creature they control" (War Tax), "until your next
-    // turn, ... pays 2 life for each of those creatures" (Sivitri): a
-    // resolving effect's attack tax (CR 508.1g-h, 611.2a).
-    if let Some(fact) =
-        super::activation_costs::cant_shapes::parse_general_attack_tax_tokens(&clause_tokens)
-    {
-        return Ok(Some(vec![
-            EffectAst::subject_verb_cant_starting_with_duration_surface(
-                crate::effect::Restriction::attack_tax(fact.into_rule()),
+                restriction,
                 duration,
                 crate::effect::RestrictionStart::Immediate,
                 duration_surface,

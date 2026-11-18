@@ -126,11 +126,7 @@ impl ManaCost {
                 cost.x_payment_scope
                     .clone()
                     .unwrap_or_else(|| XPaymentScope {
-                        symbols: cost
-                            .pips
-                            .iter()
-                            .filter(|pip| pip.contains(&ManaSymbol::X))
-                            .count() as u32,
+                        symbols: cost.x_pip_count() as u32,
                         announced_x: cost.waterbend_payment_scope.as_ref().and_then(|scope| scope.x_pip_binding),
                         ordinary_generic: cost.generic_mana_total(),
                         prepaid_generic: Vec::new(),

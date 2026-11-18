@@ -24,15 +24,7 @@ pub use ironsmith_core::ProliferateEffect;
 /// let effect = ProliferateEffect::new(1);
 /// ```
 impl EffectExecutor for ProliferateEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

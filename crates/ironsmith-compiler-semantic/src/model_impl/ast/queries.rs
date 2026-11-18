@@ -21,6 +21,42 @@ use super::{
     StatChangeActionAst, SubjectVerbActionAst, ZoneMoveActionAst,
 };
 
+/// Inside one entry program, a source's authored "enters with" instruction
+/// applies counters to the prepared entrant rather than granting a later entry
+/// rule. Shared by ordinary document statements and quoted static programs.
+pub fn resolve_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                target,
+                abilities,
+                duration,
+                ..
+            }) = &subject_verb.action
+            && matches!(target, TargetAst::Tagged(_, _) | TargetAst::Source(_))
+            && *duration == Until::Forever
+            && let [crate::cards::builders::GrantedAbilityAst::StaticAbility(static_ability)] = abilities.as_slice()
+            && let crate::cards::builders::StaticAbilityAst::Static(ability) = static_ability.as_ref()
+            && let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } =
+                &ability.payload
+        {
+            // This program runs during entry preparation. Its source counter
+            // additions are transferred to the entering object; granting a
+            // future entry replacement to the source-zone card is too late.
+            *effect = EffectAst::subject_verb_put_counters(
+                *counter,
+                count.clone(),
+                TargetAst::Source(None),
+                None,
+                false,
+            );
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            resolve_as_enters_source_counter_grants(nested);
+        });
+    }
+}
+
 /// The object a source reference denotes, carrying the authored surface.
 pub fn source_choose_spec_for_surface(surface: SourceReferenceSurface) -> ChooseSpec {
     ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface))

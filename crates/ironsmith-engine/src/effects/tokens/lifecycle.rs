@@ -1186,7 +1186,6 @@ impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion
         // The original token packet is complete. Entry/replacement additions
         // are independently authored programs, outside the operation's grant.
         let token_scope = ctx.named_action_token_scope.take();
-        let created_objects = ctx.named_action_created_objects.take();
         let result = (|| {
         let _phase = self
             .instruction
@@ -1246,7 +1245,6 @@ impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion
         Ok(outputs)
         })();
         ctx.named_action_token_scope = token_scope;
-        ctx.named_action_created_objects = created_objects;
         result
     }
 }

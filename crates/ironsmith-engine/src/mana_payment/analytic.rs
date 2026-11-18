@@ -72,7 +72,7 @@ fn try_candidates_inner(
         return None;
     }
 
-    let slots = expand_pip_slots(request)?;
+    let slots = crate::mana::unit_payment_pips(&request.cost, request.x_value, false);
     if slots.is_empty() {
         return None;
     }
@@ -116,11 +116,15 @@ fn request_shape_is_supported(request: &ManaPaymentRequest) -> bool {
     {
         return false;
     }
-    // `allow_life_payment` is on by default and only bites when the cost
-    // actually offers a life alternative, which `expand_pip_slots` rejects on
-    // sight. `allow_black_life` is different: it synthesises life alternatives
-    // during expansion that the printed pips do not show, so a black cost under
-    // that rule is not the cost this module would be solving.
+    // Singleton X has a declared value. Hybrid X and printed life alternatives
+    // need choices that the assignment solver leaves to the full search.
+    if request.cost.pips().iter().any(|pip| {
+        pip.as_slice() != [ManaSymbol::X]
+            && pip.iter().any(|symbol| matches!(symbol, ManaSymbol::X | ManaSymbol::Life(_)))
+    }) {
+        return false;
+    }
+    // A black-for-life permission can also introduce an unprinted life alternative.
     if request.preferences.prefer_life
         || request.spend_policy.has_any_color_spending()
         || (request.allow_black_life && crate::decision::mana_cost_has_black_symbol(&request.cost))
@@ -132,42 +136,6 @@ fn request_shape_is_supported(request: &ManaPaymentRequest) -> bool {
     // activations cannot consume reserved graveyard cards or sacrifice a
     // reserved permanent. Replay checks every reservation before accepting.
     true
-}
-
-/// Expand the request's cost into one slot per pip that must be paid.
-///
-/// Returns `None` for any symbol whose payability depends on more than the
-/// produced symbol, so those costs reach the search untouched.
-fn expand_pip_slots(request: &ManaPaymentRequest) -> Option<Vec<PipSlot>> {
-    let mut slots = Vec::new();
-    for pip in request.cost.pips() {
-        match pip.as_slice() {
-            [ManaSymbol::Generic(amount)] => {
-                for _ in 0..*amount {
-                    slots.push(vec![ManaSymbol::Generic(1)]);
-                }
-            }
-            [ManaSymbol::X] => {
-                for _ in 0..request.x_value {
-                    slots.push(vec![ManaSymbol::Generic(1)]);
-                }
-            }
-            alternatives => {
-                // Life alternatives require a shared life budget; snow is a
-                // property of the typed mana unit and is handled below.
-                if alternatives.iter().any(|symbol| {
-                    matches!(
-                        symbol,
-                        ManaSymbol::Life(_) | ManaSymbol::X
-                    )
-                }) {
-                    return None;
-                }
-                slots.push(alternatives.to_vec());
-            }
-        }
-    }
-    Some(slots)
 }
 
 /// Project reviewed activations, measuring other candidates on scratch state.
@@ -585,6 +553,25 @@ mod tests {
         let source = game.new_object_id();
         ManaPaymentRequest::new(payer, source, crate::costs::PaymentReason::Effect, cost)
             .with_spend_policy(game.mana_spend_policy(payer, Some(source)))
+    }
+
+    #[test]
+    fn assignment_expands_declared_x_and_defers_life_or_hybrid_x() {
+        use ManaSymbol::{Life, Red, X};
+
+        let (mut game, payer) = game();
+        add_source(&mut game, payer, crate::costs::Cost::tap(), vec![Red]);
+        for (pip, supported) in [
+            (vec![X], true),
+            (vec![X, Red], false),
+            (vec![Red, Life(2)], false),
+        ] {
+            let request = request(&mut game, payer, ManaCost::from_pips(vec![pip])).with_x(1);
+            assert_eq!(
+                try_projected_candidates(&game, &request).is_some(),
+                supported
+            );
+        }
     }
 
     /// The ordinary shape — tap lands for fixed mana — must be answered by the

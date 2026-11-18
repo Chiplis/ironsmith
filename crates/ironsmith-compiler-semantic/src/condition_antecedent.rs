@@ -1,3 +1,4 @@
+use crate::model::ast::TokenCopySourceAst;
 use crate::cards::builders::{
     CharacteristicActionAst, ControlActionAst, CounterActionAst, DamageActionAst, EffectAst,
     GrantActionAst, GrantedAbilityAst, KeywordActionAst, LibraryActionAst, ObjectChoiceEffectAst,
@@ -326,7 +327,6 @@ fn effect_establishes_body_object_antecedent(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { .. })
             | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. })
             | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }) => true,
             _ => false,
         },
@@ -684,8 +684,8 @@ pub fn bind_condition_collection_antecedent_in_effects(
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             return false;
         };
-        if let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-            source, ..
+        if let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+            source: TokenCopySourceAst::Target(source), ..
         }) = &mut subject_verb.action
         {
             let it = crate::tag::CompilerReferenceTag::It.as_str();
@@ -721,7 +721,7 @@ pub fn bind_condition_collection_antecedent_in_effects(
             return true;
         }
         let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
-            object: crate::cards::builders::ObjectRefAst::Tagged(object_tag),
+            source: TokenCopySourceAst::Object(crate::cards::builders::ObjectRefAst::Tagged(object_tag)),
             ..
         }) = &mut subject_verb.action
         else {

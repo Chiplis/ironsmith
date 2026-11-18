@@ -1,22 +1,13 @@
 //! Bind actual-color activation history before the ordinary payment solver.
 use crate::cost::TotalCost;
-use crate::costs::Cost;
 use crate::{GameState, ObjectId};
 use ironsmith_core::mana::ManaSpendingRestriction;
 pub(crate) fn needs_binding(cost: &TotalCost) -> bool {
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(needs_binding),
-        ironsmith_core::TotalCostKind::All(parts) => parts.iter().any(|part| {
-            part.mana_cost_ref().is_some_and(|mana| {
-                mana.spending_restrictions()
-                    .contains(&ManaSpendingRestriction::UnspentActivationColors)
-            }) || part.dynamic_mana_cost_ref().is_some_and(|cost| {
-                cost.base
-                    .spending_restrictions()
-                    .contains(&ManaSpendingRestriction::UnspentActivationColors)
-            })
-        }),
-    }
+    cost.payment_branches().flatten().any(|part| {
+        part.mana_cost_ref()
+            .or_else(|| part.dynamic_mana_cost_ref().map(|cost| &cost.base))
+            .is_some_and(|mana| mana.spending_restrictions().contains(&ManaSpendingRestriction::UnspentActivationColors))
+    })
 }
 pub(crate) fn bind(
     game: &GameState,
@@ -39,31 +30,7 @@ pub(crate) fn bind(
         identity.as_ref().map(|(origin, _)| origin),
         identity.as_ref().and_then(|(_, definition)| *definition),
     );
-    fn resolved(cost: &TotalCost, colors: crate::color::ColorSet) -> TotalCost {
-        match cost.kind() {
-            ironsmith_core::TotalCostKind::OneOf(branches) => TotalCost::one_of(
-                branches
-                    .iter()
-                    .map(|branch| resolved(branch, colors))
-                    .collect(),
-            ),
-            ironsmith_core::TotalCostKind::All(parts) => TotalCost::from_costs(
-                parts
-                    .iter()
-                    .map(|part| {
-                        if let Some(mana) = part.mana_cost_ref() {
-                            Cost::mana(mana.clone().resolve_activation_history_colors(colors))
-                        } else if let Some(dynamic) = part.dynamic_mana_cost_ref() {
-                            let mut dynamic = dynamic.clone();
-                            dynamic.base = dynamic.base.resolve_activation_history_colors(colors);
-                            Cost::dynamic_mana(dynamic)
-                        } else {
-                            part.clone()
-                        }
-                    })
-                    .collect(),
-            ),
-        }
-    }
-    resolved(cost, colors)
+    crate::cost::map_base_mana(cost, |mana| {
+        Some(mana.clone().resolve_activation_history_colors(colors))
+    })
 }

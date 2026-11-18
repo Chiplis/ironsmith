@@ -117,7 +117,6 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll { .. })
             | SubjectVerbActionAst::PutSticker { .. }
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn { .. })
@@ -136,7 +135,6 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::ZoneMoves(
                 ZoneMoveActionAst::ReturnAllToHandOfChosenColor { .. }
             )
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
             | SubjectVerbActionAst::Game(GameActionAst::ReverseTurnOrder)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
@@ -1823,7 +1821,7 @@ pub(super) fn compile_subject_verb_late(
                 },
                 _ => {}
             }
-            crate::reference_helpers::remember_looked_at_hand(&mut ctx.snapshot_tag_aliases);
+            crate::reference_helpers::remember_looked_at_hand(&mut ctx.snapshot_bindings);
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Stack(StackActionAst::Counter { target, exile_permission }) => {
@@ -1875,9 +1873,6 @@ pub(super) fn compile_subject_verb_late(
                 ctx.last_player_filter = Some(PlayerFilter::ControllerOf(ObjectRef::tagged(tag)));
             }
             Ok(compiled)
-        }
-        SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. }) => {
-            compile_put_counters_action(subject_verb, ctx)
         }
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
             counter_types,
@@ -2307,9 +2302,6 @@ pub(super) fn compile_subject_verb_late(
                 for choice in actor.into_choices() { push_choice(&mut choices, choice); }
             }
             Ok((vec![Effect::new(effect)], choices))
-        }
-        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. }) => {
-            compile_return_to_hand(subject_verb, ctx)
         }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand {
             filter,

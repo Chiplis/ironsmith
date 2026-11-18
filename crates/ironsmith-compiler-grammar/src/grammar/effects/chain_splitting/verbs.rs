@@ -43,6 +43,9 @@ pub fn find_chain_verb_words(words: &[&str]) -> Option<ChainVerbMatch> {
         {
             continue;
         }
+        if word == "audition" && words.get(word_index + 1) == Some(&"for") {
+            return Some(ChainVerbMatch { kind: ChainVerbKind::Audition, word_index });
+        }
         if let Some(kind) = parse_chain_verb_word(word) {
             return Some(ChainVerbMatch { kind, word_index });
         }

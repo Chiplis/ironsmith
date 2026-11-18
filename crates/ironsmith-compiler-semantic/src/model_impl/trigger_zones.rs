@@ -1,5 +1,7 @@
 //! Zone ownership for trigger alternatives, shared by grammar and lowering.
 use super::ast::{PredicateAst, SourcePredicateAst, TriggerSpec};
+use super::facts::TriggerFunctionalZoneFacts;
+use ironsmith_core::tag::TagKeyWalk;
 use ironsmith_core::Zone;
 
 fn qualified_zones(condition: &PredicateAst) -> Option<Vec<Zone>> {
@@ -52,6 +54,69 @@ pub fn base_trigger_functional_zones(trigger: &TriggerSpec) -> Vec<Zone> {
     }
 }
 
+/// Apply whole-ability zone facts after identifying the trigger's event zones.
+pub fn derive_triggered_ability_functional_zones_from_facts(
+    trigger: &TriggerSpec,
+    facts: &TriggerFunctionalZoneFacts,
+) -> Vec<Zone> {
+    if let TriggerSpec::WithIntro { trigger, .. } = trigger {
+        return derive_triggered_ability_functional_zones_from_facts(trigger, facts);
+    }
+    if !facts.excluded_zones.is_empty() {
+        return [
+            Zone::Library,
+            Zone::Hand,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            Zone::Stack,
+            Zone::Exile,
+            Zone::Command,
+            Zone::Ante,
+            Zone::OutsideGame,
+        ]
+        .into_iter()
+        .filter(|zone| !facts.excluded_zones.contains(zone))
+        .collect();
+    }
+    // A self-discard is observed in hand even if the ability returns the card.
+    if facts.discards_this_card {
+        return vec![Zone::Hand];
+    }
+    if facts.returns_self_from_graveyard && !trigger_references_attached_object(trigger) {
+        return vec![Zone::Graveyard];
+    }
+    if let Some(zone) = facts.explicit_zone
+        && !explicit_zone_belongs_to_branch(trigger, zone)
+    {
+        let mut zones = vec![zone];
+        if facts.explicit_zone_or_battlefield && zone != Zone::Battlefield {
+            zones.push(Zone::Battlefield);
+        }
+        return zones;
+    }
+    base_trigger_functional_zones(trigger)
+}
+
+fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. }
+        | TriggerSpec::ConditionQualified { trigger, .. } => {
+            trigger_references_attached_object(trigger)
+        }
+        TriggerSpec::PutIntoGraveyard(filter)
+        | TriggerSpec::PutIntoGraveyardOneOrMore(filter)
+        | TriggerSpec::PutIntoGraveyardFromZone { filter, .. }
+        | TriggerSpec::PutIntoGraveyardFromAnyExcept { filter, .. } => {
+            filter.contains_tag_key("enchanted") || filter.contains_tag_key("equipped")
+        }
+        TriggerSpec::Either(left, right) => {
+            trigger_references_attached_object(left) || trigger_references_attached_object(right)
+        }
+        TriggerSpec::AnyOf(branches) => branches.iter().any(trigger_references_attached_object),
+        _ => false,
+    }
+}
+
 /// A textual zone fact already owned by an alternative's typed qualification
 /// must not narrow the whole ability and disable its other alternatives.
 pub fn explicit_zone_belongs_to_branch(trigger: &TriggerSpec, zone: Zone) -> bool {
@@ -95,5 +160,65 @@ mod source_zone_alternative_tests {
         assert_eq!(base_trigger_functional_zones(&either), vec![Zone::Graveyard, Zone::Battlefield, Zone::Stack]);
         assert!(explicit_zone_belongs_to_branch(&either, Zone::Graveyard));
         assert!(explicit_zone_belongs_to_branch(&either, Zone::Battlefield));
+    }
+
+    #[test]
+    fn excluded_zones_and_self_discard_take_precedence_over_a_graveyard_return() {
+        let trigger = TriggerSpec::BeginningOfUpkeep(ironsmith_core::PlayerFilter::You);
+        let mut facts = TriggerFunctionalZoneFacts {
+            returns_self_from_graveyard: true,
+            discards_this_card: true,
+            excluded_zones: vec![Zone::Hand, Zone::Battlefield],
+            ..Default::default()
+        };
+        assert_eq!(
+            derive_triggered_ability_functional_zones_from_facts(&trigger, &facts),
+            [
+                Zone::Library,
+                Zone::Graveyard,
+                Zone::Stack,
+                Zone::Exile,
+                Zone::Command,
+                Zone::Ante,
+                Zone::OutsideGame
+            ],
+        );
+        facts.excluded_zones.clear();
+        assert_eq!(
+            derive_triggered_ability_functional_zones_from_facts(&trigger, &facts),
+            [Zone::Hand]
+        );
+        facts.discards_this_card = false;
+        assert_eq!(
+            derive_triggered_ability_functional_zones_from_facts(&trigger, &facts),
+            [Zone::Graveyard]
+        );
+    }
+
+    #[test]
+    fn a_qualified_attachment_death_in_a_trigger_alternative_keeps_its_event_zone() {
+        use ironsmith_core::filter_model::{ObjectFilter, ObjectRef, PlayerFilter};
+        let death = TriggerSpec::PutIntoGraveyard(
+            ObjectFilter::creature()
+                .controlled_by(PlayerFilter::ControllerOf(ObjectRef::tagged("equipped"))),
+        );
+        let trigger = TriggerSpec::AnyOf(vec![
+            TriggerSpec::BeginningOfUpkeep(PlayerFilter::You),
+            TriggerSpec::ConditionQualified {
+                trigger: Box::new(death),
+                condition: PredicateAst::YourTurn,
+                surface: "during your turn".into(),
+            },
+        ]);
+        assert_eq!(
+            derive_triggered_ability_functional_zones_from_facts(
+                &trigger,
+                &TriggerFunctionalZoneFacts {
+                    returns_self_from_graveyard: true,
+                    ..Default::default()
+                }
+            ),
+            [Zone::Battlefield],
+        );
     }
 }

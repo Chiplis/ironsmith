@@ -106,10 +106,6 @@ impl EffectExecutor for VoteEffect {
         crate::effects::ForecastChildren::Chosen
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         for group in vote_child_effect_groups(self) {
             for effect in group {

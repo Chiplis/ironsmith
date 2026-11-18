@@ -44,6 +44,8 @@ pub struct PreprocessedMetadataLine {
 
 #[derive(Debug, Clone)]
 pub struct PreprocessedLine {
+    /// Only a bare keyword with one trailing parenthetical can use it as a definition.
+    pub(crate) keyword_reminder: Option<std::sync::Arc<[OwnedLexToken]>>,
     pub info: LineInfo,
     pub tokens: Vec<OwnedLexToken>,
 }
@@ -80,19 +82,13 @@ fn collapse_whitespace_runs(text: &str) -> String {
 /// Authored rules tokens retain original byte spans and casing, but never
 /// expose reminder text to downstream semantic parsers. Raw text and CST
 /// provenance remain available separately for presentation and diagnostics.
-fn authored_rules_tokens(
-    raw: &str,
-    line_index: usize,
-) -> Result<Vec<OwnedLexToken>, CardTextError> {
-    let tokens = lex_line(raw, line_index)?;
-    match preprocess_grammar::parse_parenthetical_line_surface_tokens(&tokens) {
+fn authored_rules_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    match preprocess_grammar::parse_parenthetical_line_surface_tokens(tokens) {
         Some(preprocess_grammar::ParentheticalLineSurface::FullyWrapped) => {
             // Preserve standalone activation tokens until the document owner
             // can distinguish functional text from a typed CR 305.6 reminder.
             // A reminder is never lowered as a printed ability.
-            Ok(crate::util::strip_parenthetical_tokens(
-                &tokens[1..tokens.len() - 1],
-            ))
+            crate::util::strip_parenthetical_tokens(&tokens[1..tokens.len() - 1])
         }
         Some(preprocess_grammar::ParentheticalLineSurface::PreserveEnchantmentNotCreature) => {
             // This parenthetical is a functional type-changing instruction.
@@ -123,37 +119,64 @@ fn authored_rules_tokens(
                     _ => {}
                 }
             }
-            Ok(kept)
+            kept
         }
-        None => Ok(crate::util::strip_parenthetical_tokens(&tokens)),
+        None => crate::util::strip_parenthetical_tokens(tokens),
     }
 }
 
-fn supported_sneak_reminder(raw: &str, line_index: usize) -> bool {
+fn keyword_definition_reminder<'a>(
+    authored: &'a [OwnedLexToken],
+    header: &[OwnedLexToken],
+) -> Option<&'a [OwnedLexToken]> {
+    if header.is_empty() || header.len() > 8 {
+        return None;
+    }
+    let [open, body @ .., close] = authored.get(header.len()..)? else {
+        return None;
+    };
+    if open.kind != TokenKind::LParen
+        || close.kind != TokenKind::RParen
+        || &authored[..header.len()] != header
+    {
+        return None;
+    }
+    let name_len = header
+        .iter()
+        .take_while(|t| t.kind == TokenKind::Word)
+        .count();
+    ((1..=4).contains(&name_len)
+        && header[name_len..]
+            .iter()
+            .all(|t| t.kind == TokenKind::ManaGroup)
+        && body.iter().any(|t| t.kind == TokenKind::Word)
+        && !body
+            .iter()
+            .any(|t| matches!(t.kind, TokenKind::LParen | TokenKind::RParen)))
+    .then_some(body)
+}
+
+fn record_authored_reminder_facts(
+    facts: &mut crate::model::facts::LineSemanticFacts,
+    tokens: &[OwnedLexToken],
+) {
     use crate::grammar::keyword_dispatch::{
         KeywordSpecialFormShape, parse_keyword_special_form_shape_tokens,
     };
-    if !raw
-        .trim_start()
-        .get(..5)
-        .is_some_and(|head| head.eq_ignore_ascii_case("sneak"))
+    facts.intrinsic_basic_land_mana_reminder =
+        preprocess_grammar::parse_intrinsic_basic_land_mana_reminder_tokens(tokens);
+    if tokens
+        .first()
+        .is_some_and(|head| head.parser_text() == "sneak")
     {
-        return false;
-    }
-    lex_line(raw, line_index).ok().is_some_and(|tokens| {
-        matches!(
-            parse_keyword_special_form_shape_tokens(&tokens),
+        facts.supported_sneak_form = matches!(
+            parse_keyword_special_form_shape_tokens(tokens),
             Some(KeywordSpecialFormShape::SpellSneak | KeywordSpecialFormShape::PermanentSneak)
-        )
-    })
-}
-
-fn station_reminder_threshold(raw: &str, line_index: usize) -> Option<i32> {
-    if !raw.trim_start().get(..7)?.eq_ignore_ascii_case("station") {
-        return None;
+        );
     }
-    let tokens = lex_line(raw, line_index).ok()?;
-    crate::grammar::line_families::parse_station_keyword_line(&tokens, &tokens)?.creature_threshold
+    facts.station_creature_threshold =
+        crate::grammar::line_families::parse_station_keyword_line(tokens, tokens)
+            .and_then(|station| station.creature_threshold);
 }
 
 /// "Create a Black Lotus token. (It's a {0} artifact with "...")": a named
@@ -164,129 +187,80 @@ fn station_reminder_threshold(raw: &str, line_index: usize) -> Option<i32> {
 /// ordinary named-token description "a {0} artifact token named Black Lotus
 /// with ...". A name the token grammar already defines (Food, Treasure, ...)
 /// keeps its reminder as reminder text.
-fn rewrite_named_token_definition_reminder(line: &str) -> Option<String> {
-    let mut in_quotes = false;
-    let mut open = None;
-    for (byte, ch) in line.char_indices() {
-        match ch {
-            '"' | '“' | '”' => in_quotes = !in_quotes,
-            '(' if !in_quotes => {
-                open = Some(byte);
-                break;
-            }
-            _ => {}
-        }
-    }
-    let open = open?;
-    let mut depth = 0usize;
-    let mut close = None;
-    for (offset, ch) in line[open..].char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => {
-                depth -= 1;
-                if depth == 0 {
-                    close = Some(open + offset);
-                    break;
-                }
-            }
-            _ => {}
-        }
-    }
-    let close = close?;
-    let before = line[..open].trim_end();
-    let before = before.strip_suffix('.')?;
-    let lower = before.to_ascii_lowercase();
-    let create_at = lower.rfind("create ")?;
-    if create_at > 0 && lower.as_bytes()[create_at - 1].is_ascii_alphanumeric() {
+fn rewrite_named_token_definition_reminder(line: &str, tokens: &[OwnedLexToken]) -> Option<String> {
+    use crate::token_primitives::top_level_token_indices;
+    let open = top_level_token_indices(tokens, |t| t.kind == TokenKind::LParen).next()?;
+    let (period, prefix) = tokens[..open].split_last()?;
+    if period.kind != TokenKind::Period {
         return None;
     }
-    let head = &before[create_at + "create ".len()..];
-    if head.contains(['.', ':', '"', '“', '”', ',']) {
-        return None;
-    }
-    let head_words: Vec<&str> = head.split_whitespace().collect();
-    let [count, name @ .., token_word] = head_words.as_slice() else {
+    let create = prefix.iter().rposition(|t| t.parser_text() == "create")?;
+    let [count, name @ .., token] = &prefix[create + 1..] else {
         return None;
     };
-    let plural = match token_word.to_ascii_lowercase().as_str() {
+    let plural = match token.parser_text() {
         "token" => false,
         "tokens" => true,
         _ => return None,
     };
-    // The token's name is a proper name: capitalized words joined by
-    // lowercase connectors ("Lord of the Pit").
-    if name.is_empty()
-        || !name[0].chars().next().is_some_and(char::is_uppercase)
-        || !name.iter().all(|word| {
-            word.chars().next().is_some_and(char::is_uppercase)
-                || matches!(*word, "of" | "the" | "and" | "a" | "an" | "in" | "on" | "to" | "from")
+    if count.as_word().is_none()
+        || !name.first()?.slice.starts_with(char::is_uppercase)
+        || !name.iter().all(|t| {
+            t.slice.starts_with(char::is_uppercase)
+                || matches!(
+                    t.slice.as_str(),
+                    "of" | "the" | "and" | "a" | "an" | "in" | "on" | "to" | "from"
+                )
         })
     {
         return None;
     }
-    let name = name.join(" ");
-    let body = line[open + 1..close].trim();
-    let normalized_body = body.replace('’', "'");
-    let lower_body = normalized_body.to_ascii_lowercase();
-    let prefix_len = if plural {
-        ["they're "].iter().find(|prefix| lower_body.starts_with(**prefix))?.len()
-    } else {
-        ["it's a ", "it's an "].iter().find(|prefix| lower_body.starts_with(**prefix))?.len()
+    let tail = &tokens[open + 1..];
+    let close = top_level_token_indices(tail, |t| t.kind == TokenKind::RParen).next()?;
+    let body = &tail[..close];
+    let body = match body {
+        [they, rest @ ..] if plural && they.is_word("they're") => rest,
+        [it, article, rest @ ..]
+            if !plural && it.is_word("it's") && article.is_any_word(&["a", "an"]) =>
+        {
+            rest
+        }
+        _ => return None,
     };
-    let description = normalized_body[prefix_len..].trim();
-    let description = description.strip_suffix('.').unwrap_or(description).trim_end();
-    if description.is_empty() {
+    let body = match body {
+        [head @ .., last] if last.is_period() => head,
+        _ => body,
+    };
+    let with = top_level_token_indices(body, |t| t.is_word("with")).next().unwrap_or(body.len());
+    let (characteristics, abilities) = body.split_at(with);
+    let last = characteristics.last()?;
+    if crate::grammar::token_definitions::parse_token_definition_shape_tokens(&prefix[create + 2..])
+        .is_some()
+    {
         return None;
     }
-    // A name the token grammar already defines keeps its reminder.
-    let known = crate::util::lex_fragment(&format!("{name} {token_word}"), 0).is_none_or(|tokens| {
-        crate::grammar::token_definitions::parse_token_definition_shape_tokens(&tokens).is_some()
-    });
-    if known {
-        return None;
+    let mut description =
+        collapse_whitespace_runs(&line[characteristics.first()?.span.start..last.span.end])
+            .replace('’', "'");
+    if plural && last.is_any_word(&["creatures", "artifacts", "enchantments", "lands"]) {
+        // Each of the described tokens is singular.
+        description.truncate(description.len() - last.slice.len());
+        description.push_str(last.parser_text().strip_suffix('s')?);
     }
-    // The characteristics end at the first unquoted `with`.
-    let mut in_quotes = false;
-    let mut with_at = None;
-    for (byte, ch) in description.char_indices() {
-        match ch {
-            '"' | '“' | '”' => in_quotes = !in_quotes,
-            ' ' if !in_quotes && description[byte..].to_ascii_lowercase().starts_with(" with ") => {
-                with_at = Some(byte);
-                break;
-            }
-            _ => {}
-        }
-    }
-    let (characteristics, abilities) = match with_at {
-        Some(at) => (&description[..at], &description[at..]),
-        None => (description, ""),
-    };
-    let mut characteristic_words: Vec<String> =
-        characteristics.split_whitespace().map(str::to_string).collect();
-    if plural && let Some(last) = characteristic_words.last_mut() {
-        // "They're {G} 1/1 Faerie creatures": each token is one creature.
-        let singular = match last.to_ascii_lowercase().as_str() {
-            "creatures" => Some("creature"),
-            "artifacts" => Some("artifact"),
-            "enchantments" => Some("enchantment"),
-            "lands" => Some("land"),
-            _ => None,
-        };
-        if let Some(singular) = singular {
-            *last = singular.to_string();
-        }
-    }
+    let name = render_token_slice(name);
     let mut rewritten = format!(
-        "{}{count} {} {token_word} named {name}{abilities}",
-        &before[..create_at + "create ".len()],
-        characteristic_words.join(" "),
+        "{} {description} {} named {name}",
+        &line[..count.span.end],
+        token.slice
     );
+    if let [first, ..] = abilities {
+        rewritten.push(' ');
+        rewritten.push_str(&line[first.span.start..body.last()?.span.end].replace('’', "'"));
+    }
     if !rewritten.ends_with(['"', '”']) {
         rewritten.push('.');
     }
-    let after = line[close + 1..].trim();
+    let after = line[tail[close].span.end..].trim();
     if !after.is_empty() {
         rewritten.push(' ');
         rewritten.push_str(after);
@@ -295,11 +269,14 @@ fn rewrite_named_token_definition_reminder(line: &str) -> Option<String> {
 }
 
 pub(super) fn strip_parenthetical_segments(line: &str) -> String {
-    if let Some(rewritten) = rewrite_named_token_definition_reminder(line) {
+    strip_parenthetical_segments_with_tokens(line, &stage_tokens(line).unwrap_or_default())
+}
+
+fn strip_parenthetical_segments_with_tokens(line: &str, tokens: &[OwnedLexToken]) -> String {
+    if let Some(rewritten) = rewrite_named_token_definition_reminder(line.trim(), tokens) {
         return strip_parenthetical_segments(&rewritten);
     }
-    let surface = stage_tokens(line)
-        .and_then(|tokens| preprocess_grammar::parse_parenthetical_line_surface_tokens(&tokens));
+    let surface = preprocess_grammar::parse_parenthetical_line_surface_tokens(tokens);
     match surface {
         Some(preprocess_grammar::ParentheticalLineSurface::FullyWrapped) => {
             return line.to_string();
@@ -2701,69 +2678,6 @@ fn rewrite_exiled_by_source_line(text: &str, names: &[&str]) -> String {
     out
 }
 
-/// Custom CR 701.101: "audition for <quality> [or for <quality>]" creates a
-/// 1/1 colorless Construct Actor creature token or one of that quality's
-/// Role tokens. Written as the named audition program whose original menu
-/// the "perform its mode numbered N" modifiers read.
-pub(crate) fn rewrite_audition_line(text: &str) -> String {
-    let lower = text.to_ascii_lowercase();
-    if !lower.contains("audition for ") { return text.to_string(); }
-    fn roles(quality: &str) -> Option<&'static [&'static str]> {
-        Some(match quality {
-            "white" => &["Cleric", "Scout"],
-            "blue" => &["Warlock", "Wizard"],
-            "black" => &["Cleric", "Warlock"],
-            "red" => &["Wizard", "Warrior"],
-            "green" => &["Scout", "Warrior"],
-            _ => return None,
-        })
-    }
-    let mut out = String::with_capacity(text.len() * 2);
-    let mut rest = text;
-    loop {
-        let rest_lower = rest.to_ascii_lowercase();
-        let Some(at) = rest_lower.find("audition for ") else { out.push_str(rest); break; };
-        // Only the instruction, never a quoted name or "auditions for".
-        if at > 0 && rest_lower.as_bytes()[at - 1].is_ascii_alphanumeric() {
-            out.push_str(&rest[..at + 1]);
-            rest = &rest[at + 1..];
-            continue;
-        }
-        let after = &rest_lower[at + "audition for ".len()..];
-        let first: String = after.chars().take_while(|ch| ch.is_ascii_alphabetic()).collect();
-        let Some(mut kinds) = roles(&first).map(|roles| roles.to_vec()) else {
-            out.push_str(&rest[..at + 1]);
-            rest = &rest[at + 1..];
-            continue;
-        };
-        let mut consumed = "audition for ".len() + first.len();
-        let tail = &after[first.len()..];
-        if let Some(second_tail) = tail.strip_prefix(" or for ") {
-            let second: String = second_tail.chars().take_while(|ch| ch.is_ascii_alphabetic()).collect();
-            if let Some(more) = roles(&second) {
-                for role in more { if !kinds.contains(role) { kinds.push(role); } }
-                consumed += " or for ".len() + second.len();
-            }
-        }
-        kinds.sort_unstable();
-        // The Construct Actor's "Actor" is the audition rules' creature type.
-        let _ = ironsmith_core::custom_subtypes::declare_type_line_subtype(
-            "actor", ironsmith_core::types::SubtypeFamily::Creature);
-        let mut modes = vec!["[create a 1/1 colorless Construct Actor creature token]".to_string()];
-        modes.extend(kinds.iter().map(|role| format!("[create a {role} Role token attached to a creature you control]")));
-        out.push_str(&rest[..at]);
-        out.push_str(&format!("perform the audition action as follows: [choose one of the following: {}]", modes.join(" or ")));
-        rest = &rest[at + consumed..];
-        // "audition for green, then audition for green": each operation is
-        // its own complete instruction.
-        if rest.to_ascii_lowercase().starts_with(", then audition for ") {
-            out.push_str(". ");
-            rest = &rest[", then ".len()..];
-        }
-    }
-    out
-}
-
 fn rewrite_distributed_recipients_type_condition_line(text: &str) -> String {
     let lower = text.to_ascii_lowercase();
     if !lower.contains("distribute ") {
@@ -3602,14 +3516,15 @@ pub fn preprocess_document_with_provenance(
             format!("{subject} must be blocked if able. {subject} must be blocked {rest}")
         });
         let raw_line = paired_block_requirement.as_deref().unwrap_or(raw_line);
-        let source_tokens = authored_rules_tokens(raw_line.trim(), line_index)?;
+        let authored = lex_line(raw_line.trim(), line_index)?;
+        let source_tokens = authored_rules_tokens(&authored);
         // The source lexer is authoritative about layout-only lines. Some
         // exported layout characters (such as U+200B) are skipped tokens but
         // are deliberately retained in raw source/provenance, so raw trim
         // cannot decide whether there is an authored rules instruction.
         if source_tokens.is_empty() { return Ok(None); }
 
-        let stripped = strip_parenthetical_segments(raw_line);
+        let stripped = strip_parenthetical_segments_with_tokens(raw_line, &authored);
         // "Round down each time." (Hydroid Krasis) restates the default
         // rounding of the "half X" values in the same line.
         let stripped = strip_rounding_instruction_sentence(&stripped);
@@ -3682,9 +3597,6 @@ pub fn preprocess_document_with_provenance(
         // "non-Angel, non-God creatures": a comma between stacked "non-"
         // modifiers of one noun is not a clause boundary.
         let expanded_normalized = join_stacked_non_modifiers(expanded_normalized.as_str());
-        // "you lose 1 life, then audition for black": the audition is its
-        // own sequential instruction (custom CR 701.101).
-        let expanded_normalized = expanded_normalized.replace(", then audition for ", ". audition for ");
         // "you may copy the exiled card and cast the copy without paying its
         // mana cost" (custom Showcase's Bard): one optional instruction that
         // casts a copy of that card, the same as "you may cast a copy of the
@@ -3765,10 +3677,7 @@ pub fn preprocess_document_with_provenance(
             ));
         }
         let mut semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);
-        semantic_facts.intrinsic_basic_land_mana_reminder =
-            preprocess_grammar::parse_intrinsic_basic_land_mana_reminder_tokens(
-                &lex_line(raw_line.trim(), line_index)?,
-            );
+        record_authored_reminder_facts(&mut semantic_facts, &authored);
         if entry_instead_surface
             && let Some(as_enters) = semantic_facts.statement.as_enters_effect_program.as_mut()
         {
@@ -3802,9 +3711,6 @@ pub fn preprocess_document_with_provenance(
                     crate::word_primitives::parse_sequence_start(&words, &expected).is_some()
                 });
         }
-        semantic_facts.supported_sneak_form = supported_sneak_reminder(raw_line.trim(), line_index);
-        semantic_facts.station_creature_threshold =
-            station_reminder_threshold(raw_line.trim(), line_index);
         // The normalized parse stream removes the trigger header's leading
         // `unless` clause before later lowering consumes line facts. Retain
         // only this grammar-proven punctuation fact from the authored stream;
@@ -3817,6 +3723,7 @@ pub fn preprocess_document_with_provenance(
             .triggered_ability
             .intervening_if_checked_only_on_trigger = trigger_only_intervening_if;
         Ok(Some(PreprocessedLine {
+            keyword_reminder: keyword_definition_reminder(&authored, &source_tokens).map(Into::into),
             info: LineInfo {
                 line_index,
                 display_line_index,
@@ -4061,8 +3968,9 @@ pub fn preprocess_document_with_provenance(
                     lex_line(normalized.normalized.as_str(), previous.info.line_index)?;
                 // The authored stream follows the authored line: readers of
                 // `source_tokens` must see the merged line, not the first half.
-                previous.info.source_tokens =
-                    authored_rules_tokens(combined_raw_line.trim(), previous.info.line_index)?;
+                let authored = lex_line(combined_raw_line.trim(), previous.info.line_index)?;
+                previous.info.source_tokens = authored_rules_tokens(&authored);
+                previous.keyword_reminder = keyword_definition_reminder(&authored, &previous.info.source_tokens).map(Into::into);
                 previous.info.raw_line = combined_raw_line;
                 previous.info.normalized = normalized.clone();
                 continue;
@@ -4138,12 +4046,10 @@ pub fn make_line_info(
     normalized: NormalizedLine,
 ) -> LineInfo {
     let raw_line = raw_line.into();
-    let source_tokens = authored_rules_tokens(raw_line.as_str(), line_index).unwrap_or_default();
+    let authored = lex_line(&raw_line, line_index).unwrap_or_default();
+    let source_tokens = authored_rules_tokens(&authored);
     let mut semantic_facts = crate::model::facts::LineSemanticFacts::default();
-    semantic_facts.intrinsic_basic_land_mana_reminder = lex_line(&raw_line, line_index)
-        .ok().and_then(|tokens| preprocess_grammar::parse_intrinsic_basic_land_mana_reminder_tokens(&tokens));
-    semantic_facts.station_creature_threshold = station_reminder_threshold(&raw_line, line_index);
-    semantic_facts.supported_sneak_form = supported_sneak_reminder(&raw_line, line_index);
+    record_authored_reminder_facts(&mut semantic_facts, &authored);
     LineInfo {
         line_index,
         display_line_index: line_index,
@@ -4232,7 +4138,7 @@ mod tests {
     #[test]
     fn authored_rules_preserve_spans_after_nested_reminders() {
         let raw = "Draw a card. (Reminder (nested).) Then discard a card.";
-        let tokens = authored_rules_tokens(raw, 3).unwrap();
+        let tokens = authored_rules_tokens(&lex_line(raw, 3).unwrap());
         assert!(!render_token_slice(&tokens).contains("Reminder"));
         let then = tokens.iter().find(|token| token.slice == "Then").unwrap();
         assert_eq!(then.span.start, raw.find("Then").unwrap());
@@ -4248,14 +4154,22 @@ mod tests {
     fn authored_rules_keep_functional_parentheticals_only() {
         let mana = "({T}: Add {G}.)";
         assert_eq!(
-            render_token_slice(&authored_rules_tokens(mana, 0).unwrap()),
+            render_token_slice(&authored_rules_tokens(&lex_line(mana, 0).unwrap())),
             "{T}: Add {G}."
         );
         let text = "It's an enchantment in addition to its other types. (It's not a creature.) (Reminder.)";
-        let tokens = authored_rules_tokens(text, 0).unwrap();
+        let tokens = authored_rules_tokens(&lex_line(text, 0).unwrap());
         let rendered = render_token_slice(&tokens);
         assert!(rendered.contains("not a creature"), "{rendered}");
         assert!(!rendered.contains("Reminder"), "{rendered}");
+    }
+
+    #[test]
+    fn named_token_reminder_uses_only_top_level_abilities() {
+        let text = "Create a Harbor Sprite token. (It's a 1/1 blue creature (with flying).)";
+        assert_eq!(strip_parenthetical_segments(text), "Create a 1/1 blue creature token named Harbor Sprite.");
+        let text = "Create a Harbor Sprite token. (It's a 1/1 blue creature with flying.)";
+        assert_eq!(strip_parenthetical_segments(text), "Create a 1/1 blue creature token named Harbor Sprite with flying.");
     }
 
     #[test]

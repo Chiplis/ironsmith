@@ -7,7 +7,7 @@ fn activated_pump_and_keyword_share_the_leading_duration() {
         "Until end of turn, Azula gets +1/+1 for each experience counter you have and gains menace.",
     ] {
         let tokens = crate::lexer::lex_line(text, 0).expect("activated body should lex");
-        let effects = parse_activated_effects_lexed("", &tokens, 0)
+        let effects = parse_activated_effects_lexed(&tokens)
             .expect("activated pump-and-keyword body should parse");
         let debug = format!("{effects:#?}");
         assert!(debug.contains("Pump"), "{debug}");
@@ -25,7 +25,7 @@ fn next_turn_pump_and_activation_restriction_keeps_typed_duration_scope() {
         )
         .expect("activated body should lex");
     let effects =
-        parse_activated_effects_lexed("", &tokens, 0).expect("activated body should parse");
+        parse_activated_effects_lexed(&tokens).expect("activated body should parse");
     let [EffectAst::ControlFlow(control)] = effects.as_slice() else {
         panic!("expected one duration control-flow node, got {effects:#?}");
     };
@@ -69,7 +69,7 @@ fn activated_reveal_conditional_pump_preserves_preceding_action() {
         "Reveal the top card of your library. If it's a land card, this creature gets +1/+0 and gains flying until end of turn.",
         0,
     ).expect("activated body should lex");
-    let effects = parse_activated_effects_lexed("", &tokens, 0)
+    let effects = parse_activated_effects_lexed(&tokens)
         .expect("reveal and conditional modifier should parse");
     let debug = format!("{effects:#?}");
     assert!(

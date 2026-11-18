@@ -3311,6 +3311,7 @@ mod live_action_rollback_tests {
                     prefer_life: false,
                     required_life_pips: vec![],
                     x_allocation: None,
+                    actual_mana_allocation: None,
                 },
             },
         );
@@ -3401,6 +3402,7 @@ mod live_action_rollback_tests {
                     prefer_life: false,
                     required_life_pips: vec![0],
                     x_allocation: None,
+                    actual_mana_allocation: None,
                 },
             },
         );

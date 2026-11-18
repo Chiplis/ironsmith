@@ -231,8 +231,8 @@ impl ManaCost {
 
     pub(super) fn reprice_waterbend_from(&mut self, previous: &Self) {
         let Some(scope) = self.waterbend_payment_scope.as_mut() else { return; };
-        let old_x = previous.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count();
-        let new_x = self.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count();
+        let old_x = previous.x_pip_count();
+        let new_x = super::x_pips(&self.pips).count();
         if new_x == 0 || new_x > old_x { scope.x_pip_binding = None; }
         let amount = WaterbendObligation {
             fixed: self.pips.iter().filter_map(|pip| match pip.as_slice() {
@@ -257,12 +257,7 @@ impl ManaCost {
         let mut pips = Vec::new();
         for pip in &self.pips {
             if pip.as_slice() == [ManaSymbol::X] {
-                let mut remaining = x;
-                while remaining > 0 {
-                    let amount = remaining.min(u8::MAX as u32) as u8;
-                    pips.push(vec![ManaSymbol::Generic(amount)]);
-                    remaining -= u32::from(amount);
-                }
+                pips.extend(super::generic_mana_pips(x));
             } else { pips.push(pip.clone()); }
         }
         pips

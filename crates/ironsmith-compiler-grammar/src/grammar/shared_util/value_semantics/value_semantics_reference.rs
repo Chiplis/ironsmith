@@ -433,15 +433,18 @@ pub fn parse_filter_comparison_tokens(
         Ok((to_comparison(operator, operand), used))
     };
 
-    let parse_numeric_token = |word: &str| -> Option<i32> {
-        if let Ok(value) = word.parse::<i32>() {
-            return Some(value);
-        }
-        crate::grammar::primitives::probe_shape(leaf::parse_number_i32_complete(word))
-    };
+    // A normalized compound can occupy two words. With a trailing bound it is
+    // one operand; a disjunction such as "twenty or one" still takes the list path.
+    if let Some((amount, used @ 2)) = ironsmith_core::parse_cardinal_words(tokens)
+        && let Ok(amount) = i32::try_from(amount)
+        && let Some(operator) = crate::grammar::values::comparison_after_value(&tokens[used..])
+    {
+        crate::word_claims::claim_words(&tokens[..used + 2]);
+        return Ok(Some((to_comparison(operator, Value::Fixed(amount)), used + 2)));
+    }
 
     let first = tokens[0];
-    if let Some(value) = parse_numeric_token(first) {
+    if let Some(value) = crate::util::parse_number_word_i32(first) {
         if tokens.get(1).is_some_and(|word| is_plus_minus_word(word)) {
             let (cmp, used) = parse_operand(tokens, ValueComparisonOperator::Equal)?;
             return Ok(Some((cmp, used)));
@@ -454,7 +457,7 @@ pub fn parse_filter_comparison_tokens(
                 consumed += 1;
                 continue;
             }
-            if let Some(next_value) = parse_numeric_token(token) {
+            if let Some(next_value) = crate::util::parse_number_word_i32(token) {
                 values.push(next_value);
                 consumed += 1;
                 continue;
@@ -499,15 +502,7 @@ pub fn parse_filter_comparison_tokens(
     }
 
     if let Some((value, used)) = parse_operand_value(tokens) {
-        if tokens.get(used).copied() == Some("or")
-            && let Some(next) = tokens.get(used + 1)
-            && is_comparison_tail_word(next)
-        {
-            let operator = if is_less_or_fewer_word(next) {
-                ValueComparisonOperator::LessThanOrEqual
-            } else {
-                ValueComparisonOperator::GreaterThanOrEqual
-            };
+        if let Some(operator) = crate::grammar::values::comparison_after_value(&tokens[used..]) {
             return Ok(Some((to_comparison(operator, value), used + 2)));
         }
         if let Value::Fixed(fixed) = value

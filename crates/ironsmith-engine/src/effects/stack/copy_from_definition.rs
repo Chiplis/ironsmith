@@ -24,7 +24,6 @@ pub(crate) fn definition_copy_source(game:&mut GameState,definition:&crate::card
  Ok((object,entry))
 }
 impl EffectExecutor for CopyFromDefinitionEffect {
- fn clone_box(&self)->Box<dyn EffectExecutor>{Box::new(self.clone())}
  fn execute(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<EffectOutcome,ExecutionError>{
   crate::effects::composition::execute_transaction(game,ctx,||EffectOutcome::count(0),|game,ctx|{
    let player=crate::effects::helpers::resolve_player_filter(game,&self.player,ctx)?;

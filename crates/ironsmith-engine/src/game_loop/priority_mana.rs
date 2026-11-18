@@ -278,52 +278,30 @@ pub(super) fn expand_mana_cost_to_pips(
 ) -> Vec<Vec<crate::mana::ManaSymbol>> {
     use crate::mana::ManaSymbol;
 
-    let mut colored_pips = Vec::new();
-    let mut generic_pips = Vec::new();
-
-    for (pip_idx, pip) in cost.pips().iter().enumerate() {
-        // Check if this is an X pip
-        if pip.iter().any(|s| matches!(s, ManaSymbol::X)) {
-            // Expand X into x_value generic pips
-            for _ in 0..x_value {
-                generic_pips.push(vec![ManaSymbol::Generic(1)]);
-            }
-        } else if pip.iter().all(|s| matches!(s, ManaSymbol::Generic(0))) {
-            // Skip Generic(0) pips - they represent zero cost
+    let mut constrained = Vec::new();
+    let mut generic = Vec::new();
+    for (index, pip) in cost.pips().iter().enumerate() {
+        let units = if pip.contains(&ManaSymbol::X) {
+            x_value
+        } else if let [ManaSymbol::Generic(amount)] = pip.as_slice() {
+            usize::from(*amount)
+        } else if pip.iter().all(|symbol| *symbol == ManaSymbol::Generic(0)) {
             continue;
-        } else if pip.len() == 1 {
-            // Single-symbol pip - check if it's Generic(N) that needs expansion
-            if let ManaSymbol::Generic(n) = pip[0] {
-                if n > 1 {
-                    // Expand Generic(N) into N individual Generic(1) pips
-                    for _ in 0..n {
-                        generic_pips.push(vec![ManaSymbol::Generic(1)]);
-                    }
-                    continue;
-                } else if n == 1 {
-                    generic_pips.push(pip.clone());
-                    continue;
-                }
-            }
-            // Colored pip
-            colored_pips.push(pip.clone());
         } else {
-            // Multi-symbol pip (e.g., hybrid like {B/P} or {W/U})
-            // Check if a choice was made during announcement stage
-            if let Some((_, chosen_symbol)) = hybrid_choices.iter().find(|(idx, _)| *idx == pip_idx)
+            if pip.len() > 1
+                && let Some((_, symbol)) =
+                    hybrid_choices.iter().find(|(chosen, _)| *chosen == index)
             {
-                // Use the chosen symbol instead of the full alternatives
-                colored_pips.push(vec![*chosen_symbol]);
+                constrained.push(vec![*symbol]);
             } else {
-                // No choice made, keep all alternatives (shouldn't happen if announcement worked)
-                colored_pips.push(pip.clone());
+                constrained.push(pip.clone());
             }
-        }
+            continue;
+        };
+        generic.extend((0..units).map(|_| vec![ManaSymbol::Generic(1)]));
     }
-
-    // Return colored pips first (more constrained), then generic pips (more flexible)
-    colored_pips.extend(generic_pips);
-    colored_pips
+    constrained.extend(generic);
+    constrained
 }
 
 /// Expand a ManaCost into display pips for the UI overlay.
@@ -335,43 +313,7 @@ pub fn expand_mana_cost_to_display_pips(
     cost: &crate::mana::ManaCost,
     x_value: usize,
 ) -> Vec<Vec<crate::mana::ManaSymbol>> {
-    use crate::mana::ManaSymbol;
-
-    let mut colored_pips = Vec::new();
-    let mut generic_pips = Vec::new();
-
-    for pip in cost.pips() {
-        if pip.iter().any(|s| matches!(s, ManaSymbol::X)) {
-            for _ in 0..x_value {
-                generic_pips.push(vec![ManaSymbol::Generic(1)]);
-            }
-            continue;
-        }
-
-        if pip.iter().all(|s| matches!(s, ManaSymbol::Generic(0))) {
-            continue;
-        }
-
-        if pip.len() == 1
-            && let ManaSymbol::Generic(n) = pip[0]
-        {
-            if n > 1 {
-                for _ in 0..n {
-                    generic_pips.push(vec![ManaSymbol::Generic(1)]);
-                }
-                continue;
-            }
-            if n == 1 {
-                generic_pips.push(vec![ManaSymbol::Generic(1)]);
-                continue;
-            }
-        }
-
-        colored_pips.push(pip.clone());
-    }
-
-    colored_pips.extend(generic_pips);
-    colored_pips
+    expand_mana_cost_to_pips(cost, x_value, &[])
 }
 
 pub fn mana_ability_is_undo_safe(game: &GameState, source: ObjectId, ability_index: usize) -> bool {
@@ -4228,38 +4170,17 @@ fn propose_spell_cast_with_origin_and_dm(
     let cast_origin_snapshot = game.object(spell_id).map(|obj| {
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
-    let mut proposed_face = match (casting_method.without_exact_permission(), game.object(spell_id)) {
-        (CastingMethod::PlayFrom { .. }, Some(object)) => Some(object.clone()),
-        (CastingMethod::SplitOtherHalfPlayFrom { .. }, Some(object)) => {
-            crate::decision::spell_view_for_split_other_half_cast(game, object)
-        }
-        (CastingMethod::FaceDownPlayFrom { .. }, Some(object)) => {
-            if !crate::decision::spell_can_be_cast_face_down(game, object) {
-                return Err(GameLoopError::InvalidState(
-                    "The card has no face-down casting rule".into(),
-                ));
-            }
-            Some(crate::decision::spell_view_for_face_down_cast(game, object))
-        }
-        _ => None,
-    };
-    if let Some(face) = proposed_face.as_mut()
-        && !matches!(casting_method.without_exact_permission(), CastingMethod::FaceDownPlayFrom { .. })
-        && let Some(method) = selected_method_for_overlay.as_ref()
+    let card = game.object(spell_id).ok_or(crate::effects::ExecutionError::ObjectNotFound(spell_id))?;
+    let mut proposed_face = crate::alternative_cast::play_permission::play_from_face(game, card, casting_method)?;
+    if let Some(face) = &mut proposed_face
+        && !matches!(casting_method, CastingMethod::FaceDownPlayFrom { .. })
+        && let Some(method) = &selected_method_for_overlay
     {
-        if method.is_bestow() {
-            face.apply_bestow_cast_overlay();
-        }
-        if let Some((cost, power_toughness)) = method.casting_characteristics()
-        {
-            face.apply_cast_characteristic_overlay(cost.clone(), power_toughness);
-        }
+        face.to_mut().apply_alternative_cast_characteristics(method);
     }
-    let proposed_query = proposed_face
-        .as_ref()
-        .map(|face| crate::grant_registry::proposed_card_face_query(game, face))
-        .transpose()?;
-    let permission_game = proposed_query.as_ref().unwrap_or(game);
+    let proposed_query = proposed_face.as_deref()
+        .map(|face| crate::grant_registry::query_with_spell_face(game, face)).transpose()?;
+    let permission_game = proposed_query.as_deref().unwrap_or(game);
     let selected_plain_grant = if exact_grant.is_some() {
         exact_grant
     } else if let Some(origin) = price_route
@@ -4706,13 +4627,7 @@ fn propose_spell_cast_with_origin_and_dm(
                 );
                 obj.spell_effect = Some(program.into());
             }
-            if method.is_bestow() {
-                obj.apply_bestow_cast_overlay();
-            }
-            if let Some((cost, power_toughness)) = method.casting_characteristics()
-            {
-                obj.apply_cast_characteristic_overlay(cost, power_toughness);
-            }
+            obj.apply_alternative_cast_characteristics(&method);
 
             if method.casts_transformed() {
                 let other_def = disturb_other_def
@@ -4769,13 +4684,7 @@ fn propose_spell_cast_with_origin_and_dm(
                     && let Some(method) = selected_method_for_overlay.clone()
                 {
                     if has_exact_permission {
-                        if method.is_bestow() {
-                            obj.apply_bestow_cast_overlay();
-                        }
-                        if let Some((cost, power_toughness)) = method.casting_characteristics()
-                        {
-                            obj.apply_cast_characteristic_overlay(cost.clone(), power_toughness);
-                        }
+                        obj.apply_alternative_cast_characteristics(&method);
                     }
                     obj.cast_alternative_method = Some(Box::new(method));
                 }

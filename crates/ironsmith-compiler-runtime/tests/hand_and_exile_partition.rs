@@ -1,6 +1,4 @@
-//! UNVALIDATED implementation-first coverage (cf8 p09): "Put one into your
-//! hand and exile the rest." partitions the revealed cards between hand and
-//! exile.
+//! End-to-end coverage for the revealed-library hand and exile partition.
 use ironsmith::effects::MoveToZoneEffect;
 use ironsmith::zone::Zone;
 
@@ -91,4 +89,64 @@ fn eye_power_count_partition_moves_one_revealed_card_to_hand_and_only_the_rest_t
     assert_eq!(game.exile.len(), 3, "two revealed remainder cards plus unrelated exile");
     assert!(game.exile.contains(&unrelated));
     assert_eq!(game.player(alice).unwrap().library.len(), 0);
+}
+
+#[test]
+fn audit_detects_wrong_partition_destination_and_complement() {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith::effects::TagMatchingObjectsEffect;
+    use ironsmith::Effect;
+    use ironsmith_semantic_compare::{compare_card_semantics_scored, report_embedding_config};
+
+    let rows = common::rows(include_str!("../../../fixtures/hand_and_exile_partition.json.fixture"));
+    let name = "Eye of Yawgmoth";
+    let row = common::row(&rows, name);
+    let oracle = row["oracle_text"].as_str().unwrap();
+    for original in common::definitions(row) {
+        assert_eq!(ironsmith_text::compiled_text_lines(&original), [oracle]);
+        let audit = ironsmith_text::semantic_audit_lines(&original);
+        let (_, _, score, _, mismatch) = compare_card_semantics_scored(name, oracle, &audit, report_embedding_config());
+        assert!(!mismatch && score == 1.0, "{score}: {audit:?}");
+
+        for wrong_destination in [true, false] {
+            let mut mutated = original.clone();
+            let ability = mutated.abilities.iter_mut().find_map(|ability| match &mut ability.kind {
+                AbilityKind::Activated(activated) => Some(activated),
+                _ => None,
+            }).expect("activated ability");
+            let effects = &mut ability.effects.segments[0].default_effects;
+            if wrong_destination {
+                let mut moved = effects[4].downcast_ref::<MoveToZoneEffect>().unwrap().clone();
+                moved.zone = Zone::Graveyard;
+                effects[4] = Effect::new(moved);
+            } else {
+                let mut captured = effects[2].downcast_ref::<TagMatchingObjectsEffect>().unwrap().clone();
+                captured.filter.tagged_constraints.retain(|constraint| {
+                    constraint.relation != ironsmith::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                });
+                effects[2] = Effect::new(captured);
+            }
+            let audit = ironsmith_text::semantic_audit_lines(&mutated);
+            let (_, _, changed_score, _, mismatch) = compare_card_semantics_scored(name, oracle, &audit, report_embedding_config());
+            if wrong_destination {
+                assert!(audit.join(" ").contains("the rest into your graveyard"), "{audit:?}");
+            } else {
+                assert!(!audit.join(" ").contains("exile the rest"), "{audit:?}");
+            }
+            assert!(mismatch && changed_score < score, "{changed_score}: {audit:?}");
+        }
+    }
+}
+
+#[test]
+fn revealed_partition_preserves_library_bottom_order() {
+    for order in ["in a random order", "in any order"] {
+        let oracle = format!("Reveal the top four cards of your library. Put one into your hand and the rest on the bottom of your library {order}.");
+        let row = serde_json::json!({
+            "name": "Partition Order Probe", "text": format!("Type: Sorcery\n{oracle}"),
+        });
+        for definition in common::definitions(&row) {
+            assert_eq!(ironsmith_text::semantic_audit_lines(&definition), [oracle.as_str()]);
+        }
+    }
 }

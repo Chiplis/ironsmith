@@ -1380,7 +1380,6 @@ version = "0.1.0"
 dependencies = [
  "ironsmith-artifact-effect-decoder",
  "ironsmith-compiled-artifact",
- "ironsmith-compiler",
  "ironsmith-compiler-api",
  "ironsmith-compiler-ast",
  "ironsmith-compiler-resolve",
@@ -1411,6 +1410,7 @@ dependencies = [
  "ironsmith-core",
  "ironsmith-engine",
  "ironsmith-runtime-catalog",
+ "ironsmith-semantic-compare",
  "ironsmith-text",
  "serde_json",
 ]
@@ -1488,6 +1488,7 @@ dependencies = [
  "im",
  "ironsmith-compiler-runtime",
  "ironsmith-core",
+ "ironsmith-engine-macros",
  "ironsmith-runtime-catalog",
  "ironsmith-semantic-compare",
  "rand 0.10.1",
@@ -1496,6 +1497,14 @@ dependencies = [
  "serde",
  "serde_json",
  "stacker",
+]
+
+[[package]]
+name = "ironsmith-engine-macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1557,6 +1566,7 @@ dependencies = [
  "ironsmith-engine",
  "serde",
  "serde_json",
+ "syn",
 ]
 
 [[package]]
@@ -1600,6 +1610,7 @@ name = "ironsmith-tools"
 version = "0.1.0"
 dependencies = [
  "csv",
+ "ironsmith-card-source",
  "ironsmith-compiler",
  "ironsmith-core",
  "ironsmith-registry",

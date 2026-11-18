@@ -2407,14 +2407,9 @@ pub fn resolve_player_filter(
         && matches!(spec, PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))
         && let Some(reference) = &ctx.payment_target_reference
     {
-        let checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let mut decisions = crate::decision::SelectFirstDecisionMaker;
-        let mut target_ctx = checkpoint.reborrow(&mut decisions);
-        target_ctx.controller = reference.controller;
-        target_ctx.targets = reference.targets.clone();
-        target_ctx.target_assignments = reference.assignments.clone();
+        let mut target_ctx = reference.execution_context(ctx, &mut decisions);
         target_ctx.announced_targets = None;
-        target_ctx.targets_are_cost_choices = false;
         return resolve_player_filter(game, spec, &target_ctx);
     }
     let player = (|| match spec {
@@ -4415,13 +4410,8 @@ pub fn resolve_objects_from_spec(
     if ctx.targets_are_cost_choices && spec.is_target()
         && let Some(reference) = &ctx.payment_target_reference
     {
-        let checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let mut decisions = crate::decision::SelectFirstDecisionMaker;
-        let mut target_ctx = checkpoint.reborrow(&mut decisions);
-        target_ctx.controller = reference.controller;
-        target_ctx.targets = reference.targets.clone();
-        target_ctx.target_assignments = reference.assignments.clone();
-        target_ctx.targets_are_cost_choices = false;
+        let target_ctx = reference.execution_context(ctx, &mut decisions);
         return resolve_objects_from_spec(game, spec, &target_ctx);
     }
     if let Some(objects)=completed_tap_reference_ids(game,spec,ctx){

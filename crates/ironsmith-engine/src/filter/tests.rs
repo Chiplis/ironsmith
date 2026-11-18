@@ -1277,7 +1277,7 @@ fn filter_description_preserves_relative_and_independently_negated_unions() {
         .with_union_connective(ironsmith_core::ObjectFilterUnionConnective::AndOr);
     relative.set_relative_characteristic_list_surface(true);
     assert_eq!(
-        ObjectFilterExt::description(&relative),
+        relative.description(),
         "a creature you control that's a Fungus and/or Saproling"
     );
 
@@ -1288,7 +1288,7 @@ fn filter_description_preserves_relative_and_independently_negated_unions() {
     controller_qualified.type_or_subtype_union = true;
     controller_qualified.set_subtype_before_card_type_union_surface(true);
     assert_eq!(
-        ObjectFilterExt::description(&controller_qualified),
+        controller_qualified.description(),
         "a Vehicle and/or creature you control"
     );
 
@@ -1307,7 +1307,7 @@ fn filter_description_preserves_relative_and_independently_negated_unions() {
     });
     independently_negated.set_explicit_card_noun(true);
     assert_eq!(
-        ObjectFilterExt::description(&independently_negated),
+        independently_negated.description(),
         "artifact or non-Aura enchantment card in your graveyard"
     );
 }

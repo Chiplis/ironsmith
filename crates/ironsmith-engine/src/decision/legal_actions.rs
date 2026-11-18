@@ -186,7 +186,7 @@ fn append_exact_permission_actions_for_card_selected(
     }
     for origin in origins {
         let (face, _, _) = crate::alternative_cast::play_permission::selected_face(game, player, card, &origin)?;
-        let query = crate::grant_registry::proposed_card_face_query_for_origin(game, &face, &origin)?;
+        let query = crate::grant_registry::query_with_spell_face(game, &face)?;
         let query = query.as_ref();
         let grants = query.effect_store.grant_registry.get_grants_for_card(query, card.id, zone, player);
         if let Some(error) = query.token_resource_failure() { return Err(error); }
@@ -302,6 +302,80 @@ pub(crate) fn opened_exile_play_actions(
     })
 }
 
+fn append_front_play_from_actions(
+    game: &GameState, actions: &mut Vec<LegalAction>, player: PlayerId,
+    card: &crate::object::Object, source_zone: Zone, view: &DerivedGameView<'_>,
+) -> Result<(), crate::effects::ExecutionError> {
+    let projected = card.projected_front_half().as_ref()
+        .map(|front| crate::grant_registry::proposed_card_face_query(game, front)).transpose()?;
+    let permission_game = projected.as_ref().unwrap_or(game);
+    let front_view = projected.as_ref().map(DerivedGameView::new);
+    let front_view = front_view.as_ref().unwrap_or(view);
+    let front = permission_game.object(card.id).ok_or(crate::effects::ExecutionError::ObjectNotFound(card.id))?;
+    let card_id = card.id;
+    // Budget choices were offered above as exact permissions; an unselected
+    // action here would let the engine pick the budget instead of the player.
+    let budget_choice_sources = {
+        let grants = permission_game.effect_store.grant_registry.get_grants_for_card(permission_game, card_id, source_zone, player);
+        grants.iter().filter(|grant| is_limited_budget_choice(permission_game, player, &grants, grant))
+            .map(|grant| grant.source.source_id()).collect::<Vec<_>>()
+    };
+    let play_from_grants = front_view.granted_play_from_for_card(card_id, source_zone, player);
+    for grant in play_from_grants {
+        if grant.constraints.requires_exact_selection() { continue; }
+        if grant.usage_limit.is_some() && budget_choice_sources.contains(&grant.source_id) { continue; }
+        if !grant_usage_limit_allows(
+            game,
+            player,
+            grant.permission_identity.as_ref(),
+            grant.usage_limit,
+        ) {
+            continue;
+        }
+        // PlayFrom (e.g., Yawgmoth's Will): can cast from zone as if from hand.
+        let from_zone = grant.zone;
+        let face_prices = front_view.granted_alternative_casts_for_card(card_id, from_zone, player);
+        let method = CastingMethod::PlayFrom { source: grant.source_id, zone: from_zone, use_alternative: None };
+        if !grant.requires_alternative(&face_prices)
+            && !front.is_land()
+            && let Some(mana_cost) = &front.mana_cost
+            && can_cast_with_cost_with_view_for_casting_method(
+                permission_game, player, front, card_id, Some(mana_cost), None,
+                &AdditionalCastRequirements::default(), &method, front_view,
+            )
+        {
+            actions.push(LegalAction::CastSpell { spell_id: card_id, from_zone, casting_method: method });
+        }
+
+        if source_zone != Zone::Graveyard {
+            // Granted prices use indices in the physical card's published method list.
+            let granted_alternatives = if projected.is_some() {
+                view.granted_alternative_casts_for_card(card_id, from_zone, player)
+            } else {
+                face_prices
+            };
+            let base_alt_idx = card.alternative_casts.len();
+            for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
+                if !grant_usage_limit_allows(
+                    game,
+                    player,
+                    granted_alt.permission_identity.as_ref(),
+                    granted_alt.usage_limit,
+                ) {
+                    continue;
+                }
+                let method = CastingMethod::PlayFrom {
+                    source: granted_alt.source_id, zone: from_zone, use_alternative: Some(base_alt_idx + offset),
+                };
+                if can_cast_spell_with_view(game, player, card, &method, view) {
+                    actions.push(LegalAction::CastSpell { spell_id: card_id, from_zone, casting_method: method });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn append_granted_play_from_actions_for_card(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -345,104 +419,7 @@ fn append_granted_play_from_actions_for_card(
             }
         }
     }
-    // Budget choices were offered above as exact permissions; an unselected
-    // action here would let the engine pick the budget instead of the player.
-    let budget_choice_sources = {
-        let grants = game.effect_store.grant_registry.get_grants_for_card(game, card_id, source_zone, player);
-        grants.iter().filter(|grant| is_limited_budget_choice(game, player, &grants, grant))
-            .map(|grant| grant.source.source_id()).collect::<Vec<_>>()
-    };
-    let play_from_grants = view.granted_play_from_for_card(card_id, source_zone, player);
-    for grant in play_from_grants {
-        if grant.constraints.requires_exact_selection() { continue; }
-        if grant.usage_limit.is_some() && budget_choice_sources.contains(&grant.source_id) { continue; }
-        if !grant_usage_limit_allows(
-            game,
-            player,
-            grant.permission_identity.as_ref(),
-            grant.usage_limit,
-        ) {
-            continue;
-        }
-        // PlayFrom (e.g., Yawgmoth's Will): can cast from zone as if from hand.
-        let from_zone = grant.zone;
-        let granted_alternatives =
-            view.granted_alternative_casts_for_card(card_id, from_zone, player);
-        let has_same_source_granted_alternative = granted_alternatives.iter().any(|granted_alt| {
-            granted_alt.source_id == grant.source_id
-                // Separate static abilities on the same permanent do not
-                // make an ordinary permission require its other free cost.
-                && !matches!((&grant.permission_identity, &granted_alt.permission_identity),
-                    (Some(crate::grant_registry::GrantPermissionIdentity::Static {..}),
-                     Some(crate::grant_registry::GrantPermissionIdentity::Static {..}))
-                    if grant.permission_identity != granted_alt.permission_identity)
-        });
-
-        if !has_same_source_granted_alternative
-            && !card.is_land()
-            && let Some(mana_cost) = &card.mana_cost
-            && can_cast_with_cost_with_view_for_casting_method(
-                game,
-                player,
-                card,
-                card_id,
-                Some(mana_cost),
-                None,
-                &AdditionalCastRequirements::default(),
-                &CastingMethod::PlayFrom {
-                    source: grant.source_id,
-                    zone: from_zone,
-                    use_alternative: None,
-                },
-                view,
-            )
-        {
-            actions.push(LegalAction::CastSpell {
-                spell_id: card_id,
-                from_zone,
-                casting_method: CastingMethod::PlayFrom {
-                    source: grant.source_id,
-                    zone: from_zone,
-                    use_alternative: None,
-                },
-            });
-        }
-
-        if source_zone != Zone::Graveyard {
-            let base_alt_idx = card.alternative_casts.len();
-            for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
-                if !grant_usage_limit_allows(
-                    game,
-                    player,
-                    granted_alt.permission_identity.as_ref(),
-                    granted_alt.usage_limit,
-                ) {
-                    continue;
-                }
-                if can_cast_spell_with_view(
-                    game,
-                    player,
-                    card,
-                    &CastingMethod::PlayFrom {
-                        source: granted_alt.source_id,
-                        zone: from_zone,
-                        use_alternative: Some(base_alt_idx + offset),
-                    },
-                    view,
-                ) {
-                    actions.push(LegalAction::CastSpell {
-                        spell_id: card_id,
-                        from_zone,
-                        casting_method: CastingMethod::PlayFrom {
-                            source: granted_alt.source_id,
-                            zone: from_zone,
-                            use_alternative: Some(base_alt_idx + offset),
-                        },
-                    });
-                }
-            }
-        }
-    }
+    append_front_play_from_actions(game, actions, player, card, source_zone, view)?;
 
     // Morph/disguise is a different proposed spell face. Its public 2/2
     // characteristics, not the printed card's type/power, select permission.
@@ -514,19 +491,12 @@ fn append_granted_play_from_actions_for_card(
         ) {
             continue;
         }
-        let has_same_source_alternative = face_alternatives.iter().any(|alternative| {
-            alternative.source_id == grant.source_id
-                && !matches!((&grant.permission_identity, &alternative.permission_identity),
-                    (Some(crate::grant_registry::GrantPermissionIdentity::Static {..}),
-                     Some(crate::grant_registry::GrantPermissionIdentity::Static {..}))
-                    if grant.permission_identity != alternative.permission_identity)
-        });
         let normal_face_permission = CastingMethod::SplitOtherHalfPlayFrom {
             source: grant.source_id,
             zone: grant.zone,
             use_alternative: None,
         };
-        if !has_same_source_alternative
+        if !grant.requires_alternative(&face_alternatives)
             && can_cast_spell_with_view(
                 &face_game,
                 player,
@@ -2878,21 +2848,6 @@ fn total_cost_branch_is_payable_with_view(
     }
 }
 
-fn every_cost_branch_requires(
-    cost: &crate::cost::TotalCost,
-    predicate: fn(&crate::costs::Cost) -> bool,
-) -> bool {
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(predicate),
-        ironsmith_core::TotalCostKind::OneOf(branches) => {
-            !branches.is_empty()
-                && branches
-                    .iter()
-                    .all(|branch| every_cost_branch_requires(branch, predicate))
-        }
-    }
-}
-
 fn activated_minimum_x_cost_is_payable(
     game: &GameState,
     controller: PlayerId,
@@ -3206,9 +3161,9 @@ fn activation_precheck_with_policy(
     let granted_alternative = crate::decision::ActivationCostAbility::at(game, controller, source, ability_index)
         .is_some_and(|facts| crate::activation_cost_alternatives::has_available_alternative(game, source, &facts, &activated.mana_cost));
     let every_branch_taps =
-        waived_actor.is_none() && !granted_alternative && every_cost_branch_requires(&activated.mana_cost, crate::costs::Cost::requires_tap);
+        waived_actor.is_none() && !granted_alternative && activated.mana_cost.every_branch_requires(crate::costs::Cost::requires_tap);
     let every_branch_untaps =
-        waived_actor.is_none() && !granted_alternative && every_cost_branch_requires(&activated.mana_cost, crate::costs::Cost::requires_untap);
+        waived_actor.is_none() && !granted_alternative && activated.mana_cost.every_branch_requires(crate::costs::Cost::requires_untap);
     if every_branch_taps && !source_facts.can_activate_tap_abilities {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
@@ -3257,7 +3212,7 @@ fn activation_precheck_with_policy(
 
     // CR 702.29f: an effect that stops players from cycling also stops
     // typecycling; both are activated abilities whose cost cycles the card.
-    if every_cost_branch_requires(&activated.mana_cost, cost_is_cycle_keyword_action)
+    if activated.mana_cost.every_branch_requires(cost_is_cycle_keyword_action)
         && players_cant_cycle(game, view)
     {
         if let Some(perf_ctx) = perf_ctx {

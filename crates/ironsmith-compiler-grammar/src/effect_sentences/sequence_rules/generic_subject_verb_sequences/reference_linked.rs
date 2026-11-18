@@ -885,26 +885,51 @@ pub(crate) fn move_looked_partition_group(
             (Zone::Library, false, Some(order))
         }
     };
-    let mut effect = EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(crate::tag::TagRef::of(tag), None),
-        zone,
-        to_top,
-        ReturnControllerAst::Preserve,
-        false,
-        None,
-    )
-    .with_library_order(order, PlayerAst::You);
+    partition_move(tag, zone, to_top, order, Some(library_owner))
+}
 
-    if matches!(zone, Zone::Hand | Zone::Graveyard) {
-        if library_owner == PlayerAst::You {
-            effect = effect.with_destination_player_surface(Some(PlayerAst::You));
-        } else {
-            effect = effect.with_destination_player_reference_surface(Some(
+fn partition_move(
+    tag: TagKey,
+    zone: Zone,
+    to_top: bool,
+    order: Option<LibraryBottomOrderAst>,
+    destination_owner: Option<PlayerAst>,
+) -> EffectAst {
+    let effect = EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(crate::tag::TagRef::of(tag), None),
+        zone, to_top, ReturnControllerAst::Preserve, false, None,
+    ).with_library_order(order, PlayerAst::You);
+    match (zone, destination_owner) {
+        (Zone::Hand | Zone::Graveyard, Some(PlayerAst::You)) =>
+            effect.with_destination_player_surface(Some(PlayerAst::You)),
+        (Zone::Hand | Zone::Graveyard, Some(_)) =>
+            effect.with_destination_player_reference_surface(Some(
                 ironsmith_core::DestinationPlayerReferenceSurface::ThatPlayer,
-            ));
-        }
+            )),
+        _ => effect,
     }
-    effect
+}
+
+/// The grammar keeps chooser and destination wording in their own scopes.
+pub(crate) fn append_library_hand_partition(
+    effects: &mut Vec<EffectAst>,
+    partition: &ironsmith_core::effect::LibraryHandPartition<LibraryBottomOrderAst>,
+    player: PlayerAst,
+    destination_owner: Option<PlayerAst>,
+) {
+    effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+        filter: partition.candidates(),
+        count: ChoiceCount::exactly(1),
+        player,
+        tag: crate::tag::TagRef::of(partition.hand.clone()),
+        zone: Zone::Library,
+    }));
+    effects.push(EffectAst::subject_verb_tag_matching_objects(
+        partition.complement(), vec![Zone::Library], crate::tag::TagRef::of(partition.rest.clone()),
+    ));
+    for (tag, zone, order) in partition.moves() {
+        effects.push(partition_move(tag.clone(), zone, false, order, destination_owner));
+    }
 }
 
 fn compose_singleton_hand_partition(
@@ -912,40 +937,18 @@ fn compose_singleton_hand_partition(
     partition_tokens: &[OwnedLexToken],
     player: PlayerAst,
     count: Value,
-    remainder_destination: effect_grammar::LookedPartitionDestination,
+    disposition: effect_grammar::LookedCardDisposition,
 ) -> Vec<EffectAst> {
-    let looked_tag = helper_tag_for_tokens(look_tokens, "looked");
-    let hand_tag = helper_tag_for_tokens(partition_tokens, "hand");
-    let remainder_tag = helper_tag_for_tokens(partition_tokens, "remainder");
-    let hand_filter = tagged_library_candidate_filter(&looked_tag, &[]);
-    let remainder_filter =
-        tagged_library_candidate_filter(&looked_tag, std::slice::from_ref(&hand_tag));
-
-    vec![
-        EffectAst::subject_verb_look_at_top_cards(
-            player,
-            count,
-            crate::tag::TagRef::of(looked_tag),
-        ),
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter: hand_filter,
-            count: ChoiceCount::exactly(1),
-            player,
-            tag: crate::tag::TagRef::of(hand_tag.clone()),
-            zone: Zone::Library,
-        }),
-        EffectAst::subject_verb_tag_matching_objects(
-            remainder_filter,
-            vec![Zone::Library],
-            crate::tag::TagRef::of(remainder_tag.clone()),
-        ),
-        move_looked_partition_group(
-            hand_tag.key.clone(),
-            effect_grammar::LookedPartitionDestination::Hand,
-            player,
-        ),
-        move_looked_partition_group(remainder_tag.key.clone(), remainder_destination, player),
-    ]
+    let viewed = helper_tag_for_tokens(look_tokens, "looked");
+    let partition = ironsmith_core::effect::LibraryHandPartition {
+        viewed: viewed.key.clone(),
+        hand: helper_tag_for_tokens(partition_tokens, "hand").into(),
+        rest: helper_tag_for_tokens(partition_tokens, "remainder").into(),
+        disposition,
+    };
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(player, count, viewed)];
+    append_library_hand_partition(&mut effects, &partition, player, Some(player));
+    effects
 }
 
 pub fn parse_inline_look_at_top_then_singleton_hand_partition(
@@ -958,24 +961,13 @@ pub fn parse_inline_look_at_top_then_singleton_hand_partition(
     if reveal_top {
         return None;
     }
-    let remainder_destination =
-        match effect_grammar::parse_looked_card_disposition(&partition_tokens)? {
-            effect_grammar::LookedCardDisposition::HandAndLibraryBottom(order) => {
-                effect_grammar::LookedPartitionDestination::LibraryBottom(order)
-            }
-            effect_grammar::LookedCardDisposition::HandAndGraveyard => {
-                effect_grammar::LookedPartitionDestination::Graveyard
-            }
-            effect_grammar::LookedCardDisposition::HandAndExile => {
-                effect_grammar::LookedPartitionDestination::Exile
-            }
-        };
+    let disposition = effect_grammar::parse_looked_card_disposition(&partition_tokens)?;
     Some(compose_singleton_hand_partition(
         &look_tokens,
         &partition_tokens,
         player,
         count,
-        remainder_destination,
+        disposition,
     ))
 }
 
@@ -1022,44 +1014,6 @@ pub fn parse_inline_look_at_top_then_counted_partition(
         move_looked_partition_group(selected_tag.key.clone(), shape.selected_destination, player),
         move_looked_partition_group(remainder_tag.key.clone(), shape.remainder_destination, player),
     ])
-}
-
-fn compose_distinct_three_way_looked_disposition(
-    first_tokens: &[OwnedLexToken],
-    second_tokens: &[OwnedLexToken],
-    player: PlayerAst,
-    count: Value,
-    destinations: [effect_grammar::LookedCardDestinationShape; 3],
-) -> Vec<EffectAst> {
-    let candidate_tag = helper_tag_for_tokens(first_tokens, "looked_candidates");
-    let chosen_tags = [
-        helper_tag_for_tokens(second_tokens, "looked_choice_0"),
-        helper_tag_for_tokens(second_tokens, "looked_choice_1"),
-        helper_tag_for_tokens(second_tokens, "looked_choice_2"),
-    ];
-    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
-        player,
-        count,
-        crate::tag::TagRef::of(candidate_tag.clone()),
-    )];
-    for (index, tag) in chosen_tags.iter().enumerate() {
-        effects.push(EffectAst::ObjectChoices(
-            ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-                filter: tagged_library_candidate_filter(&candidate_tag, &chosen_tags[..index]),
-                count: ChoiceCount::exactly(1),
-                player,
-                tag: crate::tag::TagRef::of(tag.clone()),
-                zone: Zone::Library,
-            },
-        ));
-    }
-    for (tag, destination) in chosen_tags.into_iter().zip(destinations) {
-        effects.push(move_tagged_to_looked_destination(
-            tag.key.clone(),
-            destination,
-        ));
-    }
-    effects
 }
 
 pub fn parse_directional_adjacent_player_control(
@@ -1591,51 +1545,6 @@ pub fn parse_exile_face_down_pile_then_restack(
     ]))
 }
 
-pub fn parse_look_at_top_then_put_one_hand_other_bottom(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some((player, count, reveal_top)) =
-        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    if reveal_top {
-        return Ok(None);
-    }
-
-    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    if let Some(shape) =
-        effect_grammar::parse_three_way_looked_card_disposition_shape(&second_tokens)
-    {
-        if count != Value::Fixed(3)
-            || shape != effect_grammar::ThreeWayLookedCardDispositionShape::HandTopBottom
-        {
-            return Ok(None);
-        }
-        return Ok(Some(compose_distinct_three_way_looked_disposition(
-            sentences[sentence_idx].lowered(),
-            &second_tokens,
-            player,
-            count,
-            shape.destinations(),
-        )));
-    }
-    let Some(effect_grammar::LookedCardDisposition::HandAndLibraryBottom(bottom_order)) =
-        effect_grammar::parse_looked_card_disposition(&second_tokens)
-    else {
-        return Ok(None);
-    };
-
-    Ok(Some(compose_singleton_hand_partition(
-        sentences[sentence_idx].lowered(),
-        &second_tokens,
-        player,
-        count,
-        effect_grammar::LookedPartitionDestination::LibraryBottom(bottom_order),
-    )))
-}
-
 /// Preserves a direct counted selection and its exact looked-card complement:
 ///
 /// "Look at the top N cards ... . Put M of those cards into your hand and the
@@ -1843,51 +1752,6 @@ pub fn parse_look_at_top_then_partition_selected_and_remainder(
     } else {
         Ok(Some(effects))
     }
-}
-
-pub fn parse_look_at_top_then_put_one_hand_other_graveyard(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some((player, count, reveal_top)) =
-        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    if reveal_top {
-        return Ok(None);
-    }
-
-    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    if let Some(shape) =
-        effect_grammar::parse_three_way_looked_card_disposition_shape(&second_tokens)
-    {
-        if count != Value::Fixed(3)
-            || shape != effect_grammar::ThreeWayLookedCardDispositionShape::HandGraveyardBottom
-        {
-            return Ok(None);
-        }
-        return Ok(Some(compose_distinct_three_way_looked_disposition(
-            sentences[sentence_idx].lowered(),
-            &second_tokens,
-            player,
-            count,
-            shape.destinations(),
-        )));
-    }
-    if effect_grammar::parse_looked_card_disposition(&second_tokens)
-        != Some(effect_grammar::LookedCardDisposition::HandAndGraveyard)
-    {
-        return Ok(None);
-    }
-
-    Ok(Some(compose_singleton_hand_partition(
-        sentences[sentence_idx].lowered(),
-        &second_tokens,
-        player,
-        count,
-        effect_grammar::LookedPartitionDestination::Graveyard,
-    )))
 }
 
 pub fn parse_choose_same_controller_targets_then_sacrifice_one(

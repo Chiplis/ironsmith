@@ -429,71 +429,23 @@ fn read_token_lifecycle_sentence(
 fn read_choose_return_draw_triple(
     input: &RemainingDocument<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let tokens = input.tokens;
-    let sentence_parts = split_lexed_sentences(tokens);
-    if let [choose, return_them, draw] = sentence_parts.as_slice()
-        && crate::word_primitives::parse_sequence_prefix(
-            &crate::lexer::parser_token_word_refs(choose),
-            &[
-                "choose",
-                "up",
-                "to",
-                "three",
-                "target",
-                "permanent",
-                "cards",
-                "in",
-                "graveyards",
-                "that",
-                "were",
-                "put",
-                "there",
-                "from",
-                "the",
-                "battlefield",
-                "this",
-                "turn",
-            ],
+    let Some([choose, return_them, draw]) =
+        crate::grammar::statement_shapes::historical_target_return_sentences(input.tokens)
+    else {
+        return Ok(None);
+    };
+    let target = exact_historical_graveyard_target_declaration(choose).ok_or_else(|| {
+        CardTextError::ParseError(
+            "historical graveyard target declaration lost its typed envelope".to_string(),
         )
-        && crate::word_primitives::parse_sequence_prefix(
-            &crate::lexer::parser_token_word_refs(return_them),
-            &["return", "them", "to", "the", "battlefield"],
-        )
-        && crate::word_primitives::parse_sequence_prefix(
-            &crate::lexer::parser_token_word_refs(draw),
-            &[
-                "you",
-                "draw",
-                "a",
-                "card",
-                "for",
-                "each",
-                "opponent",
-                "who",
-                "controls",
-                "one",
-                "or",
-                "more",
-                "of",
-                "those",
-                "permanents",
-            ],
-        )
-    {
-        let Some(target) = exact_historical_graveyard_target_declaration(choose) else {
-            return Err(CardTextError::ParseError(
-                "historical graveyard target declaration lost its typed envelope".to_string(),
-            ))
-            .map(Some);
-        };
-        let mut effects = vec![target];
-        for sentence in [return_them, draw] {
-            effects.extend(parse_effect_sentences_lexed_inner(sentence)?);
-        }
-        return Ok(Some(effects));
+    })?;
+    let mut effects = vec![target];
+    for sentence in [return_them, draw] {
+        effects.extend(parse_effect_sentences_lexed_inner(sentence)?);
     }
-    Ok(None)
+    Ok(Some(effects))
 }
+
 fn read_historical_graveyard_target_declaration(
     input: &RemainingDocument<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -824,43 +776,13 @@ fn comma_and_word_boundary(tokens: &[OwnedLexToken], word: &str) -> Option<usize
 
 fn exact_historical_graveyard_target_declaration(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let words = crate::lexer::parser_token_word_refs(tokens);
-    let exact_shape = words.len() == 18
-        && crate::word_primitives::parse_sequence_prefix(&words, &["choose", "up", "to"])
-        && matches!(words.get(3), Some(&"three" | &"3"))
-        && words.get(4..).is_some_and(|tail| {
-            crate::word_primitives::parse_sequence_complete(
-                tail,
-                &[
-                    "target",
-                    "permanent",
-                    "cards",
-                    "in",
-                    "graveyards",
-                    "that",
-                    "were",
-                    "put",
-                    "there",
-                    "from",
-                    "the",
-                    "battlefield",
-                    "this",
-                    "turn",
-                ],
-            )
-        });
-    if !exact_shape {
+    let target_words = words.strip_prefix(&["choose"])?;
+    // The declaration reader owns the authored relative clause with its article.
+    // The target parser also accepts the normalized form without the article.
+    if !target_words.ends_with(&["the", "battlefield", "this", "turn"]) {
         return None;
     }
-    let mut filter = ObjectFilter::permanent_card().in_zone(Zone::Graveyard);
-    filter.entered_graveyard_this_turn = true;
-    filter.entered_graveyard_from_battlefield_this_turn = true;
-    filter.set_graveyard_entry_history_surface(Some(
-        ironsmith_core::GraveyardEntryHistorySurface::PutThereFromBattlefieldThisTurn,
-    ));
-    Some(EffectAst::subject_verb_explicit_target_only(
-        TargetAst::WithCount(
-            Box::new(TargetAst::Object(filter, span_from_tokens(tokens), None)),
-            crate::effect::ChoiceCount::up_to(3),
-        ),
-    ))
+    let target = crate::util::historical_graveyard_target(target_words, tokens)?;
+    crate::word_claims::claim_words(&words[..1]);
+    Some(EffectAst::subject_verb_explicit_target_only(target))
 }

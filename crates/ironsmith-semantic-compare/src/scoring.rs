@@ -1,5 +1,8 @@
 use super::*;
 
+mod cluster;
+pub use cluster::compare_cluster_card_semantics_scored;
+
 /// A suspected and↔or flip between an oracle clause and its best-matching
 /// compiled clause: the same content-word neighbors joined by a different
 /// conjunction.  "and"/"or" are comparison stopwords, so the similarity score
@@ -437,37 +440,52 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     dot.clamp(-1.0, 1.0)
 }
 
-fn directional_embedding_coverage(from: &[Vec<f32>], to: &[Vec<f32>]) -> f32 {
-    if from.is_empty() {
-        return if to.is_empty() { 1.0 } else { 0.0 };
-    }
-
-    let mut total = 0.0f32;
-    for source in from {
-        let mut best = -1.0f32;
-        for target in to {
-            let score = cosine_similarity(source, target);
-            if score > best {
-                best = score;
-            }
-        }
-        total += best.max(0.0);
-    }
-    total / from.len() as f32
+#[derive(Clone, Copy)]
+struct BestClause {
+    index: usize,
+    overlap: f32,
 }
 
-fn jaccard_similarity(a: &[String], b: &[String]) -> f32 {
-    if a.is_empty() && b.is_empty() {
-        return 1.0;
+impl BestClause {
+    fn record(best: &mut Option<Self>, index: usize, overlap: f32) {
+        // A tie keeps the first counterpart in source order.
+        if best.is_none_or(|previous| overlap > previous.overlap) {
+            *best = Some(Self { index, overlap });
+        }
     }
-    if a.is_empty() || b.is_empty() {
-        return 0.0;
+}
+
+struct ClauseMatches {
+    oracle: Vec<Option<BestClause>>,
+    compiled: Vec<Option<BestClause>>,
+}
+
+impl ClauseMatches {
+    fn new<T>(oracle: &[T], compiled: &[T], similarity: impl Fn(&T, &T) -> f32) -> Self {
+        let mut matches = Self {
+            oracle: vec![None; oracle.len()],
+            compiled: vec![None; compiled.len()],
+        };
+        for (i, left) in oracle.iter().enumerate() {
+            for (j, right) in compiled.iter().enumerate() {
+                let overlap = similarity(left, right);
+                BestClause::record(&mut matches.oracle[i], j, overlap);
+                BestClause::record(&mut matches.compiled[j], i, overlap);
+            }
+        }
+        matches
     }
-    let a_set: std::collections::HashSet<&str> = a.iter().map(String::as_str).collect();
-    let b_set: std::collections::HashSet<&str> = b.iter().map(String::as_str).collect();
-    let inter = a_set.intersection(&b_set).count() as f32;
-    let union = a_set.union(&b_set).count() as f32;
-    if union == 0.0 { 0.0 } else { inter / union }
+
+    fn coverage(&self) -> (f32, f32) {
+        fn mean(matches: &[Option<BestClause>]) -> f32 {
+            let total: f32 = matches.iter().flatten().map(|m| m.overlap.max(0.0)).sum();
+            total / matches.len().max(1) as f32
+        }
+        if self.oracle.is_empty() && self.compiled.is_empty() {
+            return (1.0, 1.0);
+        }
+        (mean(&self.oracle), mean(&self.compiled))
+    }
 }
 
 fn tokens_match_subsetish(tokens: &[String], reference: &[String]) -> bool {
@@ -623,91 +641,10 @@ fn unless_pay_payer_role(clause: &str) -> Option<UnlessPayPayerRole> {
     None
 }
 
-fn count_unless_pay_role_mismatches(
-    oracle_clauses: &[String],
-    oracle_tokens: &[Vec<String>],
-    compiled_clauses: &[String],
-    compiled_tokens: &[Vec<String>],
-) -> usize {
-    let mut mismatches = 0usize;
-
-    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
-        let Some(oracle_role) = unless_pay_payer_role(oracle_clause) else {
-            continue;
-        };
-        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
-            continue;
-        };
-
-        let mut best_match: Option<(usize, f32)> = None;
-        for (compiled_idx, compiled_token_set) in compiled_tokens.iter().enumerate() {
-            let score = jaccard_similarity(oracle_token_set, compiled_token_set);
-            if best_match.is_none_or(|(_, best)| score > best) {
-                best_match = Some((compiled_idx, score));
-            }
-        }
-
-        let Some((compiled_idx, overlap)) = best_match else {
-            continue;
-        };
-
-        // Require moderate lexical overlap so we only compare semantically related clauses.
-        if overlap < 0.55 {
-            continue;
-        }
-
-        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
-            continue;
-        };
-        if let Some(compiled_role) = unless_pay_payer_role(compiled_clause)
-            && compiled_role != oracle_role
-        {
-            mismatches += 1;
-        }
-    }
-
-    mismatches
-}
-
 fn has_type_among_count_semantics(clause: &str) -> bool {
     let lower = clause.to_ascii_lowercase();
     lower.contains("for each ")
         && (lower.contains(" type among ") || lower.contains(" types among "))
-}
-
-fn count_type_among_count_mismatches(
-    oracle_clauses: &[String],
-    oracle_tokens: &[Vec<String>],
-    compiled_clauses: &[String],
-    compiled_tokens: &[Vec<String>],
-) -> usize {
-    let mut mismatches = 0usize;
-
-    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
-        if !has_type_among_count_semantics(oracle_clause) {
-            continue;
-        }
-        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
-            continue;
-        };
-
-        let Some((compiled_idx, overlap)) = best_clause_match(oracle_token_set, compiled_tokens)
-        else {
-            continue;
-        };
-        if overlap < 0.55 {
-            continue;
-        }
-
-        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
-            continue;
-        };
-        if !has_type_among_count_semantics(compiled_clause) {
-            mismatches += 1;
-        }
-    }
-
-    mismatches
 }
 
 fn has_blocked_or_blocking_creature_qualifier(clause: &str) -> bool {
@@ -718,100 +655,12 @@ fn has_blocked_or_blocking_creature_qualifier(clause: &str) -> bool {
         || lower.contains("blocking creatures")
 }
 
-fn count_blocked_or_blocking_qualifier_mismatches(
-    oracle_clauses: &[String],
-    oracle_tokens: &[Vec<String>],
-    compiled_tokens: &[Vec<String>],
-) -> usize {
-    let mut mismatches = 0usize;
-
-    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
-        if !has_blocked_or_blocking_creature_qualifier(oracle_clause) {
-            continue;
-        }
-        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
-            continue;
-        };
-
-        let Some((compiled_idx, overlap)) = best_clause_match(oracle_token_set, compiled_tokens)
-        else {
-            continue;
-        };
-        if overlap < 0.55 {
-            continue;
-        }
-
-        let Some(compiled_token_set) = compiled_tokens.get(compiled_idx) else {
-            continue;
-        };
-        if !compiled_token_set.iter().any(|token| token == "block") {
-            mismatches += 1;
-        }
-    }
-
-    mismatches
-}
-
-fn best_clause_match(
-    oracle_token_set: &[String],
-    compiled_tokens: &[Vec<String>],
-) -> Option<(usize, f32)> {
-    let mut best_match: Option<(usize, f32)> = None;
-    for (compiled_idx, compiled_token_set) in compiled_tokens.iter().enumerate() {
-        let score = jaccard_similarity(oracle_token_set, compiled_token_set);
-        if best_match.is_none_or(|(_, best)| score > best) {
-            best_match = Some((compiled_idx, score));
-        }
-    }
-    best_match
-}
-
 fn has_reflexive_when_you_do(clause: &str) -> bool {
     clause.to_ascii_lowercase().contains("when you do")
 }
 
 fn has_conditional_if_you_do(clause: &str) -> bool {
     clause.to_ascii_lowercase().contains("if you do")
-}
-
-fn count_reflexive_when_you_do_mismatches(
-    oracle_clauses: &[String],
-    oracle_tokens: &[Vec<String>],
-    compiled_clauses: &[String],
-    compiled_tokens: &[Vec<String>],
-) -> usize {
-    let mut mismatches = 0usize;
-
-    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
-        let oracle_when = has_reflexive_when_you_do(oracle_clause);
-        let oracle_if = has_conditional_if_you_do(oracle_clause);
-        if !oracle_when && !oracle_if {
-            continue;
-        }
-
-        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
-            continue;
-        };
-        let Some((compiled_idx, overlap)) = best_clause_match(oracle_token_set, compiled_tokens)
-        else {
-            continue;
-        };
-        if overlap < 0.55 {
-            continue;
-        }
-
-        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
-            continue;
-        };
-        let compiled_when = has_reflexive_when_you_do(compiled_clause);
-        let compiled_if = has_conditional_if_you_do(compiled_clause);
-
-        if (oracle_when && compiled_if) || (oracle_if && compiled_when) {
-            mismatches += 1;
-        }
-    }
-
-    mismatches
 }
 
 fn has_first_noncreature_each_turn(clause: &str) -> bool {
@@ -827,47 +676,6 @@ fn has_noncreature_as_first_spell_this_turn(clause: &str) -> bool {
         || lower.contains("noncreature spell as its first spell this turn")
 }
 
-fn count_first_noncreature_scope_mismatches(
-    oracle_clauses: &[String],
-    oracle_tokens: &[Vec<String>],
-    compiled_clauses: &[String],
-    compiled_tokens: &[Vec<String>],
-) -> usize {
-    let mut mismatches = 0usize;
-
-    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
-        let oracle_each_turn = has_first_noncreature_each_turn(oracle_clause);
-        let oracle_first_spell = has_noncreature_as_first_spell_this_turn(oracle_clause);
-        if !oracle_each_turn && !oracle_first_spell {
-            continue;
-        }
-
-        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
-            continue;
-        };
-        let Some((compiled_idx, overlap)) = best_clause_match(oracle_token_set, compiled_tokens)
-        else {
-            continue;
-        };
-        if overlap < 0.55 {
-            continue;
-        }
-
-        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
-            continue;
-        };
-        let compiled_each_turn = has_first_noncreature_each_turn(compiled_clause);
-        let compiled_first_spell = has_noncreature_as_first_spell_this_turn(compiled_clause);
-
-        if (oracle_each_turn && compiled_first_spell) || (oracle_first_spell && compiled_each_turn)
-        {
-            mismatches += 1;
-        }
-    }
-
-    mismatches
-}
-
 fn has_target_instant_and_sorcery(clause: &str) -> bool {
     clause
         .to_ascii_lowercase()
@@ -880,46 +688,6 @@ fn has_target_instant_or_sorcery(clause: &str) -> bool {
         .contains("target instant or sorcery spell")
 }
 
-fn count_instant_and_or_target_mismatches(
-    oracle_clauses: &[String],
-    oracle_tokens: &[Vec<String>],
-    compiled_clauses: &[String],
-    compiled_tokens: &[Vec<String>],
-) -> usize {
-    let mut mismatches = 0usize;
-
-    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
-        let oracle_and = has_target_instant_and_sorcery(oracle_clause);
-        let oracle_or = has_target_instant_or_sorcery(oracle_clause);
-        if !oracle_and && !oracle_or {
-            continue;
-        }
-
-        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
-            continue;
-        };
-        let Some((compiled_idx, overlap)) = best_clause_match(oracle_token_set, compiled_tokens)
-        else {
-            continue;
-        };
-        if overlap < 0.55 {
-            continue;
-        }
-
-        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
-            continue;
-        };
-        let compiled_and = has_target_instant_and_sorcery(compiled_clause);
-        let compiled_or = has_target_instant_or_sorcery(compiled_clause);
-
-        if (oracle_and && compiled_or) || (oracle_or && compiled_and) {
-            mismatches += 1;
-        }
-    }
-
-    mismatches
-}
-
 fn has_opponent_controls_qualifier(clause: &str) -> bool {
     clause.to_ascii_lowercase().contains("an opponent controls")
 }
@@ -927,48 +695,6 @@ fn has_opponent_controls_qualifier(clause: &str) -> bool {
 fn has_you_dont_control_qualifier(clause: &str) -> bool {
     let lower = clause.to_ascii_lowercase();
     lower.contains("you don't control") || lower.contains("you dont control")
-}
-
-fn count_opponent_control_scope_mismatches(
-    oracle_clauses: &[String],
-    oracle_tokens: &[Vec<String>],
-    compiled_clauses: &[String],
-    compiled_tokens: &[Vec<String>],
-) -> usize {
-    let mut mismatches = 0usize;
-
-    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
-        let oracle_opponent_controls = has_opponent_controls_qualifier(oracle_clause);
-        let oracle_you_dont_control = has_you_dont_control_qualifier(oracle_clause);
-        if !oracle_opponent_controls && !oracle_you_dont_control {
-            continue;
-        }
-
-        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
-            continue;
-        };
-        let Some((compiled_idx, overlap)) = best_clause_match(oracle_token_set, compiled_tokens)
-        else {
-            continue;
-        };
-        if overlap < 0.55 {
-            continue;
-        }
-
-        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
-            continue;
-        };
-        let compiled_opponent_controls = has_opponent_controls_qualifier(compiled_clause);
-        let compiled_you_dont_control = has_you_dont_control_qualifier(compiled_clause);
-
-        if (oracle_opponent_controls && compiled_you_dont_control)
-            || (oracle_you_dont_control && compiled_opponent_controls)
-        {
-            mismatches += 1;
-        }
-    }
-
-    mismatches
 }
 
 fn has_you_control_object_scope(clause: &str) -> bool {
@@ -1042,89 +768,114 @@ fn has_bare_mass_creature_pump(clause: &str) -> bool {
     })
 }
 
-fn count_bare_mass_pump_scope_mismatches(
-    oracle_clauses: &[String],
-    oracle_tokens: &[Vec<String>],
-    compiled_clauses: &[String],
-    compiled_tokens: &[Vec<String>],
-) -> usize {
-    let mut mismatches = 0usize;
-
-    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
-        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
-            continue;
-        };
-        let Some((compiled_idx, overlap)) = best_clause_match(oracle_token_set, compiled_tokens)
-        else {
-            continue;
-        };
-        if overlap < 0.55 {
-            continue;
-        }
-
-        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
-            continue;
-        };
-        if has_bare_mass_creature_pump(oracle_clause)
-            != has_bare_mass_creature_pump(compiled_clause)
-        {
-            mismatches += 1;
-        }
-    }
-
-    mismatches
+struct ClauseMatch<'a> {
+    oracle: &'a str,
+    compiled: &'a str,
+    compiled_tokens: &'a [String],
 }
 
-fn count_you_control_scope_mismatches(
-    oracle_clauses: &[String],
-    oracle_tokens: &[Vec<String>],
-    compiled_clauses: &[String],
-    compiled_tokens: &[Vec<String>],
-) -> usize {
-    let mut mismatches = 0usize;
-
-    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
-        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
-            continue;
-        };
-        let Some((compiled_idx, overlap)) = best_clause_match(oracle_token_set, compiled_tokens)
-        else {
-            continue;
-        };
-        if overlap < 0.55 {
-            continue;
-        }
-
-        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
-            continue;
-        };
-        if has_you_control_object_scope(oracle_clause)
-            != has_you_control_object_scope(compiled_clause)
-        {
-            mismatches += 1;
-        }
+impl ClauseMatch<'_> {
+    fn switches(&self, first: fn(&str) -> bool, second: fn(&str) -> bool) -> bool {
+        (first(self.oracle) && second(self.compiled))
+            || (second(self.oracle) && first(self.compiled))
     }
-
-    mismatches
 }
 
-fn directional_coverage(from: &[Vec<String>], to: &[Vec<String>]) -> f32 {
-    if from.is_empty() {
-        return if to.is_empty() { 1.0 } else { 0.0 };
+type ClauseMismatchRule = (f32, fn(&ClauseMatch<'_>) -> bool);
+
+// Apply penalties in this order so that combining rules preserves score rounding.
+const CLAUSE_MISMATCH_RULES: &[ClauseMismatchRule] = &[
+    (0.20, |pair| {
+        matches!((unless_pay_payer_role(pair.oracle), unless_pay_payer_role(pair.compiled)),
+        (Some(oracle), Some(compiled)) if oracle != compiled)
+    }),
+    (0.20, |pair| {
+        has_type_among_count_semantics(pair.oracle)
+            && !has_type_among_count_semantics(pair.compiled)
+    }),
+    (0.20, |pair| {
+        has_blocked_or_blocking_creature_qualifier(pair.oracle)
+            && !pair.compiled_tokens.iter().any(|token| token == "block")
+    }),
+    (0.20, |pair| {
+        pair.switches(has_reflexive_when_you_do, has_conditional_if_you_do)
+    }),
+    (0.20, |pair| {
+        pair.switches(
+            has_first_noncreature_each_turn,
+            has_noncreature_as_first_spell_this_turn,
+        )
+    }),
+    (0.20, |pair| {
+        pair.switches(
+            has_target_instant_and_sorcery,
+            has_target_instant_or_sorcery,
+        )
+    }),
+    (0.20, |pair| {
+        pair.switches(
+            has_opponent_controls_qualifier,
+            has_you_dont_control_qualifier,
+        )
+    }),
+    (0.20, |pair| {
+        has_you_control_object_scope(pair.oracle) != has_you_control_object_scope(pair.compiled)
+    }),
+    // A bare mass pump still flags a mismatch, even though the wording is nearly identical.
+    (0.02, |pair| {
+        has_bare_mass_creature_pump(pair.oracle) != has_bare_mass_creature_pump(pair.compiled)
+    }),
+];
+
+impl ClauseComparisonPrep {
+    fn lexical_matches(&self) -> ClauseMatches {
+        use std::collections::HashSet;
+
+        fn token_sets(clauses: &[Vec<String>]) -> Vec<HashSet<&str>> {
+            clauses
+                .iter()
+                .map(|clause| clause.iter().map(String::as_str).collect())
+                .collect()
+        }
+        ClauseMatches::new(
+            &token_sets(&self.oracle_tokens),
+            &token_sets(&self.compiled_tokens),
+            |a, b| {
+                let shared = a.intersection(b).count();
+                let union = a.len() + b.len() - shared;
+                if union == 0 {
+                    1.0
+                } else {
+                    shared as f32 / union as f32
+                }
+            },
+        )
     }
 
-    let mut total = 0.0f32;
-    for source in from {
-        let mut best = 0.0f32;
-        for target in to {
-            let score = jaccard_similarity(source, target);
-            if score > best {
-                best = score;
+    fn clause_penalties(&self, matches: &ClauseMatches) -> impl Iterator<Item = f32> {
+        let mut counts = [0usize; CLAUSE_MISMATCH_RULES.len()];
+        for (oracle, best) in self.oracle_clauses.iter().zip(&matches.oracle) {
+            let Some(BestClause { index, overlap }) = *best else {
+                continue;
+            };
+            if overlap < 0.55 {
+                continue;
+            }
+            let pair = ClauseMatch {
+                oracle,
+                compiled: &self.compiled_clauses[index],
+                compiled_tokens: &self.compiled_tokens[index],
+            };
+            for (count, (_, rule)) in counts.iter_mut().zip(CLAUSE_MISMATCH_RULES) {
+                *count += usize::from(rule(&pair));
             }
         }
-        total += best;
+        counts
+            .into_iter()
+            .zip(CLAUSE_MISMATCH_RULES)
+            .filter(|(count, _)| *count != 0)
+            .map(|(count, (weight, _))| count as f32 * weight)
     }
-    total / from.len() as f32
 }
 
 fn is_compiled_heading_prefix(prefix: &str) -> bool {
@@ -1184,7 +935,7 @@ fn split_mana_add_line(line: &str) -> Option<(String, String)> {
 
 fn merge_simple_mana_add_compiled_lines(
     lines: &[String],
-    oracle_clauses: &[String],
+    allow_choice: impl Fn(&str) -> bool,
 ) -> Vec<String> {
     let mut merged = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
@@ -1210,12 +961,7 @@ fn merge_simple_mana_add_compiled_lines(
             }
             if adds.len() >= 2 {
                 let combined = format!("{base_cost}: Add {}", adds.join(" or "));
-                let combined_tokens = compiled_comparison_tokens(&combined);
-                let oracle_has_combined_choice = oracle_clauses.iter().any(|clause| {
-                    split_mana_add_line(clause).is_some()
-                        && comparison_tokens(clause) == combined_tokens
-                });
-                if oracle_has_combined_choice {
+                if allow_choice(&combined) {
                     merged.push(combined);
                     idx += consumed;
                     continue;
@@ -1239,22 +985,17 @@ fn is_simple_mana_add_clause(line: &str) -> bool {
                 .is_some_and(|(_, rest)| rest.trim_start().starts_with("{t}: add ")))
 }
 
+fn merge_self_block_restrictions(left: &str, right: &str) -> Option<String> {
+    let is_pair = (left.eq_ignore_ascii_case("This creature can't block")
+        && right.eq_ignore_ascii_case("This creature can't be blocked"))
+        || (left.eq_ignore_ascii_case("Can't block")
+            && right.eq_ignore_ascii_case("Can't be blocked"));
+    is_pair.then(|| "This creature can't block and can't be blocked".to_string())
+}
+
 fn merge_blockability_compiled_lines(lines: &[String]) -> Vec<String> {
-    let mut merged = Vec::with_capacity(lines.len());
-    let mut idx = 0usize;
-    while idx < lines.len() {
-        if idx + 1 < lines.len() {
-            let left = lines[idx].trim().trim_end_matches('.');
-            let right = lines[idx + 1].trim().trim_end_matches('.');
-            let is_pair = (left.eq_ignore_ascii_case("This creature can't block")
-                && right.eq_ignore_ascii_case("This creature can't be blocked"))
-                || (left.eq_ignore_ascii_case("Can't block")
-                    && right.eq_ignore_ascii_case("Can't be blocked"));
-            if is_pair {
-                merged.push("This creature can't block and can't be blocked".to_string());
-                idx += 2;
-                continue;
-            }
+    merge_adjacent_compiled_lines(lines, |left, right| {
+        merge_self_block_restrictions(left, right).or_else(|| {
             // "Fish you control have haste." + "Fish you control can't be
             // blocked by Humans." is one line in oracle: "Fish you control
             // have haste and can't be blocked by Humans."
@@ -1266,13 +1007,32 @@ fn merge_blockability_compiled_lines(lines: &[String]) -> Vec<String> {
                 && !left.contains(". ")
                 && !right.contains(". ")
             {
-                merged.push(format!("{left} and can't {rest}."));
-                idx += 2;
-                continue;
+                Some(format!("{left} and can't {rest}."))
+            } else {
+                None
             }
+        })
+    })
+}
+
+fn merge_adjacent_compiled_lines(
+    lines: &[String],
+    merge_pair: impl Fn(&str, &str) -> Option<String>,
+) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut lines = lines.iter().peekable();
+    while let Some(line) = lines.next() {
+        if let Some(next) = lines.peek()
+            && let Some(combined) = merge_pair(
+                line.trim().trim_end_matches('.'),
+                next.trim().trim_end_matches('.'),
+            )
+        {
+            merged.push(combined);
+            lines.next();
+        } else {
+            merged.push(line.clone());
         }
-        merged.push(lines[idx].clone());
-        idx += 1;
     }
     merged
 }
@@ -1490,7 +1250,12 @@ fn prepare_clause_comparison(oracle_text: &str, compiled_lines: &[String]) -> Cl
         .iter()
         .map(|line| strip_compiled_prefix(line).to_string())
         .collect::<Vec<_>>();
-    let merged_mana_lines = merge_simple_mana_add_compiled_lines(&stripped_lines, &oracle_clauses);
+    let merged_mana_lines = merge_simple_mana_add_compiled_lines(&stripped_lines, |combined| {
+        let combined_tokens = compiled_comparison_tokens(combined);
+        oracle_clauses.iter().any(|clause| {
+            split_mana_add_line(clause).is_some() && comparison_tokens(clause) == combined_tokens
+        })
+    });
     let merged_blockability_lines = merge_blockability_compiled_lines(&merged_mana_lines);
     let compiled_normalized_lines = merge_transform_compiled_lines(&merged_blockability_lines);
     let flattened_compiled_lines =
@@ -1626,96 +1391,45 @@ pub fn compare_semantics_scored(
     compiled_lines: &[String],
     embedding: Option<EmbeddingConfig>,
 ) -> (f32, f32, f32, isize, bool) {
-    let prep = prepare_clause_comparison(oracle_text, compiled_lines);
+    score_clause_comparison(
+        &prepare_clause_comparison(oracle_text, compiled_lines),
+        embedding,
+    )
+}
+
+fn score_clause_comparison(
+    prep: &ClauseComparisonPrep,
+    embedding: Option<EmbeddingConfig>,
+) -> (f32, f32, f32, isize, bool) {
     if prep.trivially_equal {
         return (1.0, 1.0, 1.0, 0, false);
     }
-    let ClauseComparisonPrep {
-        oracle_clauses,
-        oracle_token_clauses: _,
-        oracle_tokens,
-        compiled_clauses,
-        compiled_tokens,
-        trivially_equal: _,
-    } = prep;
-
-    let line_delta = compiled_clauses.len() as isize - oracle_clauses.len() as isize;
-    let oracle_coverage = directional_coverage(&oracle_tokens, &compiled_tokens);
-    let compiled_coverage = directional_coverage(&compiled_tokens, &oracle_tokens);
+    let line_delta = prep.compiled_clauses.len() as isize - prep.oracle_clauses.len() as isize;
+    let matches = prep.lexical_matches();
+    let (oracle_coverage, compiled_coverage) = matches.coverage();
 
     let min_coverage = oracle_coverage.min(compiled_coverage);
 
     let semantic_gap = min_coverage < 0.25;
     let line_gap = line_delta.abs() >= 3 && min_coverage < 0.50;
-    let empty_gap = !oracle_tokens.is_empty() && compiled_tokens.is_empty();
+    let empty_gap = !prep.oracle_tokens.is_empty() && prep.compiled_tokens.is_empty();
 
     let mut similarity_score = min_coverage;
     let mut mismatch = semantic_gap || line_gap || empty_gap;
-    let unless_pay_role_mismatch_count = count_unless_pay_role_mismatches(
-        &oracle_clauses,
-        &oracle_tokens,
-        &compiled_clauses,
-        &compiled_tokens,
-    );
-    let type_among_count_mismatch_count = count_type_among_count_mismatches(
-        &oracle_clauses,
-        &oracle_tokens,
-        &compiled_clauses,
-        &compiled_tokens,
-    );
-    let blocked_or_blocking_mismatch_count = count_blocked_or_blocking_qualifier_mismatches(
-        &oracle_clauses,
-        &oracle_tokens,
-        &compiled_tokens,
-    );
-    let reflexive_when_you_do_mismatch_count = count_reflexive_when_you_do_mismatches(
-        &oracle_clauses,
-        &oracle_tokens,
-        &compiled_clauses,
-        &compiled_tokens,
-    );
-    let first_noncreature_scope_mismatch_count = count_first_noncreature_scope_mismatches(
-        &oracle_clauses,
-        &oracle_tokens,
-        &compiled_clauses,
-        &compiled_tokens,
-    );
-    let instant_and_or_target_mismatch_count = count_instant_and_or_target_mismatches(
-        &oracle_clauses,
-        &oracle_tokens,
-        &compiled_clauses,
-        &compiled_tokens,
-    );
-    let opponent_control_scope_mismatch_count = count_opponent_control_scope_mismatches(
-        &oracle_clauses,
-        &oracle_tokens,
-        &compiled_clauses,
-        &compiled_tokens,
-    );
-    let bare_mass_pump_mismatch_count = count_bare_mass_pump_scope_mismatches(
-        &oracle_clauses,
-        &oracle_tokens,
-        &compiled_clauses,
-        &compiled_tokens,
-    );
-    let you_control_scope_mismatch_count = count_you_control_scope_mismatches(
-        &oracle_clauses,
-        &oracle_tokens,
-        &compiled_clauses,
-        &compiled_tokens,
-    );
-
     if let Some(cfg) = embedding {
-        let oracle_emb = oracle_clauses
+        let oracle_emb = prep
+            .oracle_clauses
             .iter()
             .map(|clause| embed_clause(clause, cfg.dims))
             .collect::<Vec<_>>();
-        let compiled_emb = compiled_clauses
+        let compiled_emb = prep
+            .compiled_clauses
             .iter()
             .map(|clause| embed_clause(clause, cfg.dims))
             .collect::<Vec<_>>();
-        let emb_oracle = directional_embedding_coverage(&oracle_emb, &compiled_emb);
-        let emb_compiled = directional_embedding_coverage(&compiled_emb, &oracle_emb);
+        let (emb_oracle, emb_compiled) =
+            ClauseMatches::new(&oracle_emb, &compiled_emb, |a, b| cosine_similarity(a, b))
+                .coverage();
         let emb_min = emb_oracle.min(emb_compiled);
         // Fuse embedding and lexical confidence so token overlap can rescue
         // occasional embedding outliers.
@@ -1726,50 +1440,7 @@ pub fn compare_semantics_scored(
         }
     }
 
-    if unless_pay_role_mismatch_count > 0 {
-        let penalty = 0.20 * unless_pay_role_mismatch_count as f32;
-        similarity_score = (similarity_score - penalty).max(0.0);
-        mismatch = true;
-    }
-    if type_among_count_mismatch_count > 0 {
-        let penalty = 0.20 * type_among_count_mismatch_count as f32;
-        similarity_score = (similarity_score - penalty).max(0.0);
-        mismatch = true;
-    }
-    if blocked_or_blocking_mismatch_count > 0 {
-        let penalty = 0.20 * blocked_or_blocking_mismatch_count as f32;
-        similarity_score = (similarity_score - penalty).max(0.0);
-        mismatch = true;
-    }
-    if reflexive_when_you_do_mismatch_count > 0 {
-        let penalty = 0.20 * reflexive_when_you_do_mismatch_count as f32;
-        similarity_score = (similarity_score - penalty).max(0.0);
-        mismatch = true;
-    }
-    if first_noncreature_scope_mismatch_count > 0 {
-        let penalty = 0.20 * first_noncreature_scope_mismatch_count as f32;
-        similarity_score = (similarity_score - penalty).max(0.0);
-        mismatch = true;
-    }
-    if instant_and_or_target_mismatch_count > 0 {
-        let penalty = 0.20 * instant_and_or_target_mismatch_count as f32;
-        similarity_score = (similarity_score - penalty).max(0.0);
-        mismatch = true;
-    }
-    if opponent_control_scope_mismatch_count > 0 {
-        let penalty = 0.20 * opponent_control_scope_mismatch_count as f32;
-        similarity_score = (similarity_score - penalty).max(0.0);
-        mismatch = true;
-    }
-    if you_control_scope_mismatch_count > 0 {
-        let penalty = 0.20 * you_control_scope_mismatch_count as f32;
-        similarity_score = (similarity_score - penalty).max(0.0);
-        mismatch = true;
-    }
-    if bare_mass_pump_mismatch_count > 0 {
-        // Keep the penalty light: the mismatch flag is the gate, and the
-        // clause pair is otherwise near-identical by construction.
-        let penalty = 0.02 * bare_mass_pump_mismatch_count as f32;
+    for penalty in prep.clause_penalties(&matches) {
         similarity_score = (similarity_score - penalty).max(0.0);
         mismatch = true;
     }
@@ -1793,18 +1464,31 @@ pub fn compare_semantics(
     (oracle_coverage, compiled_coverage, line_delta, mismatch)
 }
 
+fn prepare_card_clause_comparison(
+    card_name: &str,
+    oracle_text: &str,
+    compiled_lines: &[String],
+) -> ClauseComparisonPrep {
+    let normalized_oracle = normalize_card_self_references_for_compare(oracle_text, card_name);
+    let normalized_compiled = compiled_lines
+        .iter()
+        .map(|line| {
+            normalize_card_self_references_for_compare_in_context(line, card_name, oracle_text)
+        })
+        .collect::<Vec<_>>();
+    prepare_clause_comparison(&normalized_oracle, &normalized_compiled)
+}
+
 pub fn compare_card_semantics_scored(
     card_name: &str,
     oracle_text: &str,
     compiled_lines: &[String],
     embedding: Option<EmbeddingConfig>,
 ) -> (f32, f32, f32, isize, bool) {
-    let normalized_oracle = normalize_card_self_references_for_compare(oracle_text, card_name);
-    let normalized_compiled = compiled_lines
-        .iter()
-        .map(|line| normalize_card_self_references_for_compare_in_context(line, card_name, oracle_text))
-        .collect::<Vec<_>>();
-    compare_semantics_scored(&normalized_oracle, &normalized_compiled, embedding)
+    score_clause_comparison(
+        &prepare_card_clause_comparison(card_name, oracle_text, compiled_lines),
+        embedding,
+    )
 }
 
 /// One side of a clause-level comparison residual: a clause, its best
@@ -1822,6 +1506,7 @@ pub struct ClauseResidual {
 }
 
 fn clause_residuals(
+    matches: &[Option<BestClause>],
     clauses: &[String],
     tokens: &[Vec<String>],
     other_clauses: &[String],
@@ -1830,16 +1515,13 @@ fn clause_residuals(
     clauses
         .iter()
         .zip(tokens.iter())
-        .map(|(clause, token_set)| {
-            let mut best: Option<(usize, f32)> = None;
-            for (idx, other) in other_tokens.iter().enumerate() {
-                let score = jaccard_similarity(token_set, other);
-                if best.is_none_or(|(_, best_score)| score > best_score) {
-                    best = Some((idx, score));
-                }
-            }
+        .zip(matches)
+        .map(|((clause, token_set), &best)| {
             let (best_match, best_jaccard, missing_tokens, extra_tokens) = match best {
-                Some((idx, score)) => {
+                Some(BestClause {
+                    index: idx,
+                    overlap: score,
+                }) => {
                     let other = &other_tokens[idx];
                     let missing = token_set
                         .iter()
@@ -1874,22 +1556,20 @@ pub fn compare_card_semantics_clause_residuals(
     oracle_text: &str,
     compiled_lines: &[String],
 ) -> (Vec<ClauseResidual>, Vec<ClauseResidual>) {
-    let normalized_oracle = normalize_card_self_references_for_compare(oracle_text, card_name);
-    let normalized_compiled = compiled_lines
-        .iter()
-        .map(|line| normalize_card_self_references_for_compare_in_context(line, card_name, oracle_text))
-        .collect::<Vec<_>>();
-    let prep = prepare_clause_comparison(&normalized_oracle, &normalized_compiled);
+    let prep = prepare_card_clause_comparison(card_name, oracle_text, compiled_lines);
     if prep.trivially_equal {
         return (Vec::new(), Vec::new());
     }
+    let matches = prep.lexical_matches();
     let oracle_residuals = clause_residuals(
+        &matches.oracle,
         &prep.oracle_token_clauses,
         &prep.oracle_tokens,
         &prep.compiled_clauses,
         &prep.compiled_tokens,
     );
     let compiled_residuals = clause_residuals(
+        &matches.compiled,
         &prep.compiled_clauses,
         &prep.compiled_tokens,
         &prep.oracle_token_clauses,

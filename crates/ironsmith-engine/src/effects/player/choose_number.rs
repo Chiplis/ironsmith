@@ -4,7 +4,6 @@ use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 pub use ironsmith_core::ChooseNumberEffect;
 impl EffectExecutor for ChooseNumberEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> { Box::new(self.clone()) }
     fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
         if self.max.is_some_and(|max| self.min > max) { return Err(ExecutionError::Impossible("numeric choice has an empty range".into())); }
         let owner=if self.source_owned {

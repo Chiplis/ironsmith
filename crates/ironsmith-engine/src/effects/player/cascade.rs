@@ -15,7 +15,7 @@ use crate::effects::zones::{
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::mana::{ManaCost, ManaSymbol};
+use crate::mana::ManaCost;
 use crate::tag::TagKey;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
@@ -37,12 +37,7 @@ fn mana_value_on_stack(cost: Option<&ManaCost>, x_value: Option<u32>) -> u32 {
         return 0;
     };
     let x = x_value.unwrap_or(0);
-    let x_pips = cost
-        .pips()
-        .iter()
-        .filter(|pip| pip.iter().any(|symbol| matches!(symbol, ManaSymbol::X)))
-        .count() as u32;
-    cost.mana_value() + x_pips.saturating_mul(x)
+    cost.mana_value() + (cost.x_pip_count() as u32).saturating_mul(x)
 }
 
 fn controller_has_cascade_land_drop(game: &GameState, controller: crate::ids::PlayerId) -> bool {
@@ -163,15 +158,7 @@ impl EffectExecutor for CascadeEffect {
             crate::effects::ConsultTopOfLibraryStopRule::FirstMatch, "__cascade_all", "__cascade_match", false, LibraryBottomOrder::Random);
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -253,6 +240,7 @@ impl EffectExecutor for CascadeEffect {
 #[cfg(test)]
 mod replacement_cascade_owner_contract_tests {
     use super::*;
+    use crate::mana::ManaSymbol;
     use crate::ability::Ability;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;

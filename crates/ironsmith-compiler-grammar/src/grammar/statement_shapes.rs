@@ -35,6 +35,41 @@ pub struct DayNightEntersShape;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RevealFromHandShape;
 
+/// The zone following "from" in the historical permanent-card target.
+pub(crate) fn historical_graveyard_target_origin<'a>(noun: &'a [&'a str]) -> Option<&'a [&'a str]> {
+    noun.strip_prefix(&[
+        "target", "permanent", "cards", "in", "graveyards", "that", "were", "put", "there", "from",
+    ])
+}
+
+/// The return and draw refer back to the same historical target declaration.
+pub(crate) fn historical_target_return_sentences(
+    tokens: &[OwnedLexToken],
+) -> Option<[&[OwnedLexToken]; 3]> {
+    use crate::lexer::{parser_token_word_refs, split_lexed_sentences};
+    use crate::word_primitives::parse_sequence_prefix;
+
+    let sentences = split_lexed_sentences(tokens).try_into().ok()?;
+    let [choose, return_them, draw] = sentences;
+    let words = parser_token_word_refs(choose);
+    let noun = words.strip_prefix(&["choose", "up", "to", "three"])?;
+    let origin = historical_graveyard_target_origin(noun)?;
+    let rest = origin.strip_prefix(&["the", "battlefield", "this", "turn"])?;
+    crate::word_claims::claim_words(&words[..words.len() - rest.len()]);
+
+    (parse_sequence_prefix(
+        &parser_token_word_refs(return_them),
+        &["return", "them", "to", "the", "battlefield"],
+    ) && parse_sequence_prefix(
+        &parser_token_word_refs(draw),
+        &[
+            "you", "draw", "a", "card", "for", "each", "opponent", "who", "controls", "one", "or",
+            "more", "of", "those", "permanents",
+        ],
+    ))
+    .then_some(sentences)
+}
+
 fn surface_has_sequence(tokens: &[OwnedLexToken], sequence: &'static [&'static str]) -> bool {
     primitives::find_prefix(tokens, || primitives::phrase(sequence)).is_some()
 }

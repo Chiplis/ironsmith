@@ -22,6 +22,14 @@ pub trait TagKeyWalk {
     fn for_each_object_ref(&self, _f: &mut dyn FnMut(&crate::filter_model::ObjectRef)) {}
     fn for_each_subtype(&self, _f: &mut dyn FnMut(&crate::Subtype)) {}
 
+    /// Whether this value carries the exact key. On an effect this includes
+    /// keys it produces as well as keys it reads.
+    fn contains_tag_key(&self, name: &str) -> bool {
+        let mut found = false;
+        self.for_each_tag_key(&mut |key| found |= key.as_str() == name);
+        found
+    }
+
     /// Calls `f` on every reference key inside `self`, in field order.
     fn for_each_tag_key(&self, f: &mut dyn FnMut(&TagKey));
     /// Calls `f` on every reference key inside `self`, letting it rewrite the

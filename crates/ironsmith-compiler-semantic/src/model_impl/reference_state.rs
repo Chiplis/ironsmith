@@ -11,9 +11,99 @@ use std::sync::Arc;
 
 use super::facts::LoweringFrame;
 
-/// Snapshot-alias key under which the lowering frame exports its most recent
-/// exiled collection (see `ReferenceFrame::from_lowering_frame`).
-pub const LAST_EXILED_COLLECTION_ALIAS: &str = "__last_exiled_collection__";
+/// Compiler-only names for object antecedents that survive a change of subject.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapshotAntecedent {
+    /// The object or objects named by the enclosing trigger.
+    TriggerEvent,
+    /// The spell or ability whose targets the trigger names.
+    TriggeringStackTargets,
+    /// The previous object displaced by an explicit source subject.
+    SourceSuperseded,
+    /// The affected object bound as `it` by an event replacement.
+    RuntimeBoundIt,
+    /// The most recent exiled collection exported by lowering.
+    LastExiledCollection,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum SnapshotBinding {
+    Alias((TagKey, TagKey)),
+    Antecedent(SnapshotAntecedent, TagKey),
+}
+
+/// One ordered record of the object bindings visible in a reference scope.
+/// Named aliases may have multiple values. Antecedents have one value per
+/// role. Cost lookup searches both in reverse binding order.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SnapshotBindings(Vec<SnapshotBinding>);
+
+impl SnapshotBindings {
+    pub fn aliases(&self) -> impl DoubleEndedIterator<Item = &(TagKey, TagKey)> {
+        self.0.iter().filter_map(|binding| match binding {
+            SnapshotBinding::Alias(pair) => Some(pair),
+            SnapshotBinding::Antecedent(..) => None,
+        })
+    }
+
+    pub fn objects(&self) -> impl DoubleEndedIterator<Item = &TagKey> {
+        self.0.iter().map(|binding| match binding {
+            SnapshotBinding::Alias((_, tag)) | SnapshotBinding::Antecedent(_, tag) => tag,
+        })
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn add_alias(&mut self, pair: (TagKey, TagKey)) {
+        self.0.push(SnapshotBinding::Alias(pair));
+    }
+
+    pub fn remove_alias(&mut self, alias: &TagKey) {
+        self.0
+            .retain(|binding| !matches!(binding, SnapshotBinding::Alias((key, _)) if key == alias));
+    }
+
+    pub fn replace_alias(&mut self, pair: (TagKey, TagKey)) {
+        self.remove_alias(&pair.0);
+        self.add_alias(pair);
+    }
+
+    pub fn lookup(&self, alias: impl AsRef<str>) -> Option<&TagKey> {
+        self.aliases()
+            .find(|(existing, _)| existing.as_str() == alias.as_ref())
+            .map(|(_, tag)| tag)
+    }
+
+    pub fn antecedent(&self, role: SnapshotAntecedent) -> Option<&TagKey> {
+        self.0.iter().find_map(|binding| match binding {
+            SnapshotBinding::Antecedent(bound, tag) if *bound == role => Some(tag),
+            _ => None,
+        })
+    }
+
+    pub fn set_antecedent(&mut self, role: SnapshotAntecedent, tag: Option<TagKey>) {
+        self.0.retain(
+            |binding| !matches!(binding, SnapshotBinding::Antecedent(bound, _) if *bound == role),
+        );
+        if let Some(tag) = tag {
+            self.0.push(SnapshotBinding::Antecedent(role, tag));
+        }
+    }
+}
+
+impl Extend<(TagKey, TagKey)> for SnapshotBindings {
+    fn extend<T: IntoIterator<Item = (TagKey, TagKey)>>(&mut self, pairs: T) {
+        self.0.extend(pairs.into_iter().map(SnapshotBinding::Alias));
+    }
+}
+
+impl From<Vec<(TagKey, TagKey)>> for SnapshotBindings {
+    fn from(pairs: Vec<(TagKey, TagKey)>) -> Self {
+        Self(pairs.into_iter().map(SnapshotBinding::Alias).collect())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RefState<T> {
@@ -240,7 +330,7 @@ pub struct ReferenceFrame {
     pub last_card_name_choice_tag: Option<TagKey>,
     pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
-    pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
+    pub snapshot_bindings: SnapshotBindings,
     pub last_it_choice_is_set: bool,
     pub last_player_filter: Option<PlayerFilter>,
     pub source_object_antecedent: bool,
@@ -275,18 +365,15 @@ impl ReferenceFrame {
             last_card_name_choice_tag: frame.last_card_name_choice_tag.clone(),
             last_value_comparison: frame.last_value_comparison.clone(),
             recent_object_target_bindings: Arc::default(),
-            snapshot_tag_aliases: {
-                // The lowering-only exiled collection is exported as an alias
-                // so "those cards" can still name it after a later token
-                // creation took over the last-object antecedent (Journey to
-                // the Lost City: "create a Wolf ..., then put a counter on it
-                // for each creature card among those cards").
-                let mut aliases = frame.snapshot_tag_aliases.clone();
-                aliases.retain(|(alias, _)| alias.as_str() != LAST_EXILED_COLLECTION_ALIAS);
-                if let Some(tag) = &frame.last_exiled_collection_tag {
-                    aliases.push((TagKey::from(LAST_EXILED_COLLECTION_ALIAS), tag.clone()));
-                }
-                aliases
+            snapshot_bindings: {
+                // "Those cards" can still name the exiled collection after a
+                // token creation becomes the most recent object.
+                let mut bindings = frame.snapshot_bindings.clone();
+                bindings.set_antecedent(
+                    SnapshotAntecedent::LastExiledCollection,
+                    frame.last_exiled_collection_tag.clone(),
+                );
+                bindings
             },
             last_it_choice_is_set: frame.last_it_choice_is_set,
             last_player_filter: frame.last_player_filter.clone(),
@@ -322,7 +409,7 @@ impl ReferenceFrame {
             last_object_tag: self.last_object_tag.clone(),
             last_card_name_choice_tag: self.last_card_name_choice_tag.clone(),
             last_value_comparison: self.last_value_comparison.clone(),
-            snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
+            snapshot_bindings: self.snapshot_bindings.clone(),
             token_copy_sources: Vec::new(),
             created_token_names: Vec::new(),
             last_it_choice_is_set: self.last_it_choice_is_set,
@@ -391,11 +478,8 @@ pub struct ReferenceImports {
     pub last_card_name_choice_tag: Option<TagKey>,
     pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
-    /// Stable parse-time aliases already bound by the enclosing reference
-    /// context. Nested lowering must import these alongside `last_object_tag`;
-    /// otherwise compiling a conditional branch can erase an alias before the
-    /// condition itself is lowered.
-    pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
+    /// Bindings inherited alongside `last_object_tag` when lowering a nested scope.
+    pub snapshot_bindings: SnapshotBindings,
     pub last_it_choice_is_set: bool,
     pub iterated_object: bool,
     pub last_player_filter: Option<PlayerFilter>,
@@ -412,7 +496,7 @@ impl ReferenceImports {
             && self.last_object_tag.is_none()
             && self.last_card_name_choice_tag.is_none()
             && self.recent_object_target_bindings.is_empty()
-            && self.snapshot_tag_aliases.is_empty()
+            && self.snapshot_bindings.is_empty()
             && !self.last_it_choice_is_set
             && !self.iterated_object
             && self.last_player_filter.is_none()
@@ -439,7 +523,7 @@ impl ReferenceImports {
             last_card_name_choice_tag: frame.last_card_name_choice_tag.clone(),
             last_value_comparison: frame.last_value_comparison.clone(),
             recent_object_target_bindings: frame.recent_object_target_bindings.clone(),
-            snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
+            snapshot_bindings: frame.snapshot_bindings.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
             iterated_object: frame.iterated_object,
             last_player_filter: frame.last_player_filter.clone(),
@@ -465,7 +549,7 @@ pub struct ReferenceEnv {
     /// parse-time placeholder tag to the concrete tag captured from
     /// `last_object_tag` at snapshot time. Survives later `last_object_tag`
     /// clobbers so composed effects can still reference an earlier looked pool.
-    pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
+    pub snapshot_bindings: SnapshotBindings,
     pub last_it_choice_is_set: bool,
     pub last_player_filter: RefState<PlayerFilter>,
     pub source_object_antecedent: bool,
@@ -497,7 +581,7 @@ impl Default for ReferenceEnv {
             last_card_name_choice_tag: RefState::Unknown,
             last_value_comparison: RefState::Unknown,
             recent_object_target_bindings: Arc::default(),
-            snapshot_tag_aliases: Vec::new(),
+            snapshot_bindings: SnapshotBindings::default(),
             last_it_choice_is_set: false,
             last_player_filter: RefState::Unknown,
             source_object_antecedent: false,
@@ -537,7 +621,7 @@ impl ReferenceEnv {
             last_card_name_choice_tag: RefState::from_option(imports.last_card_name_choice_tag.clone()),
             last_value_comparison: RefState::from_option(imports.last_value_comparison.clone()),
             recent_object_target_bindings: imports.recent_object_target_bindings.clone(),
-            snapshot_tag_aliases: imports.snapshot_tag_aliases.clone(),
+            snapshot_bindings: imports.snapshot_bindings.clone(),
             last_it_choice_is_set: imports.last_it_choice_is_set,
             last_player_filter: RefState::from_option(imports.last_player_filter.clone()),
             source_object_antecedent: imports.source_object_antecedent,
@@ -573,7 +657,7 @@ impl ReferenceEnv {
             last_card_name_choice_tag: RefState::from_option(frame.last_card_name_choice_tag.clone()),
             last_value_comparison: RefState::from_option(frame.last_value_comparison.clone()),
             recent_object_target_bindings: frame.recent_object_target_bindings.clone(),
-            snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
+            snapshot_bindings: frame.snapshot_bindings.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
             last_player_filter: RefState::from_option(frame.last_player_filter.clone()),
             source_object_antecedent: frame.source_object_antecedent,
@@ -618,7 +702,7 @@ impl ReferenceEnv {
             last_card_name_choice_tag: self.last_card_name_choice_tag.clone().into_option(),
             last_value_comparison: self.last_value_comparison.clone().into_option(),
             recent_object_target_bindings: self.recent_object_target_bindings.clone(),
-            snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
+            snapshot_bindings: self.snapshot_bindings.clone(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             last_player_filter: self.last_player_filter.clone().into_option(),
             source_object_antecedent: self.source_object_antecedent,
@@ -766,7 +850,7 @@ impl ReferenceExports {
             last_card_name_choice_tag: self.last_card_name_choice_tag.clone().into_option(),
             last_value_comparison: self.last_value_comparison.clone().into_option(),
             recent_object_target_bindings: self.recent_object_target_bindings.clone(),
-            snapshot_tag_aliases: Vec::new(),
+            snapshot_bindings: SnapshotBindings::default(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             iterated_object: false,
             last_player_filter: self.last_player_filter.clone().into_option(),

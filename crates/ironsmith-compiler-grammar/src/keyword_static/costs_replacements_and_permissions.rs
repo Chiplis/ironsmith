@@ -4764,12 +4764,21 @@ pub fn parse_double_counters_replacement_line(
             filter_tokens,
             counter_type,
             adjustment,
-        } => StaticAbility::add_counters_placement_replacement(
-            parse_object_filter_lexed(filter_tokens, false)?,
-            Some(counter_type),
-            adjustment,
-            display_text_for_tokens(tokens, true),
-        ),
+            ability_kind,
+        } => {
+            let ability = StaticAbility::add_counters_placement_replacement(
+                parse_object_filter_lexed(filter_tokens, false)?,
+                Some(counter_type),
+                adjustment,
+                display_text_for_tokens(tokens, true),
+            );
+            match ability_kind {
+                Some(ability_kind) => ability.with_counter_placement_cause(
+                    ironsmith_core::CauseFilter::any().with_ability_kind(ability_kind),
+                ),
+                None => ability,
+            }
+        }
         keyword_static_lines::CounterReplacementShape::GenericUnderYourControl => {
             StaticAbility::double_counters_replacement(
                 ObjectFilter::permanent().controlled_by(PlayerFilter::You),
@@ -4803,24 +4812,6 @@ pub fn parse_double_counters_replacement_line(
                 halve,
                 display_text_for_tokens(tokens, true),
             )
-        }
-        keyword_static_lines::CounterReplacementShape::PlusOneAdd {
-            filter_tokens,
-            additional,
-            ability_kind,
-        } => {
-            let ability = StaticAbility::add_counters_placement_replacement(
-                parse_object_filter_lexed(filter_tokens, false)?,
-                Some(CounterType::PlusOnePlusOne),
-                additional,
-                display_text_for_tokens(tokens, true),
-            );
-            match ability_kind {
-                Some(ability_kind) => ability.with_counter_placement_cause(
-                    ironsmith_core::CauseFilter::any().with_ability_kind(ability_kind),
-                ),
-                None => ability,
-            }
         }
         keyword_static_lines::CounterReplacementShape::AnyKindAdd {
             filter_tokens,
@@ -8011,9 +8002,6 @@ pub fn parse_if_you_would_draw_instead_effects_line(
             parse_draw_replacement_skip_empty_library_line(tokens),
             Ok(Some(_))
         )
-        // "If you would draw a card, draw two cards instead" is the
-        // dedicated doubling replacement (CR 614.1a).
-        || matches!(parse_draw_replacement_double_line(tokens), Ok(Some(_)))
         || matches!(
             parse_draw_replacement_exile_top_and_play_line(tokens),
             Ok(Some(_))
@@ -8025,7 +8013,7 @@ pub fn parse_if_you_would_draw_instead_effects_line(
     {
         return Ok(None);
     }
-    let body = draw_replacement_drawn_card_body(&shape.body).unwrap_or_else(|| shape.body.clone());
+    let body = draw_replacement_drawn_card_body(&shape.body).unwrap_or(shape.body);
     let effects = if shape.skip {
         Vec::new()
     } else {
@@ -8151,46 +8139,11 @@ pub fn parse_draw_extra_cards_replacement_line(
 fn parse_first_draw_each_turn_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    const HEADER: &[&str] = &[
-        "the", "first", "time", "you", "would", "draw", "a", "card", "each", "turn",
-    ];
-    const DRAW_STEP_EXCEPTION: &[&str] = &[
-        "except", "the", "first", "card", "you", "draw", "during", "each", "of", "your", "draw",
-        "steps",
-    ];
-    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let word_at = |index: usize, word: &str| tokens.get(index).is_some_and(|token| token.is_word(word));
-    if !HEADER.iter().enumerate().all(|(index, word)| word_at(index, word)) {
+    let Some((except_first_of_draw_step, body)) =
+        crate::grammar::draw_replacement::first_draw_each_turn(tokens)
+    else {
         return Ok(None);
-    }
-    let mut index = HEADER.len();
-    let except_first_of_draw_step = DRAW_STEP_EXCEPTION
-        .iter()
-        .enumerate()
-        .all(|(offset, word)| word_at(index + offset, word));
-    if except_first_of_draw_step {
-        index += DRAW_STEP_EXCEPTION.len();
-    }
-    if !tokens.get(index).is_some_and(|token| token.kind == TokenKind::Comma) {
-        return Ok(None);
-    }
-    let mut body = trim_lexed_commas(&tokens[index + 1..]).to_vec();
-    if body.first().is_some_and(|token| token.is_word("instead")) {
-        body.remove(0);
-    } else {
-        let end = body
-            .iter()
-            .rposition(|token| !token.is_period())
-            .map(|last| last + 1)
-            .unwrap_or(0);
-        if end == 0 || !body[end - 1].is_word("instead") {
-            return Ok(None);
-        }
-        body.remove(end - 1);
-    }
-    if body.is_empty() {
-        return Ok(None);
-    }
+    };
     let effects = super::super::clause_support::parse_effect_sentences_lexed(&body)?;
     if effects.is_empty() {
         return Ok(None);
@@ -8212,8 +8165,8 @@ fn parse_first_draw_each_turn_replacement_line(
     } else {
         none_drawn
     };
-    let ability =
-        StaticAbility::conditional_draw_replacement(condition, effects, render_token_slice(tokens));
+    let display = render_token_slice(trim_edge_punctuation_tokens(tokens));
+    let ability = StaticAbility::conditional_draw_replacement(condition, effects, display);
     Ok(Some(if except_first_of_draw_step {
         ability.with_draw_step_first_draw_exception()
     } else {
@@ -8386,21 +8339,6 @@ pub fn parse_conditional_draw_replacement_line(
                 right: Value::Fixed(0),
             },
             vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
-            render_token_slice(tokens),
-        )));
-    }
-
-    if let Some(body) =
-        late_static_facts::parse_empty_library_draw_effect_replacement_tokens(tokens)
-    {
-        let effects = super::super::clause_support::parse_effect_sentences_lexed(body)?;
-        return Ok(Some(StaticAbility::conditional_draw_replacement(
-            PredicateAst::ValueComparison {
-                left: Value::CardsInLibrary(PlayerFilter::You),
-                operator: crate::effect::ValueComparisonOperator::Equal,
-                right: Value::Fixed(0),
-            },
-            effects,
             render_token_slice(tokens),
         )));
     }

@@ -68,6 +68,9 @@ pub use library::*;
 mod mana;
 pub use mana::*;
 
+#[path = "actions/shared_values.rs"]
+mod shared_values;
+
 use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, TagKeyWalk)]
@@ -2235,8 +2238,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration_surface", duration_surface)
                 .field("condition", condition)
                 .finish(),
-            Self::Tokens(TokenActionAst::CreateTokenCopy { .. }) => f.write_str("CreateTokenCopy"),
-            Self::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. }) => {
+            Self::Tokens(TokenActionAst::CreateTokenCopy { source: TokenCopySourceAst::Object(_), .. }) => f.write_str("CreateTokenCopy"),
+            Self::Tokens(TokenActionAst::CreateTokenCopy { source: TokenCopySourceAst::Target(_), .. }) => {
                 f.write_str("CreateTokenCopyFromSource")
             }
             Self::Tokens(TokenActionAst::CreateTokenWithMods {

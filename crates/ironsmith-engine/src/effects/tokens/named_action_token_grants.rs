@@ -4,7 +4,7 @@ use crate::effects::ExecutionError;
 use crate::filter::PlayerFilterExt;
 use crate::snapshot::{CopiableValues, CopyDefinitionDependencies};
 use crate::static_abilities::StaticAbilityModelInterpreter;
-use crate::{GameState, PlayerId};
+use crate::GameState;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -13,9 +13,14 @@ pub(crate) struct NamedActionTokenGrant {
     pub dependencies: CopyDefinitionDependencies<Ability>,
 }
 
-pub(crate) fn capture_named_action_token_grants(game: &GameState, label: &str, player: PlayerId)
-    -> Result<Vec<NamedActionTokenGrant>, ExecutionError>
-{
+pub(crate) fn capture_named_action_token_grants(
+    game: &GameState,
+    ctx: &crate::effects::ExecutionContext,
+    count: u32,
+) -> Result<Vec<NamedActionTokenGrant>, ExecutionError> {
+    let Some(scope) = ctx.named_action_token_scope.as_ref().filter(|_| count > 0) else {
+        return Ok(Vec::new());
+    };
     let mut grants = Vec::new();
     let effects = game.try_all_continuous_effects_arc().map_err(ExecutionError::ContinuousDiscovery)?;
     for object in game.objects_in_deterministic_order().into_iter().filter(|object| !game.is_phased_out(object.id)) {
@@ -32,8 +37,8 @@ pub(crate) fn capture_named_action_token_grants(game: &GameState, label: &str, p
             let ironsmith_core::StaticAbilityPayload::NamedActionTokenAbilityGrant {
                 label: rule_label, player: actor, abilities, ..
             } = &model.payload else { continue; };
-            if !rule_label.eq_ignore_ascii_case(label)
-                || !actor.matches_player(player, &game.filter_context_for(source.controller, Some(source.object_id)))
+            if !rule_label.eq_ignore_ascii_case(&scope.label)
+                || !actor.matches_player(scope.player, &game.filter_context_for(source.controller, Some(source.object_id)))
             { continue; }
             let dependencies = source.copiable_values.definition_dependencies.clone().ok_or_else(||
                 ExecutionError::IncompleteEvidence("token grant lacks its source definition dependencies".into()))?;
@@ -51,14 +56,15 @@ pub(crate) fn capture_named_action_token_grants(game: &GameState, label: &str, p
 pub(crate) fn capture_named_action_created_objects(game: &GameState, ctx: &mut crate::effects::ExecutionContext,
     created: &[crate::ObjectId]) -> Result<(), ExecutionError>
 {
-    let Some(packet) = &mut ctx.named_action_created_objects else { return Ok(()); };
+    let Some(scope) = &mut ctx.named_action_token_scope else { return Ok(()); };
+    let packet = &mut scope.created_objects;
     for id in created {
         let object = game.object(*id).ok_or_else(|| ExecutionError::IncompleteEvidence("created token original lost its exact object before capture".into()))?;
         let snapshot = crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)?;
         if !packet.iter().any(|prior| prior.object_id == snapshot.object_id) { packet.push(snapshot); }
     }
     let captured = packet.clone();
-    ctx.set_tagged_objects("__named_action_created_objects", captured);
+    ctx.set_tagged_objects(crate::tag::NAMED_ACTION_CREATED_OBJECTS_TAG, captured);
     Ok(())
 }
 
@@ -131,7 +137,7 @@ mod tests {
     use crate::effects::{CreateTokenEffect, EffectContext, NamedActionProgramEffect};
     use crate::static_abilities::{CompiledStaticAbility, StaticAbility};
     use crate::target::{ChooseSpec, PlayerFilter};
-    use crate::{CardId, Effect, Zone};
+    use crate::{CardId, Effect, PlayerId, Zone};
     const A: PlayerId = PlayerId(0);
     fn token(name: &str) -> crate::CardDefinition {
         CardDefinitionBuilder::new(CardId::new(), name).token()
@@ -170,7 +176,6 @@ mod tests {
         let mut ctx = EffectContext::new_default(source, A);
         crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
         assert!(ctx.named_action_token_scope.is_none());
-        assert!(ctx.named_action_created_objects.is_none());
         let completed = ctx.get_tagged_all("__named_action_created_objects").unwrap();
         assert_eq!(completed.len(), 2);
         let originals = game.battlefield.iter().copied().filter(|id| *id != source).collect::<Vec<_>>();
@@ -197,6 +202,34 @@ mod tests {
             crate::events::EventCause::effect()), crate::provenance::ProvNodeId::default());
         assert_eq!(crate::triggers::check_triggers(&game, &event).iter().filter(|trigger| trigger.source==originals[0]).count(),1);
     }
+    #[test]
+    fn nested_operation_restores_outer_created_objects_and_token_grants() {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let source = game.create_object_from_definition(&source(), A, Zone::Battlefield);
+        let create = |name| Effect::new(CreateTokenEffect::new(token(name), 1, PlayerFilter::You));
+        let inner = Effect::new(NamedActionProgramEffect {
+            label: "inner".into(),
+            player: PlayerFilter::You,
+            objects: None,
+            completion: ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted,
+            effects: vec![create("Inner token")],
+        });
+        let outer = operation(vec![create("First outer token"), inner, create("Last outer token")]);
+        let mut ctx = EffectContext::new_default(source, A);
+        let outcome = crate::effects::execute_effect(&mut game, &outer, &mut ctx).unwrap();
+        let token_id = |name: &str| *game.battlefield.iter()
+            .find(|id| game.object(**id).unwrap().name.as_ref() == name).unwrap();
+        let outer_ids = [token_id("First outer token"), token_id("Last outer token")];
+        assert_eq!(outcome.result_objects(), Some(outer_ids.as_slice()));
+        let published: Vec<_> = ctx.get_tagged_all("__named_action_created_objects").unwrap()
+            .iter().map(|object| object.object_id).collect();
+        assert_eq!(published, outer_ids);
+        assert_eq!(triggered_count(&game, token_id("Inner token")), 0);
+        for id in outer_ids {
+            assert_eq!(triggered_count(&game, id), 1);
+        }
+    }
+
     #[test]
     fn count_multiplier_inherits_grant_but_independent_added_program_does_not() {
         let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
@@ -247,7 +280,9 @@ mod tests {
         let provider = game.create_object_from_definition(&source(), A, Zone::Battlefield);
         let performer = game.create_object_from_definition(&token("Performer"), A, Zone::Battlefield);
         let mut ctx = EffectContext::new_default(performer, A);
-        ctx.named_action_token_scope = Some(("forge bundle".into(), A));
+        ctx.named_action_token_scope = Some(crate::effects::context::NamedActionTokenScope {
+            label: "forge bundle".into(), player: A, created_objects: Vec::new(),
+        });
         let effect = CreateTokenEffect::new(token("Prepared bundle"), 1, PlayerFilter::You);
         let proposal = effect.prepare_simultaneous_player_action(&game, &mut ctx).unwrap();
         game.move_object(provider, Zone::Graveyard, crate::events::EventCause::effect()).unwrap();

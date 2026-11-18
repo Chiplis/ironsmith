@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
+use ironsmith_card_source::{
+    basic_metadata_lines, get_first_face, reports::excludes_from_paper_report,
+};
 use serde_json::Value;
 
 use ironsmith::compiled_text::unprocessed_compiled_lines;
@@ -145,36 +148,6 @@ fn legalities_all_not_legal(card: &Value) -> bool {
             .all(|value| value.as_str().is_some_and(|item| item == "not_legal"))
 }
 
-fn contains_marker_with_boundaries(text: &str, marker: &str) -> bool {
-    text.match_indices(marker).any(|(start, _)| {
-        let before = text[..start].chars().next_back();
-        let end = start + marker.len();
-        let after = text[end..].chars().next();
-        !before.is_some_and(|ch| ch.is_ascii_alphabetic())
-            && !after.is_some_and(|ch| ch.is_ascii_alphabetic())
-    })
-}
-
-fn has_digital_only_oracle_marker(oracle_text: &str) -> bool {
-    let lower = oracle_text.to_ascii_lowercase();
-    [
-        "boon",
-        "conjure",
-        "double team",
-        "draft",
-        "heist",
-        "incorporate",
-        "intensity",
-        "intensify",
-        "perpetually",
-        "seek",
-        "specialize",
-        "spellbook",
-    ]
-    .iter()
-    .any(|marker| contains_marker_with_boundaries(&lower, marker))
-}
-
 fn is_non_playable(type_line: Option<&str>, oracle_text: Option<&str>, card: &Value) -> bool {
     if card
         .get("border_color")
@@ -189,66 +162,21 @@ fn is_non_playable(type_line: Option<&str>, oracle_text: Option<&str>, card: &Va
     if legalities_all_not_legal(card) {
         return true;
     }
-    if card
+    let layout = card
         .get("layout")
         .and_then(Value::as_str)
-        .is_some_and(|layout| {
-            matches!(
-                layout.to_ascii_lowercase().as_str(),
-                "token"
-                    | "double_faced_token"
-                    | "emblem"
-                    | "planar"
-                    | "scheme"
-                    | "vanguard"
-                    | "art_series"
-                    | "reversible_card"
-            )
-        })
-    {
-        return true;
-    }
-    if let Some(type_line) = type_line {
-        let disallowed = [
-            "Token",
-            "Emblem",
-            "Plane",
-            "Scheme",
-            "Vanguard",
-            "Phenomenon",
-            "Conspiracy",
-            "Dungeon",
-            "Attraction",
-            "Contraption",
-        ];
-        if disallowed.iter().any(|needle| type_line.contains(needle)) {
-            return true;
-        }
-        if type_line.trim() == "Card" {
-            return true;
-        }
-    }
-    if oracle_text.is_some_and(|oracle| oracle.contains("Theme color")) {
-        return true;
-    }
-    if oracle_text.is_some_and(has_digital_only_oracle_marker) {
-        return true;
-    }
-    false
+        .map(str::to_ascii_lowercase);
+    excludes_from_paper_report(layout.as_deref(), type_line, oracle_text)
 }
 
 fn build_parse_input(card: &Value) -> Option<CardInput> {
-    let face = card
-        .get("card_faces")
-        .and_then(Value::as_array)
-        .and_then(|faces| faces.first());
+    let face = get_first_face(card);
 
     let name = pick_field(card, face, "name")?.trim().to_string();
     if name.is_empty() {
         return None;
     }
 
-    let mana_cost = pick_field(card, face, "mana_cost");
     let type_line = pick_field(card, face, "type_line");
     let oracle_text = pick_field(card, face, "oracle_text");
     if is_non_playable(type_line, oracle_text, card) {
@@ -259,34 +187,9 @@ fn build_parse_input(card: &Value) -> Option<CardInput> {
         return None;
     }
 
-    let power = pick_field(card, face, "power");
-    let toughness = pick_field(card, face, "toughness");
-    let loyalty = pick_field(card, face, "loyalty");
-    let defense = pick_field(card, face, "defense");
-
-    let mut lines = Vec::new();
-    if let Some(mana_cost) = mana_cost.filter(|value| !value.trim().is_empty()) {
-        lines.push(format!("Mana cost: {}", mana_cost.trim()));
-    }
-    if let Some(type_line) = type_line.filter(|value| !value.trim().is_empty()) {
-        lines.push(format!("Type: {}", type_line.trim()));
-    }
-    if let (Some(power), Some(toughness)) = (power, toughness)
-        && !power.trim().is_empty()
-        && !toughness.trim().is_empty()
-    {
-        lines.push(format!(
-            "Power/Toughness: {}/{}",
-            power.trim(),
-            toughness.trim()
-        ));
-    }
-    if let Some(loyalty) = loyalty.filter(|value| !value.trim().is_empty()) {
-        lines.push(format!("Loyalty: {}", loyalty.trim()));
-    }
-    if let Some(defense) = defense.filter(|value| !value.trim().is_empty()) {
-        lines.push(format!("Defense: {}", defense.trim()));
-    }
+    let mut lines = basic_metadata_lines(|key| {
+        pick_field(card, face, key).map(|value| value.trim().to_owned())
+    });
     lines.push(oracle_text.clone());
 
     Some(CardInput {

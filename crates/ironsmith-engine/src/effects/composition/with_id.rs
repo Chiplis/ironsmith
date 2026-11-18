@@ -283,10 +283,6 @@ impl EffectExecutor for WithIdEffect {
         Some(&self.effect)
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn supports_simultaneous_player_action(&self) -> bool {
         self.effect.0.supports_simultaneous_player_action()
     }
@@ -306,15 +302,7 @@ impl EffectExecutor for WithIdEffect {
         Ok(Box::new(WithIdProposal { id: self.id, inner }))
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

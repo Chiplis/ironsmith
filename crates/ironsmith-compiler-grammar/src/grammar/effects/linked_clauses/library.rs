@@ -33,13 +33,7 @@ pub enum LookExileFaceDownShape {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LookedCardDisposition {
-    HandAndLibraryBottom(LibraryBottomOrderAst),
-    HandAndGraveyard,
-    /// "Put one into your hand and exile the rest." (Eye of Yawgmoth)
-    HandAndExile,
-}
+pub type LookedCardDisposition = ironsmith_core::effect::LibraryHandDisposition<LibraryBottomOrderAst>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LookedPartitionDestination {

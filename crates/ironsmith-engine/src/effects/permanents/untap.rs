@@ -32,15 +32,6 @@ impl EffectExecutor for UntapEffect {
         Some(self)
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
     fn supports_replacement_draw_continuation(&self) -> bool {
         true
     }
@@ -65,6 +56,7 @@ impl EffectExecutor for UntapEffect {
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
         Ok(Box::new(UntapInstructionProposal::new(self.clone())))
     }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

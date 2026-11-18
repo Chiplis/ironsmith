@@ -41,10 +41,6 @@ fn attackers_blocked_only_by(game: &GameState, blocker: ObjectId) -> Vec<ObjectI
 }
 
 impl EffectExecutor for UnblockSoleBlockedAttackersEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

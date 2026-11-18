@@ -59,14 +59,7 @@ impl EffectExecutor for DealDamageBySourcesEffect {
             .cloned()
             .collect()
     }
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -1849,17 +1842,14 @@ pub(super) fn prepare_captured_damage_batch(
         .map(CapturedDamageInput::participant_scope)
         .collect();
     let captured = crate::effects::ExecutionContextCheckpoint::capture(parent);
-    let source = parent.source;
-    let controller = parent.controller;
     let mut completed_context = None;
     let result = crate::events::processing::capture_deferred_prevention_follow_ups(
         game,
         parent.decision_maker,
         |game, dm| {
-            let mut ctx = ExecutionContext::new(source, controller, dm);
-            captured.restore_ref(&mut ctx);
+            let mut ctx = captured.into_context(dm);
             let result = prepare_damage_batch_inputs(game, &mut ctx, inputs, batch);
-            completed_context = Some(crate::effects::ExecutionContextCheckpoint::capture(&ctx));
+            completed_context = Some(ctx.into_checkpoint());
             result
         },
     );

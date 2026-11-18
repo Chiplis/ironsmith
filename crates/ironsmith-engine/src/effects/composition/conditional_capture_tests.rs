@@ -15,7 +15,6 @@ struct PreparedWithAddition;
 struct Original(PlayerId);
 struct Addition;
 impl EffectExecutor for PreparedWithAddition {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> { Box::new(self.clone()) }
     fn execute(&self, _: &mut GameState, _: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
         Err(ExecutionError::InternalError("test action requires the original/completion owner".into()))
     }

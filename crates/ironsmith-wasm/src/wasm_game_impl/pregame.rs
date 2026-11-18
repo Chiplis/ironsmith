@@ -823,6 +823,17 @@ impl WasmGame {
         Ok(())
     }
 
+    fn install_planar_decks(
+        &mut self,
+        mut decks: Vec<Vec<(CardDefinition, ironsmith::game_state::PlanarCardKind)>>,
+    ) -> Result<(), String> {
+        if decks.len() == 1 {
+            return self.game.enable_planechase_communal(decks.pop().expect("one planar deck"));
+        }
+        let players = self.game.players.iter().map(|player| player.id).collect::<Vec<_>>();
+        self.game.enable_planechase(players.into_iter().zip(decks).collect())
+    }
+
     fn load_planar_decks_for_setup(
         &mut self,
         planar_decks: &[Vec<PlanarCardInput>],
@@ -4028,6 +4039,28 @@ mod normal_constructed_setup_tests {
             repeated("Unlimited Copy Probe", 15),
         ))
         .expect("an explicit any-number Oracle rule should override the four-copy limit");
+    }
+
+    #[test]
+    fn named_twenty_one_copy_limit_is_enforced_at_the_stated_boundary() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        let rule = ironsmith::static_abilities::StaticAbility::deck_construction_rule_text(
+            "A deck can have up to twenty-one cards named Limit Probe.",
+        );
+        let probe = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::from_raw(91_002),
+            "Limit Probe",
+        )
+        .card_types(vec![CardType::Artifact])
+        .with_ability(ironsmith::ability::Ability::static_ability(rule))
+        .build();
+
+        game.validate_normal_constructed_definitions(std::iter::repeat_n(&probe, 21))
+            .expect("twenty-one copies fit the printed limit");
+        let error = game.validate_normal_constructed_definitions(std::iter::repeat_n(&probe, 22))
+            .expect_err("a twenty-second copy exceeds the printed limit");
+        assert!(error.contains("no more than 21 cards named Limit Probe"), "{error}");
     }
 
     /// "Circle Probe ({U}{R})": a card that circles colors as its owner

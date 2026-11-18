@@ -105,3 +105,55 @@ fn incomplete_instruction_menu_is_not_admitted_as_its_unconditional_child() {
     assert!(compile_to_runtime_definition("Incomplete menu",text,false).is_err());
     assert!(compile_to_artifact("Incomplete menu",text,false).is_err());
 }
+
+#[test]
+fn action_exceptions_belong_to_the_individual_printed_or_granted_activation() {
+    use ironsmith::effects::{
+        ActivateAbilityWithoutCostsEffect, EffectContext, EffectExecutor, ResolvedTarget,
+        execute_effect,
+    };
+    use ironsmith::{GameState, PlayerId, Zone};
+
+    let hosts = definitions(
+        "Host",
+        "Type: Creature\nPower/Toughness: 2/2\nPledge — {4}: Draw a card. Activate only as a sorcery unless you are making a pledge.",
+    );
+    for rider in [
+        "Activate only as a sorcery or during trial actions.",
+        "Activate only as a sorcery. This ability's sorcery timing restriction does not apply during trial actions.",
+    ] {
+        let spell = format!(
+            "Type: Sorcery\nTarget creature gains \"Pledge — {{2}}: You gain 1 life. {rider}\" until end of turn."
+        );
+        for (host, grant) in hosts.iter().zip(definitions("Grant", &spell)) {
+            let owner = PlayerId(0);
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            game.turn.priority_player = Some(PlayerId(1));
+            let host = game.create_object_from_definition(host, owner, Zone::Battlefield);
+            let source = game.create_object_from_definition(&grant, owner, Zone::Stack);
+            let mut context = EffectContext::new_default(source, owner)
+                .with_targets(vec![ResolvedTarget::Object(host)]);
+            for effect in grant.spell_effect.as_ref().unwrap().all_effects() {
+                execute_effect(&mut game, effect, &mut context).unwrap();
+            }
+            for (action, index) in [
+                ("unrelated", None),
+                ("trial", Some(1)),
+                ("making-a-pledge", Some(0)),
+            ] {
+                ActivateAbilityWithoutCostsEffect {
+                    source: ironsmith::target::ChooseSpec::SpecificObject(host),
+                    designation: Some("pledge".into()),
+                    invocation_action: Some(action.into()),
+                }
+                .execute(&mut game, &mut EffectContext::new_default(source, owner))
+                .unwrap();
+                assert_eq!(
+                    game.stack.last().and_then(|entry| entry.ability_index),
+                    index,
+                    "{rider} / {action}"
+                );
+            }
+        }
+    }
+}

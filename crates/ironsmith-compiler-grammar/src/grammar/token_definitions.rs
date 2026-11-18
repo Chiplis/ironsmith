@@ -21,3 +21,17 @@ pub use reminder::*;
 pub use reminder_merge::*;
 pub use rules::*;
 pub use surface::*;
+
+pub(crate) fn fixed_creature(
+    name: &str,
+    subtypes: Vec<crate::types::Subtype>,
+    colors: crate::color::ColorSet,
+    power_toughness: (i32, i32),
+    text_roles: Option<TokenDescriptionTextRoles>,
+) -> TokenDefinitionSpec {
+    TokenDefinitionSpec::Creature(CreatureTokenShape {
+        name: name.into(), text_roles, card_types: vec![crate::types::CardType::Creature], subtypes,
+        power_toughness, colors, legendary: false, snow: false, use_source_chosen_color: false,
+        use_source_chosen_creature_type: false, keywords: Vec::new(), rules: Default::default(), mana_cost: None,
+    })
+}

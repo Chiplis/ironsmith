@@ -38,23 +38,10 @@ fn parse_singleton_graveyard_pair(first: &str, second: &str) -> Option<Vec<Effec
         .expect("singleton looked-card parser should not error")
 }
 
-fn parse_singleton_hand_partition(
-    first: &str,
-    second: &str,
-    remainder_zone: Zone,
-) -> Option<Vec<EffectAst>> {
-    let first = lex_line(first, 0).expect("first sentence should lex");
-    let second = lex_line(second, 1).expect("second sentence should lex");
-    let sentences = [
-        SentenceInput::from_lexed(&first),
-        SentenceInput::from_lexed(&second),
-    ];
-    match remainder_zone {
-        Zone::Graveyard => parse_look_at_top_then_put_one_hand_other_graveyard(&sentences, 0),
-        Zone::Library => parse_look_at_top_then_put_one_hand_other_bottom(&sentences, 0),
-        other => panic!("unsupported test remainder zone: {other:?}"),
-    }
-    .expect("singleton hand partition parser should not error")
+fn parse_inline_hand_partition(first: &str, second: &str) -> Option<Vec<EffectAst>> {
+    let look = lex_line(first, 0).expect("look clause should lex");
+    let partition = lex_line(second, 1).expect("partition clause should lex");
+    parse_inline_look_at_top_then_singleton_hand_partition(&look, &partition)
 }
 
 #[test]
@@ -563,10 +550,9 @@ fn assert_singleton_hand_partition_has_exact_complement(
 
 #[test]
 fn singleton_hand_graveyard_partition_tags_and_moves_the_exact_complement() {
-    let effects = parse_singleton_hand_partition(
+    let effects = parse_inline_hand_partition(
         "Look at the top three cards of your library",
         "Put one of them into your hand and the rest into your graveyard",
-        Zone::Graveyard,
     )
     .expect("hand/graveyard partition should parse");
     assert_singleton_hand_partition_has_exact_complement(
@@ -577,10 +563,9 @@ fn singleton_hand_graveyard_partition_tags_and_moves_the_exact_complement() {
 
 #[test]
 fn singleton_hand_bottom_partition_tags_and_moves_the_exact_complement() {
-    let effects = parse_singleton_hand_partition(
+    let effects = parse_inline_hand_partition(
             "Look at the top four cards of your library",
             "Put one of those cards into your hand and the rest on the bottom of your library in a random order",
-            Zone::Library,
         )
         .expect("hand/bottom partition should parse");
     assert_singleton_hand_partition_has_exact_complement(

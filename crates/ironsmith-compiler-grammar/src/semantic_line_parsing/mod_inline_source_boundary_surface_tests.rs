@@ -365,3 +365,53 @@ fn split_search_keeps_a_following_shuffle_in_its_own_source_sentence() {
         "{shuffle:#?}"
     );
 }
+
+#[test]
+fn rewrite_exert_followup_subject_rewrite_uses_existing_tokens() {
+    let tokens = lex_line("he can't block this turn.", 0)
+        .expect("rewrite lexer should classify exert followup");
+
+    let normalized = normalize_exert_followup_source_reference_tokens(
+        &crate::lexer::synthetic_phrase_tokens("Champion"),
+        trim_lexed_commas(&tokens),
+    );
+
+    assert_eq!(
+        render_token_slice(&normalized).trim(),
+        "this creature can't block this turn."
+    );
+}
+
+#[test]
+fn rewrite_divvy_suffix_trim_reuses_first_sentence_tokens() -> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "Exile up to five target permanent cards from your graveyard and separate them into two piles.",
+        0,
+    )
+    .expect("rewrite lexer should classify divvy exile sentence");
+    let first_sentence = split_lexed_sentences(&tokens)
+        .into_iter()
+        .next()
+        .expect("expected first sentence tokens");
+    let trimmed = strip_lexed_suffix_phrase(
+        first_sentence,
+        &["and", "separate", "them", "into", "two", "piles"],
+    )
+    .expect("expected divvy pile suffix to trim");
+
+    assert_eq!(
+        render_token_slice(trimmed).trim(),
+        "Exile up to five target permanent cards from your graveyard"
+    );
+    assert!(matches!(
+        parse_single_effect_lexed(trimmed)?,
+        EffectAst::SubjectVerb(crate::model::ast::SubjectVerbEffectAst {
+            action: crate::model::ast::SubjectVerbActionAst::ZoneMoves(
+                ZoneMoveActionAst::Exile { .. }
+            ),
+            ..
+        })
+    ));
+
+    Ok(())
+}

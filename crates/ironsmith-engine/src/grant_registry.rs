@@ -817,20 +817,13 @@ pub(crate) fn proposed_card_face_query(
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)
 }
 
-/// `proposed_card_face_query` for a face that `selected_face` built for
-/// `origin`. An ordinary play-from origin with no printed alternative selects
-/// the physical object unchanged, so the proposed game is this game: its
-/// read-only query view answers without copying the game and refreshing the
-/// copy once per card. Every other origin installs a different face.
-pub(crate) fn proposed_card_face_query_for_origin<'a>(
+/// A face borrowed from this game already has the right characteristics.
+pub(crate) fn query_with_spell_face<'a>(
     game: &'a crate::GameState,
     face: &crate::object::Object,
-    origin: &crate::alternative_cast::CastingMethod,
 ) -> Result<std::borrow::Cow<'a, crate::GameState>, crate::effects::ExecutionError> {
-    let unchanged_face = matches!(
-        origin,
-        crate::alternative_cast::CastingMethod::PlayFrom { use_alternative: None, .. }
-    ) && face.face_down_cast_state.is_none()
+    let unchanged_face = game.object(face.id).is_some_and(|card| std::ptr::eq(card, face))
+        && face.face_down_cast_state.is_none()
         && !(face.zone == Zone::Exile && game.is_face_down(face.id));
     if unchanged_face {
         return game
@@ -941,6 +934,16 @@ pub struct GrantedPlayFrom {
     pub zone: Zone,
     pub usage_limit: Option<GrantUsageLimit>,
     pub constraints: PlayFromConstraints,
+}
+
+impl GrantedPlayFrom {
+    /// Separate static abilities on the same permanent can supply independent prices.
+    pub(crate) fn requires_alternative(&self, alternatives: &[GrantedAlternativeCast]) -> bool {
+        alternatives.iter().any(|alt| alt.source_id == self.source_id
+            && !matches!((&self.permission_identity, &alt.permission_identity),
+                (Some(GrantPermissionIdentity::Static { .. }), Some(GrantPermissionIdentity::Static { .. }))
+                if self.permission_identity != alt.permission_identity))
+    }
 }
 
 /// Rules linked to using one particular play-from permission.

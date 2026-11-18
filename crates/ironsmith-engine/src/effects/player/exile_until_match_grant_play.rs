@@ -1,7 +1,6 @@
 //! Exile cards from the top of a library until one matches a filter, then
 //! grant temporary play permission for that exiled card until end of turn.
 
-use crate::effect::EffectOutcome;
 use crate::effects::CompletedEffectOutputs;
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::LibraryConsultMode;
@@ -69,14 +68,7 @@ impl EffectExecutor for ExileUntilMatchGrantPlayEffect {
             retain_result_snapshots: false,
         }))
     }
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

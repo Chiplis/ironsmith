@@ -1,3 +1,5 @@
+use crate::model::reference_state::SnapshotAntecedent;
+use crate::model::ast::TokenCopySourceAst;
 use crate::ability::{Ability, AbilityKind};
 use crate::cards::builders::DamagePreventionActionAst;
 use crate::cards::builders::ForEachEffectAst;
@@ -13,7 +15,6 @@ use crate::cards::builders::{
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec, Value};
 use crate::filter::{ObjectFilter, ObjectRef};
-use crate::mana::{ManaCost, ManaSymbol};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter, SourceReferenceSurface, TaggedOpbjectRelation};
 use crate::zone::Zone;
@@ -149,10 +150,6 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
                     count, ..
                 })
                 | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                    count,
-                    ..
-                })
                 | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                     count, ..
                 })
@@ -1073,7 +1070,7 @@ fn rebind_source_counter_counts_to_triggering_object(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
             SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. })
-            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
+            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { source: TokenCopySourceAst::Object(_), count, .. })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
                 amount: count,
@@ -1634,18 +1631,16 @@ fn trigger_names_stack_object_targets(trigger: &TriggerSpec) -> bool {
 
 /// Record that a permanent-noun demonstrative in this trigger's body names
 /// the targets of the triggering stack object.
-fn import_triggering_stack_targets_alias(imports: &mut ReferenceImports, trigger: &TriggerSpec) {
+fn import_triggering_stack_targets(imports: &mut ReferenceImports, trigger: &TriggerSpec) {
     if !trigger_names_stack_object_targets(trigger) {
         return;
     }
     let Some(event_tag) = default_trigger_last_object_tag(trigger) else {
         return;
     };
-    let alias = ironsmith_compiler_resolve::reference_helpers::triggering_stack_targets_alias();
     imports
-        .snapshot_tag_aliases
-        .retain(|(existing, _)| existing != &alias);
-    imports.snapshot_tag_aliases.push((alias, event_tag));
+        .snapshot_bindings
+        .set_antecedent(SnapshotAntecedent::TriggeringStackTargets, Some(event_tag));
 }
 
 fn spell_cast_trigger_targets_source(trigger: &TriggerSpec) -> bool {
@@ -2856,14 +2851,8 @@ fn stage_effects_from_normalized(
     if include_trigger_prelude
         && let Some(tag) = default_last_object_tag.as_ref()
     {
-        let alias =
-            ironsmith_compiler_resolve::exile_result_unions::trigger_event_antecedent_alias();
-        if !imports
-            .snapshot_tag_aliases
-            .iter()
-            .any(|(existing, _)| existing == &alias)
-        {
-            imports.snapshot_tag_aliases.push((alias, tag.clone()));
+        if imports.snapshot_bindings.antecedent(SnapshotAntecedent::TriggerEvent).is_none() {
+            imports.snapshot_bindings.set_antecedent(SnapshotAntecedent::TriggerEvent, Some(tag.clone()));
         }
     }
 
@@ -3699,7 +3688,7 @@ fn import_named_action_object_roles(imports: &mut ReferenceImports, trigger: &Tr
         _=>return,
     };
     let bindings = std::sync::Arc::make_mut(&mut imports.recent_object_target_bindings);
-    for (tag, filter) in [("__named_action_source", performer), ("__named_action_objects", participants)] {
+    for (tag, filter) in [(ironsmith_core::tag::NAMED_ACTION_PERFORMER_TAG, performer), (ironsmith_core::tag::NAMED_ACTION_PARTICIPANTS_TAG, participants)] {
         if !bindings.iter().any(|binding| binding.tag.as_str() == tag) {
             bindings.push(crate::model::reference_state::ObjectTargetBinding::new(TagKey::from(tag), &filter));
         }
@@ -3714,7 +3703,7 @@ pub fn stage_effects_with_trigger_context_for_lowering(
     let mut imports = imports.into();
     imports.source_object_antecedent |= trigger.is_some_and(trigger_has_source_attack_antecedent);
     if let Some(trigger) = trigger {
-        import_triggering_stack_targets_alias(&mut imports, trigger);
+        import_triggering_stack_targets(&mut imports, trigger);
         import_named_action_object_roles(&mut imports, trigger);
     }
     let mut normalized = normalize_effects_ast(effects);
@@ -4581,14 +4570,11 @@ pub fn stage_owned_triggered_effects_for_lowering(
         superseded_event_tag_needs_prelude = event_tag.as_str()
             == crate::tag::CompilerReferenceTag::Triggering.as_str()
             && effects_reference_it_tag(&body_effects);
-        let alias =
-            ironsmith_compiler_resolve::reference_helpers::source_superseded_antecedent_alias();
         imports
-            .snapshot_tag_aliases
-            .retain(|(existing, _)| existing != &alias);
-        imports.snapshot_tag_aliases.push((alias, event_tag));
+            .snapshot_bindings
+            .set_antecedent(SnapshotAntecedent::SourceSuperseded, Some(event_tag));
     }
-    import_triggering_stack_targets_alias(&mut imports, &trigger);
+    import_triggering_stack_targets(&mut imports, &trigger);
     let allow_life_event_value = trigger_allows_event_derived_life_value(&trigger)
         || intervening_if
             .as_ref()
@@ -5059,202 +5045,10 @@ pub fn apply_delayed_trigger_followup_statement_to_last_ability(
 pub use ironsmith_compiler_semantic::keyword_abilities::assemble_parsed_triggered_ability;
 
 pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Option<StaticAbility> {
-    if !action.lowers_to_static_ability() {
-        return None;
-    }
-
-    match action {
-        KeywordAction::Flying => Some(StaticAbility::flying()),
-        KeywordAction::Menace => Some(StaticAbility::menace()),
-        // CR 702.22: a granted banding ("Enchanted creature has banding") is
-        // the same static keyword the printed one lowers to.
-        KeywordAction::Banding => Some(StaticAbility::banding()),
-        KeywordAction::Hexproof => Some(StaticAbility::hexproof()),
-        KeywordAction::Haste => Some(StaticAbility::haste()),
-        KeywordAction::Improvise => Some(StaticAbility::improvise()),
-        KeywordAction::Convoke => Some(StaticAbility::convoke()),
-        KeywordAction::AffinityForArtifacts => Some(StaticAbility::affinity_for_artifacts()),
-        KeywordAction::CantBeCountered => Some(StaticAbility::cant_be_countered_ability()),
-        KeywordAction::Delve => Some(StaticAbility::delve()),
-        KeywordAction::FirstStrike => Some(StaticAbility::first_strike()),
-        KeywordAction::DoubleStrike => Some(StaticAbility::double_strike()),
-        KeywordAction::Deathtouch => Some(StaticAbility::deathtouch()),
-        KeywordAction::Lifelink => Some(StaticAbility::lifelink()),
-        KeywordAction::Vigilance => Some(StaticAbility::vigilance()),
-        KeywordAction::Trample => Some(StaticAbility::trample()),
-        KeywordAction::TrampleOverPlaneswalkers => {
-            Some(StaticAbility::trample_over_planeswalkers())
-        }
-        KeywordAction::Reach => Some(StaticAbility::reach()),
-        KeywordAction::Defender => Some(StaticAbility::defender()),
-        KeywordAction::Decayed => Some(StaticAbility::cant_block()),
-        KeywordAction::Flash => Some(StaticAbility::flash()),
-        KeywordAction::Phasing => Some(StaticAbility::phasing()),
-        KeywordAction::Indestructible => Some(StaticAbility::indestructible()),
-        KeywordAction::Shroud => Some(StaticAbility::shroud()),
-        KeywordAction::Daybound => Some(StaticAbility::daybound()),
-        KeywordAction::Nightbound => Some(StaticAbility::nightbound()),
-        KeywordAction::Ward(amount) => u8::try_from(amount).ok().map(|generic| {
-            StaticAbility::ward(crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![
-                ManaSymbol::Generic(generic),
-            ])))
-        }),
-        KeywordAction::Wither => Some(StaticAbility::wither()),
-        KeywordAction::Afflict(_) => None,
-        KeywordAction::Amplify(_) => None,
-        KeywordAction::Afterlife(_) | KeywordAction::Fabricate(_) => None,
-        KeywordAction::Infect => Some(StaticAbility::infect()),
-        KeywordAction::Undying
-        | KeywordAction::Persist
-        | KeywordAction::Prowess
-        | KeywordAction::Exalted => None,
-        KeywordAction::Cascade => Some(StaticAbility::cascade()),
-        KeywordAction::Toxic(amount) => Some(StaticAbility::toxic(amount)),
-        KeywordAction::Storm
-        | KeywordAction::Gravestorm
-        | KeywordAction::Poisonous(_)
-        | KeywordAction::BattleCry
-        | KeywordAction::Dethrone
-        | KeywordAction::Evolve
-        | KeywordAction::Increment
-        | KeywordAction::Ingest
-        | KeywordAction::Mentor => None,
-        KeywordAction::Skulk => Some(StaticAbility::skulk()),
-        KeywordAction::Training | KeywordAction::Riot => None,
-        KeywordAction::Unleash => Some(StaticAbility::unleash()),
-        KeywordAction::Renown(_)
-        | KeywordAction::Modular(_)
-        | KeywordAction::Graft(_)
-        | KeywordAction::Ripple(_)
-        | KeywordAction::Soulbond
-        | KeywordAction::Soulshift(_)
-        | KeywordAction::SoulshiftValue(_)
-        | KeywordAction::Mobilize(_)
-        | KeywordAction::MobilizeValue { .. }
-        | KeywordAction::Outlast(_)
-        | KeywordAction::Unearth(_)
-        | KeywordAction::UnearthTotalCost(_)
-        | KeywordAction::Encore(_)
-        | KeywordAction::Eternalize(_)
-        | KeywordAction::Ninjutsu(_)
-        | KeywordAction::Extort => None,
-        KeywordAction::Partner => Some(StaticAbility::partner()),
-        KeywordAction::StartYourEngines => Some(StaticAbility::start_your_engines()),
-        KeywordAction::Assist => Some(StaticAbility::assist()),
-        KeywordAction::SplitSecond => Some(StaticAbility::split_second()),
-        KeywordAction::Rebound => Some(StaticAbility::rebound()),
-        KeywordAction::Sunburst => None,
-        KeywordAction::ReadAhead => Some(StaticAbility::read_ahead()),
-        KeywordAction::Firebending(_)
-        | KeywordAction::FirebendingValue { .. }
-        | KeywordAction::Fading(_)
-        | KeywordAction::Vanishing(_) => None,
-        KeywordAction::Fear => Some(StaticAbility::fear()),
-        KeywordAction::Intimidate => Some(StaticAbility::intimidate()),
-        KeywordAction::Shadow => Some(StaticAbility::shadow()),
-        KeywordAction::Horsemanship => Some(StaticAbility::horsemanship()),
-        KeywordAction::Flanking => Some(StaticAbility::flanking()),
-        KeywordAction::UmbraArmor => Some(StaticAbility::umbra_armor()),
-        KeywordAction::Landwalk(kind) => Some(match kind {
-            crate::static_abilities::LandwalkKind::Subtype {
-                subtype,
-                snow: false,
-            } => StaticAbility::landwalk(subtype),
-            crate::static_abilities::LandwalkKind::Subtype {
-                subtype,
-                snow: true,
-            } => StaticAbility::snow_landwalk(subtype),
-            crate::static_abilities::LandwalkKind::AnyLand => StaticAbility::any_landwalk(),
-            crate::static_abilities::LandwalkKind::NonbasicLand => {
-                StaticAbility::nonbasic_landwalk()
-            }
-            crate::static_abilities::LandwalkKind::ArtifactLand => {
-                StaticAbility::artifact_landwalk()
-            }
-            crate::static_abilities::LandwalkKind::LegendaryLand => {
-                StaticAbility::legendary_landwalk()
-            }
-            crate::static_abilities::LandwalkKind::SnowLand => StaticAbility::snow_any_landwalk(),
-            crate::static_abilities::LandwalkKind::ChosenType { snow } => {
-                StaticAbility::chosen_type_landwalk(snow)
-            }
-            crate::static_abilities::LandwalkKind::SacrificedLandTypes => {
-                StaticAbility::sacrificed_land_types_landwalk()
-            }
-        }),
-        KeywordAction::Bloodthirst(amount) => Some(StaticAbility::bloodthirst(amount)),
-        KeywordAction::BloodthirstX => Some(StaticAbility::enters_with_counters_value(
-            crate::object::CounterType::PlusOnePlusOne,
-            crate::effect::Value::DamageDealtToPlayersThisTurn(crate::target::PlayerFilter::Opponent),
-        )),
-        KeywordAction::Tribute(amount) => Some(StaticAbility::tribute(amount)),
-        KeywordAction::Rampage(_)
-        | KeywordAction::Bushido(_)
-        | KeywordAction::BushidoValue(_)
-        | KeywordAction::Frenzy(_) => None,
-        KeywordAction::Changeling => Some(StaticAbility::changeling()),
-        KeywordAction::HexproofFrom(filter) => Some(StaticAbility::hexproof_from(filter.clone())),
-        KeywordAction::ProtectionFrom(colors) => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::Color(colors),
-        )),
-        KeywordAction::ProtectionFromOwnColors => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::OwnColors,
-        )),
-        KeywordAction::ProtectionFromColorsAmong(filter) => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::ColorsAmong { filter, reference_source: None },
-        )),
-        KeywordAction::ProtectionFromAllColors => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::AllColors,
-        )),
-        KeywordAction::ProtectionFromColorless => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::Colorless,
-        )),
-        KeywordAction::ProtectionFromEverything => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::Everything,
-        )),
-        KeywordAction::ProtectionFromChosenPlayer => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::ChosenPlayer,
-        )),
-        KeywordAction::ProtectionFromChosenColor => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::ChosenColor,
-        )),
-        KeywordAction::ProtectionFromColorsOutsideCommanderIdentity => {
-            Some(StaticAbility::protection(
-                crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity,
-            ))
-        }
-        KeywordAction::ProtectionFromManaValuesOtherThanChosenNumber => {
-            Some(StaticAbility::protection(
-                crate::ability::ProtectionFrom::ManaValuesOtherThanChosenNumber,
-            ))
-        }
-        KeywordAction::ProtectionFromFilter(filter) => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::Permanents(filter),
-        )),
-        KeywordAction::ProtectionFromEachManaValueAmong(filter) => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::EachManaValueAmong(filter),
-        )),
-        KeywordAction::ProtectionFromCardType(card_type) => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::CardType(card_type),
-        )),
-        KeywordAction::ProtectionFromSubtype(subtype) => Some(StaticAbility::protection(
-            crate::ability::ProtectionFrom::Permanents(
-                ObjectFilter::default().with_subtype(subtype),
-            ),
-        )),
-        KeywordAction::Unblockable => Some(StaticAbility::unblockable()),
-        KeywordAction::Devoid => Some(StaticAbility::make_colorless(ObjectFilter::source())),
-        KeywordAction::Annihilator(_) | KeywordAction::AnnihilatorValue(_) => None,
-        KeywordAction::Dredge(amount) => Some(StaticAbility::dredge(amount)),
-        KeywordAction::StaticMarker(name) => Some(StaticAbility::keyword_marker(name)),
-        KeywordAction::StaticMarkerText(text) => Some(StaticAbility::keyword_marker(text)),
-        KeywordAction::Marker(name) => Some(StaticAbility::keyword_fallback_text(name)),
-        KeywordAction::MarkerText(text) => Some(StaticAbility::keyword_fallback_text(text)),
-        _ => None,
-    }
+    ironsmith_compiler_semantic::keyword_abilities::keyword_static_ability(action)
 }
 
-fn lower_keyword_action_or_err(action: KeywordAction) -> Result<StaticAbility, CardTextError> {
+pub(super) fn lower_keyword_action_or_err(action: KeywordAction) -> Result<StaticAbility, CardTextError> {
     runtime_static_ability_for_keyword_action(action).ok_or_else(|| {
         CardTextError::InvariantViolation(
             "static-ability lowering received a non-static keyword action".to_string(),
@@ -6393,7 +6187,7 @@ pub(crate) fn lower_compiler_static_ability_core(
         crate::model::CompilerStaticAbilityPayloadCore::NamedActionReplacement { label: action_label, source_filter, performer_filter, object_requirement, replacement_effects, optional, display } => {
             let mut ctx = crate::model::facts::EffectLoweringContext::new();
             ctx.last_object_tag = Some(if object_requirement.is_some() {
-                "__proposed_action_objects".into()
+                ironsmith_core::tag::PROPOSED_ACTION_OBJECTS_TAG.into()
             } else {
                 crate::tag::CompilerReferenceTag::It.key()
             });
@@ -6549,14 +6343,13 @@ pub(crate) fn lower_compiler_static_ability_core(
                     | ironsmith_core::ReplacedEventSpec::ZoneChangeExcluding { .. }
                     | ironsmith_core::ReplacedEventSpec::Untap { .. }
             ) {
-                ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+                let affected = crate::tag::CompilerReferenceTag::It.key();
+                ctx.last_object_tag = Some(affected.clone());
                 // That binding is concrete: a demonstrative after a source
                 // subject ("sacrifice this Aura and that land gains
                 // indestructible") still names the affected object.
-                ctx.snapshot_tag_aliases.push((
-                    ironsmith_compiler_resolve::reference_helpers::runtime_bound_it_alias(),
-                    crate::tag::CompilerReferenceTag::It.key(),
-                ));
+                ctx.snapshot_bindings
+                    .set_antecedent(SnapshotAntecedent::RuntimeBoundIt, Some(affected));
             }
             let (replacement_effects, choices) =
                 crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
@@ -7861,7 +7654,6 @@ mod tests {
     }
 
     use crate::Until;
-    use ironsmith_compiler::lexer::lex_line;
 
     fn second_spell_cast_trigger() -> TriggerSpec {
         TriggerSpec::SpellCast {
@@ -7938,173 +7730,6 @@ mod tests {
 
 
     #[test]
-    fn typed_trigger_program_replaces_unbound_player_import_at_shared_staging_boundary() {
-        let tokens = lex_line("Exile the top card of that player's library.", 0).unwrap();
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
-        let mut imports = ReferenceImports::default();
-        imports.last_player_filter = Some(PlayerFilter::IteratedPlayer);
-        let prepared = stage_effects_with_trigger_context_for_lowering(Some(&TriggerSpec::ThisAttacks), &effects, imports).unwrap();
-        let lowered = materialize_prepared_effects_with_trigger_context(&prepared).unwrap();
-        let effects = lowered.effects.flattened_default_effects();
-        let exile = effects.iter().find_map(|effect| effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()).unwrap();
-        assert_eq!(exile.player, PlayerFilter::Defending);
-    }
-
-    #[test]
-    fn concrete_attack_player_role_replaces_unbound_import_placeholder() {
-        let tokens = lex_line("Exile the top card of that player's library.", 0).unwrap();
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
-        let mut imports = ReferenceImports::default();
-        imports.last_player_filter = Some(PlayerFilter::IteratedPlayer);
-        let (_, prepared) = stage_triggered_effects_for_lowering(TriggerSpec::ThisAttacks, &effects, imports).unwrap();
-        let (lowered, _) = materialize_prepared_triggered_effects(&prepared).unwrap();
-        let effects = lowered.effects.flattened_default_effects();
-        let exile = effects.iter().find_map(|effect| effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()).unwrap();
-        assert_eq!(exile.player, PlayerFilter::Defending);
-    }
-
-    #[test]
-    fn phase_step_attachment_survives_incompatible_discard_antecedent() {
-        let tokens = lex_line(
-            "That player may discard a card at random. If the player does, untap that creature.",
-            0,
-        )
-        .expect("attachment trigger body should lex");
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
-            .expect("attachment trigger body should parse");
-        let trigger = TriggerSpec::BeginningOfUpkeep(PlayerFilter::ControllerOf(
-            ObjectRef::tagged(ironsmith_compiler_semantic::tag::declared_key("enchanted")),
-        ));
-        let (_, prepared) =
-            stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
-                .expect("attachment trigger should prepare");
-        fn untap_reference_tag(effect: &EffectAst) -> Option<TagKey> {
-            if let EffectAst::SubjectVerb(subject_verb) = effect
-                && let SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap {
-                    target: TargetAst::Object(filter, _, _),
-                }) = &subject_verb.action
-            {
-                return filter
-                    .tagged_constraints
-                    .iter()
-                    .find(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
-                    .map(|constraint| constraint.tag.clone());
-            }
-            let mut found = None;
-            for_each_nested_effects(effect, true, |nested| {
-                if found.is_none() {
-                    found = nested.iter().find_map(untap_reference_tag);
-                }
-            });
-            found
-        }
-        let tag = prepared
-            .prepared
-            .annotated
-            .effects
-            .iter()
-            .find_map(|annotated| untap_reference_tag(&annotated.effect))
-            .expect("prepared body should retain the typed untap target");
-        assert_eq!(tag.as_str(), "enchanted");
-    }
-
-    #[test]
-    fn statement_preparation_exports_terminal_per_player_memory_for_next_line() {
-        let tokens = lex_line(
-            "Each opponent exiles a creature with the greatest power among creatures that player controls.",
-            0,
-        )
-        .expect("partitioned exile statement should lex");
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
-            .expect("partitioned exile statement should parse");
-        let prepared = stage_statement_effects_for_lowering(&effects, ReferenceImports::default())
-            .expect("statement preparation should assign its terminal result producer");
-
-        assert!(
-            prepared.exports.to_imports().last_effect_id.is_some(),
-            "the next source statement must be able to import the per-player exile result: {prepared:#?}"
-        );
-    }
-
-    #[test]
-    fn self_contained_coordinated_statement_does_not_export_unused_result_id() {
-        let tokens = lex_line("Target player draws two cards and loses 2 life.", 0)
-            .expect("coordinated statement should lex");
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
-            .expect("coordinated statement should parse");
-        let prepared = stage_statement_effects_for_lowering(&effects, ReferenceImports::default())
-            .expect("coordinated statement should prepare");
-
-        assert!(
-            prepared.exports.to_imports().last_effect_id.is_none(),
-            "a self-contained statement must not manufacture a terminal result dependency: {prepared:#?}"
-        );
-        let lowered = materialize_prepared_statement_effects(&prepared)
-            .expect("coordinated statement should lower");
-        assert!(
-            lowered
-                .effects
-                .flattened_default_effects()
-                .iter()
-                .all(|effect| effect
-                    .downcast_ref::<crate::effects::WithIdEffect>()
-                    .is_none()),
-            "unused statement export must not obscure the coordinated runtime shell: {lowered:#?}"
-        );
-    }
-
-    #[test]
-    fn blocks_or_becomes_blocked_union_binds_that_creature_to_the_other_participant() {
-        let filter = ObjectFilter::creature();
-        let trigger = TriggerSpec::Either(
-            Box::new(TriggerSpec::ThisBlocksObject {
-                filter: filter.clone(),
-                min_blocked_objects: None,
-            }),
-            Box::new(TriggerSpec::ThisBecomesBlockedByObject(filter.clone())),
-        );
-        let tokens = lex_line("That creature gains first strike until end of turn.", 0)
-            .expect("shared combat body should lex");
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
-            .expect("shared combat body should parse");
-        let (_, prepared) =
-            stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
-                .expect("combat union should prepare a shared event-participant reference");
-        assert!(matches!(
-            prepared.prepared.prelude.as_slice(),
-            [EffectPreludeTag::OtherBlockParticipant(tag, candidate)]
-                if tag.as_str() == "blocking" && candidate == &filter
-        ));
-
-        let (lowered, intervening_if) = materialize_prepared_triggered_effects(&prepared)
-            .expect("combat union body should lower");
-        assert!(intervening_if.is_none());
-        let flattened = lowered.effects.flattened_default_effects();
-        assert!(
-            flattened
-                .first()
-                .and_then(|effect| {
-                    effect.downcast_ref::<crate::effects::TagOtherBlockParticipantEffect>()
-                })
-                .is_some_and(|tag| tag.tag.as_str() == "blocking"),
-            "the executable prelude must select the participant opposite the source: {flattened:#?}"
-        );
-        let grant = flattened
-            .iter()
-            .find_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
-            .expect("the combat participant should receive a typed temporary grant");
-        assert!(matches!(
-            grant.target_spec.as_ref().map(ChooseSpec::unhinted),
-            Some(ChooseSpec::Tagged(tag)) if tag.as_str() == "blocking"
-        ));
-        assert_eq!(grant.until, Until::EndOfTurn);
-        assert!(
-            format!("{flattened:#?}").contains("FirstStrike"),
-            "the typed grant must survive lowering: {flattened:#?}"
-        );
-    }
-
-    #[test]
     fn combat_union_other_participant_guard_rejects_non_equivalent_arms() {
         let creature = ObjectFilter::creature();
         let artifact = ObjectFilter::artifact();
@@ -8127,123 +7752,6 @@ mod tests {
         assert!(this_blocks_or_becomes_blocked_other_filter(&thresholded).is_none());
     }
 
-    #[test]
-    fn delayed_return_and_control_loss_sacrifice_rejoin_across_sentence_segments() {
-        let tokens = lex_line(
-            "Put that card onto the battlefield under your control at the beginning of the next end step. Sacrifice the creature when you lose control of this creature.",
-            0,
-        )
-        .expect("linked delayed return should lex");
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
-            .expect("linked delayed return should parse");
-        let (_, prepared) = stage_triggered_effects_for_lowering(
-            TriggerSpec::DiesCreatureDealtDamageByThisTurn {
-                victim: ObjectFilter::creature(),
-                damager: crate::cards::builders::DamageBySpec::ThisCreature,
-            },
-            &effects,
-            ReferenceImports::default(),
-        )
-        .expect("linked delayed return should prepare in its trigger context");
-        let (mut lowered, intervening_if) = materialize_prepared_triggered_effects(&prepared)
-            .expect("linked delayed return should lower");
-        assert!(intervening_if.is_none());
-
-        assert_eq!(lowered.effects.segments.len(), 1, "{:#?}", lowered.effects);
-        let followup_effects = lowered.effects.segments[0].default_effects.split_off(2);
-        lowered
-            .effects
-            .segments
-            .push(crate::resolution::ResolutionSegment::from_effects(
-                followup_effects,
-            ));
-        lowered.effects.segments[1].starts_new_source_line = true;
-        fuse_source_control_loss_sacrifice_followup(&mut lowered);
-        assert_eq!(lowered.effects.segments.len(), 1, "{:#?}", lowered.effects);
-
-        let schedule = lowered.effects.segments[0].default_effects[1]
-            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
-            .expect("the triggering card should still return at the next end step");
-        assert_eq!(schedule.effects.len(), 2, "{schedule:#?}");
-        let returned = schedule.effects[0]
-            .downcast_ref::<crate::effects::TaggedEffect>()
-            .expect("the returned identity must be tagged");
-        assert_eq!(returned.tag.as_str(), "returned_control_loss");
-        let control_loss = schedule.effects[1]
-            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
-            .expect("the returned identity must receive a control-loss watcher");
-        assert!(matches!(
-            control_loss.trigger,
-            ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl { .. }
-        ));
-        assert_eq!(
-            control_loss
-                .target_tag
-                .as_ref()
-                .map(crate::tag::TagKey::as_str),
-            Some("returned_control_loss")
-        );
-        assert!(control_loss.watch_ability_source);
-    }
-
-    #[test]
-    fn immediate_return_and_control_loss_sacrifice_rejoin_across_sentence_segments() {
-        let tokens = lex_line(
-            "Put that card onto the battlefield under your control. Sacrifice it when you lose control of this creature.",
-            0,
-        )
-        .expect("linked immediate return should lex");
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
-            .expect("linked immediate return should parse");
-        let (_, prepared) = stage_triggered_effects_for_lowering(
-            TriggerSpec::DiesCreatureDealtDamageByThisTurn {
-                victim: ObjectFilter::creature(),
-                damager: crate::cards::builders::DamageBySpec::ThisCreature,
-            },
-            &effects,
-            ReferenceImports::default(),
-        )
-        .expect("linked immediate return should prepare in its trigger context");
-        let (mut lowered, intervening_if) = materialize_prepared_triggered_effects(&prepared)
-            .expect("linked immediate return should lower");
-        assert!(intervening_if.is_none());
-        assert!(
-            matches!(lowered.effects.segments.len(), 1 | 2),
-            "the migrated grouping may already preserve the linked body: {:#?}",
-            lowered.effects
-        );
-
-        fuse_source_control_loss_sacrifice_followup(&mut lowered);
-        assert_eq!(lowered.effects.segments.len(), 1, "{:#?}", lowered.effects);
-        let semantic_effects = lowered.effects.segments[0]
-            .default_effects
-            .iter()
-            .filter(|effect| {
-                effect
-                    .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
-                    .is_none()
-            })
-            .collect::<Vec<_>>();
-        let [returned, control_loss] = semantic_effects.as_slice() else {
-            panic!(
-                "expected returned object plus one control-loss watcher: {:#?}",
-                lowered.effects
-            );
-        };
-        let returned = returned
-            .downcast_ref::<crate::effects::TaggedEffect>()
-            .expect("the returned identity must stay tagged");
-        let control_loss = control_loss
-            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
-            .expect("the returned identity must receive a control-loss watcher");
-        assert!(matches!(
-            control_loss.trigger,
-            ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl { .. }
-        ));
-        assert_eq!(control_loss.target_tag.as_ref(), Some(&returned.tag));
-        assert!(control_loss.watch_ability_source);
-    }
-
 
 
     #[test]
@@ -8261,172 +7769,6 @@ mod tests {
         };
         assert_eq!(tag.as_str(), "blocking");
         assert!(!filter.blocking, "{filter:#?}");
-    }
-
-    #[test]
-    fn discard_trigger_intervening_it_predicate_binds_the_discarded_card() {
-        let trigger = TriggerSpec::PlayerDiscardsCard {
-            player: PlayerFilter::You,
-            filter: None,
-            cause_controller: None,
-            effect_like_only: false,
-            one_or_more: false,
-        };
-        let body_tokens = lex_line("Untap this creature.", 0).expect("effect body should lex");
-        let body = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&body_tokens)
-            .expect("effect body should parse");
-        let madness_filter = ObjectFilter::default()
-            .with_alternative_cast(ironsmith_core::AlternativeCastKind::Madness);
-        let effects = vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate: PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::It.bind(),
-                madness_filter.clone(),
-            ),
-            if_true: body,
-            if_false: Vec::new(),
-        })];
-
-        let (_, prepared) =
-            stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
-                .expect("discarded-card intervening predicate should prepare");
-        assert!(prepared.prepared.prelude.iter().any(|prelude| {
-            matches!(
-                prelude,
-                EffectPreludeTag::TriggeringObject(tag) if tag.as_str() == "triggering"
-            )
-        }));
-
-        let (_, intervening_if) = materialize_prepared_triggered_effects(&prepared)
-            .expect("discarded-card intervening predicate should lower");
-        assert!(matches!(
-            intervening_if,
-            Some(Condition::TaggedObjectMatches(tag, filter))
-                if tag.as_str() == "triggering" && filter == madness_filter
-        ));
-    }
-
-    #[test]
-    fn unblocked_attacker_offer_keeps_offset_target_and_followup_identity() {
-        let tokens = lex_line(
-            "Its controller may have it deal damage equal to its power plus 2 to another target creature. If that player does, the attacking creature assigns no combat damage this turn.",
-            0,
-        )
-        .expect("linked unblocked-attacker body should lex");
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
-            .expect("linked unblocked-attacker body should parse");
-        let trigger = TriggerSpec::AttacksAndIsntBlocked(ObjectFilter::creature().match_tagged(
-            ironsmith_compiler_semantic::tag::declared_key("enchanted"),
-            TaggedOpbjectRelation::IsTaggedObject,
-        ));
-        let (_, prepared) =
-            stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
-                .expect("unblocked-attacker body should prepare");
-        let (lowered, intervening_if) = materialize_prepared_triggered_effects(&prepared)
-            .expect("unblocked-attacker body should lower");
-        assert!(intervening_if.is_none());
-
-        let flattened = lowered.effects.flattened_default_effects();
-        let triggering = flattened
-            .iter()
-            .find_map(|effect| effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>())
-            .expect("unblocked attacker should receive an event identity tag");
-        let offer = flattened
-            .iter()
-            .find_map(|effect| effect.downcast_ref::<crate::effects::WithIdEffect>())
-            .expect("optional offer should export its result");
-        let may = offer
-            .effect
-            .downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
-            .expect("controller should make a may choice");
-        assert!(matches!(
-            may.decider.as_ref(),
-            Some(PlayerFilter::ControllerOf(ObjectRef::Tagged(tag)))
-                if tag.as_str() == triggering.tag.as_str()
-        ));
-        let with_source = may
-            .effects
-            .iter()
-            .find_map(|effect| effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>())
-            .expect("the triggering attacker should be the damage source");
-        assert!(matches!(
-            with_source.source.unhinted(),
-            ChooseSpec::Tagged(tag) if tag.as_str() == triggering.tag.as_str()
-        ));
-        let damage = with_source
-            .effect
-            .downcast_ref::<crate::effects::DealDamageEffect>()
-            .expect("optional effect should deal damage");
-        assert!(
-            matches!(
-                damage.amount.unhinted(),
-                Value::Add(power, offset)
-                    if matches!(
-                        power.unhinted(),
-                        Value::PowerOf(spec)
-                            if matches!(spec.unhinted(), ChooseSpec::Tagged(tag) if tag.as_str() == triggering.tag.as_str())
-                    ) && offset.unhinted() == &Value::Fixed(2)
-            ),
-            "damage amount lost triggering-source identity or its authored offset: {damage:#?}"
-        );
-        let ChooseSpec::Target(target) = damage.target.unhinted() else {
-            panic!("damage recipient should remain targeted: {damage:#?}");
-        };
-        let ChooseSpec::Object(filter) = target.unhinted() else {
-            panic!("damage recipient should be an object target: {damage:#?}");
-        };
-        assert!(
-            filter.other,
-            "recipient must be another creature: {filter:#?}"
-        );
-        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
-        assert!(
-            filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == triggering.tag.as_str()
-                    && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
-            }),
-            "the damage source must be excluded during target legality: {filter:#?}"
-        );
-
-        let result = flattened
-            .iter()
-            .find_map(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
-            .expect("followup should test the optional offer result");
-        assert_eq!(result.condition, offer.id);
-        assert_eq!(result.predicate, crate::effect::EffectPredicate::Happened);
-        let [assignment_effect] = result.then.as_slice() else {
-            panic!("expected one no-combat-damage assignment: {result:#?}");
-        };
-        let assignment = assignment_effect
-            .downcast_ref::<crate::effects::AssignNoCombatDamageEffect>()
-            .expect("followup should assign no combat damage");
-        assert_eq!(assignment.until, Until::EndOfTurn);
-        assert!(matches!(
-            assignment.source.unhinted(),
-            ChooseSpec::Tagged(tag) if tag.as_str() == triggering.tag.as_str()
-        ));
-    }
-
-    #[test]
-    fn coordinated_tap_does_not_replace_countered_spell_controller_actor() {
-        let tokens = lex_line(
-            "Counter target spell unless its controller pays {X}. If that player doesn't, they tap all lands with mana abilities they control and lose all unspent mana.",
-            0,
-        )
-        .expect("power-sink probe should lex");
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
-            .expect("power-sink probe should parse");
-        let prepared = stage_effects_for_lowering(&effects, ReferenceImports::default())
-            .expect("power-sink probe should prepare");
-        let lowered = materialize_prepared_statement_effects(&prepared)
-            .expect("power-sink probe should lower");
-        let debug = format!("{:#?}", lowered.effects);
-
-        assert!(
-            debug.contains("AliasedControllerOf")
-                && debug.contains("countered_0")
-                && !debug.contains("AliasedControllerOf(Tagged(TagKey(\"tapped_"),
-            "nonpayment actor must remain the countered spell's controller: {debug}"
-        );
     }
 
     #[test]
@@ -8543,110 +7885,6 @@ mod tests {
         assert!(filter.has_for_each_leading_then_surface());
     }
 
-    #[test]
-    fn repeated_optional_exiles_prepare_plural_return_with_aggregate_tag() {
-        let tokens = lex_line(
-            "Exile up to one target artifact you control and up to one target creature you control. Then return them to the battlefield under their owners' control.",
-            0,
-        )
-        .expect("lex");
-        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
-            .expect("parse");
-        let prepared =
-            stage_effects_for_lowering(&effects, ReferenceImports::default()).expect("prepare");
-        let debug = format!("{:#?}", prepared.annotated.effects);
-
-        assert!(
-            debug.contains("ReturnAllToBattlefield")
-                && !debug.contains(crate::tag::CompilerReferenceTag::SourceExiled.as_str()),
-            "expected aggregate helper tag to replace the plural placeholder, got {debug}"
-        );
-    }
-
-    #[test]
-    fn trailing_unless_stays_a_resolution_time_conditional() {
-        let cases = [
-            (
-                "This creature deals 4 damage to that player unless they control a commander.",
-                TriggerSpec::BeginningOfEndStep(PlayerFilter::Any),
-            ),
-            (
-                "This creature deals 2 damage to that player unless they control two or more basic lands.",
-                TriggerSpec::BeginningOfUpkeep(PlayerFilter::Any),
-            ),
-            (
-                "This artifact deals 2 damage to that player unless they have exactly three or exactly four cards in hand.",
-                TriggerSpec::BeginningOfUpkeep(PlayerFilter::Opponent),
-            ),
-            (
-                "This Aura deals 2 damage to that player unless that creature attacked this turn.",
-                TriggerSpec::BeginningOfEndStep(PlayerFilter::ControllerOf(ObjectRef::tagged(
-                    ironsmith_compiler_semantic::tag::declared_key("enchanted"),
-                ))),
-            ),
-        ];
-
-        for (text, trigger) in cases {
-            let tokens = lex_line(text, 0).expect("lex trailing-unless sentence");
-            let effects =
-                ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
-                    .expect("parse trailing-unless sentence");
-            assert!(
-                matches!(
-                    effects.as_slice(),
-                    [EffectAst::Conditionals(
-                        ConditionalEffectAst::TrailingUnless { .. }
-                    )]
-                ) || matches!(
-                    effects.as_slice(),
-                    [EffectAst::ControlFlow(control)]
-                        if matches!(
-                            &control.node,
-                            crate::model::control_flow::ControlFlowNodeAst::Condition {
-                                condition,
-                                ..
-                            } if condition.position
-                                == crate::model::control_flow::ConditionPositionAst::Postcondition
-                                && condition.negated_surface
-                        )
-                ),
-                "expected canonical trailing-unless control flow for {text}: {effects:#?}"
-            );
-
-            let (_, prepared) = stage_triggered_effects_for_lowering(
-                trigger,
-                &effects,
-                ReferenceImports::default(),
-            )
-            .expect("prepare trailing-unless trigger");
-            assert!(
-                prepared.intervening_if.is_none(),
-                "trailing unless must not be promoted to intervening-if: {text}"
-            );
-
-            let (lowered, intervening_if) = materialize_prepared_triggered_effects(&prepared)
-                .expect("lower trailing-unless trigger");
-            assert!(
-                intervening_if.is_none(),
-                "unexpected intervening-if: {text}"
-            );
-            let conditional = lowered
-                .effects
-                .flattened_default_effects()
-                .iter()
-                .find_map(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
-                .expect("lowered trailing-unless conditional");
-            assert_eq!(
-                conditional.surface,
-                ironsmith_core::ConditionalSurface::TrailingUnless,
-                "missing trailing-unless runtime surface: {text}"
-            );
-            assert!(
-                matches!(&conditional.condition, Condition::Not(_)),
-                "runtime true branch must retain the negated executable gate: {text}"
-            );
-        }
-    }
 }
 
 fn bind_cast_spell_future_entry_counters(trigger: &TriggerSpec, lowered: &mut LoweredEffects) {

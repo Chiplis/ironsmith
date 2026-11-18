@@ -20,6 +20,7 @@ generated-registry = ["ironsmith-web-session/generated-registry"]
 dynamic-compile = ["ironsmith-web-session/dynamic-compile"]
 wasm = ["ironsmith-web-session/wasm"]
 wasm-lean = ["ironsmith-web-session/wasm-lean"]
+xmage-fixtures = ["ironsmith-web-session/xmage-fixtures"]
 shadow-continuous = ["ironsmith-web-session/shadow-continuous"]
 paranoid-invariants = ["ironsmith-web-session/paranoid-invariants"]
 

@@ -249,6 +249,45 @@ pub struct ManaCost {
     waterbend_payment_scope: Option<WaterbendPaymentScope>,
 }
 
+/// Generic mana symbols hold one byte. Larger totals use consecutive pips.
+pub fn generic_mana_pips(mut amount: u32) -> impl Iterator<Item = Vec<ManaSymbol>> {
+    std::iter::from_fn(move || {
+        if amount == 0 {
+            return None;
+        }
+        let chunk = amount.min(u32::from(u8::MAX)) as u8;
+        amount -= u32::from(chunk);
+        Some(vec![ManaSymbol::Generic(chunk)])
+    })
+}
+
+fn x_pips(pips: &[Vec<ManaSymbol>]) -> impl Iterator<Item = &Vec<ManaSymbol>> {
+    pips.iter().filter(|pip| pip.contains(&ManaSymbol::X))
+}
+
+/// Choose one symbol per pip, retaining the first occurrence of each distinct branch.
+fn symbol_combinations<P: AsRef<[ManaSymbol]>>(
+    pips: impl IntoIterator<Item = P>,
+    normalize: impl Fn(&mut [ManaSymbol]),
+) -> Vec<Vec<ManaSymbol>> {
+    let mut branches = vec![Vec::new()];
+    for pip in pips {
+        let mut next = Vec::new();
+        for branch in &branches {
+            for symbol in pip.as_ref() {
+                let mut choice = branch.clone();
+                choice.push(*symbol);
+                normalize(&mut choice);
+                if !next.contains(&choice) {
+                    next.push(choice);
+                }
+            }
+        }
+        branches = next;
+    }
+    branches
+}
+
 impl ManaCost {
     /// Creates an empty mana cost.
     pub fn new() -> Self {
@@ -259,6 +298,10 @@ impl ManaCost {
     /// alternative payment options.
     pub fn from_pips(pips: Vec<Vec<ManaSymbol>>) -> Self {
         Self { pips, waterbend_payment_scope: None, spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
+    }
+
+    pub fn from_generic(amount: u32) -> Self {
+        Self::from_pips(generic_mana_pips(amount).collect())
     }
 
     /// Creates a mana cost from a simple list of symbols (each becomes one pip).
@@ -297,7 +340,7 @@ impl ManaCost {
     pub fn with_spending_restriction(mut self, restriction: ManaSpendingRestriction) -> Self {
         if matches!(restriction, ManaSpendingRestriction::OnX { .. }) && self.x_payment_scope.is_none() {
             self.x_payment_scope = Some(XPaymentScope {
-                symbols: self.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count() as u32,
+                symbols: self.x_pip_count() as u32,
                 announced_x: None,
                 ordinary_generic: self.generic_mana_total(),
                 prepaid_generic: Vec::new(), required: None, incompatible: false,
@@ -314,8 +357,8 @@ impl ManaCost {
         let mut result = Self { pips, waterbend_payment_scope: self.waterbend_payment_scope.clone(), spending_restrictions: self.spending_restrictions.clone(),
             x_payment_scope: self.x_payment_scope.clone(), required_actual_payment: self.required_actual_payment };
         if let Some(scope) = result.x_payment_scope.as_mut() {
-            let old_x = self.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count() as u32;
-            let new_x = result.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count() as u32;
+            let old_x = self.x_pip_count() as u32;
+            let new_x = x_pips(&result.pips).count() as u32;
             let added_x = new_x.saturating_sub(old_x);
             scope.symbols = scope.symbols.saturating_add(added_x);
             let value = scope.announced_x.unwrap_or(0);
@@ -448,9 +491,18 @@ impl ManaCost {
 
     /// Returns true if this mana cost contains X.
     pub fn has_x(&self) -> bool {
-        self.pips
-            .iter()
-            .any(|pip| pip.iter().any(|s| matches!(s, ManaSymbol::X)))
+        x_pips(&self.pips).next().is_some()
+    }
+
+    /// Count each pip offering X once, including pips with other payment options.
+    pub fn x_pip_count(&self) -> usize {
+        x_pips(&self.pips).count()
+    }
+
+    /// Generic mana plus the declared value of each pip offering X.
+    pub fn generic_mana_total_at_x(&self, x_value: u32) -> u32 {
+        self.generic_mana_total()
+            .saturating_add((self.x_pip_count() as u32).saturating_mul(x_value))
     }
 
     /// Returns the total generic mana cost (sum of all Generic(n) pips).
@@ -528,38 +580,27 @@ impl ManaCost {
                 ManaSymbol::X => (9, 0),
             }
         }
-        fn expand(cost: &ManaCost, reduction: bool) -> Vec<Vec<ManaSymbol>> {
-            let mut states = vec![Vec::new()];
-            for pip in cost.pips() {
-                let options = pip
-                    .iter()
-                    .copied()
-                    .filter(|symbol| !reduction || !matches!(symbol, ManaSymbol::Life(_)))
-                    .collect::<Vec<_>>();
-                let mut next = Vec::new();
-                for state in &states {
-                    for option in &options {
-                        let mut branch = state.clone();
-                        branch.push(*option);
-                        branch.sort_by_key(rank);
-                        if !next.contains(&branch) {
-                            next.push(branch);
-                        }
-                    }
-                }
-                states = next;
-            }
-            states
-        }
         if reduction.pips().is_empty() {
             return vec![self.clone()];
         }
+        let canonical_order = |branch: &mut [ManaSymbol]| branch.sort_by_key(rank);
+        let bases = symbol_combinations(self.pips(), canonical_order);
+        if bases.is_empty() {
+            return Vec::new();
+        }
+        let halves = reduction.pips().iter().map(|pip| {
+            pip.iter()
+                .copied()
+                .filter(|symbol| !matches!(symbol, ManaSymbol::Life(_)))
+                .collect::<Vec<_>>()
+        });
+        let reductions = symbol_combinations(halves, canonical_order);
         let mut results = Vec::new();
-        for base in expand(self, false) {
-            for selected in expand(reduction, true) {
+        for base in bases {
+            for selected in &reductions {
                 let mut remaining = base.clone();
                 let mut generic_reduction = 0u32;
-                for symbol in selected {
+                for &symbol in selected {
                     match symbol {
                         ManaSymbol::Generic(n) => generic_reduction += u32::from(n),
                         ManaSymbol::Snow => generic_reduction += 1,
@@ -593,24 +634,14 @@ impl ManaCost {
     }
 
     pub fn reduced_by_one_mana_of_any_color_options_with_generic_fallback(&self, generic_fallback: bool) -> Vec<ManaCost> {
-        let mut branches = vec![Vec::new()];
-        for pip in &self.pips {
-            let mut next = Vec::new();
-            for branch in &branches {
-                for symbol in pip {
-                    let mut pips = branch.clone();
-                    pips.push(vec![*symbol]);
-                    if !next.contains(&pips) { next.push(pips); }
-                }
-            }
-            branches = next;
-        }
         let mut options = Vec::new();
-        for pips in branches {
-            let colored = pips.iter().enumerate().filter_map(|(index, pip)| {
-                matches!(pip.as_slice(), [ManaSymbol::White | ManaSymbol::Blue |
-                    ManaSymbol::Black | ManaSymbol::Red | ManaSymbol::Green]).then_some(index)
-            }).collect::<Vec<_>>();
+        for symbols in symbol_combinations(self.pips(), |_| {}) {
+            let colored = symbols
+                .iter()
+                .enumerate()
+                .filter_map(|(index, symbol)| symbol.unit_color().is_some().then_some(index))
+                .collect::<Vec<_>>();
+            let pips: Vec<_> = symbols.into_iter().map(|symbol| vec![symbol]).collect();
             if colored.is_empty() {
                 let reduced = self.with_pips(pips);
                 let reduced = if generic_fallback { reduced.reduce_generic(1) } else { reduced };
@@ -626,6 +657,27 @@ impl ManaCost {
         options
     }
 
+    /// Fixed reductions an offered permanent can contribute. Snow counts as one
+    /// generic mana. X and Phyrexian life halves contribute nothing.
+    pub fn offering_reduction_choices(&self) -> Vec<Self> {
+        let halves = self.pips().iter().map(|pip| {
+            pip.iter()
+                .filter_map(|symbol| match symbol {
+                    ManaSymbol::Life(_) | ManaSymbol::X => None,
+                    ManaSymbol::Snow => Some(ManaSymbol::Generic(1)),
+                    other => Some(*other),
+                })
+                .collect::<Vec<_>>()
+        });
+        // Preserve the ordering of existing offering announcements.
+        symbol_combinations(halves.filter(|pip| !pip.is_empty()), |branch| {
+            branch.sort_by_key(|symbol| format!("{symbol:?}"))
+        })
+        .into_iter()
+        .map(Self::from_symbols)
+        .collect()
+    }
+
     /// Returns a new ManaCost with additional generic mana appended.
     pub fn add_generic(&self, increase: u32) -> ManaCost {
         if increase == 0 {
@@ -633,13 +685,7 @@ impl ManaCost {
         }
 
         let mut new_pips = self.pips.clone();
-        let mut remaining = increase;
-        while remaining > 0 {
-            let chunk = remaining.min(u8::MAX as u32) as u8;
-            new_pips.push(vec![ManaSymbol::Generic(chunk)]);
-            remaining -= chunk as u32;
-        }
-
+        new_pips.extend(generic_mana_pips(increase));
         self.with_pips(new_pips)
     }
 }
@@ -765,6 +811,20 @@ mod tests {
 
         assert_eq!(cost.mana_value(), 1);
         assert_eq!(cost.mana_value_with_x(3), 7);
+    }
+
+    #[test]
+    fn generic_total_at_x_counts_each_x_pip_once() {
+        use ManaSymbol::{Generic, Red, X};
+        let cost = ManaCost::from_pips(vec![
+            vec![Generic(3)],
+            vec![Generic(2), Red],
+            vec![X],
+            vec![X, Red, X],
+        ]);
+        assert_eq!(cost.generic_mana_total_at_x(0), 3);
+        assert_eq!(cost.generic_mana_total_at_x(4), 11);
+        assert_eq!(cost.generic_mana_total_at_x(u32::MAX), u32::MAX);
     }
 
     #[test]
@@ -996,6 +1056,16 @@ where D: serde::Deserializer<'de>, T: serde::Deserialize<'de> {
 #[cfg(test)]
 mod reduction_branch_policy_regressions {
     use super::*;
+    #[test]
+    fn offering_announcements_keep_choice_order_and_merge_equivalent_halves() {
+        use ManaSymbol::*;
+        let cost = ManaCost::from_pips(vec![
+            vec![Red, Blue], vec![Red, Blue], vec![Snow, Life(2)], vec![X],
+        ]);
+        let options: Vec<_> = cost.offering_reduction_choices().iter().map(ManaCost::to_oracle).collect();
+        assert_eq!(options, ["{1}{R}{R}", "{U}{1}{R}", "{U}{U}{1}"]);
+    }
+
     #[test]
     fn whole_cost_choices_preserve_distinct_colored_pairs_and_spending_policy() {
         use ManaSymbol::*;

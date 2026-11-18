@@ -2605,8 +2605,9 @@ pub(crate) fn describe_graveyard_mana_ladder_return_bundle(filtered: &[&Effect])
     }
 }
 
-pub(crate) fn describe_linked_graveyard_choices_then_may_return_bundle(
+pub(super) fn describe_linked_graveyard_return(
     filtered: &[&Effect],
+    move_to_zone: impl FnOnce(&Effect) -> Option<&crate::effects::MoveToZoneEffect>,
 ) -> Option<String> {
     let [first_choose_effect, second_choose_effect, may_effect] = filtered else {
         return None;
@@ -2618,7 +2619,7 @@ pub(crate) fn describe_linked_graveyard_choices_then_may_return_bundle(
     let [move_effect] = may.effects.as_slice() else {
         return None;
     };
-    let move_to_zone = downcast_move_to_zone(move_effect)?;
+    let move_to_zone = move_to_zone(move_effect)?;
 
     if first_choose.is_search
         || second_choose.is_search

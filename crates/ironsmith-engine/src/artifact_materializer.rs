@@ -2,6 +2,9 @@
 
 use ironsmith_compiled_artifact as wire;
 pub use ironsmith_artifact_effect_decoder::creation_graph::bind_card_creation_scope;
+#[path = "effects/native_effect_types.rs"]
+mod native_effect_types;
+
 #[path = "artifact_continuous_word_codec.rs"]
 mod continuous_word_codec;
 #[path = "artifact_text_program_codec.rs"]
@@ -1589,227 +1592,13 @@ pub fn encode_runtime_definition(
 
 macro_rules! with_native_direct_effect_types {
     ($consumer:ident) => {
-        $consumer!(
-            crate::effects::AddManaEffect,
-            crate::effects::AddManaFromCommanderColorIdentityEffect,
-            crate::effects::AddManaOfAnyColorEffect,
-            crate::effects::AddManaOfAnyOneColorEffect,
-            crate::effects::AddManaOfChosenColorEffect,
-            crate::effects::AddManaOfColorsAmongEffect,
-            crate::effects::AddManaEqualToManaCostEffect,
-            crate::effects::AddManaLostThisWayEffect,
-            crate::effects::AddManaOfNotedTypeEffect,
-            crate::effects::AddOneManaOfAnyColorAmongEffect,
-            crate::effects::AddScaledManaEffect,
-            crate::effects::AdditionalPhasesEffect,
-            crate::effects::AdditionalStepsEffect,
-            crate::effects::AmassEffect,
-            crate::effects::CollectEvidenceEffect,
-            crate::effects::EmpowerJaceEffect,
-            crate::effects::AmplifyEffect,
-            crate::effects::AscendEffect,
-            crate::effects::AssignNoCombatDamageEffect,
-            crate::effects::AttachObjectsEffect,
-            crate::effects::AttachToEffect,
-            crate::effects::AuraSwapEffect,
-            crate::effects::BecomeBasicLandTypeChoiceEffect,
-            crate::effects::BecomeColorChoiceEffect,
-            crate::effects::BecomeCreatureTypeChoiceEffect,
-            crate::effects::BolsterEffect,
-            crate::effects::CantEffect,
-            crate::effects::CastSourceEffect,
-            crate::effects::RemoveOptionalTextFragmentEffect,
-            crate::effects::ChangeTextEffect,
-            crate::effects::ChooseCardNameEffect,
-            crate::effects::ChooseCardTypeEffect,
-            crate::effects::RippleEffect,
-            crate::effects::ChooseNumberEffect,
-            crate::effects::ChooseNewTargetsEffect,
-            crate::effects::ChooseObjectsEffect,
-            crate::effects::ChooseSpellCastHistoryEffect,
-            crate::effects::CipherEffect,
-            crate::effects::ClashEffect,
-            crate::effects::ConspireCostEffect,
-            crate::effects::ConsultTopOfLibraryEffect,
-            crate::effects::ControlPlayerEffect,
-            crate::effects::TriggerAbilitiesByClassEffect,
-            crate::effects::CopySpellEffect,
-            crate::effects::CopySpellForEachTargetEffect,
-            crate::effects::CounterEffect,
-            crate::effects::CrewCostEffect,
-            crate::effects::DealDamageEffect,
-            crate::effects::DealDamageToRecipientsEffect,
-            crate::effects::DealDamageBySourcesEffect,
-            crate::effects::DealDamageEachEffect,
-            crate::effects::DevourEffect,
-            crate::effects::DirectionalAdjacentPlayerControlEffect,
-            crate::effects::DiscardHandEffect,
-            crate::effects::DiscoverEffect,
-            crate::effects::NoteObjectNamesEffect,
-            crate::effects::DrawCardsEffect,
-            crate::effects::EachPlayerScryEffect,
-            crate::effects::EarthbendEffect,
-            crate::effects::PerformNamedActionEffect,
-            crate::effects::ActivateAbilityWithoutCostsEffect,
-            crate::effects::EmitKeywordActionEffect,
-            crate::effects::EnergyCountersEffect,
-            crate::effects::EvolveEffect,
-            crate::effects::ExchangeControlEffect,
-            crate::effects::ExchangeTextBoxesEffect,
-            crate::effects::ExertCostEffect,
-            crate::effects::ExileEffect,
-            crate::effects::ExileInsteadOfGraveyardEffect,
-            crate::effects::ExileUntilEffect,
-            crate::effects::ExtraTurnAfterNextTurnEffect,
-            crate::effects::ExtraTurnEffect,
-            crate::effects::FlipEffect,
-            crate::effects::GainLifeEffect,
-            crate::effects::GrantEndThisEffectPaymentEffect,
-            crate::effects::GrantNextSpellCostReductionEffect,
-            crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
-            crate::effects::GrantTaggedSpellLifeCostByManaValueEffect,
-            crate::effects::HealDamageEffect,
-            crate::effects::IncreaseSpeedEffect,
-            crate::effects::IncubateEffect,
-            crate::effects::LearnEffect,
-            crate::effects::LookAtHandEffect,
-            crate::effects::LookAtObjectsEffect,
-            crate::effects::LookAtTopCardsEffect,
-            crate::effects::DrawTheGameEffect,
-            crate::effects::LoseTheGameEffect,
-            crate::effects::ManifestObjectsEffect,
-            crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect,
-            crate::effects::MayMoveToZoneEffect,
-            crate::effects::CreateLinkedFaceTokenEffect,
-            crate::effects::LinkExiledCardsEffect,
-            crate::effects::MeldEffect,
-            crate::effects::MergePermanentsEffect,
-            crate::effects::MillEffect,
-            crate::effects::ModifyPowerToughnessEffect,
-            crate::effects::ModifyPowerToughnessForEachEffect,
-            crate::effects::GrantActivationCostAlternativeEffect,
-            crate::effects::SetPermanentDesignationEffect,
-            crate::effects::GrantExileControllerInspectionEffect,
-            ironsmith_core::effect::RememberOriginalMovementArrivalsEffect,
+        native_effect_types::with_shared_native_effect_types!(
+            $consumer,
             ironsmith_core::RecordSourceCollectionEffect,
-            crate::effects::MonstrosityEffect,
-            crate::effects::MoveAllCountersEffect,
-            crate::effects::MoveCountersEffect,
-            crate::effects::MoveOneCounterEffect,
-            crate::effects::MoveToLibraryNthFromTopEffect,
-            crate::effects::MoveToLibraryTopOrBottomChoiceEffect,
-            crate::effects::NinjutsuCostEffect,
-            crate::effects::NinjutsuEffect,
-            crate::effects::CastFaceDownUsingActivationManaEffect,
-            crate::effects::RegisterExtraDieReplacementEffect,
-        crate::effects::NoteActivationManaTypeEffect,
-        crate::effects::NoteActivationManaPaymentEffect,
-            crate::effects::NoteTriggeringCreatureTypeEffect,
-            crate::effects::NoteCountersEffect,
-            crate::effects::PayAnyEnergyEffect,
-            crate::effects::PayAnyLifeEffect,
-            crate::effects::TagPlayersEffect,
-            crate::effects::KeepGreatestManaValuePlayersEffect,
-            crate::effects::RollDieKeepHighestPlayersEffect,
-            crate::effects::RetainSpellChoicesEffect,
-            crate::effects::PutRetainedSpellCopyOntoStackEffect,
-            crate::effects::PayEnergyEffect,
-            crate::effects::PayLifeEffect,
-            crate::effects::RedistributeLifeTotalsEffect,
-            crate::effects::CoinFlipLifeStakesEffect,
-            crate::effects::RedirectEnteringSourceEffect,
-            crate::effects::PayManaEffect,
-            crate::effects::PopulateEffect,
-            crate::effects::PreventAllCombatDamageEffect,
-            crate::effects::ProliferateEffect,
-            crate::effects::PutCountersEffect,
-            crate::effects::PutOntoBattlefieldEffect,
-            crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
-            crate::effects::RearrangeLookedCardsInLibraryEffect,
-            crate::effects::ReconfigureEffect,
-            crate::effects::ReduceSpeedEffect,
-            crate::effects::RegisterCounterPlacementReplacementEffect,
-            crate::effects::RegisterDamageMultiplierEffect,
-            crate::effects::RegisterTokenCreationMultiplierEffect,
-            crate::effects::RegisterDamageCounterReplacementEffect,
-            crate::effects::RegisterDamageAdditionEffect,
-            crate::effects::RegisterEnterTappedReplacementEffect,
-            crate::effects::RegisterFutureZoneReplacementEffect,
-            crate::effects::RegisterManaReplacementEffect,
-            crate::effects::RegisterManaRewriteEffect,
-            crate::effects::RegisterManaSpendPermissionEffect,
-            crate::effects::RegisterNextBatchEnterAsCopyEffect,
-            crate::effects::RegisterNextBatchEnterWithCountersEffect,
-            crate::effects::RemoveAnyCountersAmongEffect,
-            crate::effects::RemoveAnyCountersFromSourceEffect,
-            crate::effects::RemoveCountersEffect,
-            crate::effects::RemoveUpToAnyCountersEffect,
-            crate::effects::RenownEffect,
-            crate::effects::ReorderLibraryTopEffect,
-            crate::effects::ReorderTopPlanarDeckEffect,
-            crate::effects::RestartGameEffect,
-            crate::effects::RetainManaUntilEndOfTurnEffect,
-            crate::effects::RetargetStackObjectEffect,
-            crate::effects::ReturnAllToBattlefieldEffect,
-            crate::effects::ReturnFromGraveyardToBattlefieldEffect,
-            crate::effects::ReturnFromGraveyardToHandEffect,
-            crate::effects::ReturnToHandEffect,
-            crate::effects::RevealFromHandEffect,
-            crate::effects::RevealSourceFromHandEffect,
-            crate::effects::RevealTaggedEffect,
-            crate::effects::RevealTopEffect,
-            crate::effects::ReverseTurnOrderEffect,
-            crate::effects::RollToVisitAttractionsEffect,
-            crate::effects::RollPlanarDieEffect,
-            crate::effects::SacrificeTargetEffect,
-            crate::effects::ScryEffect,
-            crate::effects::SearchLibraryEffect,
-            crate::effects::SearchLibrarySlotsEffect,
-            crate::effects::SetBasePowerToughnessEffect,
-            crate::effects::SetClassLevelEffect,
-            crate::effects::SetDayNightEffect,
-            crate::effects::ChoosePlayerOptionEffect,
-            crate::effects::ControlVotesThisTurnEffect,
-            crate::effects::PutCounterOfKindChosenFromEffect,
-            crate::effects::PutCounterOfRandomKindEffect,
-            crate::effects::ShuffleLibraryEffect,
-            crate::effects::ShuffleObjectsIntoLibraryEffect,
-            crate::effects::SneakCostEffect,
-            crate::effects::SolveCaseEffect,
-            crate::effects::LinkPermanentsEffect,
-            crate::effects::SoulbondPairEffect,
-            crate::effects::TagAttachedToSourceEffect,
-            crate::effects::TagMatchingObjectsEffect,
-            crate::effects::TagOtherBlockParticipantEffect,
-            crate::effects::TagTriggeringAttackerEffect,
-            crate::effects::TagTriggeringBlockersEffect,
-            crate::effects::TagTriggeringObjectEffect,
-            crate::effects::TagSplicedCardsEffect,
-            crate::effects::TagLastDamageSourceEffect,
-            crate::effects::LinkObjectsToGroupEffect,
-            crate::effects::TagTriggeringSourceEffect,
-            crate::effects::TapEffect,
-            crate::effects::TargetOnlyEffect,
-            crate::effects::TicketCountersEffect,
-            crate::effects::TransformEffect,
-            crate::effects::TurnFaceDownEffect,
-            crate::effects::TurnFaceUpEffect,
-            crate::effects::ReselectAttackTargetEffect,
-            crate::effects::ExchangeBlocksEffect,
-            crate::effects::UnblockSoleBlockedAttackersEffect,
-            crate::effects::BlockAttackerOfChoiceEffect,
-            crate::effects::PlayWithHandRevealedEffect,
-            crate::effects::RevealSourceInHandUntilOwnersNextTurnEffect,
-            crate::effects::ChooseFriendsOrFoesEffect,
-            crate::effects::UnattachObjectsEffect,
-            crate::effects::UnearthEffect,
-            crate::effects::UntapEffect,
-            crate::effects::VariableCasualtyPlaneswalkerCopyEffect,
-            crate::effects::WinTheGameEffect,
-            crate::effects::composition::ResolvesDespiteIllegalTargetsEffect,
-            crate::effects::mana::AddManaOfImprintedColorsEffect,
-            crate::effects::player::MayCastForMiracleCostEffect,
-            crate::effects::zones::SacrificePlayerEffect,
+            crate::effects::ReturnFromGraveyardOrExileToBattlefieldEffect,
+            crate::effects::RegisterDamagedBySourceZoneReplacementEffect,
+            crate::effects::RegisterEnterUnderControlReplacementEffect,
+            crate::effects::RegisterEnterWithCountersReplacementEffect,
         );
     };
 }
@@ -2479,20 +2268,27 @@ mod native_direct_payload_codec_tests {
             ($($ty:path),* $(,)?) => { const TYPES: &[&str] = &[$(stringify!($ty)),*]; };
         }
         with_native_direct_effect_types!(inventory);
-        let normalize = |value: &str| value.chars().filter(|character| !character.is_whitespace()).collect::<String>();
-        let actual: std::collections::BTreeSet<_> = TYPES.iter().map(|value| normalize(value)).collect();
-        let source = include_str!("effect_model_interpreter.rs");
-        let mut expected = std::collections::BTreeSet::new();
-        for suffix in source.split("clone_direct_effect::<M,").skip(1) {
-            let value = suffix.split('>').next().unwrap().trim();
-            if value != "$ty" { expected.insert(normalize(value)); }
+        type PayloadTypes = std::collections::HashSet<syn::Path>;
+        let declared: PayloadTypes = TYPES.iter().map(|ty| syn::parse_str(ty).unwrap()).collect();
+        assert_eq!(declared.len(), TYPES.len(), "duplicate encoder payload");
+
+        struct DirectConversions(PayloadTypes);
+        impl syn::visit::Visit<'_> for DirectConversions {
+            fn visit_macro(&mut self, node: &syn::Macro) {
+                if node.path.is_ident("clone_direct") {
+                    let types = node
+                        .parse_body_with(syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
+                        .expect("direct conversion payload types");
+                    for ty in types {
+                        assert!(self.0.insert(ty), "duplicate direct conversion in {}", node.tokens);
+                    }
+                }
+            }
         }
-        let start = source.find("    clone_direct!(\n").expect("direct-clone table");
-        let block = source[start..].split("\n    );").next().unwrap();
-        for value in block.lines().skip(1).map(|line| line.trim().trim_end_matches(',')) {
-            if value.starts_with("crate::") { expected.insert(normalize(value)); }
-        }
-        assert_eq!(actual, expected, "direct native schemas and interpreter vocabulary must stay synchronized");
+        let interpreter = syn::parse_file(include_str!("effect_model_interpreter.rs")).unwrap();
+        let mut conversions = DirectConversions(PayloadTypes::new());
+        syn::visit::Visit::visit_file(&mut conversions, &interpreter);
+        assert_eq!(declared, conversions.0, "encoder and interpreter payloads differ");
     }
 
     fn check<E: crate::effects::EffectExecutor + serde::Serialize + Clone>(payload: E) {
@@ -2506,6 +2302,41 @@ mod native_direct_payload_codec_tests {
         assert_eq!(encode_runtime_effect(crate::effect::Effect::new(actual)).unwrap(), encoded,
             "actual executor encoding must agree, not just retained metadata");
     }
+    #[test]
+    fn native_zone_return_codec_preserves_tapped_and_controller() {
+        check(ironsmith_core::ReturnFromGraveyardOrExileToBattlefieldEffect::new(true)
+            .under_control_of(crate::target::PlayerFilter::Opponent));
+    }
+
+    #[test]
+    fn native_zone_replacement_codec_preserves_filter_and_zones() {
+        check(ironsmith_core::RegisterDamagedBySourceZoneReplacementEffect {
+            filter: crate::filter::ObjectFilter::creature(),
+            from_zone: Some(crate::zone::Zone::Battlefield),
+            to_zone: Some(crate::zone::Zone::Graveyard),
+            replacement_zone: crate::zone::Zone::Exile,
+            mode: ironsmith_core::ReplacementApplyMode::OneShot,
+        });
+    }
+
+    #[test]
+    fn native_entry_controller_codec_preserves_filter_and_duration() {
+        check(ironsmith_core::RegisterEnterUnderControlReplacementEffect {
+            filter: crate::filter::ObjectFilter::artifact(),
+            mode: ironsmith_core::ReplacementApplyMode::UntilYourNextTurn,
+        });
+    }
+
+    #[test]
+    fn native_entry_counter_codec_preserves_counter_and_count() {
+        check(ironsmith_core::RegisterEnterWithCountersReplacementEffect::new(
+            crate::filter::ObjectFilter::creature(),
+            ironsmith_core::CounterType::PlusOnePlusOne,
+            crate::effect::Value::Fixed(3),
+            ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,
+        ));
+    }
+
     #[test]
     fn native_direct_payload_codec_bounded_number_preserves_bounds_and_chooser() {
         check(ironsmith_core::ChooseNumberEffect::new(crate::target::PlayerFilter::Specific(crate::ids::PlayerId::from_index(1)), 0, 13));

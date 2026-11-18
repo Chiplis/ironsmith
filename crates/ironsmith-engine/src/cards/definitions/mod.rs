@@ -36,6 +36,7 @@ mod brightclimb_pathway;
 mod builder;
 pub mod buried_alive;
 mod butcher_ghoul;
+pub(crate) mod catalog;
 mod cataclysm;
 mod cataclysmic_gearhulk;
 mod charismatic_conqueror;

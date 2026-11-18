@@ -255,6 +255,9 @@ pub enum EffectAst {
         /// who did not win the child game.
         nonwinner_effects: Vec<EffectAst>,
     },
+    /// The continuation of a spell destination replacement that just exiled the spell.
+    /// A cast inside this body can refer back to that particular exiled object.
+    WithExiledSpell { effects: Vec<EffectAst> },
     Sequence {
         effects: Vec<EffectAst>,
     },

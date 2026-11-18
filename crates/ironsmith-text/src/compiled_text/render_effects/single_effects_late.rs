@@ -2538,33 +2538,14 @@ pub(crate) fn collect_activation_restriction_clauses(
 /// each turn") while the typed condition renders "Activate only up to N times
 /// each turn" — two clauses naming the same cap are one restriction, not two.
 fn activation_limit_per_turn(clause_lower: &str) -> Option<u32> {
-    if !clause_lower.starts_with("activate ") || !clause_lower.contains("each turn") {
-        return None;
+    if clause_lower.starts_with("activate ")
+        && [" once each turn", " twice each turn", " times each turn"]
+            .iter()
+            .any(|ending| clause_lower.contains(ending))
+    {
+        return ironsmith_core::ability_model::parse_activation_max_times_per_turn(clause_lower);
     }
-    if clause_lower.contains(" once each turn") {
-        return Some(1);
-    }
-    if clause_lower.contains(" twice each turn") {
-        return Some(2);
-    }
-    let head = clause_lower.split(" times each turn").next()?;
-    if head.len() == clause_lower.len() {
-        return None;
-    }
-    let word = head.rsplit(' ').next()?;
-    Some(match word {
-        "one" => 1,
-        "two" => 2,
-        "three" => 3,
-        "four" => 4,
-        "five" => 5,
-        "six" => 6,
-        "seven" => 7,
-        "eight" => 8,
-        "nine" => 9,
-        "ten" => 10,
-        other => other.parse::<u32>().ok()?,
-    })
+    None
 }
 
 pub(crate) fn push_activation_restriction_clause(clauses: &mut Vec<String>, clause: String) {

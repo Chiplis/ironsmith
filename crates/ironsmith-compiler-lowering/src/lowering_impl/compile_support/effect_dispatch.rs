@@ -1727,7 +1727,7 @@ fn compile_effect_inner(
         let contenders = ctx.next_tag("reveal_contenders");
         let revealed = ctx.next_tag("reveal_contest_card");
         let narrow_id = ctx.next_effect_id();
-        let triggering: crate::tag::TagKey = crate::tag::TagKey::from("triggering_source");
+        let triggering = crate::tag::CompilerReferenceTag::TriggeringSource.key();
         let mut retarget = crate::effects::RetargetStackObjectEffect::new(ChooseSpec::Tagged(
             triggering.clone(),
         ))
@@ -1926,8 +1926,15 @@ fn compile_effect_inner(
             choices,
         ));
     }
-    if let EffectAst::Sequence { effects } = effect {
-        let (mut effects, choices) = compile_effects(effects, ctx)?;
+    let sequence = match effect {
+        EffectAst::Sequence { effects } => Some(effects.clone()),
+        EffectAst::WithExiledSpell { effects } => {
+            Some(ironsmith_compiler_resolve::tag_support::bind_exiled_spell_follow_up(effects))
+        }
+        _ => None,
+    };
+    if let Some(sequence) = sequence {
+        let (mut effects, choices) = super::compile_effects_owned(sequence, ctx)?;
         preserve_nested_result_value_links(&mut effects);
         return Ok((effects, choices));
     }

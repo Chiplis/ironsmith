@@ -1,3 +1,4 @@
+use crate::model::ast::TokenCopySourceAst;
 use super::*;
 
 pub(super) fn pre_rule_token_followups(
@@ -386,11 +387,11 @@ pub(super) fn parse_create_more_of_prior_tokens(
     };
     let (count, previous_target) = match &mut subject_verb.action {
         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. })
-        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. }) => {
+        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { source: TokenCopySourceAst::Object(_), count, .. }) => {
             (count, None)
         }
-        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-            source,
+        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+            source: TokenCopySourceAst::Target(source),
             count,
             ..
         }) => (count, Some(source.clone())),
@@ -520,11 +521,6 @@ fn mark_every_created_token_for_next_end_step_sacrifice(effects: &mut [EffectAst
                     continue;
                 }
                 TokenActionAst::CreateTokenCopy {
-                    sacrifice_at_next_end_step,
-                    sacrifice_at_next_end_step_reference_surface,
-                    ..
-                }
-                | TokenActionAst::CreateTokenCopyFromSource {
                     sacrifice_at_next_end_step,
                     sacrifice_at_next_end_step_reference_surface,
                     ..

@@ -6,10 +6,12 @@ pub mod builders;
 pub mod definitions;
 
 #[cfg(all(not(test), feature = "handwritten-parse-support"))]
-mod handwritten_registry;
-
-#[cfg(all(not(test), feature = "handwritten-parse-support"))]
-pub use handwritten_registry::register_builtin_handwritten_cards_if;
+pub fn register_builtin_handwritten_cards_if<F>(registry: &mut CardRegistry, include: F)
+where
+    F: FnMut(&str) -> bool,
+{
+    definitions::catalog::HandwrittenCatalog::Standard.register(registry, include);
+}
 
 #[cfg(all(not(test), feature = "handwritten-parse-support"))]
 #[path = "../../../ironsmith-engine/src/cards/tokens/mod.rs"]

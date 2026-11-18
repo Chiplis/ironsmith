@@ -2856,11 +2856,7 @@ struct ResolvingDestinationProgram {
 }
 impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
     fn replacement_choice_description(&self) -> Option<String> { Some(self.choice_description.clone()) }
-    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError>
-    {
-        self.execute_with_outputs(game, ctx).map(|outputs| outputs.outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(&self, game: &mut GameState, ctx: &mut ExecutionContext)
         -> Result<crate::effects::CompletedEffectOutputs, crate::effects::ExecutionError>
     {
@@ -3057,8 +3053,7 @@ fn execute_resolved_permanent_annotation(
 ) -> Result<crate::effects::CompletedEffectOutputs, GameLoopError> {
     let checkpoint = crate::effects::ExecutionContextCheckpoint::capture(parent);
     let snapshot = ObjectSnapshot::try_from_object_id(game, source)?;
-    let mut ctx = ExecutionContext::new(source, controller, &mut *parent.decision_maker);
-    checkpoint.restore(&mut ctx);
+    let mut ctx = checkpoint.into_context(&mut *parent.decision_maker);
     ctx.source = source;
     ctx.controller = controller;
     ctx.source_snapshot = snapshot;

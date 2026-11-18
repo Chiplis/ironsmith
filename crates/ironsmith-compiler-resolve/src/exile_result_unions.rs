@@ -7,6 +7,7 @@
 //! instructions moved: the dying creature and the library card. Both exiles
 //! record into one shared tag, and the permission reads that tag.
 
+use crate::model::reference_state::SnapshotAntecedent;
 use crate::cards::builders::{
     ConditionalEffectAst, EffectAst, GrantActionAst, IdGenContext, LibraryActionAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, ZoneMoveActionAst,
@@ -166,12 +167,6 @@ pub fn union_singular_exiles_for_plural_permission(
     }
 }
 
-/// Alias for the triggered ability's own event antecedent (the object(s) the
-/// trigger event names), recorded once before the body is annotated.
-pub fn trigger_event_antecedent_alias() -> crate::TagKey {
-    crate::TagKey::from("__trigger_event_antecedent__")
-}
-
 /// "Whenever one or more Dragons you control deal combat damage to a player
 /// or battle, look at the top three cards of your library. Put one of them
 /// into your hand ... You may return one of those Dragons to its owner's
@@ -191,12 +186,9 @@ pub fn rebind_plural_demonstrative_past_library_selection(
     if !library_selection {
         return;
     }
-    let alias = trigger_event_antecedent_alias();
     let Some(event_tag) = env
-        .snapshot_tag_aliases
-        .iter()
-        .find(|(existing, _)| existing == &alias)
-        .map(|(_, tag)| tag.clone())
+        .snapshot_bindings
+        .antecedent(SnapshotAntecedent::TriggerEvent)
     else {
         return;
     };
@@ -240,7 +232,7 @@ pub fn rebind_plural_demonstrative_past_library_selection(
             });
         }
     }
-    visit(effect, &event_tag);
+    visit(effect, event_tag);
 }
 
 /// The object set a die roll's result modifier counts ("Roll a d20 and add

@@ -1,6 +1,5 @@
 //! Empty a player's unspent mana.
 
-use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{
     EffectExecutor, ExecutionContext, ExecutionError, SimultaneousEffectProposal,
@@ -39,15 +38,7 @@ impl EffectExecutor for EmptyManaPoolEffect {
         )?))
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

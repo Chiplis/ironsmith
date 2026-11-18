@@ -9,7 +9,6 @@
 use crate::continuous::Modification;
 #[cfg(test)]
 use crate::decisions::context::SelectOptionsContext;
-use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -30,14 +29,7 @@ fn subtype_options() -> [(Subtype, ManaSymbol, &'static str); 5] {
 }
 
 impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

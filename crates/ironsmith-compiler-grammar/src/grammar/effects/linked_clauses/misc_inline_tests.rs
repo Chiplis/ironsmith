@@ -20,6 +20,14 @@ fn parses_directional_and_phase_pair_shapes() {
 }
 
 #[test]
+fn graveyard_cast_keeps_the_full_spelled_mana_value_limit() {
+    let cast = lex("You may cast target artifact, instant, or sorcery card with mana value twenty-one or less from your graveyard without paying its mana cost");
+    let replacement = lex("If that spell would be put into your graveyard, exile it instead");
+    let shape = parse_graveyard_cast_replacement_shape(&cast, &replacement).unwrap();
+    assert_eq!(shape.mana_value_limit, Some(21));
+}
+
+#[test]
 fn parses_graveyard_cast_and_return_shapes() {
     let shape = parse_graveyard_cast_replacement_shape(
             &lex("You may cast target artifact, instant, or sorcery card with mana value three or less from your graveyard without paying its mana cost"),

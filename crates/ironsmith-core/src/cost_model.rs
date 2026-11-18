@@ -759,6 +759,49 @@ impl<C> TotalCost<C> {
             .expect("TotalCost::costs called for an alternative cost")
     }
 
+    /// Enumerate concrete payments in authored order. A free payment yields an
+    /// empty slice, while a choice with no alternatives yields no payments.
+    pub fn payment_branches(&self) -> impl Iterator<Item = &[C]> {
+        let mut siblings = std::slice::from_ref(self).iter();
+        let mut parents = Vec::new();
+        std::iter::from_fn(move || loop {
+            match siblings.next().map(|cost| &cost.kind) {
+                Some(TotalCostKind::All(parts)) => return Some(parts.as_slice()),
+                Some(TotalCostKind::OneOf(branches)) => {
+                    parents.push(std::mem::replace(&mut siblings, branches.iter()));
+                }
+                None => siblings = parents.pop()?,
+            }
+        })
+    }
+
+    /// Edit the ordered components of each payable alternative, including free
+    /// ones. Nested choices and their branch indices are preserved.
+    pub fn edit_payment_branches(&mut self, edit: &mut impl FnMut(&mut Vec<C>)) {
+        match &mut self.kind {
+            TotalCostKind::All(costs) => edit(costs),
+            TotalCostKind::OneOf(branches) => {
+                for branch in branches {
+                    branch.edit_payment_branches(edit);
+                }
+            }
+        }
+    }
+
+    /// A component is mandatory only if every alternative contains a match.
+    /// A choice without any alternatives cannot establish a requirement.
+    pub fn every_branch_requires(&self, required: fn(&C) -> bool) -> bool {
+        match &self.kind {
+            TotalCostKind::All(costs) => costs.iter().any(required),
+            TotalCostKind::OneOf(branches) => {
+                !branches.is_empty()
+                    && branches
+                        .iter()
+                        .all(|branch| branch.every_branch_requires(required))
+            }
+        }
+    }
+
     pub fn try_map<C2, Error>(
         self,
         mut map_cost: impl FnMut(C) -> Result<C2, Error>,
@@ -789,10 +832,7 @@ impl<C> TotalCost<C> {
     }
 
     pub fn is_free(&self) -> bool {
-        match &self.kind {
-            TotalCostKind::All(costs) => costs.is_empty(),
-            TotalCostKind::OneOf(branches) => branches.iter().any(Self::is_free),
-        }
+        self.payment_branches().any(<[_]>::is_empty)
     }
 }
 
@@ -812,21 +852,11 @@ impl<C: CostComponent> TotalCost<C> {
     }
 
     pub fn has_non_mana_costs(&self) -> bool {
-        match &self.kind {
-            TotalCostKind::All(costs) => costs.iter().any(|cost| !cost.is_mana_cost()),
-            TotalCostKind::OneOf(branches) => branches.iter().any(Self::has_non_mana_costs),
-        }
+        self.payment_branches().flatten().any(|cost| !cost.is_mana_cost())
     }
 
     pub fn has_loyalty_activation_cost(&self) -> bool {
-        match &self.kind {
-            TotalCostKind::All(costs) => {
-                costs.iter().any(CostComponent::is_loyalty_activation_cost)
-            }
-            TotalCostKind::OneOf(branches) => {
-                branches.iter().any(Self::has_loyalty_activation_cost)
-            }
-        }
+        self.payment_branches().flatten().any(CostComponent::is_loyalty_activation_cost)
     }
 
     pub fn display(&self) -> String {

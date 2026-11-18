@@ -1596,7 +1596,9 @@ fn modify_token_groups_checked(
                 u128::from(if round_up { total.div_ceil(2) } else { total / 2 })
             })
         }
-        EventModification::ReplaceCardDefinition(_) | EventModification::LeaveOneCounter => {
+        EventModification::ReplaceCardDefinition(_)
+        | EventModification::LeaveOneCounter
+        | EventModification::PreserveObjectCounterMinimum(_) => {
             tokens.adjusted_token_total(covers, |total| u128::from(total))
         }
         EventModification::NamedActionFirstThenOtherMode { .. } => unreachable!("modal operation modifier dispatched before quantity modification"),
@@ -1629,7 +1631,9 @@ fn modified_count(
             if *round_up { count.div_ceil(2) } else { count / 2 }
         }
         // Needs the target's current counters; see the removal arm below.
-        EventModification::ReplaceCardDefinition(_) | EventModification::LeaveOneCounter => count,
+        EventModification::ReplaceCardDefinition(_)
+        | EventModification::LeaveOneCounter
+        | EventModification::PreserveObjectCounterMinimum(_) => count,
         EventModification::NamedActionFirstThenOtherMode { .. } => unreachable!("modal operation modifier dispatched before quantity modification"),
         EventModification::AddDynamic(_) => {
             unreachable!("dynamic modifier normalized before dispatch")
@@ -1663,14 +1667,16 @@ fn apply_trait_modification(
     match event.kind() {
         EventKind::RemoveCounters => {
             let removal = crate::events::CounterRemovalEvent::from_event(event.inner())?;
-            let count = if matches!(modification, EventModification::LeaveOneCounter) {
-                let current = match removal.target() {
-                    crate::game_state::Target::Object(object) => {
-                        game.counter_count(object, removal.counter_type())
-                    }
-                    crate::game_state::Target::Player(_) => removal.count().saturating_add(1),
-                };
-                removal.count().min(current.saturating_sub(1))
+            let minimum = match modification {
+                EventModification::LeaveOneCounter => Some(1),
+                EventModification::PreserveObjectCounterMinimum(minimum) => Some(*minimum),
+                _ => None,
+            };
+            let count = if let (Some(minimum), crate::game_state::Target::Object(object)) =
+                (minimum, removal.target())
+            {
+                let available = game.counter_count(object, removal.counter_type());
+                removal.count().min(available.saturating_sub(minimum))
             } else {
                 modified_count(game, removal.count(), modification, effect)
             };

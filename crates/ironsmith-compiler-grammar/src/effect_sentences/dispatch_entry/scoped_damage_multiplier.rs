@@ -19,18 +19,6 @@ use winnow::prelude::*;
 type Stream<'a> = crate::lexer::LexStream<'a>;
 type PResult<T> = Result<T, winnow::error::ErrMode<winnow::error::ContextError>>;
 
-fn leading_duration(input: &mut Stream<'_>) -> PResult<ironsmith_core::ReplacementApplyMode> {
-    let mode = alt((
-        primitives::phrase(&["until", "end", "of", "turn"])
-            .value(ironsmith_core::ReplacementApplyMode::UntilEndOfTurn),
-        primitives::phrase(&["until", "your", "next", "turn"])
-            .value(ironsmith_core::ReplacementApplyMode::UntilYourNextTurn),
-    ))
-    .parse_next(input)?;
-    opt(primitives::comma()).parse_next(input)?;
-    Ok(mode)
-}
-
 /// "that creature" / "that source" / "it": the object the instruction
 /// already names.
 fn is_referenced_source(tokens: &[OwnedLexToken]) -> bool {
@@ -157,7 +145,10 @@ fn parse_next_time(
 
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let spec = if let Some((mode, rest)) = primitives::parse_prefix(tokens, leading_duration) {
+    let spec = if let Some(((mode, _), rest)) = primitives::parse_prefix(
+        tokens,
+        (crate::grammar::keyword_static_lines::replacement_turn_duration, opt(primitives::comma())),
+    ) {
         parse_if_clause(rest)?.map(|mut spec| {
             spec.mode = mode;
             spec

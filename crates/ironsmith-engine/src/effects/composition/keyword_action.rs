@@ -1,7 +1,8 @@
 //! Replacement envelope for composed keyword action programs.
 
+use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
 use crate::effect::{EffectOutcome, OutcomeValue};
-use crate::effects::{ExecutionContext, ExecutionError};
+use crate::effects::{CompletedEffectOutputs, ExecutionContext, ExecutionError};
 use crate::events::processing::{TraitEventResult, TraitEventProcessingState, process_trait_event_with_execution_context_and_state};
 use crate::events::{Event, KeywordActionEvent};
 use crate::game_state::GameState;
@@ -18,6 +19,84 @@ pub(crate) enum KeywordActionAmount {
     BodyMagnitude,
     /// The event requests N distinct executions of a unit action.
     Repetitions,
+}
+
+/// Each controller chooses their next permanent after the previous action finishes.
+/// Capture controller and team order before any of the action bodies can change them.
+pub(crate) fn execute_ordered_permanent_actions<'a>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    actions: Vec<KeywordActionEvent>,
+    prompt: &str,
+    descriptive: bool,
+    amount: KeywordActionAmount,
+    mut body: impl FnMut(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+        &KeywordActionEvent,
+    ) -> Result<CompletedEffectOutputs, ExecutionError>,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    let mut by_controller = std::collections::HashMap::new();
+    for action in actions {
+        by_controller
+            .entry(action.player)
+            .or_insert_with(Vec::new)
+            .push(action);
+    }
+
+    let mut objects = Vec::new();
+    let mut children = Vec::new();
+    for player in game.team_apnap_player_order() {
+        let Some(mut remaining) = by_controller.remove(&player) else {
+            continue;
+        };
+        while !remaining.is_empty() {
+            let mut index = 0;
+            if remaining.len() > 1 {
+                let choices: Vec<_> = remaining.iter().map(|action| action.source).collect();
+                let spec = ChooseObjectsSpec::new(ctx.source, prompt, choices, 1, Some(1));
+                let selection =
+                    make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::with_objects(objects),
+                    ));
+                }
+                // Choose the first valid answer, falling back to the first instruction.
+                index = selection
+                    .into_iter()
+                    .find_map(|id| remaining.iter().position(|action| action.source == id))
+                    .unwrap_or(0);
+            }
+            let action = remaining.remove(index);
+            let child = if descriptive {
+                body(game, ctx, &action)?
+            } else {
+                let event = Event::new_with_provenance(action, ctx.provenance);
+                execute_keyword_action_with_outputs(
+                    game,
+                    ctx,
+                    event,
+                    KeywordActionOutput::Objects,
+                    amount,
+                    &mut body,
+                )?
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            if let Some(completed) = child.outcome.objects() {
+                objects.extend_from_slice(completed);
+            }
+            children.push(child);
+        }
+    }
+    Ok(CompletedEffectOutputs::with_primary_result(
+        EffectOutcome::with_objects(objects),
+        children,
+    ))
 }
 
 /// Preserve explicit subjects, including an explicitly empty subject, and

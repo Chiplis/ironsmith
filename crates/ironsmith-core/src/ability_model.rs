@@ -1249,42 +1249,15 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
     }
 
     pub fn has_tap_cost(&self) -> bool {
-        fn contains_tap<C: CoreCostComponent>(cost: &TotalCost<C>) -> bool {
-            match cost.kind() {
-                crate::TotalCostKind::All(costs) => costs.iter().any(|cost| cost.requires_tap()),
-                crate::TotalCostKind::OneOf(branches) => branches.iter().any(contains_tap),
-            }
-        }
-
-        contains_tap(&self.mana_cost)
+        self.mana_cost.payment_branches().flatten().any(|cost| cost.requires_tap())
     }
 
     pub fn has_sacrifice_self_cost(&self) -> bool {
-        fn contains_sacrifice_self<C: CoreCostComponent>(cost: &TotalCost<C>) -> bool {
-            match cost.kind() {
-                crate::TotalCostKind::All(costs) => {
-                    costs.iter().any(|cost| cost.is_sacrifice_self())
-                }
-                crate::TotalCostKind::OneOf(branches) => {
-                    branches.iter().any(contains_sacrifice_self)
-                }
-            }
-        }
-
-        contains_sacrifice_self(&self.mana_cost)
+        self.mana_cost.payment_branches().flatten().any(|cost| cost.is_sacrifice_self())
     }
 
     pub fn life_cost_amount(&self) -> Option<u32> {
-        fn first_life_cost<C: CoreCostComponent>(cost: &TotalCost<C>) -> Option<u32> {
-            match cost.kind() {
-                crate::TotalCostKind::All(costs) => {
-                    costs.iter().find_map(|cost| cost.life_amount())
-                }
-                crate::TotalCostKind::OneOf(branches) => branches.iter().find_map(first_life_cost),
-            }
-        }
-
-        first_life_cost(&self.mana_cost)
+        self.mana_cost.payment_branches().flatten().find_map(|cost| cost.life_amount())
     }
 
     pub fn is_exhaust_ability(&self) -> bool {
@@ -1391,56 +1364,50 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
     }
 }
 
-fn parse_activation_max_times_per_turn(restriction: &str) -> Option<u32> {
-    let normalized = restriction
-        .to_ascii_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c.is_ascii_whitespace() {
-                c
-            } else {
-                ' '
-            }
-        })
-        .collect::<String>();
-
-    let words: Vec<&str> = normalized.split_whitespace().collect();
+/// Read a per-turn limit from an authored activation restriction.
+pub fn parse_activation_max_times_per_turn(restriction: &str) -> Option<u32> {
+    let normalized = restriction.to_ascii_lowercase();
+    let words: Vec<_> = normalized
+        .split_ascii_whitespace()
+        .map(|word| word.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-'))
+        .filter(|word| !word.is_empty())
+        .collect();
     if words.len() < 4 || !words.contains(&"activate") {
         return None;
     }
 
-    let each_turn_pos = words
-        .windows(2)
-        .position(|window| window[0] == "each" && window[1] == "turn")?;
-    if each_turn_pos == 0 {
-        return None;
-    }
-
-    if each_turn_pos >= 4 {
-        for idx in 0..=each_turn_pos - 4 {
-            if words[idx] == "no"
-                && words[idx + 1] == "more"
-                && words[idx + 2] == "than"
-                && let Some(parsed) = parse_named_count_word(words[idx + 3])
-            {
-                return Some(parsed);
-            }
+    let turn = words.windows(2).position(|pair| pair == ["each", "turn"])?;
+    let head = &words[..turn];
+    let count_words = match head {
+        [prefix @ .., "time" | "times"] => prefix,
+        _ => head,
+    };
+    // Try the full compound before its last word ("twenty one" or "one hundred").
+    for i in count_words.len().saturating_sub(2)..count_words.len() {
+        let tail = &count_words[i..];
+        if let Some((count, used)) = activation_count_prefix(tail)
+            && used == tail.len()
+        {
+            return Some(count);
         }
     }
 
-    let mut count_word = words[each_turn_pos - 1];
-    if (count_word == "time" || count_word == "times") && each_turn_pos >= 2 {
-        count_word = words[each_turn_pos - 2];
+    // The older free-text form can put a qualifier between the cap and "each turn".
+    for (i, phrase) in head.windows(3).enumerate() {
+        if phrase == ["no", "more", "than"]
+            && let Some((count, _)) = activation_count_prefix(&head[i + 3..])
+        {
+            return Some(count);
+        }
     }
-
-    parse_named_count_word(count_word)
+    None
 }
 
-fn parse_named_count_word(word: &str) -> Option<u32> {
-    match word {
-        "once" => Some(1),
-        "twice" => Some(2),
-        _ => crate::parse_cardinal_word(word),
+fn activation_count_prefix(words: &[&str]) -> Option<(u32, usize)> {
+    match words {
+        ["once", ..] => Some((1, 1)),
+        ["twice", ..] => Some((2, 1)),
+        _ => crate::parse_cardinal_words(words),
     }
 }
 
@@ -1467,6 +1434,17 @@ mod tests {
             PresentationLabel::from_ability_word("Throw ...").display_prefix(),
             Some("Throw ...".to_string())
         );
+    }
+
+    #[test]
+    fn activation_limit_keeps_the_whole_count_in_legacy_restrictions() {
+        let mut ability = ActivatedAbility::<(), Cost<()>>::basic_mana(ManaSymbol::Green);
+        for (words, cap) in [("twenty-one", 21), ("twenty one", 21), ("one hundred", 100)] {
+            for prefix in ["Activate only up to", "Activate no more than"] {
+                ability.additional_restrictions = vec![format!("{prefix} {words} times each turn.")];
+                assert_eq!(ability.max_activations_per_turn(), Some(cap));
+            }
+        }
     }
 
     #[test]

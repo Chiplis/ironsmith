@@ -642,6 +642,18 @@ pub fn can_potentially_pay_with_check_context(
     cost.can_potentially_pay(game, &cost_ctx)
 }
 
+impl CostContext<'_> {
+    pub(crate) fn capture_execution_context(
+        &mut self,
+    ) -> crate::effects::ExecutionContextCheckpoint {
+        let bindings = self.execution_bindings();
+        let execution = bindings.execution_context(&mut *self.decision_maker);
+        crate::effects::ExecutionContextCheckpoint::capture(&execution)
+    }
+}
+
+crate::boxed_clone::define_boxed_clone!(CostPayerClone, CostPayer);
+
 /// Trait for paying costs.
 ///
 /// All modular costs implement this trait. Each cost is responsible for:
@@ -674,30 +686,6 @@ pub fn can_potentially_pay_with_check_context(
 ///     }
 /// }
 /// ```
-impl CostContext<'_> {
-    pub(crate) fn capture_execution_context(
-        &mut self,
-    ) -> crate::effects::ExecutionContextCheckpoint {
-        let bindings = self.execution_bindings();
-        let execution = bindings.execution_context(&mut *self.decision_maker);
-        crate::effects::ExecutionContextCheckpoint::capture(&execution)
-    }
-}
-
-pub trait CostPayerClone {
-    /// Clone this cost into a boxed trait object.
-    fn clone_boxed(&self) -> Box<dyn CostPayer>;
-}
-
-impl<T> CostPayerClone for T
-where
-    T: CostPayer + Clone + 'static,
-{
-    fn clone_boxed(&self) -> Box<dyn CostPayer> {
-        Box::new(self.clone())
-    }
-}
-
 pub trait CostPayer: std::fmt::Debug + Send + Sync + CostPayerClone + Any {
     /// Read-only nominal X exported by this owner for later prepared components.
     /// Actual publication remains with original payment acknowledgement.

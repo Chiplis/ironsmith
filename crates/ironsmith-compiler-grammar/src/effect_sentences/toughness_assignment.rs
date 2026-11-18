@@ -5,7 +5,6 @@ use crate::effect::Until;
 use crate::grammar::effects::{become_shapes, toughness_assignment as shape};
 use crate::lexer::OwnedLexToken;
 use crate::object_filters::parse_object_filter;
-use crate::static_abilities::StaticAbility;
 use crate::util::{parse_target_phrase, span_from_tokens};
 
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {

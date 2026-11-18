@@ -14,6 +14,22 @@ fn strict_embedding() -> Option<EmbeddingConfig> {
 }
 
 #[test]
+fn equally_similar_clauses_keep_the_first_match_in_both_directions() {
+    let (oracle, compiled) = super::compare_card_semantics_clause_residuals(
+        "",
+        "Draw seven cards.\nDraw five cards.",
+        &["Draw three cards.".into(), "Draw four cards.".into()],
+    );
+    for (residuals, first_match) in [(oracle, "Draw three cards"), (compiled, "Draw seven cards")] {
+        assert_eq!(residuals.len(), 2);
+        for residual in residuals {
+            assert_eq!(residual.best_jaccard, 0.5);
+            assert_eq!(residual.best_match.as_deref(), Some(first_match));
+        }
+    }
+}
+
+#[test]
 fn exact_normalized_clause_match_beats_special_mismatch_penalties() {
     let oracle = "{1}{W}: Target nonattacking, nonblocking creature gets +0/+2 until end of turn.";
     let compiled = vec![oracle.to_string()];

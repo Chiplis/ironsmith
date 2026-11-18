@@ -6,9 +6,8 @@ pub use attack_unless::{
 
 #[path = "cant_shapes/attack_tax.rs"]
 mod attack_tax;
-pub use attack_tax::{
-    AttackTaxManaAmount, parse_general_attack_tax_tokens, parse_per_attacker_cant_tax_tokens,
-};
+pub use attack_tax::{AttackTaxManaAmount, parse_general_attack_tax_tokens, parse_per_attacker_cant_tax_tokens};
+pub(crate) use attack_tax::{parse_attack_tax_clause, parse_resolving_attack_tax};
 
 #[path = "cant_shapes/blocking.rs"]
 mod blocking;

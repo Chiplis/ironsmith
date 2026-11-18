@@ -1,12 +1,14 @@
+use ironsmith_core::tag::TagKeyWalk;
+use crate::model::ast::TokenCopySourceAst;
 use crate::cards::builders::{
     CharacteristicActionAst, ChoiceActionAst, ConditionalEffectAst, ControlActionAst,
     CounterActionAst, DamageActionAst, DelayedEffectAst, EffectAst, ExchangeActionAst,
     GameActionAst, GrantActionAst, KeywordActionAst, LibraryActionAst, LifeResourceActionAst,
     ManaActionAst, ObjectChoiceEffectAst, ObjectRefAst, ParseAnnotations, PermanentStateActionAst,
-    PermissionEffectAst, PlayerAst, PlayerPredicateAst, PredicateAst, RandomActionAst,
-    ReplacementActionAst, RetargetModeAst, RevealLookActionAst, SourcePredicateAst, StackActionAst,
+    PermissionEffectAst, PlayerAst, PredicateAst, RandomActionAst,
+    ReplacementActionAst, RetargetModeAst, RevealLookActionAst, StackActionAst,
     StatChangeActionAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst,
-    TokenActionAst, TurnEventPredicateAst, TurnStructureActionAst, ZoneMoveActionAst,
+    TokenActionAst, TurnStructureActionAst, ZoneMoveActionAst,
 };
 use crate::effect::{EventValueSpec, Value};
 use crate::filter::{ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
@@ -447,8 +449,8 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                     source: target,
                 },
             )
-            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                source: target,
+            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+                source: TokenCopySourceAst::Target(target),
                 ..
             })
             | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
@@ -837,102 +839,7 @@ fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bo
 }
 
 pub fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
-    let comparison_references_tag = |comparison: &crate::filter::Comparison| match comparison {
-        crate::filter::Comparison::EqualExpr(value)
-        | crate::filter::Comparison::NotEqualExpr(value)
-        | crate::filter::Comparison::LessThanExpr(value)
-        | crate::filter::Comparison::LessThanOrEqualExpr(value)
-        | crate::filter::Comparison::GreaterThanExpr(value)
-        | crate::filter::Comparison::GreaterThanOrEqualExpr(value) => {
-            value_references_tag(value, tag)
-        }
-        _ => false,
-    };
-    filter
-        .tagged_constraints
-        .iter()
-        .any(|constraint| constraint.tag.as_str() == tag)
-        || [
-            filter.power.as_ref(),
-            filter.toughness.as_ref(),
-            filter.mana_value.as_ref(),
-            filter.color_count.as_ref(),
-            filter.card_type_count.as_ref(),
-        ]
-        .into_iter()
-        .flatten()
-        .any(comparison_references_tag)
-        || filter
-            .controller
-            .as_ref()
-            .is_some_and(|player| player_filter_references_tag(player, tag))
-        || filter
-            .owner
-            .as_ref()
-            .is_some_and(|player| player_filter_references_tag(player, tag))
-        || filter
-            .cast_by
-            .as_ref()
-            .is_some_and(|player| player_filter_references_tag(player, tag))
-        || filter
-            .targets_player
-            .as_ref()
-            .is_some_and(|player| player_filter_references_tag(player, tag))
-        || filter
-            .targets_only_player
-            .as_ref()
-            .is_some_and(|player| player_filter_references_tag(player, tag))
-        || filter
-            .attached_to_player
-            .as_ref()
-            .is_some_and(|player| player_filter_references_tag(player, tag))
-        || filter
-            .entered_battlefield_controller
-            .as_ref()
-            .is_some_and(|player| player_filter_references_tag(player, tag))
-        || filter
-            .counters_put_on_this_turn
-            .as_ref()
-            .is_some_and(|constraint| {
-                player_filter_references_tag(&constraint.source_controller, tag)
-            })
-        || filter
-            .discarded_or_cycled_this_turn_by
-            .as_ref()
-            .is_some_and(|player| player_filter_references_tag(player, tag))
-        || filter
-            .dealt_damage_to_player_this_turn
-            .as_ref()
-            .is_some_and(|player| player_filter_references_tag(player, tag))
-        || filter.last_drawn_this_turn.as_ref().is_some_and(|player| player_filter_references_tag(player, tag))
-        || filter
-            .could_be_targeted_by
-            .as_ref()
-        .is_some_and(|constraint| {
-            matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
-        })
-        || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
-        || matches!(&filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
-        || filter
-            .targets_object
-            .as_deref()
-            .is_some_and(|targets| filter_references_tag(targets, tag))
-        || filter
-            .targets_only_object
-            .as_deref()
-            .is_some_and(|targets| filter_references_tag(targets, tag))
-        || filter
-            .attached_to_object
-            .as_deref()
-            .is_some_and(|attached_to| filter_references_tag(attached_to, tag))
-        || filter
-            .blocked_or_was_blocked_by_this_turn
-            .as_deref()
-            .is_some_and(|combat_partner| filter_references_tag(combat_partner, tag))
-        || filter
-            .any_of
-            .iter()
-            .any(|branch| filter_references_tag(branch, tag))
+    filter.contains_tag_key(tag)
 }
 
 // Replacement filters consume references just like direct action targets.
@@ -1209,7 +1116,7 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
                 || target_references_tag(target, tag)
         }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { object, .. }),
+            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { source: TokenCopySourceAst::Object(object), .. }),
             ..
         }) => match object {
             ObjectRefAst::Tagged(found) => found.as_str() == tag,
@@ -1265,175 +1172,15 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
 }
 
 pub fn value_references_tag(value: &Value, tag: &str) -> bool {
-    match value {
-        Value::DamageHistory(_) => {
-            use ironsmith_core::tag::TagKeyWalk;
-            let mut found = false;
-            value.for_each_tag_key(&mut |key| found |= key.as_str() == tag);
-            found
-        }
-        Value::SurfaceHinted { value, .. } => value_references_tag(value, tag),
-        Value::Add(left, right) | Value::Min(left, right) => {
-            value_references_tag(left, tag) || value_references_tag(right, tag)
-        }
-        Value::Scaled(value, _)
-        | Value::DividedRoundedDown(value, _)
-        | Value::HalfRoundedDown(value) => value_references_tag(value, tag),
-        Value::Count(filter)
-        | Value::CountScaled(filter, _)
-        | Value::GreatestCount(filter)
-        | Value::LeastCount(filter)
-        | Value::GreatestSharedCreatureTypeCount(filter)
-        | Value::TotalPower(filter)
-        | Value::TotalToughness(filter)
-        | Value::StickerCharacteristicTotal { filter, .. }
-        | Value::TotalManaValue(filter)
-        | Value::GreatestPower(filter)
-        | Value::GreatestToughness(filter)
-        | Value::GreatestManaValue(filter)
-        | Value::LeastPower(filter)
-        | Value::LeastToughness(filter)
-        | Value::LeastManaValue(filter)
-        | Value::BasicLandTypesAmong(filter)
-        | Value::CreatureTypesAmong(filter)
-        | Value::PlaneswalkerTypesAmong(filter)
-        | Value::SubtypesAmong { filter, .. }
-        | Value::PermanentTypesAmong(filter)
-        | Value::CardTypesAmong(filter)
-        | Value::ColorsAmong(filter)
-        | Value::ColorPairsAmong(filter)
-        | Value::DistinctCounterTypesAmong(filter)
-        | Value::DistinctNames(filter)
-        | Value::DistinctManaValues(filter)
-        | Value::DistinctManaCosts(filter)
-        | Value::UnlockedDoorsAmong(filter)
-        | Value::DistinctPowers(filter) => filter_references_tag(filter, tag),
-        Value::StaticAbilitiesAmong { filter, .. } => filter_references_tag(filter, tag),
-        Value::PowerOf(spec)
-        | Value::BasePowerOf(spec)
-        | Value::StationContributionOf(spec)
-        | Value::ToughnessOf(spec) => {
-            choose_spec_references_tag(spec, tag)
-        }
-        Value::ManaSpentToCast(spec)
-        | Value::KicksPaidOf(spec)
-        | Value::TimesPaidLabelOf { object: spec, .. }
-        | Value::ModeSelectionsOf(spec)
-        | Value::ManaValueOf(spec)
-        | Value::CommanderCastCountOf(spec)
-        | Value::ColorsOf(spec)
-        | Value::ChosenColorsOf(spec)
-        | Value::NotedCreatureTypeCount(spec)
-        | Value::TypeCountOf(spec)
-        | Value::GenericManaInManaCostOf(spec)
-        | Value::TotalToxicValueOf(spec)
-        | Value::ManaSymbolsInManaCostOf { spec, .. } => choose_spec_references_tag(spec, tag),
-        Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),
-        Value::DamageDealtThisTurnByTaggedSpellCast(t) => t.as_str() == tag,
-        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query) => {
-            query.filter.as_ref().is_some_and(|filter| {
-                filter
-                    .tagged_constraints
-                    .iter()
-                    .any(|constraint| constraint.tag.as_str() == tag)
-            }) || query
-                .player
-                .as_ref()
-                .is_some_and(|player| player_filter_references_tag(player, tag))
-        }
-        _ => false,
-    }
+    value.contains_tag_key(tag)
 }
 
 pub fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> bool {
-    match predicate {
-        PredicateAst::ItMatches(filter)
-        | PredicateAst::ItMatchedLastKnown(filter)
-        | PredicateAst::TargetMatches(filter)
-        | PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
-        | PredicateAst::AttachedToSourceMatches(filter)
-        | PredicateAst::NoVoteObjectsMatched { filter }
-        | PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(
-            filter,
-        ))
-        | PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldLastTurn(
-            filter,
-        ))
-        | PredicateAst::TurnEvents(
-            TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter),
-        ) => filter_references_tag(filter, tag),
-        PredicateAst::TaggedMatches(found, filter)
-        | PredicateAst::TaggedMatchedLastKnown(found, filter) => {
-            found.as_str() == tag || filter_references_tag(filter, tag)
-        }
-        PredicateAst::TaggedWasCast(found)
-        | PredicateAst::Player(
-            PlayerPredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn { tag: found, .. },
-        )
-        | PredicateAst::TurnHistory(
-            crate::cards::builders::TurnHistoryPredicateAst::TaggedSharesColorWithTriggeringMana {
-                tag: found,
-                ..
-            },
-        ) => found.as_str() == tag,
-        PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
-            tag: found,
-            filter,
-            ..
-        }) => found.as_str() == tag || filter_references_tag(filter, tag),
-        PredicateAst::Player(PlayerPredicateAst::PlayerControls { filter, .. })
-        | PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast { filter, .. })
-        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly { filter, .. })
-        | PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers {
-            filter,
-            ..
-        })
-        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo { filter, .. })
-        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsMost { filter, .. })
-        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanEachOtherPlayer {
-            filter,
-            ..
-        })
-        | PredicateAst::AnOpponentHasFewerThanPlayer { filter, .. }
-        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou { filter, .. })
-        | PredicateAst::Source(SourcePredicateAst::SourceHasAttachmentsMatching {
-            filter, ..
-        }) => filter_references_tag(filter, tag),
-        PredicateAst::Player(PlayerPredicateAst::PlayerControlsOrHasCardInGraveyard {
-            control_filter,
-            graveyard_filter,
-            ..
-        }) => {
-            filter_references_tag(control_filter, tag)
-                || filter_references_tag(graveyard_filter, tag)
-        }
-        PredicateAst::ValueComparison { left, right, .. } => {
-            value_references_tag(left, tag) || value_references_tag(right, tag)
-        }
-        PredicateAst::ValueIsPrime(value) => value_references_tag(value, tag),
-        PredicateAst::Not(inner) => predicate_references_tag(inner, tag),
-        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
-            predicate_references_tag(left, tag) || predicate_references_tag(right, tag)
-        }
-        _ => false,
-    }
+    predicate.contains_tag_key(tag)
 }
 
 pub fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
-    match spec {
-        ChooseSpec::Tagged(t) => t.as_str() == tag,
-        ChooseSpec::SurfaceHinted { spec: inner, .. }
-        | ChooseSpec::Target(inner)
-        | ChooseSpec::WithCount(inner, _) => choose_spec_references_tag(inner, tag),
-        ChooseSpec::WithCountValue(inner, _, value) => {
-            choose_spec_references_tag(inner, tag) || value_references_tag(value, tag)
-        }
-        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag),
-        _ => false,
-    }
+    spec.contains_tag_key(tag)
 }
 
 pub fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
@@ -1457,61 +1204,15 @@ pub fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
 }
 
 pub fn object_ref_references_tag(reference: &ObjectRef, tag: &str) -> bool {
-    matches!(reference, ObjectRef::Tagged(found) if found.as_str() == tag)
+    reference.contains_tag_key(tag)
 }
 
 pub fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
-    match filter {
-        PlayerFilter::QuantityGreaterThanPlayer { base, other, .. } => {
-            player_filter_references_tag(base, tag) || player_filter_references_tag(other, tag)
-        }
-        PlayerFilter::Target(inner)
-        | PlayerFilter::AliasedTarget(inner)
-        | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
-        | PlayerFilter::HasMoreLifeThanYou { base: inner }
-        | PlayerFilter::MostLifeTiedAmong { base: inner }
-        | PlayerFilter::OpponentOf(inner)
-        | PlayerFilter::PlayerToLeftOf(inner)
-        | PlayerFilter::MaxSpeed { base: inner, .. }
-        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner, .. }
-        | PlayerFilter::LostLifeThisTurn { base: inner } => {
-            player_filter_references_tag(inner, tag)
-        }
-        PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
-            player_filter_references_tag(base, tag) || filter_references_tag(sources, tag)
-        }
-        PlayerFilter::Excluding { base, excluded } => {
-            player_filter_references_tag(base, tag) || player_filter_references_tag(excluded, tag)
-        }
-        PlayerFilter::ControllerOf(reference)
-        | PlayerFilter::OwnerOf(reference)
-        | PlayerFilter::AliasedOwnerOf(reference)
-        | PlayerFilter::AliasedControllerOf(reference) => object_ref_references_tag(reference, tag),
-        _ => false,
-    }
+    filter.contains_tag_key(tag)
 }
 
 pub fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
-    match target {
-        TargetAst::Tagged(found, _) => found.as_str() == tag,
-        TargetAst::Object(filter, _, _) => filter_references_tag(filter, tag),
-        TargetAst::ObjectOrPlayer(object_filter, player_filter, _) => {
-            filter_references_tag(object_filter, tag)
-                || player_filter_references_tag(player_filter, tag)
-        }
-        TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
-            player_filter_references_tag(filter, tag)
-        }
-        TargetAst::WithCount(inner, _) => target_references_tag(inner, tag),
-        TargetAst::WithCountValue(inner, _, value) => {
-            target_references_tag(inner, tag) || value_references_tag(value, tag)
-        }
-        TargetAst::AttackedPlayerOrPlaneswalker(_) => false,
-        TargetAst::Source(_)
-        | TargetAst::AnyTarget(_)
-        | TargetAst::AnyOtherTarget(_)
-        | TargetAst::Spell(_) => false,
-    }
+    target.contains_tag_key(tag)
 }
 
 pub fn effects_reference_it_tag(effects: &[EffectAst]) -> bool {
@@ -1643,9 +1344,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { count, .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { count, .. })
         | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
-        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-            count, ..
-        })
         | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }) => {
             Some(count)
         }
@@ -2433,9 +2131,6 @@ pub fn effect_references_its_controller(effect: &EffectAst) -> bool {
                 }) | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                     player: PlayerAst::ItsController | PlayerAst::ItsOwner,
                     ..
-                }) | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                    player: PlayerAst::ItsController | PlayerAst::ItsOwner,
-                    ..
                 }) | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                     player: PlayerAst::ItsController | PlayerAst::ItsOwner,
                     ..
@@ -2849,7 +2544,7 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 restriction,
                 crate::tag::CompilerReferenceTag::It.as_str(),
             ),
-            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { object, .. }) => {
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { source: TokenCopySourceAst::Object(object), .. }) => {
                 matches!(object, ObjectRefAst::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
@@ -3002,11 +2697,7 @@ fn delayed_trigger_references_tag(effect: &EffectAst, key: &str) -> bool {
     else {
         return false;
     };
-    let mut found = false;
-    ironsmith_core::tag::TagKeyWalk::for_each_tag_key(trigger, &mut |tag| {
-        found |= tag.as_str() == key
-    });
-    found
+    trigger.contains_tag_key(key)
 }
 
 fn predicate_uses_implicit_it_reference(predicate: &PredicateAst) -> bool {
@@ -3027,117 +2718,7 @@ fn predicate_uses_implicit_it_reference(predicate: &PredicateAst) -> bool {
 }
 
 pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag: &str) -> bool {
-    use crate::effect::Restriction;
-
-    if let Restriction::BeSacrificedByCause { filter, cause }
-    | Restriction::BeExiledByCause { filter, cause } = restriction
-    {
-        return std::iter::once(filter)
-            .chain(cause.source_filter.iter())
-            .any(|filter| {
-                restriction_references_tag(&Restriction::BeSacrificed(filter.clone()), tag)
-            });
-    }
-    if let Restriction::BeCounteredFrom(targets, sources) = restriction {
-        return [targets, sources].into_iter().any(|filter| filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == tag));
-    }
-    if let Restriction::PreventDamageFromTo {
-        sources,
-        recipients,
-        ..
-    } = restriction
-    {
-        return [sources, recipients].into_iter().any(|filter| {
-            filter
-                .tagged_constraints
-                .iter()
-                .any(|constraint| constraint.tag.as_str() == tag)
-        });
-    }
-    let maybe_filter = match restriction {
-        Restriction::PreventDamageFrom {
-            sources: filter, ..
-        }
-        | Restriction::PreventDamageTo {
-            recipients: filter, ..
-        }
-        | Restriction::PlayLandsMatching(_, filter)
-        | Restriction::CastSpellsMatching(_, filter)
-        | Restriction::ActivateLoyaltyAbilitiesOf(filter)
-        | Restriction::ActivateKeywordAbilitiesOf { filter, .. }
-        | Restriction::Attack(filter)
-        | Restriction::Block(filter)
-        | Restriction::MustBeBlocked(filter)
-        | Restriction::MustAttack(filter)
-        | Restriction::MustBlock(filter)
-        | Restriction::Untap(filter)
-        | Restriction::BeBlocked(filter)
-        | Restriction::BeDestroyed(filter)
-        | Restriction::BeRegenerated(filter)
-        | Restriction::BeSacrificed(filter)
-        | Restriction::BecomeSuspected(filter)
-        | Restriction::BecomeUntapped(filter)
-        | Restriction::AttackBlockOrCrew(filter)
-        | Restriction::MaximumBlockers { filter, .. }
-        | Restriction::HaveCountersPlaced(filter)
-        | Restriction::HaveCounterTypePlaced(filter, _)
-        | Restriction::HaveCounterTypeRemoved(filter, _)
-        | Restriction::DamageSourcesAreColorless(filter)
-        | Restriction::BeTargeted(filter)
-        | Restriction::BeCountered(filter)
-        | Restriction::TurnFaceUp(filter)
-        | Restriction::Transform(filter)
-        | Restriction::PhaseOut(filter)
-        | Restriction::PhaseIn(filter)
-        | Restriction::AttackOrBlock(filter)
-        | Restriction::ActivateAbilitiesOf(filter)
-        | Restriction::ActivateTapAbilitiesOf(filter)
-        | Restriction::ActivateNonManaAbilitiesOf(filter) => Some(filter),
-        _ => None,
-    };
-    if let Some(filter) = maybe_filter {
-        return filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag);
-    }
-
-    if let Restriction::BlockSpecificAttacker { blockers, attacker } = restriction {
-        let blockers_reference = blockers
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag);
-        let attacker_reference = attacker
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag);
-        return blockers_reference || attacker_reference;
-    }
-    if let Restriction::MustBlockSpecificAttacker { blockers, attacker }
-        | Restriction::MustBeBlockedBy { blockers, attacker } = restriction {
-        let blockers_reference = blockers
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag);
-        let attacker_reference = attacker
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag);
-        return blockers_reference || attacker_reference;
-    }
-
-    if let Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
-    | Restriction::AttackPlayerOrPermanentsControlledBy { attackers, .. }
-    | Restriction::AttackPlayer { attackers, .. }
-    | Restriction::MustAttackPlayer { attackers, .. } = restriction
-    {
-        return attackers
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag);
-    }
-
-    false
+    restriction.contains_tag_key(tag)
 }
 
 pub fn collect_tag_spans_from_effects_with_context(
@@ -3150,29 +2731,14 @@ pub fn collect_tag_spans_from_effects_with_context(
     }
 }
 
-fn collect_direct_effect_target_spans(
-    effect: &EffectAst,
-    annotations: &mut ParseAnnotations,
-    ctx: &SpanMappingContext<'_>,
-) -> bool {
-    let mut collected = false;
-    with_direct_effect_targets(effect, |target| {
-        collect_tag_spans_from_target(target, annotations, ctx);
-        collected = true;
-    });
-    collected
-}
-
 pub fn collect_tag_spans_from_effect(
     effect: &EffectAst,
     annotations: &mut ParseAnnotations,
     ctx: &SpanMappingContext<'_>,
 ) {
-    assert_effect_ast_variant_coverage(effect);
-    if collect_direct_effect_target_spans(effect, annotations, ctx) {
-        return;
-    }
-
+    with_direct_effect_targets(effect, |target| {
+        collect_tag_spans_from_target(target, annotations, ctx);
+    });
     for_each_nested_effects(effect, true, |nested| {
         collect_tag_spans_from_effects_with_context(nested, annotations, ctx);
     });
@@ -3183,7 +2749,7 @@ pub fn collect_tag_spans_from_target(
     annotations: &mut ParseAnnotations,
     ctx: &SpanMappingContext<'_>,
 ) {
-    if let TargetAst::WithCount(inner, _) = target {
+    if let TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) = target {
         collect_tag_spans_from_target(inner, annotations, ctx);
         return;
     }
@@ -3247,6 +2813,22 @@ fn granted_entry_counter_amounts(action: &SubjectVerbActionAst) -> Vec<&Value> {
     values
 }
 
+/// Establish the spell's exile receipt before any instruction in the callback runs.
+/// Only a free cast reference to the prior exiled card needs the second binding.
+pub fn bind_exiled_spell_follow_up(effects: &[EffectAst]) -> Vec<EffectAst> {
+    let receipt = crate::tag::declared_key(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG);
+    let prior = crate::tag::CompilerReferenceTag::PriorExiledCard;
+    let bind = |tag| EffectAst::subject_verb_filtered_tagged_objects(
+        ObjectFilter::default(), tag, vec![receipt.clone()],
+    );
+    let mut scoped = vec![bind(receipt.clone())];
+    if granted_cast_object_reference_imports(effects).contains(&prior.key()) {
+        scoped.push(bind(prior.bind()));
+    }
+    scoped.extend_from_slice(effects);
+    scoped
+}
+
 /// Free parent object dependencies of cast instructions in a granted body.
 /// The environment tracks which parent inputs each local result depends on.
 /// Branches, optional programs, delayed closures and loop bindings each own
@@ -3299,6 +2881,9 @@ fn cast_object_reference_imports(effects: &[EffectAst], granted_source_locals: b
         }
         let mut child_controls=controls.to_vec();union(&mut child_controls,inputs.clone());
         match effect{
+            EffectAst::WithExiledSpell { effects } => {
+                sequence(&bind_exiled_spell_follow_up(effects), env, controls, imports);
+            }
             EffectAst::Sequence{effects}|EffectAst::SourceSentence{effects,..}|EffectAst::CommaThen{effects}|EffectAst::Coordinated{effects,..}=>sequence(effects,env,controls,imports),
             EffectAst::TagAffected{effect,..}|EffectAst::TagReferenced{effect,..}=>node(effect,env,controls,imports),
             EffectAst::DocumentProgram(program)=>{for statement in &program.statements{sequence(&statement.effects,env,controls,imports);}}
@@ -3386,6 +2971,45 @@ mod granted_cast_import_scope_tests {
     fn local(tag:&str)->EffectAst{EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects{
         filter:ObjectFilter::default().in_zone(crate::zone::Zone::Exile),count:crate::effect::ChoiceCount::exactly(1),count_value:None,player:PlayerAst::You,tag:crate::tag::TagRef::of(tag),
     })}
+    #[test]
+    fn spell_exile_receipt_only_supplies_a_free_prior_card_reference() {
+        let receipt = crate::tag::declared_key(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG);
+        let prior = crate::tag::CompilerReferenceTag::PriorExiledCard;
+        let receive = EffectAst::subject_verb_filtered_tagged_objects(
+            ObjectFilter::default(), receipt.clone(), vec![receipt.clone()],
+        );
+        let alias = EffectAst::subject_verb_filtered_tagged_objects(
+            ObjectFilter::default(), prior.bind(), vec![receipt],
+        );
+        let read = cast(prior.key().as_str());
+        let declare = local(prior.key().as_str());
+        assert_eq!(
+            bind_exiled_spell_follow_up(std::slice::from_ref(&read)),
+            vec![receive.clone(), alias, read.clone()],
+        );
+        assert_eq!(
+            bind_exiled_spell_follow_up(&[declare.clone(), read.clone()]),
+            vec![receive, declare, read],
+        );
+    }
+
+    #[test]
+    fn exile_scope_exports_the_same_cast_dependencies_as_its_bound_sequence() {
+        let prior = crate::tag::CompilerReferenceTag::PriorExiledCard.key();
+        let body = vec![cast(prior.as_str()), cast("parent"), local("selected")];
+        let authored = [EffectAst::WithExiledSpell { effects: body.clone() }, cast("selected")];
+        let bound = [
+            EffectAst::Sequence { effects: bind_exiled_spell_follow_up(&body) },
+            cast("selected"),
+        ];
+        for imports in [granted_cast_object_reference_imports, delayed_cast_object_reference_imports] {
+            let expected = imports(&bound);
+            assert!(expected.contains(&TagKey::from("parent")));
+            assert!(!expected.contains(&TagKey::from("selected")));
+            assert_eq!(imports(&authored), expected);
+        }
+    }
+
     #[test]
     fn local_result_shadows_parent_only_after_its_declaration(){
         assert_eq!(granted_cast_object_reference_imports(&[cast("x")]),vec![TagKey::from("x")]);

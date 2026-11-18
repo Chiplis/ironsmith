@@ -89,28 +89,8 @@ pub(super) fn standard_gift_effects(
 }
 
 pub(super) fn fixed_standard_gift_creature_definition(
-    name: &str,
-    subtype: Subtype,
-    colors: ColorSet,
-    power_toughness: (i32, i32),
+    name: &str, subtype: Subtype, colors: ColorSet, power_toughness: (i32, i32),
 ) -> crate::model::token_definition::TokenDefinitionSpec {
-    crate::model::token_definition::TokenDefinitionSpec::Creature(
-        crate::model::token_definition::CreatureTokenShape {
-            name: name.to_string(),
-            // The Gift keyword supplies the template; its implied colors
-            // and rules are not an explicit token-description sentence.
-            text_roles: None,
-            card_types: vec![CardType::Creature],
-            subtypes: vec![subtype],
-            power_toughness,
-            legendary: false,
-            snow: false,
-            colors,
-            use_source_chosen_color: false,
-            use_source_chosen_creature_type: false,
-            keywords: Vec::new(),
-            rules: Default::default(),
-            mana_cost: None,
-        },
-    )
+    // The Gift keyword implies the characteristics without printed token-description words.
+    crate::grammar::token_definitions::fixed_creature(name, vec![subtype], colors, power_toughness, None)
 }

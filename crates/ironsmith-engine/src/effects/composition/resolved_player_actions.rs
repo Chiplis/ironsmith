@@ -1,6 +1,5 @@
 //! Child instructions with already frozen operands and explicit event attribution.
 //! These are transient program nodes; authored effects retain their shared models.
-use crate::effect::EffectOutcome;
 use crate::effects::{CompletedEffectOutputs, EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 
@@ -16,14 +15,7 @@ impl EffectExecutor for ResolvedLifeLoss {
     ) -> ironsmith_core::effect_capabilities::LibraryMovementPolicy {
         ironsmith_core::effect_capabilities::LibraryMovementPolicy::Leaf
     }
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -69,14 +61,7 @@ impl EffectExecutor for ResolvedPlayerCounterRemoval {
     ) -> ironsmith_core::effect_capabilities::LibraryMovementPolicy {
         ironsmith_core::effect_capabilities::LibraryMovementPolicy::Leaf
     }
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

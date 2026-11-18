@@ -1,7 +1,6 @@
 mod named_action_inputs;
 mod judge_action;
 pub(crate) mod face_state_actions;
-pub(crate) mod bounded_source_programs;
 mod object_group_instructions;
 mod co_target_combat_history;
 mod ability_loss_templates;
@@ -113,13 +112,14 @@ pub enum TokenCopyFollowup {
 
 #[path = "effect_composition.rs"]
 mod bundle_rules;
+mod audition;
 mod chain_carry;
 mod clause_dispatch;
 pub(crate) use clause_dispatch::parse_get_pump_clause;
 pub(crate) use dispatch_entry::parse_complete_get_pump_statement;
 pub mod clause_pattern_helpers;
 mod clause_primitives;
-pub(crate) use clause_primitives::parse_unless_pays_clause;
+pub(crate) use clause_primitives::{has_optional_quoted_cost, parse_unless_pays_clause};
 pub use clause_primitives::{
     parse_anaphoric_object_deals_damage_clause, parse_deal_damage_equal_to_power_clause,
 };
@@ -133,11 +133,13 @@ mod creation_handlers;
 #[path = "delegated_partition.rs"]
 mod delegated_partition_programs;
 mod dispatch_entry;
+mod x_substitution;
+pub use x_substitution::replace_modal_header_x_in_effects_ast;
 mod dispatch_inner;
 mod divvy;
 mod sector_programs;
 mod document_readings;
-pub(crate) use document_readings::{parse_bounded_program,parse_bounded_inline_modal_tokens,parse_bounded_instruction_program_tokens,parse_named_action_program_tokens};
+pub(crate) use document_readings::{parse_scoped_following_tokens, parse_bounded_program,parse_bounded_inline_modal_tokens,parse_bounded_instruction_program_tokens,parse_named_action_program_tokens};
 mod exiled_top_procedure;
 mod fanout_family;
 mod for_each_helpers;
@@ -221,6 +223,7 @@ pub use clause_pattern_helpers::parse_choose_target_prelude_sentence;
 #[cfg(test)]
 pub use conditionals::parse_conditional_sentence_lexed;
 pub use conditionals::*;
+pub(crate) use creation_handlers::simple_token_creation;
 pub use creation_handlers::{
     attach_inline_token_granted_abilities_to_last_create,
     attach_mixed_pronoun_token_rules_to_last_create, lower_complete_simple_create_shape,

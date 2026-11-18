@@ -916,7 +916,7 @@ fn bind_optional_payment_copy_count(effects: &mut [EffectAst], reference: &irons
         if let EffectAst::SubjectVerb(subject) = effect {
             match &mut subject.action {
                 crate::cards::builders::SubjectVerbActionAst::Stack(crate::cards::builders::StackActionAst::CopySpell { count, .. }) => bind(count, reference),
-                crate::cards::builders::SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenCopy { count, .. } | crate::cards::builders::TokenActionAst::CreateTokenCopyFromSource { count, .. }) => bind(count, reference),
+                crate::cards::builders::SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenCopy { count, .. }) => bind(count, reference),
                 _ => {},
             }
         }

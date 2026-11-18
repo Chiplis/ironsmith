@@ -8,12 +8,15 @@ use std::time::Duration;
 use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
 use ironsmith::compiled_text::unprocessed_compiled_lines;
 use ironsmith::semantic_compare::compare_semantics_scored;
+use ironsmith_card_source::{
+    normalize_lookup_name,
+    reports::{ReportCardInput, load_report_card_inputs},
+};
 use ironsmith_tools::default_cards_path;
 use ironsmith_tools::parse_card_definition_with_runtime_builder;
 use rayon::prelude::*;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 #[derive(Debug)]
 struct Args {
@@ -23,12 +26,6 @@ struct Args {
     lookback_days: i32,
     concurrency: usize,
     event_limit: Option<usize>,
-}
-
-#[derive(Debug)]
-struct CardPayload {
-    parse_input: String,
-    oracle_text: String,
 }
 
 #[derive(Debug, Clone)]
@@ -350,110 +347,6 @@ fn build_ranked_cards(event_summaries: &[EventDeckSummary], top_n: usize) -> Vec
         .collect()
 }
 
-fn get_first_face(card: &Value) -> Option<&Value> {
-    card.get("card_faces")
-        .and_then(|faces| faces.as_array())
-        .and_then(|faces| faces.first())
-}
-
-fn value_to_string(value: &Value) -> Option<String> {
-    if value.is_null() {
-        return None;
-    }
-    if let Some(s) = value.as_str() {
-        return Some(s.to_string());
-    }
-    Some(value.to_string())
-}
-
-fn pick_field(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
-    if let Some(v) = card.get(key).and_then(value_to_string) {
-        return Some(v);
-    }
-    face.and_then(|f| f.get(key)).and_then(value_to_string)
-}
-
-fn build_card_payload(card: &Value) -> Option<CardPayload> {
-    let face = get_first_face(card);
-    let mana_cost = pick_field(card, face, "mana_cost");
-    let type_line = pick_field(card, face, "type_line");
-    let oracle_text = pick_field(card, face, "oracle_text").unwrap_or_default();
-    let power = pick_field(card, face, "power");
-    let toughness = pick_field(card, face, "toughness");
-    let loyalty = pick_field(card, face, "loyalty");
-    let defense = pick_field(card, face, "defense");
-
-    let mut lines = Vec::new();
-    if let Some(mana_cost) = mana_cost
-        && !mana_cost.is_empty()
-    {
-        lines.push(format!("Mana cost: {mana_cost}"));
-    }
-    if let Some(type_line) = type_line
-        && !type_line.is_empty()
-    {
-        lines.push(format!("Type: {type_line}"));
-    }
-    if let (Some(power), Some(toughness)) = (power, toughness)
-        && !power.is_empty()
-        && !toughness.is_empty()
-    {
-        lines.push(format!("Power/Toughness: {power}/{toughness}"));
-    }
-    if let Some(loyalty) = loyalty
-        && !loyalty.is_empty()
-    {
-        lines.push(format!("Loyalty: {loyalty}"));
-    }
-    if let Some(defense) = defense
-        && !defense.is_empty()
-    {
-        lines.push(format!("Defense: {defense}"));
-    }
-    if !oracle_text.is_empty() {
-        lines.push(oracle_text.clone());
-    }
-
-    if lines.is_empty() {
-        return None;
-    }
-
-    Some(CardPayload {
-        parse_input: lines.join("\n"),
-        oracle_text,
-    })
-}
-
-fn load_cards(path: &str) -> Result<HashMap<String, CardPayload>, Box<dyn std::error::Error>> {
-    let raw = fs::read_to_string(path)?;
-    let cards: Vec<Value> = serde_json::from_str(&raw)?;
-    let mut map = HashMap::new();
-    for card in cards {
-        let Some(name) = card
-            .get("name")
-            .and_then(|value| value.as_str())
-            .map(str::to_string)
-        else {
-            continue;
-        };
-        if map.contains_key(&name) {
-            continue;
-        }
-        if let Some(payload) = build_card_payload(&card) {
-            map.insert(name, payload);
-        }
-    }
-    Ok(map)
-}
-
-fn normalize_lookup_name(name: &str) -> String {
-    let trimmed = name.trim();
-    if trimmed.contains(" / ") && !trimmed.contains(" // ") {
-        return trimmed.replacen(" / ", " // ", 1);
-    }
-    trimmed.to_string()
-}
-
 fn set_allow_unsupported(enabled: bool) {
     unsafe {
         if enabled {
@@ -488,7 +381,7 @@ fn parse_card(name: &str, parse_input: &str, allow_unsupported: bool) -> ParseOu
 
 fn build_rows(
     ranked_cards: &[RankedCard],
-    cards: &HashMap<String, CardPayload>,
+    cards: &HashMap<String, ReportCardInput>,
 ) -> Result<Vec<Row>, Box<dyn std::error::Error>> {
     let original_allow_unsupported = env::var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED").ok();
     let mut rows = Vec::with_capacity(ranked_cards.len());
@@ -569,7 +462,11 @@ fn build_rows(
     Ok(rows)
 }
 
-fn populate_row_from_definition(row: &mut Row, payload: &CardPayload, definition: &CardDefinition) {
+fn populate_row_from_definition(
+    row: &mut Row,
+    payload: &ReportCardInput,
+    definition: &CardDefinition,
+) {
     let compiled = unprocessed_compiled_lines(definition);
     row.compiled_lines_count = compiled.len();
     row.has_unimplemented = generated_definition_has_unimplemented_content(definition);
@@ -669,7 +566,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .sum::<usize>();
 
     let ranked_cards = build_ranked_cards(&event_summaries, args.top_n);
-    let cards = load_cards(&args.cards_path)?;
+    let cards = load_report_card_inputs(&args.cards_path)?;
     let mut rows = build_rows(&ranked_cards, &cards)?;
 
     rows.sort_by(|left, right| {

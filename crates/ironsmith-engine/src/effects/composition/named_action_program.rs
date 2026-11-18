@@ -8,11 +8,8 @@ use crate::snapshot::ObjectSnapshot;
 
 pub type NamedActionProgramEffect = ironsmith_core::NamedActionProgramEffect<Effect>;
 impl EffectExecutor for NamedActionProgramEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> { Box::new(self.clone()) }
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) { for effect in &self.effects { visitor(effect); } }
-    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx).map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<CompletedEffectOutputs, ExecutionError> {
         super::execute_transaction(game, ctx, || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)), |game, ctx| {
             if self.completion == ironsmith_core::effect::NamedActionProgramCompletion::AcceptedPayment {
@@ -47,7 +44,7 @@ impl EffectExecutor for NamedActionProgramEffect {
                 TraitEventResult::Replaced { effects, source, controller, context, .. } => {
                     let snapshots: Vec<_> = context.event.inner().snapshot().cloned().into_iter().collect();
                     let objects=context.event.inner().as_any().downcast_ref::<NamedActionProposalEvent>().map(|proposal|proposal.objects.clone()).unwrap_or_default();
-                    let tags = vec![("it".into(), snapshots.clone()), ("__it__".into(), snapshots.clone()), ("__named_action_source".into(), snapshots), ("__proposed_action_objects".into(),objects)];
+                    let tags = vec![("it".into(), snapshots.clone()), ("__it__".into(), snapshots.clone()), (crate::tag::NAMED_ACTION_PERFORMER_TAG.into(), snapshots), (crate::tag::PROPOSED_ACTION_OBJECTS_TAG.into(),objects)];
                     // "catalyze twice instead": performing the replaced
                     // action again is a new proposal of the same original
                     // program (CR 614.5 keeps this replacement off it), not a
@@ -67,14 +64,15 @@ impl EffectExecutor for NamedActionProgramEffect {
                     let proposal = event.inner().as_any().downcast_ref::<NamedActionProposalEvent>()
                         .filter(|proposal| proposal.label == label)
                         .ok_or_else(|| ExecutionError::InternalError("named replacement changed its operation identity".into()))?;
-                    let previous_token_scope = ctx.named_action_token_scope.replace((label.clone(), proposal.player));
-                    let previous_created_objects = ctx.named_action_created_objects.replace(Vec::new());
-                    ctx.set_tagged_objects("__named_action_created_objects", Vec::new());
+                    let previous_token_scope = ctx.named_action_token_scope.replace(crate::effects::context::NamedActionTokenScope {
+                        label: label.clone(), player: proposal.player, created_objects: Vec::new(),
+                    });
+                    ctx.set_tagged_objects(crate::tag::NAMED_ACTION_CREATED_OBJECTS_TAG, Vec::new());
                     let previous_controller = ctx.controller;
                     let previous_snapshot = ctx.source_snapshot.clone();
                     ctx.controller = proposal.player;
                     ctx.source_snapshot = Some(proposal.snapshot.clone());
-                    let proposed_tag=crate::tag::TagKey::from("__proposed_action_objects");
+                    let proposed_tag=crate::tag::TagKey::from(crate::tag::PROPOSED_ACTION_OBJECTS_TAG);
                     let previous_proposed=if self.completion.captures_proposed_objects() {
                         Some(ctx.tagged_objects.insert(proposed_tag.clone(),proposal.objects.clone()))
                     }else{None};
@@ -93,7 +91,7 @@ impl EffectExecutor for NamedActionProgramEffect {
                         // Payment acceptance and other action receipts keep
                         // their independent original meanings.
                         export_created_operation_result(&mut body.outcome, self.objects.as_ref(),
-                            ctx.named_action_created_objects.as_deref().unwrap_or(&[]));
+                            ctx.named_action_created_objects());
                         let complete = match self.completion {
                             ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted | ironsmith_core::effect::NamedActionProgramCompletion::ProposedObjects => true,
                             ironsmith_core::effect::NamedActionProgramCompletion::ProposedObjectsWithAvailableChoices => {
@@ -123,7 +121,7 @@ impl EffectExecutor for NamedActionProgramEffect {
                             }
                         };
                         if !complete { return Ok(body); }
-                        ctx.set_tagged_objects("__named_action_created_objects", ctx.named_action_created_objects.clone().unwrap_or_default());
+                        ctx.set_tagged_objects(crate::tag::NAMED_ACTION_CREATED_OBJECTS_TAG, ctx.named_action_created_objects().to_vec());
                         let completion_objects=if self.completion.captures_proposed_objects() {
                             Some(crate::target::ChooseSpec::Tagged(proposed_tag.clone()))
                         }else{self.objects.clone()};
@@ -154,7 +152,7 @@ impl EffectExecutor for NamedActionProgramEffect {
                                 EffectOutcome::aggregate_with_primary_result(EffectOutcome::count(count),outcomes))
                         }else{body.append_batch_completion_outputs(completed)};
                         export_created_operation_result(&mut output.outcome,self.objects.as_ref(),
-                            ctx.named_action_created_objects.as_deref().unwrap_or(&[]));
+                            ctx.named_action_created_objects());
                         Ok(output)
                     })();
                     if let Some(previous)=previous_proposed {match previous {
@@ -164,9 +162,8 @@ impl EffectExecutor for NamedActionProgramEffect {
                     ctx.controller = previous_controller;
                     ctx.source_snapshot = previous_snapshot;
                     ctx.named_action_token_scope = previous_token_scope;
-                    ctx.named_action_created_objects = previous_created_objects;
-                    if let Some(outer) = &ctx.named_action_created_objects {
-                        ctx.set_tagged_objects("__named_action_created_objects", outer.clone());
+                    if let Some(outer) = &ctx.named_action_token_scope {
+                        ctx.set_tagged_objects(crate::tag::NAMED_ACTION_CREATED_OBJECTS_TAG, outer.created_objects.clone());
                     }
                     result
                 }
@@ -187,7 +184,7 @@ impl EffectExecutor for NamedActionProgramEffect {
                 Ok(crate::effects::replacement::ReplacementProgramBindings {
                     targets: None,
                     object_tags: vec![("it".into(), subjects.clone()), ("__it__".into(), subjects),
-                        ("__named_action_source".into(), vec![source])],
+                        (crate::tag::NAMED_ACTION_PERFORMER_TAG.into(), vec![source])],
                 })
             })
         })
@@ -253,7 +250,7 @@ fn bind_operation_payment(effect: &Effect, alternatives: &[crate::effect::Effect
 /// The source-authored created-object operand owns its result packet. Neither
 /// ordinary named actions nor independent replacement additions may replace it.
 fn export_created_operation_result(outcome: &mut EffectOutcome, objects: Option<&crate::target::ChooseSpec>, created: &[ObjectSnapshot]) {
-    if !objects.is_some_and(|objects| matches!(objects.base(), crate::target::ChooseSpec::Tagged(tag) if tag.as_str()=="__named_action_created_objects")) { return; }
+    if !objects.is_some_and(|objects| matches!(objects.base(), crate::target::ChooseSpec::Tagged(tag) if tag.as_str()==crate::tag::NAMED_ACTION_CREATED_OBJECTS_TAG)) { return; }
     // Keep explicit empty memory at an original instruction boundary: generic
     // aggregation may omit an empty snapshot vector from its observations.
     if outcome.instruction_result.is_none() {outcome.instruction_result=Some(Box::new(outcome.clone()));}

@@ -146,10 +146,6 @@ fn oracle_name_matches_filter(
 }
 
 impl EffectExecutor for ChooseCardNameEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

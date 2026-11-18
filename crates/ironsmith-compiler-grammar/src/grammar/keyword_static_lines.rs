@@ -66,9 +66,9 @@ pub use life_change::*;
 mod token_templates;
 pub use token_templates::*;
 
-#[path = "keyword_static_lines/draw_programs.rs"]
-mod draw_programs;
-pub use draw_programs::*;
+pub use super::draw_replacement::{
+    DrawReplacementPlayer, DrawReplacementProgram, parse_draw_replacement_program,
+};
 
 #[path = "keyword_static_lines/damage_redirection.rs"]
 mod damage_redirection;

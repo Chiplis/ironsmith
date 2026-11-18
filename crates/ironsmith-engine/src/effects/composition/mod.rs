@@ -40,7 +40,7 @@ pub(crate) mod collect_evidence;
 mod collect_mana_payments;
 mod bind_x_value;
 mod completion_phase;
-pub(crate) use completion_phase::{CompletionInput, CompletionPhase};
+pub(crate) use completion_phase::{CompletionDecorator, CompletionInput, CompletionPhase};
 mod compound;
 mod conditional;
 mod cumulative_upkeep;
@@ -61,8 +61,11 @@ mod mana_retained;
 mod may;
 pub(crate) mod mechanic_actions;
 mod object_iteration;
+mod object_iteration_proposal;
 mod prepared_branch;
+mod prepared_unless;
 mod prepared_iteration;
+mod prepared_scope;
 mod reflexive_trigger;
 mod repeat_effects;
 pub(crate) use repeat_effects::{
@@ -77,9 +80,8 @@ mod secret_choice;
 mod sequence;
 mod coordinated_damage;
 mod simultaneous;
-pub(crate) use prepared_iteration::{
-    scope_prepared_iteration, with_iteration_tags, with_object_iteration,
-};
+pub(crate) use prepared_iteration::{with_iteration_tags, with_object_iteration};
+pub(crate) use prepared_scope::{PreparedBindings, scope_prepared_iteration, scope_prepared_target_assignments};
 pub(crate) use simultaneous::{
     OriginalOutcomeAdapter, adapt_original_outcome_with_outputs, with_held_original_triggers,
     with_original_execution_context,
@@ -227,6 +229,7 @@ mod keyword_recipient_batch;
 pub(crate) use keyword_recipient_batch::execute_keyword_recipient_batch;
 pub(crate) use keyword_action::{
     KeywordActionAmount, KeywordActionOutput, execute_keyword_action_with_outputs,
+    execute_ordered_permanent_actions,
 };
 
 mod keyword_programs;
@@ -281,6 +284,3 @@ pub use first_resolution::FirstResolutionEachTurnEffect;
 mod named_action_program;
 pub(crate) mod named_action_mode_plan;
 pub use named_action_program::NamedActionProgramEffect;
-
-mod prepared_target_assignments;
-pub(crate) use prepared_target_assignments::scope_prepared_target_assignments;

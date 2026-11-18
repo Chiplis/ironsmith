@@ -168,6 +168,57 @@ impl ImposedAttackCost {
     }
 }
 
+/// Total the defender's generic taxes from permanents and resolving effects.
+/// Preview reads abilities from its derived view. Declaration reads them with
+/// the continuous effects captured for that declaration.
+pub(crate) fn generic_attack_tax_against_defender(
+    game: &GameState,
+    defending_player: PlayerId,
+    target_kind: AttackTaxTargetKind,
+    abilities_for: impl Fn(&crate::object::Object) -> Vec<super::StaticAbility>,
+) -> u32 {
+    let mut tax = 0u32;
+
+    for &object_id in &game.battlefield {
+        let Some(object) = game.object(object_id) else {
+            continue;
+        };
+        if game.controller_of(object) != defending_player {
+            continue;
+        }
+
+        for ability in abilities_for(object) {
+            if !ability.generic_attack_tax_applies_to(target_kind) {
+                continue;
+            }
+            if let Some(per_attacker_tax) = ability.generic_attack_tax_per_attacker_against_you(
+                game,
+                object_id,
+                defending_player,
+            ) {
+                tax = tax.saturating_add(per_attacker_tax);
+            }
+        }
+    }
+
+    for restriction in &game.effect_store.restriction_effects {
+        let Restriction::AttackYouUnlessControllerPaysPerAttacker(amount, covers_planeswalkers) =
+            &restriction.restriction
+        else {
+            continue;
+        };
+        let applies = target_kind == AttackTaxTargetKind::Player
+            || (*covers_planeswalkers && target_kind == AttackTaxTargetKind::Planeswalker);
+        if applies && restriction.controller == defending_player
+            && restriction.is_active(game, game.turn.turn_number)
+        {
+            tax = tax.saturating_add(*amount);
+        }
+    }
+
+    tax
+}
+
 /// The same imposed costs feed legality previews and declaration payment.
 pub(crate) fn imposed_attack_costs_for_target(
     game: &GameState,
@@ -294,16 +345,7 @@ fn resolved_effect_attack_taxes(
         };
         let mut components = Vec::new();
         if mana > 0 {
-            let mut pips = Vec::new();
-            let mut remaining = mana;
-            while remaining > 0 {
-                let chunk = remaining.min(u32::from(u8::MAX)) as u8;
-                pips.push(vec![crate::mana::ManaSymbol::Generic(chunk)]);
-                remaining -= u32::from(chunk);
-            }
-            components.push(crate::costs::Cost::mana(crate::mana::ManaCost::from_pips(
-                pips,
-            )));
+            components.push(crate::costs::Cost::mana(crate::mana::ManaCost::from_generic(mana)));
         }
         if rule.life_per_attacker > 0 {
             components.push(crate::costs::Cost::life(rule.life_per_attacker));

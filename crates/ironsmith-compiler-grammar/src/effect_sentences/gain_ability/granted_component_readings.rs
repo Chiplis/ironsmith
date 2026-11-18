@@ -243,7 +243,7 @@ fn read_quoted_static_abilities(
             &ability_tokens[comma + 1..])?;
         if effects.is_empty() { return Ok(None); }
         if facts.source_reference_enters_with_counter_surface {
-            ironsmith_compiler_resolve::reference_resolution::resolve_as_enters_source_counter_grants(&mut effects);
+            crate::model::ast::resolve_as_enters_source_counter_grants(&mut effects);
         }
         crate::word_claims::claim_tokens(&ability_tokens[..=comma]);
         let ability = StaticAbility::as_enters_effect_program(

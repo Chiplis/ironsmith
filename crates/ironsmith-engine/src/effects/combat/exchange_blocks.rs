@@ -124,10 +124,6 @@ fn swap_in(list: &mut [ObjectId], first: ObjectId, second: ObjectId) {
 }
 
 impl EffectExecutor for ExchangeBlocksEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

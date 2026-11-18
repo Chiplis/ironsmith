@@ -510,6 +510,40 @@ fn apply_retarget_constraint(
     }
 }
 
+fn optional_cost_actor(tokens: &[OwnedLexToken]) -> Option<(PlayerAst, &[OwnedLexToken])> {
+    let actors: &[(&[&str], PlayerAst)] = &[
+        (&["you"], PlayerAst::You),
+        (&["they"], PlayerAst::That),
+        (&["that", "player"], PlayerAst::That),
+        (&["its", "controller"], PlayerAst::ItsController),
+        (&["its", "owner"], PlayerAst::ItsOwner),
+    ];
+    actors.iter().find_map(|(words, player)| {
+        let (actor, rest) = tokens.split_at_checked(words.len())?;
+        let (may, price) = rest.split_first()?;
+        (may.is_word("may") && actor.iter().zip(*words).all(|(t, w)| t.is_word(w)))
+            .then_some((*player, price))
+    })
+}
+
+pub(crate) fn has_optional_quoted_cost(tokens: &[OwnedLexToken]) -> bool {
+    optional_cost_actor(tokens).is_some_and(|(_, price)| matches!(price,
+        [pay, the, cost, quote, ..] if pay.is_word("pay") && the.is_word("the")
+            && cost.is_word("cost") && quote.kind == crate::lexer::TokenKind::Quote))
+}
+
+pub(super) fn parse_optional_quoted_cost(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let Some((player, price)) = optional_cost_actor(tokens) else { return Ok(None) };
+    let Some(parsed) = crate::grammar::activation_costs::parse_quoted_cost_program_tokens(price) else {
+        return Ok(None);
+    };
+    let effects = parsed?;
+    crate::word_claims::claim_tokens(&tokens[..tokens.len() - price.len()]);
+    Ok(Some(EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::MayPay {
+        player, effects, payment_receipt: None,
+    })))
+}
+
 pub fn parse_unless_pays_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<

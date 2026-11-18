@@ -59,18 +59,8 @@ where
 
     pub fn with_abilities(card: Card, abilities: Vec<A>) -> Self {
         Self {
-            card,
-            canonical_text: String::new(),
-            ability_labels: Vec::new(),
             abilities,
-            ability_counter_definitions: std::collections::BTreeMap::new(),
-            spell_effect: None,
-            aura_attach_filter: None,
-            alternative_casts: Vec::new(),
-            has_fuse: false,
-            optional_costs: Vec::new(),
-            additional_cost: TotalCost::free(),
-            refers_to_ante: false,
+            ..Self::new(card)
         }
     }
 
@@ -79,18 +69,8 @@ where
         E: Clone,
     {
         Self {
-            card,
-            canonical_text: String::new(),
-            ability_labels: Vec::new(),
-            abilities: Vec::new(),
-            ability_counter_definitions: std::collections::BTreeMap::new(),
             spell_effect: Some(ResolutionProgram::from_effects(effects)),
-            aura_attach_filter: None,
-            alternative_casts: Vec::new(),
-            has_fuse: false,
-            optional_costs: Vec::new(),
-            additional_cost: TotalCost::free(),
-            refers_to_ante: false,
+            ..Self::new(card)
         }
     }
 
@@ -99,18 +79,8 @@ where
         E: Clone,
     {
         Self {
-            card,
-            canonical_text: String::new(),
-            ability_labels: Vec::new(),
             abilities,
-            ability_counter_definitions: std::collections::BTreeMap::new(),
-            spell_effect: Some(ResolutionProgram::from_effects(effects)),
-            aura_attach_filter: None,
-            alternative_casts: Vec::new(),
-            has_fuse: false,
-            optional_costs: Vec::new(),
-            additional_cost: TotalCost::free(),
-            refers_to_ante: false,
+            ..Self::spell(card, effects)
         }
     }
 

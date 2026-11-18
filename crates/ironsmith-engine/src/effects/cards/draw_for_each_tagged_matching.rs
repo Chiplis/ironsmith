@@ -43,10 +43,6 @@ impl EffectExecutor for DrawForEachTaggedMatchingEffect {
         Some(crate::effect::Effect::new(self.draw_effect()))
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

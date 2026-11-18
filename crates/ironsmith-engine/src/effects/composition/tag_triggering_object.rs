@@ -9,10 +9,6 @@ pub use ironsmith_core::TagTriggeringObjectEffect;
 
 /// Effect that tags the object that caused the trigger.
 impl EffectExecutor for TagTriggeringObjectEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn as_resolution_prelude(&self) -> Option<&dyn crate::effects::ResolutionPreludeBinding> {
         Some(self)
     }

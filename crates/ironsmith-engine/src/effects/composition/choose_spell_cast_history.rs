@@ -8,10 +8,6 @@ use crate::game_state::GameState;
 pub type ChooseSpellCastHistoryEffect = ironsmith_core::ChooseSpellCastHistoryEffect;
 
 impl EffectExecutor for ChooseSpellCastHistoryEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

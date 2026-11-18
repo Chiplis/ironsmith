@@ -4102,6 +4102,8 @@ enum ManaPaymentCommand {
         required_life_pips: Vec<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         x_allocation: Option<[u32; 5]>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        actual_mana_allocation: Option<[u32; 6]>,
     },
     Activate {
         source_id: String,
@@ -4147,6 +4149,7 @@ impl ManaPaymentCommand {
                 prefer_life,
                 required_life_pips,
                 x_allocation,
+                actual_mana_allocation,
             } => Ok(ironsmith::mana_payment::ManaPaymentResponse::Replan {
                 preferences: ironsmith::mana_payment::ManaPaymentPreferences {
                     required_sources: parse_mana_payment_source_ids(
@@ -4171,6 +4174,7 @@ impl ManaPaymentCommand {
                     )?,
                     prefer_life,
                     x_allocation: x_allocation.map(ironsmith_core::mana::XManaAllocation),
+                    actual_mana_allocation: actual_mana_allocation.map(ironsmith_core::mana::ActualManaAllocation),
                     required_life_pips: required_life_pips
                         .into_iter()
                         .map(ironsmith::mana_payment::ManaPipId)

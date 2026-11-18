@@ -3,7 +3,6 @@
 //! Imprint exiles a card from a zone (typically hand) and associates it with
 //! the source permanent. Used by Chrome Mox, Isochron Scepter, etc.
 
-use crate::effect::EffectOutcome;
 use crate::effects::CompletedEffectOutputs;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -94,14 +93,7 @@ impl EffectExecutor for ImprintFromHandEffect {
             retain_result_snapshots: true,
         }))
     }
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(CompletedEffectOutputs::into_outcome)
-    }
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

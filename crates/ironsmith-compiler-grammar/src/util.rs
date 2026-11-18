@@ -861,7 +861,7 @@ pub fn compiler_activation_cost_reference_imports(
         Some(CompilerActivationCostObjectReference::Tagged(tag)) => {
             let mut imports = ReferenceImports::with_last_object_tag(tag.clone());
             if crate::tag::CompilerCostObjectTag::Sacrifice.matches(&tag) {
-                imports.snapshot_tag_aliases.push((
+                imports.snapshot_bindings.add_alias((
                     (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
                     ironsmith_core::tag::SacrificeCostTag::parse(&tag)
                         .expect("typed sacrifice-cost tag")
@@ -873,7 +873,7 @@ pub fn compiler_activation_cost_reference_imports(
             {
                 // Keep the paid exile antecedent even if choosing a target
                 // subsequently replaces the latest-object reference.
-                imports.snapshot_tag_aliases.push((
+                imports.snapshot_bindings.add_alias((
                     crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
                     tag,
                 ));
@@ -881,14 +881,14 @@ pub fn compiler_activation_cost_reference_imports(
                 // A filtered or random discard payment tags its card under
                 // its own `discard_cost_N` key; "the discarded card" names
                 // that paid card through the canonical discarded-cost alias.
-                imports.snapshot_tag_aliases.push((
+                imports.snapshot_bindings.add_alias((
                     (crate::tag::CompilerReferenceTag::DiscardedCost.bind()).into(),
                     tag,
                 ));
             } else if tag.as_str().starts_with("zone_cost_") {
                 // The moved card stays the paid-cost antecedent after a
                 // target ("counter target spell") becomes the latest object.
-                imports.snapshot_tag_aliases.push((
+                imports.snapshot_bindings.add_alias((
                     (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
                     tag,
                 ));
@@ -2406,6 +2406,37 @@ fn parse_one_target_per_card_type_phrase(
 #[path="util/payment_receipt_references.rs"]
 pub(crate) mod payment_receipt_references;
 
+pub(crate) fn historical_graveyard_target(
+    words: &[&str],
+    tokens: &[OwnedLexToken],
+) -> Option<TargetAst> {
+    let ["up", "to", "three" | "3", noun @ ..] = words else {
+        return None;
+    };
+    let origin = crate::grammar::statement_shapes::historical_graveyard_target_origin(noun)?;
+    if origin.strip_prefix(&["the"]).unwrap_or(origin) != ["battlefield", "this", "turn"] {
+        return None;
+    }
+    crate::word_claims::claim_words(words);
+    let mut filter = ObjectFilter::permanent_card().in_zone(Zone::Graveyard);
+    filter.entered_graveyard_this_turn = true;
+    filter.entered_graveyard_from_battlefield_this_turn = true;
+    filter.set_graveyard_entry_history_surface(Some(
+        ironsmith_core::GraveyardEntryHistorySurface::PutThereFromBattlefieldThisTurn,
+    ));
+    Some(TargetAst::WithCount(
+        Box::new(TargetAst::Object(filter, span_from_tokens(tokens), None)),
+        ChoiceCount::up_to(3),
+    ))
+}
+
+pub(crate) fn active_opponent_target_prefix(tokens: &[OwnedLexToken]) -> Option<(PlayerFilter, &[OwnedLexToken])> {
+    let rest = crate::grammar::primitives::strip_lexed_prefix_phrase(
+        tokens, &["target", "opponent", "whose", "turn", "it", "is"],
+    )?;
+    Some((PlayerFilter::excluding(PlayerFilter::Active, PlayerFilter::your_team()), rest))
+}
+
 pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     // "exactly one card in your graveyard milled this way": an explicit
     // exact cardinality is the same count as the bare number, never a
@@ -2434,28 +2465,26 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
         crate::word_claims::claim_tokens(tokens);
         return Ok(TargetAst::Tagged(crate::tag::TagRef::of(tag), span_from_tokens(tokens)));
     }
-    if crate::lexer::token_word_refs(tokens)==["the","most","recently","exiled","card"] {
+    let words = crate::lexer::token_word_refs(tokens);
+    let reference = match words.as_slice() {
+        ["the", "most", "recently", "exiled", "card"] =>
+            Some(crate::tag::TagRef::of(ironsmith_core::tag::LAST_EXILED_RESULT_TAG)),
+        ["the", "iterated", "object" | "card"] =>
+            Some(crate::tag::CompilerReferenceTag::CurrentIteratedObject.bind()),
+        ["the", "proposed", "objects"] =>
+            Some(crate::tag::TagRef::of(ironsmith_core::tag::PROPOSED_ACTION_OBJECTS_TAG)),
+        ["the", "action", "performer"] =>
+            Some(crate::tag::TagRef::of(ironsmith_core::tag::NAMED_ACTION_PERFORMER_TAG)),
+        _ => None,
+    };
+    if let Some(tag) = reference {
         crate::word_claims::claim_tokens(tokens);
-        return Ok(TargetAst::Tagged(crate::tag::TagRef::of(ironsmith_core::tag::LAST_EXILED_RESULT_TAG),span_from_tokens(tokens)));
-    }
-    // The object a bounded `For each ..., do the following: [...]` program
-    // is currently iterating.
-    if matches!(crate::lexer::token_word_refs(tokens).as_slice(), ["the","iterated","object"|"card"]) {
-        crate::word_claims::claim_tokens(tokens);
-        return Ok(TargetAst::Tagged(crate::tag::CompilerReferenceTag::CurrentIteratedObject.bind(),span_from_tokens(tokens)));
-    }
-    if crate::lexer::token_word_refs(tokens)==["the","proposed","objects"] {
-        crate::word_claims::claim_tokens(tokens);
-        return Ok(TargetAst::Tagged(crate::tag::TagRef::of(crate::tag::TagKey::from("__proposed_action_objects")),span_from_tokens(tokens)));
-    }
-    if crate::lexer::token_word_refs(tokens)==["the","action","performer"] {
-        crate::word_claims::claim_tokens(tokens);
-        return Ok(TargetAst::Tagged(crate::tag::TagRef::of(crate::tag::TagKey::from("__named_action_source")),span_from_tokens(tokens)));
+        return Ok(TargetAst::Tagged(tag, span_from_tokens(tokens)));
     }
     if let Some(tag)=payment_receipt_references::selected_tap_target(tokens){return Ok(TargetAst::Tagged(tag,span_from_tokens(tokens)));}
     if let Some(tag)=payment_receipt_references::tap_target(tokens){return Ok(TargetAst::Tagged(tag,span_from_tokens(tokens)));}
     // An explicit persistent source choice, independent of local "it" bindings.
-    if crate::lexer::token_word_refs(tokens) == ["the", "card", "chosen", "for", "this", "source"] {
+    if words == ["the", "card", "chosen", "for", "this", "source"] {
         crate::word_claims::claim_tokens(tokens);
         return Ok(TargetAst::Tagged(crate::tag::CompilerReferenceTag::ChosenObjects.bind(), span_from_tokens(tokens)));
     }
@@ -2466,6 +2495,9 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
     if let Some(target) = parse_one_target_per_card_type_phrase(tokens)? {
         return Ok(target);
     }
+    if let Some((filter, [])) = active_opponent_target_prefix(trim_edge_punctuation_tokens(tokens)) {
+        return Ok(TargetAst::Player(PlayerFilter::Target(Box::new(filter)), span_from_tokens(tokens)));
+    }
     if let Some(filter) =
         crate::grammar::choices::parse_target_opponent_with_more_controlled_as_you_activate_tokens(
             tokens,
@@ -2473,79 +2505,15 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
     {
         return Ok(TargetAst::Player(filter, span_from_tokens(tokens)));
     }
-    // "any target chosen at random" / "target opponent chosen at random"
-    // (Goblin Test Pilot, Witch Hunt): the target is still announced as the
-    // ability is put on the stack, but the game picks it at random among the
-    // legal choices (CR 115.7 contrasted with player choice; CR 601.2c).
-    if let Some(head_end) = chosen_at_random_target_suffix(tokens) {
-        let trimmed = trim_edge_punctuation_tokens(tokens);
-        let inner = parse_target_phrase(&trimmed[..head_end])?;
-        // "chosen at random [from among your opponents]": the random choice.
-        crate::word_claims::claim_tokens(&trimmed[head_end..]);
-        return Ok(match inner {
-            TargetAst::WithCount(inner, count) => TargetAst::WithCount(inner, count.at_random()),
-            other => TargetAst::WithCount(Box::new(other), ChoiceCount::exactly(1).at_random()),
-        });
+    if let Some(target) = parse_random_target_phrase(tokens)? {
+        return Ok(target);
     }
     // A plural historical graveyard target has an embedded `put` verb that
     // belongs to the object filter, not to the surrounding action chain.
     // Preserve this exact target envelope before the generic target-head
     // parser can expose that verb as a second effect clause.
-    let historical_words = crate::lexer::token_word_refs(tokens);
-    let historical_with_article = crate::word_primitives::parse_choice_sequence_complete(
-        &historical_words,
-        &[
-            &["up"],
-            &["to"],
-            &["three", "3"],
-            &["target"],
-            &["permanent"],
-            &["cards"],
-            &["in"],
-            &["graveyards"],
-            &["that"],
-            &["were"],
-            &["put"],
-            &["there"],
-            &["from"],
-            &["the"],
-            &["battlefield"],
-            &["this"],
-            &["turn"],
-        ],
-    );
-    let historical_without_article = crate::word_primitives::parse_choice_sequence_complete(
-        &historical_words,
-        &[
-            &["up"],
-            &["to"],
-            &["three", "3"],
-            &["target"],
-            &["permanent"],
-            &["cards"],
-            &["in"],
-            &["graveyards"],
-            &["that"],
-            &["were"],
-            &["put"],
-            &["there"],
-            &["from"],
-            &["battlefield"],
-            &["this"],
-            &["turn"],
-        ],
-    );
-    if historical_with_article || historical_without_article {
-        let mut filter = ObjectFilter::permanent_card().in_zone(Zone::Graveyard);
-        filter.entered_graveyard_this_turn = true;
-        filter.entered_graveyard_from_battlefield_this_turn = true;
-        filter.set_graveyard_entry_history_surface(Some(
-            ironsmith_core::GraveyardEntryHistorySurface::PutThereFromBattlefieldThisTurn,
-        ));
-        return Ok(TargetAst::WithCount(
-            Box::new(TargetAst::Object(filter, span_from_tokens(tokens), None)),
-            ChoiceCount::up_to(3),
-        ));
+    if let Some(target) = historical_graveyard_target(&words, tokens) {
+        return Ok(target);
     }
 
     // A bare object AST does not itself distinguish the chosen singleton in
@@ -2553,7 +2521,7 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
     // that authored quantifier on the filter so action lowering can retain
     // complete-set semantics even when the phrase also references a chosen
     // player (for example, "each creature target player controls").
-    let leading_set_quantifier = match crate::lexer::token_word_refs(tokens).first() {
+    let leading_set_quantifier = match words.first() {
         Some(&"each") => Some(ironsmith_core::SetQuantifierSurface::Each),
         Some(&"all") => Some(ironsmith_core::SetQuantifierSurface::All),
         _ => None,
@@ -3775,9 +3743,21 @@ pub(crate) fn restore_authored_damage_source_surface(
     }
 }
 
-/// Token index where a trailing "chosen at random" begins on a target phrase.
-fn chosen_at_random_target_suffix(tokens: &[OwnedLexToken]) -> Option<usize> {
+/// A random target is announced normally, with the game selecting from the legal choices.
+pub(crate) fn parse_random_target_phrase(tokens: &[OwnedLexToken]) -> Result<Option<TargetAst>, CardTextError> {
     let tokens = trim_edge_punctuation_tokens(tokens);
+    let Some(head_end) = chosen_at_random_target_suffix(tokens) else {
+        return Ok(None);
+    };
+    let inner = parse_target_phrase(&tokens[..head_end])?;
+    crate::word_claims::claim_tokens(&tokens[head_end..]);
+    Ok(Some(match inner {
+        TargetAst::WithCount(inner, count) => TargetAst::WithCount(inner, count.at_random()),
+        other => TargetAst::WithCount(Box::new(other), ChoiceCount::exactly(1).at_random()),
+    }))
+}
+
+fn chosen_at_random_target_suffix(tokens: &[OwnedLexToken]) -> Option<usize> {
     let view = crate::lexer::TokenWordView::new(tokens);
     let mut words = view.word_refs();
     // "target opponent chosen at random from among your opponents"

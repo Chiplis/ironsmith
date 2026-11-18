@@ -1980,7 +1980,7 @@ fn materialize_trailing_self_replacement(
         // Exports drop snapshot aliases; the arms still read the prefix's
         // aliased collections ("nonland cards revealed this way" names the
         // consult's whole exposure, never its singular match).
-        branch_imports.snapshot_tag_aliases = condition_env.snapshot_tag_aliases.clone();
+        branch_imports.snapshot_bindings = condition_env.snapshot_bindings.clone();
         let default_lowered =
             compile_statement_effects_with_imports(&effective_if_false, &branch_imports)?;
         let shared_target_prelude = (shared_counter_target.is_some()

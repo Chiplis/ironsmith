@@ -338,13 +338,8 @@ impl Effect {
 
     pub fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         fn visit_price(cost: &crate::cost::TotalCost, visitor: &mut dyn FnMut(&Effect)) {
-            match cost.kind() {
-                ironsmith_core::TotalCostKind::All(costs) => {
-                    for cost in costs { if let Some(effect) = cost.effect_ref() { visitor(effect); } }
-                }
-                ironsmith_core::TotalCostKind::OneOf(branches) => {
-                    for branch in branches { visit_price(branch, visitor); }
-                }
+            for effect in cost.payment_branches().flatten().filter_map(|part| part.effect_ref()) {
+                visitor(effect);
             }
         }
         if let Some(cast) = self.downcast_ref::<crate::effects::CastTaggedEffect>() {

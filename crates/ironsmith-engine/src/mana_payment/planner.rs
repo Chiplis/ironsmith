@@ -1701,6 +1701,8 @@ impl ManaPaymentPlanner {
         {
             return Err(ManaPaymentFailure::ConflictingPreferences);
         }
+        let constrained_cost = constrain_actual_mana(request)
+            .ok_or(ManaPaymentFailure::ConflictingPreferences)?;
         if request
             .preferences
             .required_sources
@@ -1791,8 +1793,7 @@ impl ManaPaymentPlanner {
                 // resources while searching, but do not tap/exile them early.
                 let staged = game.clone();
                 let mut payment_request = request.reserving_alternatives(&selection.allocations);
-                payment_request.cost = request
-                    .cost
+                payment_request.cost = constrained_cost
                     .clone()
                     .bind_x_payment_if_unbound(request.x_value)
                     .with_required_x_allocation(request.preferences.x_allocation)
@@ -4228,13 +4229,28 @@ fn positive_pool_delta(before: &ManaPool, after: &ManaPool) -> ManaPool {
     }
 }
 
+fn constrain_actual_mana(request: &ManaPaymentRequest) -> Option<crate::mana::ManaCost> {
+    let selected = request.preferences.actual_mana_allocation;
+    let required = request.cost.required_actual_payment();
+    if let Some(allocation) = selected {
+        if required.is_some_and(|existing| existing != allocation)
+            || allocation.0.into_iter().map(u64::from).sum::<u64>()
+                > u64::from(request.cost.mana_value_with_x(request.x_value))
+        {
+            return None;
+        }
+    }
+    Some(request.cost.clone().with_required_actual_payment(required.or(selected)))
+}
+
 pub(super) fn can_pay_request(game: &GameState, request: &ManaPaymentRequest) -> bool {
     if request.preferences.x_allocation.is_some() && !request.cost.has_x_spending_restriction() {
         return false;
     }
-    let constrained_cost = request
-        .cost
-        .clone()
+    let Some(constrained_cost) = constrain_actual_mana(request) else {
+        return false;
+    };
+    let constrained_cost = constrained_cost
         .bind_x_payment_if_unbound(request.x_value)
         .with_required_x_allocation(request.preferences.x_allocation);
     if request.reserved_permanent_sources.iter().any(|id| {
@@ -4601,6 +4617,10 @@ fn request_hash(request: &ManaPaymentRequest) -> u64 {
     }
     if let Some(allocation) = request.preferences.x_allocation {
         "selected actual X allocation".hash(&mut hasher);
+        allocation.hash(&mut hasher);
+    }
+    if let Some(allocation) = request.preferences.actual_mana_allocation {
+        "selected actual mana allocation".hash(&mut hasher);
         allocation.hash(&mut hasher);
     }
     if let Some(completion) = request.assist_completion.as_deref() {

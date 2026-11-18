@@ -93,7 +93,7 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
     ),
     (
         &["until", "your", "next", "end", "step"],
-        LeafDurationPhrase::UntilYourNextTurnEnd,
+        LeafDurationPhrase::UntilBeginningOfYourNextEndStep,
     ),
     (
         &["until", "your", "next", "turn"],

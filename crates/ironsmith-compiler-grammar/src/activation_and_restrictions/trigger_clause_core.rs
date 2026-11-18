@@ -1976,6 +1976,10 @@ fn enter_trigger_subject_number(
     }
 }
 
+pub(crate) fn source_leaves_trigger_for_subject(subject: &[OwnedLexToken]) -> TriggerSpec {
+    this_leaves_battlefield_trigger_spec(source_reference_surface_for_trigger_subject(subject))
+}
+
 fn this_leaves_battlefield_trigger_spec(
     surface: Option<crate::target::SourceReferenceSurface>,
 ) -> TriggerSpec {

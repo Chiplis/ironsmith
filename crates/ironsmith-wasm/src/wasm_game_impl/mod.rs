@@ -24,6 +24,9 @@ include!("priority_yield.rs");
 include!("payment_disclosure_transaction.rs");
 include!("blind_exile_play.rs");
 
+#[cfg(feature = "xmage-fixtures")]
+mod xmage_fixtures;
+
 #[cfg(test)]
 mod runtime_audit_devourer;
 

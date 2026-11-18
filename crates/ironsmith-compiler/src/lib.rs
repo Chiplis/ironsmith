@@ -10,6 +10,8 @@
 
 pub mod canonical_pipeline;
 pub mod compiler_pipeline;
+#[cfg(test)]
+mod lowering_tests;
 pub mod facade;
 mod supplied_definitions;
 pub use supplied_definitions::{compile_supplied_card_definition,compile_supplied_card_definition_bundle,SuppliedCardDefinitionSource,SuppliedCardDefinitionBundle};

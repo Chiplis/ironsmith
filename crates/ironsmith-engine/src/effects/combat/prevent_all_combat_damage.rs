@@ -9,19 +9,11 @@ use crate::target::ChooseSpec;
 pub use ironsmith_core::{CombatDamagePreventionTarget, PreventAllCombatDamageEffect};
 
 impl EffectExecutor for PreventAllCombatDamageEffect {
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         visitor(&combat_prevention_body(&self.target, &self.until));
     }
 
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

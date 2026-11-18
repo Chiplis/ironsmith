@@ -1,3 +1,4 @@
+use crate::model::ast::TokenCopySourceAst;
 use super::*;
 #[cfg(test)]
 use ironsmith_compiler::ParseCardText;
@@ -6,10 +7,7 @@ fn copy_count(effects: &[EffectAst]) -> Option<Value> {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                    count, ..
-                }),
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. }),
             ..
         }) = effect
         {
@@ -32,8 +30,8 @@ fn copy_source(effects: &[EffectAst]) -> Option<TargetAst> {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                    source, ..
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+                    source: TokenCopySourceAst::Target(source), ..
                 }),
             ..
         }) = effect

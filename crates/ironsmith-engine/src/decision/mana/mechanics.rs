@@ -21,9 +21,7 @@ pub fn calculate_delve_effective_cost(
     base_cost: &crate::mana::ManaCost,
     available_graveyard_cards: u32,
 ) -> crate::mana::ManaCost {
-    let generic_in_cost = base_cost.generic_mana_total();
-    let delve_amount = generic_in_cost.min(available_graveyard_cards);
-    base_cost.reduce_generic(delve_amount)
+    base_cost.reduce_generic(available_graveyard_cards)
 }
 
 /// Calculate how many cards to exile for Delve to minimize mana cost while being castable.
@@ -36,13 +34,11 @@ pub fn calculate_optimal_delve(
     base_cost: &crate::mana::ManaCost,
 ) -> (u32, crate::mana::ManaCost) {
     let graveyard_count = count_cards_in_graveyard(game, player);
-    let generic_in_cost = base_cost.generic_mana_total();
-
-    // Exile up to the generic mana cost
-    let delve_amount = generic_in_cost.min(graveyard_count);
-    let effective_cost = base_cost.reduce_generic(delve_amount);
-
-    (delve_amount, effective_cost)
+    let delve_amount = base_cost.generic_mana_total().min(graveyard_count);
+    (
+        delve_amount,
+        calculate_delve_effective_cost(base_cost, delve_amount),
+    )
 }
 
 /// Check if a spell has the Convoke ability.
@@ -71,25 +67,26 @@ pub fn calculate_convoke_creatures_to_tap(
         return Vec::new();
     }
 
-    // First apply other cost reductions (like Affinity and Delve)
-    let mut cost_after_reductions = base_cost.clone();
+    let cost = cost_after_affinity_and_delve(game, player, spell, base_cost);
+    calculate_convoke_cost(game, player, &cost).0
+}
 
-    // CR 601.2f: increases apply before any reduction, affinity included.
+fn cost_after_affinity_and_delve(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+) -> crate::mana::ManaCost {
+    // Apply increases before reductions, including affinity, then preview delve.
     let mut totals =
         collect_spell_cost_modifiers(game, player, spell, 1, &[], &CastingMethod::Normal, None);
     totals.add_generic_reduction(affinity_for_artifacts_reduction(game, player, spell));
-    cost_after_reductions = totals.apply(&cost_after_reductions);
-
-    let has_delve_ability = spell_has_delve(game, spell);
-
-    if has_delve_ability {
-        let graveyard_count = count_cards_in_graveyard(game, player);
-        cost_after_reductions = cost_after_reductions.reduce_generic(graveyard_count);
+    let cost = totals.apply(base_cost);
+    if spell_has_delve(game, spell) {
+        calculate_delve_effective_cost(&cost, count_cards_in_graveyard(game, player))
+    } else {
+        cost
     }
-
-    // Now calculate Convoke creatures to tap
-    let (creatures_to_tap, _) = calculate_convoke_cost(game, player, &cost_after_reductions);
-    creatures_to_tap
 }
 
 /// Check if a spell has the Improvise ability.
@@ -137,47 +134,33 @@ pub fn calculate_improvise_cost(
     player: PlayerId,
     cost: &crate::mana::ManaCost,
 ) -> (Vec<crate::ids::ObjectId>, crate::mana::ManaCost) {
-    use crate::mana::ManaSymbol;
-
-    let improvise_artifacts = get_improvise_artifacts(game, player);
-    if improvise_artifacts.is_empty() {
+    let artifacts = get_improvise_artifacts(game, player);
+    if artifacts.is_empty() {
         return (Vec::new(), cost.clone());
     }
 
-    let mut artifacts_to_tap = Vec::new();
-    let mut remaining_pips: Vec<Vec<ManaSymbol>> = cost.pips().to_vec();
+    let mut tapped = Vec::new();
+    let mut pips = cost.pips().to_vec();
+    tap_for_generic_mana(&mut pips, artifacts.into_iter(), &mut tapped);
+    (tapped, cost.with_pips(pips))
+}
 
-    // Improvise only pays generic mana
-    let mut i = 0;
-    while i < remaining_pips.len() && artifacts_to_tap.len() < improvise_artifacts.len() {
-        let pip = &remaining_pips[i];
-
-        // Check if this is a generic pip
-        if pip.len() == 1
-            && let ManaSymbol::Generic(n) = pip[0]
+fn tap_for_generic_mana(
+    pips: &mut Vec<Vec<ManaSymbol>>,
+    mut available: impl ExactSizeIterator<Item = ObjectId>,
+    tapped: &mut Vec<ObjectId>,
+) {
+    pips.retain_mut(|pip| {
+        if let [ManaSymbol::Generic(amount)] = pip.as_mut_slice()
+            && available.len() > 0
         {
-            let available = improvise_artifacts.len() - artifacts_to_tap.len();
-            let to_tap = (n as usize).min(available);
-
-            for j in 0..to_tap {
-                artifacts_to_tap.push(improvise_artifacts[artifacts_to_tap.len()]);
-                let _ = j; // Suppress unused warning
-            }
-
-            // Reduce or remove the generic pip
-            let paid = to_tap as u8;
-            if paid >= n {
-                remaining_pips.remove(i);
-                continue;
-            } else {
-                remaining_pips[i] = vec![ManaSymbol::Generic(n - paid)];
-            }
+            let paid = usize::from(*amount).min(available.len());
+            tapped.extend(available.by_ref().take(paid));
+            *amount -= paid as u8;
+            return *amount > 0;
         }
-        i += 1;
-    }
-
-    let effective_cost = cost.with_pips(remaining_pips);
-    (artifacts_to_tap, effective_cost)
+        true
+    });
 }
 
 /// Calculate which artifacts to tap for Improvise.
@@ -194,32 +177,11 @@ pub fn calculate_improvise_artifacts_to_tap(
         return Vec::new();
     }
 
-    // First apply other cost reductions (Affinity, Delve, Convoke)
-    let mut cost_after_reductions = base_cost.clone();
-
-    // CR 601.2f: increases apply before any reduction, affinity included.
-    let mut totals =
-        collect_spell_cost_modifiers(game, player, spell, 1, &[], &CastingMethod::Normal, None);
-    totals.add_generic_reduction(affinity_for_artifacts_reduction(game, player, spell));
-    cost_after_reductions = totals.apply(&cost_after_reductions);
-
-    let has_delve_ability = spell_has_delve(game, spell);
-
-    if has_delve_ability {
-        let graveyard_count = count_cards_in_graveyard(game, player);
-        cost_after_reductions = cost_after_reductions.reduce_generic(graveyard_count);
+    let mut cost = cost_after_affinity_and_delve(game, player, spell, base_cost);
+    if spell_has_convoke(game, spell) {
+        cost = calculate_convoke_cost(game, player, &cost).1;
     }
-
-    let has_convoke_ability = spell_has_convoke(game, spell);
-
-    if has_convoke_ability {
-        let (_, convoked_cost) = calculate_convoke_cost(game, player, &cost_after_reductions);
-        cost_after_reductions = convoked_cost;
-    }
-
-    // Now calculate Improvise artifacts to tap
-    let (artifacts_to_tap, _) = calculate_improvise_cost(game, player, &cost_after_reductions);
-    artifacts_to_tap
+    calculate_improvise_cost(game, player, &cost).0
 }
 
 /// Count untapped creatures controlled by a player that can be tapped for convoke.
@@ -257,76 +219,30 @@ pub fn calculate_convoke_cost(
     player: PlayerId,
     cost: &crate::mana::ManaCost,
 ) -> (Vec<crate::ids::ObjectId>, crate::mana::ManaCost) {
-    use crate::mana::ManaSymbol;
-
-    let convoke_creatures = get_convoke_creatures(game, player);
-    if convoke_creatures.is_empty() {
+    let mut available = get_convoke_creatures(game, player);
+    if available.is_empty() {
         return (Vec::new(), cost.clone());
     }
 
-    let mut creatures_to_tap = Vec::new();
-    let mut remaining_pips: Vec<Vec<ManaSymbol>> = cost.pips().to_vec();
-    let mut available_creatures = convoke_creatures;
-
-    // First pass: pay colored mana with matching creatures
-    let mut i = 0;
-    while i < remaining_pips.len() {
-        let pip = &remaining_pips[i];
-
-        // Check if this is a single colored pip
-        if pip.len() == 1 {
-            let color_opt = match pip[0] {
-                ManaSymbol::White => Some(crate::color::Color::White),
-                ManaSymbol::Blue => Some(crate::color::Color::Blue),
-                ManaSymbol::Black => Some(crate::color::Color::Black),
-                ManaSymbol::Red => Some(crate::color::Color::Red),
-                ManaSymbol::Green => Some(crate::color::Color::Green),
-                _ => None,
-            };
-
-            if let Some(color) = color_opt {
-                // Find a creature with this color
-                if let Some(idx) = available_creatures
-                    .iter()
-                    .position(|(_, colors)| colors.contains(color))
-                {
-                    let (creature_id, _) = available_creatures.remove(idx);
-                    creatures_to_tap.push(creature_id);
-                    remaining_pips.remove(i);
-                    continue;
-                }
-            }
-        }
-        i += 1;
-    }
-
-    // Second pass: pay generic mana with any remaining creatures
-    let mut i = 0;
-    while i < remaining_pips.len() && !available_creatures.is_empty() {
-        let pip = &remaining_pips[i];
-
-        // Check if this is a generic pip
-        if pip.len() == 1
-            && let ManaSymbol::Generic(n) = pip[0]
+    let mut tapped = Vec::new();
+    let mut pips = cost.pips().to_vec();
+    // Assign matching creatures to single colored pips before paying generic mana.
+    pips.retain(|pip| {
+        if let [symbol] = pip.as_slice()
+            && let Some(color) = symbol.unit_color()
+            && let Some(index) = available
+                .iter()
+                .position(|(_, colors)| colors.contains(color))
         {
-            let creatures_needed = (n as usize).min(available_creatures.len());
-            for _ in 0..creatures_needed {
-                let (creature_id, _) = available_creatures.remove(0);
-                creatures_to_tap.push(creature_id);
-            }
-
-            // Reduce or remove the generic pip
-            let paid = creatures_needed as u8;
-            if paid >= n {
-                remaining_pips.remove(i);
-                continue;
-            } else {
-                remaining_pips[i] = vec![ManaSymbol::Generic(n - paid)];
-            }
+            tapped.push(available.remove(index).0);
+            return false;
         }
-        i += 1;
-    }
-
-    let effective_cost = cost.with_pips(remaining_pips);
-    (creatures_to_tap, effective_cost)
+        true
+    });
+    tap_for_generic_mana(
+        &mut pips,
+        available.into_iter().map(|(id, _)| id),
+        &mut tapped,
+    );
+    (tapped, cost.with_pips(pips))
 }

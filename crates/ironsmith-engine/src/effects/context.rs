@@ -397,6 +397,29 @@ pub(crate) struct PaymentTargetReference {
     pub assignments: Vec<TargetAssignment>,
 }
 
+impl PaymentTargetReference {
+    pub(crate) fn execution_context<'a>(
+        &self,
+        payment: &ExecutionContext<'_>,
+        decisions: &'a mut dyn DecisionMaker,
+    ) -> ExecutionContext<'a> {
+        let mut ctx = ExecutionContextCheckpoint::capture(payment).into_context(decisions);
+        ctx.controller = self.controller;
+        ctx.targets.clone_from(&self.targets);
+        ctx.target_assignments.clone_from(&self.assignments);
+        ctx.targets_are_cost_choices = false;
+        ctx
+    }
+}
+
+/// An active named operation and the original tokens created during it.
+#[derive(Debug, Clone)]
+pub(crate) struct NamedActionTokenScope {
+    pub label: String,
+    pub player: PlayerId,
+    pub created_objects: Vec<ObjectSnapshot>,
+}
+
 /// Context for effect execution.
 pub struct ExecutionContext<'a> {
     /// The source object (spell/ability on stack).
@@ -563,9 +586,7 @@ pub struct ExecutionContext<'a> {
     pub(crate) pending_entry_attachment: Option<crate::target::ChooseSpec>,
     /// Only the exact preceding entry instruction may supply this packet.
     pub(crate) entry_attachment_receipts: Option<Vec<crate::effect::EntryAttachmentReceipt>>,
-    /// Lexical operation identity; token proposals acquire current providers.
-    pub(crate) named_action_token_scope: Option<(String, PlayerId)>,
-    pub(crate) named_action_created_objects: Option<Vec<ObjectSnapshot>>,
+    pub(crate) named_action_token_scope: Option<NamedActionTokenScope>,
     /// Continuous effects this resolution has registered so far, in order.
     /// "You may pay [cost] to end this effect" (Licids) ends exactly these.
     pub(crate) created_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
@@ -578,14 +599,30 @@ macro_rules! execution_context_checkpoint {
     ($($field:ident: $field_type:ty),* $(,)?) => {
         /// Owned resolution state retained while an effect awaits a decision.
         /// The decision maker keeps its prompt and answers outside rollback.
+        #[derive(Clone)]
         pub(crate) struct ExecutionContextCheckpoint {
             $($field: $field_type,)*
+        }
+
+        impl ExecutionContext<'_> {
+            pub(crate) fn into_checkpoint(self) -> ExecutionContextCheckpoint {
+                ExecutionContextCheckpoint { $($field: self.$field,)* }
+            }
         }
 
         impl ExecutionContextCheckpoint {
             pub(crate) fn capture(ctx: &ExecutionContext<'_>) -> Self {
                 let ExecutionContext { $($field,)* decision_maker: _ } = ctx;
                 Self { $($field: $field.clone(),)* }
+            }
+
+            /// Resume all captured state with the supplied decision maker.
+            pub(crate) fn reborrow<'a>(&self, decision_maker: &'a mut dyn DecisionMaker) -> ExecutionContext<'a> {
+                self.clone().into_context(decision_maker)
+            }
+
+            pub(crate) fn into_context<'a>(self, decision_maker: &'a mut dyn DecisionMaker) -> ExecutionContext<'a> {
+                ExecutionContext { $($field: self.$field,)* decision_maker }
             }
 
             pub(crate) fn restore(self, ctx: &mut ExecutionContext<'_>) {
@@ -627,84 +664,16 @@ impl ExecutionContextCheckpoint {
     pub(crate) fn provenance(&self) -> ProvNodeId {
         self.provenance
     }
-    /// Reborrow a decision maker with every captured owned field restored.
-    pub(crate) fn reborrow<'a>(&self, dm: &'a mut dyn DecisionMaker) -> ExecutionContext<'a> {
-        let mut ctx = ExecutionContext::new(self.source, self.controller, dm);
-        self.restore_ref(&mut ctx);
-        ctx
-    }
-}
-
-execution_context_checkpoint! {
-    source: ObjectId,
-    linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
-    source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
-    card_definition_scopes: Vec<crate::effects::cards::CardDefinitionScope>,
-    controller: PlayerId,
-    targets: Vec<ResolvedTarget>,
-    announced_targets: Option<Vec<ResolvedTarget>>,
-    payment_target_reference: Option<PaymentTargetReference>,
-    targets_are_cost_choices: bool,
-    preselected_objects: Option<Vec<ObjectId>>,
-    prospective_cost_payment: bool,
-    target_assignments: Vec<TargetAssignment>,
-    target_distributions: Vec<TargetDistribution>,
-    announced_target_assignments: Vec<TargetAssignment>,
-    announced_target_slots: Vec<(ResolvedTarget, bool)>,
-    x_value: Option<u32>,
-    activation_values: Vec<(crate::effect::Value, Option<i32>)>,
-    all_targets_legal: bool,
-    effect_outcomes: HashMap<EffectId, EffectOutcome>,
-    vote_results: HashMap<ObjectId, VoteResult>,
-    secret_choice_results: HashMap<ObjectId, SecretChoiceResult>,
-    iteration: IterationContext,
-    optional_costs_paid: OptionalCostsPaid,
-    optional_action: bool,
-    casting_method: crate::alternative_cast::CastingMethod,
-    combat: CombatExecutionContext,
-    ninjutsu_attack_target: Option<crate::combat_state::AttackTarget>,
-    target_snapshots: HashMap<ObjectId, ObjectSnapshot>,
-    source_snapshot: Option<ObjectSnapshot>,
-    tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
-    exact_object_reference_tags: HashSet<TagKey>,
-    object_selection_progress: HashMap<ObjectSelectionProgressKey, ObjectSelectionProgress>,
-    tagged_players: HashMap<TagKey, Vec<PlayerId>>,
-    face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
-    optional_identity_guard: Option<OptionalIdentityGuard>,
-    triggering_event: Option<crate::triggers::TriggerEvent>,
-    event_value_amount: Option<i32>,
-    last_prevention_shield: Option<crate::prevention::PreventionShieldId>,
-    last_play_permissions: Vec<crate::grant_registry::GrantPermissionIdentity>,
-    trigger_identity: Option<crate::triggers::TriggerIdentity>,
-    do_this_limit: Option<DoThisLimit>,
-    ability_index: Option<usize>,
-    activation_origin: Option<crate::continuous::AbilityOrigin>,
-    activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
-    chosen_modes: Option<Vec<usize>>,
-    cause: EventCause,
-    provenance: ProvNodeId,
-    duration_window_start: Option<crate::game_state::DurationWindowStart>,
-    mana: ManaExecutionContext,
-    replacement: ReplacementExecutionContext,
-    executing_effect: Option<usize>,
-    shared_team_structure_operations: HashSet<(usize, usize, &'static str)>,
-    created_extra_turn_index: Option<usize>,
-    restarted_game: bool,
-    resolution_control: ResolutionControl,
-    resolution_object_id_floor: Option<ObjectId>,
-    public_search_reveal_tag: Option<TagKey>,
-    pending_entry_attachment: Option<crate::target::ChooseSpec>,
-    entry_attachment_receipts: Option<Vec<crate::effect::EntryAttachmentReceipt>>,
-    named_action_token_scope: Option<(String, PlayerId)>,
-    named_action_created_objects: Option<Vec<ObjectSnapshot>>,
-    created_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
 }
 
 // Payment frames inherit value-resolution inputs, but bind their own payer,
 // cause, cost objects and instruction control state. This exhaustive capture
 // forces every new context field to be classified instead of silently dropped.
-macro_rules! payment_execution_inputs {
-    (inherited { $($field:ident: $field_type:ty,)* } local { $($local:ident,)* }) => {
+macro_rules! execution_context_snapshots {
+    (payment_inherits { $($field:ident: $field_type:ty,)* }
+     payment_binds_locally { $($local:ident: $local_type:ty,)* }) => {
+        execution_context_checkpoint! { $($field: $field_type,)* $($local: $local_type,)* }
+
         #[derive(Clone)]
         pub(crate) struct PaymentExecutionInputs {
             $($field: $field_type,)*
@@ -724,13 +693,13 @@ macro_rules! payment_execution_inputs {
     };
 }
 
-payment_execution_inputs! {
-    inherited {
+execution_context_snapshots! {
+    payment_inherits {
         preselected_objects: Option<Vec<ObjectId>>,
         payment_target_reference: Option<PaymentTargetReference>,
         linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
         source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
-    card_definition_scopes: Vec<crate::effects::cards::CardDefinitionScope>,
+        card_definition_scopes: Vec<crate::effects::cards::CardDefinitionScope>,
         activation_origin: Option<crate::continuous::AbilityOrigin>,
         activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
         prospective_cost_payment: bool,
@@ -758,14 +727,37 @@ payment_execution_inputs! {
         resolution_object_id_floor: Option<ObjectId>,
         duration_window_start: Option<crate::game_state::DurationWindowStart>,
     }
-    local {
-        source, controller, targets, announced_targets, targets_are_cost_choices,
-        target_assignments, target_distributions, x_value, effect_outcomes,
-        optional_action, source_snapshot, tagged_objects, exact_object_reference_tags, object_selection_progress, optional_identity_guard,
-        do_this_limit, chosen_modes, cause, provenance, replacement,
-        executing_effect, shared_team_structure_operations, created_extra_turn_index,
-        restarted_game, resolution_control, public_search_reveal_tag, pending_entry_attachment, entry_attachment_receipts,
-        named_action_token_scope, named_action_created_objects, created_continuous_effects,
+    payment_binds_locally {
+        source: ObjectId,
+        controller: PlayerId,
+        targets: Vec<ResolvedTarget>,
+        announced_targets: Option<Vec<ResolvedTarget>>,
+        targets_are_cost_choices: bool,
+        target_assignments: Vec<TargetAssignment>,
+        target_distributions: Vec<TargetDistribution>,
+        x_value: Option<u32>,
+        effect_outcomes: HashMap<EffectId, EffectOutcome>,
+        optional_action: bool,
+        source_snapshot: Option<ObjectSnapshot>,
+        tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+        exact_object_reference_tags: HashSet<TagKey>,
+        object_selection_progress: HashMap<ObjectSelectionProgressKey, ObjectSelectionProgress>,
+        optional_identity_guard: Option<OptionalIdentityGuard>,
+        do_this_limit: Option<DoThisLimit>,
+        chosen_modes: Option<Vec<usize>>,
+        cause: EventCause,
+        provenance: ProvNodeId,
+        replacement: ReplacementExecutionContext,
+        executing_effect: Option<usize>,
+        shared_team_structure_operations: HashSet<(usize, usize, &'static str)>,
+        created_extra_turn_index: Option<usize>,
+        restarted_game: bool,
+        resolution_control: ResolutionControl,
+        public_search_reveal_tag: Option<TagKey>,
+        pending_entry_attachment: Option<crate::target::ChooseSpec>,
+        entry_attachment_receipts: Option<Vec<crate::effect::EntryAttachmentReceipt>>,
+        named_action_token_scope: Option<NamedActionTokenScope>,
+        created_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
     }
 }
 
@@ -836,6 +828,10 @@ impl std::fmt::Debug for ExecutionContext<'_> {
 }
 
 impl<'a> ExecutionContext<'a> {
+    pub(crate) fn named_action_created_objects(&self) -> &[ObjectSnapshot] {
+        self.named_action_token_scope.as_ref().map_or(&[], |scope| &scope.created_objects)
+    }
+
     pub(crate) fn stop_resolution(&mut self) {
         self.resolution_control = ResolutionControl::Stop;
     }
@@ -921,159 +917,20 @@ impl<'a> ExecutionContext<'a> {
             pending_entry_attachment: None,
             entry_attachment_receipts: None,
             named_action_token_scope: None,
-            named_action_created_objects: None,
             created_continuous_effects: Vec::new(),
         }
     }
 
-    /// Create a new execution context with a default decision maker (SelectFirstDecisionMaker).
-    ///
-    /// This method leaks memory and should only be used in tests or situations where
-    /// the decision maker's choices don't matter.
-    /// For production code, use `new()` with an explicit decision maker.
-    ///
-    /// The default decision maker:
-    /// - Accepts all "may" effects (boolean choices return true)
-    /// - Selects the first valid option when choices are required
+    /// Create a context using [`crate::decision::SelectFirstDecisionMaker`] for choices.
     pub fn new_default(source: ObjectId, controller: PlayerId) -> ExecutionContext<'static> {
-        // Leak a default decision maker - acceptable for tests
-        let dm: &'static mut dyn DecisionMaker =
-            Box::leak(Box::new(crate::decision::SelectFirstDecisionMaker));
-        ExecutionContext {
-            source,
-            linked_exile_owner: None,
-            source_number_owner: None,
-            card_definition_scopes: Vec::new(),
-            controller,
-            targets: Vec::new(),
-            announced_targets: None,
-            payment_target_reference: None,
-            targets_are_cost_choices: false,
-            preselected_objects: None,
-            prospective_cost_payment: false,
-            target_assignments: Vec::new(),
-            target_distributions: Vec::new(),
-            announced_target_assignments: Vec::new(),
-            announced_target_slots: Vec::new(),
-            x_value: None,
-            activation_values: Vec::new(),
-            all_targets_legal: true,
-            effect_outcomes: HashMap::new(),
-            vote_results: HashMap::new(),
-            secret_choice_results: HashMap::new(),
-            iteration: IterationContext::default(),
-            decision_maker: dm,
-            optional_costs_paid: OptionalCostsPaid::default(),
-            optional_action: false,
-            casting_method: crate::alternative_cast::CastingMethod::Normal,
-            combat: CombatExecutionContext::default(),
-            ninjutsu_attack_target: None,
-            target_snapshots: HashMap::new(),
-            source_snapshot: None,
-            tagged_objects: HashMap::new(),
-            exact_object_reference_tags: HashSet::new(),
-            object_selection_progress: HashMap::new(),
-            tagged_players: HashMap::new(),
-            face_down_exile_viewers: HashMap::new(),
-            optional_identity_guard: None,
-            triggering_event: None,
-            event_value_amount: None,
-            last_prevention_shield: None,
-            last_play_permissions: Vec::new(),
-            trigger_identity: None,
-            do_this_limit: None,
-            ability_index: None,
-            activation_origin: None,
-            activation_definition: None,
-            chosen_modes: None,
-            cause: EventCause::from_effect(source, controller),
-            provenance: ProvNodeId::default(),
-            duration_window_start: None,
-            mana: ManaExecutionContext::default(),
-            replacement: ReplacementExecutionContext::default(),
-            executing_effect: None,
-            shared_team_structure_operations: HashSet::new(),
-            created_extra_turn_index: None,
-            restarted_game: false,
-            resolution_control: ResolutionControl::Continue,
-            resolution_object_id_floor: None,
-            public_search_reveal_tag: None,
-            pending_entry_attachment: None,
-            entry_attachment_receipts: None,
-            named_action_token_scope: None,
-            named_action_created_objects: None,
-            created_continuous_effects: Vec::new(),
-        }
+        // The unit struct takes no heap storage and can be borrowed for the context's lifetime.
+        let dm = Box::leak(Box::new(crate::decision::SelectFirstDecisionMaker));
+        ExecutionContext::new(source, controller, dm)
     }
 
-    /// Set a different decision maker, returning a new context.
-    /// This consumes the old context and creates a new one with the provided decision maker.
+    /// Move this execution state to a different decision maker.
     pub fn with_decision_maker<'b>(self, dm: &'b mut dyn DecisionMaker) -> ExecutionContext<'b> {
-        ExecutionContext {
-            source: self.source,
-            linked_exile_owner: self.linked_exile_owner,
-            source_number_owner: self.source_number_owner,
-            card_definition_scopes: self.card_definition_scopes,
-            controller: self.controller,
-            targets: self.targets,
-            announced_targets: self.announced_targets,
-            payment_target_reference: self.payment_target_reference,
-            targets_are_cost_choices: self.targets_are_cost_choices,
-            preselected_objects: self.preselected_objects.clone(),
-            prospective_cost_payment: self.prospective_cost_payment,
-            target_assignments: self.target_assignments,
-            target_distributions: self.target_distributions,
-            announced_target_assignments: self.announced_target_assignments,
-            announced_target_slots: self.announced_target_slots,
-            x_value: self.x_value,
-            activation_values: self.activation_values.clone(),
-            all_targets_legal: self.all_targets_legal,
-            effect_outcomes: self.effect_outcomes,
-            vote_results: self.vote_results,
-            secret_choice_results: self.secret_choice_results,
-            iteration: self.iteration,
-            decision_maker: dm,
-            optional_costs_paid: self.optional_costs_paid,
-            optional_action: self.optional_action,
-            casting_method: self.casting_method,
-            combat: self.combat,
-            ninjutsu_attack_target: self.ninjutsu_attack_target.clone(),
-            target_snapshots: self.target_snapshots,
-            source_snapshot: self.source_snapshot,
-            tagged_objects: self.tagged_objects,
-            exact_object_reference_tags: self.exact_object_reference_tags,
-            object_selection_progress: self.object_selection_progress,
-            tagged_players: self.tagged_players,
-            face_down_exile_viewers: self.face_down_exile_viewers,
-            optional_identity_guard: self.optional_identity_guard,
-            triggering_event: self.triggering_event,
-            event_value_amount: self.event_value_amount,
-            last_prevention_shield: self.last_prevention_shield,
-            last_play_permissions: self.last_play_permissions,
-            trigger_identity: self.trigger_identity,
-            do_this_limit: self.do_this_limit,
-            ability_index: self.ability_index,
-            activation_origin: self.activation_origin.clone(),
-            activation_definition: self.activation_definition,
-            chosen_modes: self.chosen_modes,
-            cause: self.cause,
-            provenance: self.provenance,
-            duration_window_start: self.duration_window_start,
-            mana: self.mana,
-            replacement: self.replacement,
-            executing_effect: self.executing_effect,
-            shared_team_structure_operations: self.shared_team_structure_operations,
-            created_extra_turn_index: self.created_extra_turn_index,
-            restarted_game: self.restarted_game,
-            resolution_control: self.resolution_control,
-            resolution_object_id_floor: self.resolution_object_id_floor,
-            public_search_reveal_tag: self.public_search_reveal_tag,
-            pending_entry_attachment: self.pending_entry_attachment,
-            entry_attachment_receipts: self.entry_attachment_receipts,
-            named_action_token_scope: self.named_action_token_scope,
-            named_action_created_objects: self.named_action_created_objects,
-            created_continuous_effects: self.created_continuous_effects,
-        }
+        ExecutionContext { decision_maker: dm, ..self }
     }
 
     /// Claim one team-level structural operation for the currently executing
@@ -2610,6 +2467,35 @@ mod payment_target_reference_tests {
     use super::*;
     use crate::effects::helpers::resolve_objects_from_spec;
     use crate::target::ChooseSpec;
+
+    #[test]
+    fn payment_player_aliases_use_the_resolving_target_even_when_the_payer_chose_another() {
+        use crate::effects::helpers::resolve_player_filter;
+        use crate::target::PlayerFilter;
+
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = ObjectId::from_raw(1);
+        let mut resolution = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Player(bob)]);
+        let mut payment = ExecutionContext::new_default(source, bob)
+            .with_cost_choice_targets(vec![ResolvedTarget::Player(alice)]);
+        payment.announced_targets = Some(vec![ResolvedTarget::Player(alice)]);
+        let filters = [
+            PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+            PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)),
+        ];
+        PaymentExecutionInputs::capture_for_payment(&resolution).restore_ref(&mut payment);
+        for filter in &filters {
+            assert_eq!(resolve_player_filter(&game, filter, &payment).unwrap(), bob);
+        }
+        resolution.targets.clear();
+        PaymentExecutionInputs::capture_for_payment(&resolution).restore_ref(&mut payment);
+        for filter in &filters {
+            assert!(matches!(resolve_player_filter(&game, filter, &payment), Err(ExecutionError::InvalidTarget)));
+        }
+    }
 
     #[test]
     fn payment_targets_keep_spell_roles_separate_from_cost_choices_and_payer() {

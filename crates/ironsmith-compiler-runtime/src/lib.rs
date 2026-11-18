@@ -1365,6 +1365,70 @@ mod tests {
     }
 
     #[test]
+    fn runtime_snapshot_parsing_keeps_metadata_policy_and_annotations_per_call() {
+        use super::{
+            compile_runtime_builder_snapshot_to_runtime_compiled_card_text as parse_annotated,
+            compile_runtime_builder_snapshot_to_runtime_definition as parse,
+        };
+        use ironsmith::card::{CardBuilder, PowerToughness};
+        use ironsmith_runtime_catalog::artifact_materializer::encode_runtime_definition;
+
+        let snapshot = |power| RuntimeBuilderSnapshot {
+            card: CardBuilder::new(ironsmith::CardId::from_raw(910_003), "Snapshot Probe")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(power, power))
+                .build(),
+            has_fuse: false,
+        };
+        let text = "Flying";
+        let first = parse_annotated(snapshot(2), text, false).unwrap();
+        assert!(
+            first
+                .annotations
+                .original_lines
+                .values()
+                .any(|line| line == text)
+        );
+        assert_eq!(
+            first.definition.card.power_toughness,
+            Some(PowerToughness::fixed(2, 2))
+        );
+        let expected = encode_runtime_definition(first.definition).unwrap();
+
+        let other = parse(snapshot(3), text, false).unwrap();
+        assert_eq!(
+            other.card.power_toughness,
+            Some(PowerToughness::fixed(3, 3))
+        );
+        let unsupported = "This line should not parse and must stay unsupported.";
+        for allow_unsupported in [false, true, false] {
+            let error = parse(snapshot(2), unsupported, allow_unsupported).unwrap_err();
+            let annotated_error =
+                parse_annotated(snapshot(2), unsupported, allow_unsupported).unwrap_err();
+            assert_eq!(error, annotated_error);
+            assert!(matches!(
+                (allow_unsupported, error),
+                (
+                    false,
+                    CompilerIntegrationError::Parse(compiler::CardTextError::ParseError(_))
+                ) | (
+                    true,
+                    CompilerIntegrationError::Parse(compiler::CardTextError::UnsupportedLine(_))
+                )
+            ));
+        }
+
+        let again = parse(snapshot(2), text, true).unwrap();
+        assert_eq!(encode_runtime_definition(again).unwrap(), expected);
+        let annotated_again = parse_annotated(snapshot(2), text, false).unwrap();
+        assert_eq!(annotated_again.annotations, first.annotations);
+        assert_eq!(
+            encode_runtime_definition(annotated_again.definition).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
     fn compile_builder_to_runtime_definition_preserves_manual_metadata() {
         let definition = compile_builder_to_runtime_definition(
             compiler::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Command Tower")

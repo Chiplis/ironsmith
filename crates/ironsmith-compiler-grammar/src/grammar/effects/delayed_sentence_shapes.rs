@@ -221,40 +221,46 @@ pub fn parse_delayed_tagged_leaves_shape(
     })
 }
 
-/// A source-leaves sentence inside a resolving effect program registers a
-/// delayed trigger. Return the trigger body separately from its instructions.
+pub struct DelayedSourceLeavesShape<'a> {
+    pub subject: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
+    /// An already absent source satisfies "is no longer on the battlefield".
+    pub source_absence_state: bool,
+}
+
 pub fn parse_delayed_source_leaves_shape(
     tokens: &[OwnedLexToken],
-) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    let (header, effects) =
-        primitives::split_lexed_once_on_separator(trimmed(tokens), || primitives::comma().void())?;
-    let (_, body) = primitives::parse_prefix(header, trigger_intro)?;
-    primitives::probe_all(
-        body,
+) -> Option<DelayedSourceLeavesShape<'_>> {
+    let source_type = any.verify(|token: &&OwnedLexToken| {
+        token.is_any_word(&[
+            "aura",
+            "artifact",
+            "creature",
+            "enchantment",
+            "land",
+            "permanent",
+            "planeswalker",
+            "battle",
+        ])
+    });
+    let ((_, subject, source_absence_state, _), effects) = primitives::parse_prefix(
+        trimmed(tokens),
         (
-            primitives::kw("this"),
-            opt(alt((
-                primitives::kw("aura"),
-                primitives::kw("artifact"),
-                primitives::kw("creature"),
-                primitives::kw("enchantment"),
-                primitives::kw("land"),
-                primitives::kw("permanent"),
-                primitives::kw("planeswalker"),
-                primitives::kw("battle"),
-            ))),
-            // "When Engulfing Incubus is no longer on the battlefield, ..."
-            // names the same leave of the source (CR 603.7, 603.10a).
+            trigger_intro,
+            (primitives::kw("this"), opt(source_type)).take(),
             alt((
-                primitives::phrase(&["leaves", "the", "battlefield"]),
-                primitives::phrase(&["is", "no", "longer", "on", "the", "battlefield"]),
+                primitives::phrase(&["leaves", "the", "battlefield"]).value(false),
+                primitives::phrase(&["is", "no", "longer", "on", "the", "battlefield"]).value(true),
             )),
-            eof,
+            primitives::comma(),
         ),
-        "delayed source leaves trigger",
     )?;
-    let effects = trimmed(effects);
-    (!effects.is_empty()).then_some((body, effects))
+    let effect_tokens = trimmed(effects);
+    (!effect_tokens.is_empty()).then_some(DelayedSourceLeavesShape {
+        subject,
+        effect_tokens,
+        source_absence_state,
+    })
 }
 
 pub fn parse_delayed_next_combat_shape(

@@ -390,6 +390,7 @@ pub fn parse_verb_first_clause(
         "deal" => Verb::Deal,
         "sacrifice" => Verb::Sacrifice,
         "create" => Verb::Create,
+        "audition" => Verb::Audition,
         "investigate" => Verb::Investigate,
         "assimilate" => Verb::Assimilate,
         "proliferate" => Verb::Proliferate,
@@ -1091,8 +1092,8 @@ mod copy_all_tests {
         assert!(matches!(
             parsed.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                    source: TargetAst::Object(filter, ..),
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+                    source: crate::model::ast::TokenCopySourceAst::Target(TargetAst::Object(filter, ..)),
                     count,
                     ..
                 }),

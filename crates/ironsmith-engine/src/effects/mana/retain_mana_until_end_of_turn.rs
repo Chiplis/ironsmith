@@ -5,10 +5,6 @@ use crate::game_state::GameState;
 pub type RetainManaUntilEndOfTurnEffect = ironsmith_core::RetainManaUntilEndOfTurnEffect;
 
 impl EffectExecutor for RetainManaUntilEndOfTurnEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

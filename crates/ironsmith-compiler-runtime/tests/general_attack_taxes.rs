@@ -172,3 +172,67 @@ fn a_life_tax_on_the_controller_charges_life_and_leaves_other_defenders_free() {
     assert!(attack(&mut game, attacker, AttackTarget::Player(C)));
     assert_eq!(game.player(B).unwrap().life, 20, "attacking C is free");
 }
+
+#[test]
+fn planeswalker_attack_tax_keeps_mana_and_life_in_one_payment() {
+    let text = "Type: Enchantment\nCreatures can't attack planeswalkers you control unless their controller pays {1} and 2 life for each creature they control that's attacking a planeswalker you control.";
+    for definition in support::definitions("Attack Tax Probe", text) {
+        let mut game = game();
+        game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let walker = ironsmith::card::CardBuilder::new(ironsmith::ids::CardId::new(), "Walker")
+            .card_types(vec![ironsmith::types::CardType::Planeswalker])
+            .loyalty(3)
+            .build();
+        let walker = game.create_object_from_card(&walker, A, Zone::Battlefield);
+        let attacker = creature(&mut game, B);
+        assert!(!attack(
+            &mut game,
+            attacker,
+            AttackTarget::Planeswalker(walker)
+        ));
+        assert_eq!(game.player(B).unwrap().life, 20);
+        game.player_mut(B)
+            .unwrap()
+            .mana_pool
+            .add(ironsmith::mana::ManaSymbol::Colorless, 1);
+        assert!(attack(
+            &mut game,
+            attacker,
+            AttackTarget::Planeswalker(walker)
+        ));
+        assert_eq!(game.player(B).unwrap().mana_pool.total(), 0);
+        assert_eq!(game.player(B).unwrap().life, 18);
+
+        let other_attacker = creature(&mut game, B);
+        assert!(attack(&mut game, other_attacker, AttackTarget::Player(A)));
+        assert_eq!(game.player(B).unwrap().life, 18);
+    }
+}
+
+#[test]
+fn both_controller_wordings_install_the_same_life_tax() {
+    for tail in [
+        "of those creatures",
+        "creature they control that's attacking you",
+    ] {
+        let text = format!(
+            "Type: Sorcery\nUntil your next turn, creatures can't attack you unless their controller pays 2 life for each {tail}."
+        );
+        for definition in support::definitions("Temporary Tax Probe", &text) {
+            let cants = cant_effects(&definition);
+            let [tax] = cants.as_slice() else {
+                panic!("expected one temporary tax")
+            };
+            assert_eq!(tax.duration, Until::YourNextTurn);
+            assert_eq!(
+                tax.restriction,
+                Restriction::AttackTax(AttackTaxRule {
+                    attackers: ObjectFilter::creature(),
+                    defenders: AttackTaxDefenders::Controller,
+                    mana_per_attacker: Value::Fixed(0),
+                    life_per_attacker: 2,
+                })
+            );
+        }
+    }
+}

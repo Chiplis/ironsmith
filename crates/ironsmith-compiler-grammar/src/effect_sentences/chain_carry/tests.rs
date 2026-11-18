@@ -4263,6 +4263,47 @@ fn coordinated_that_player_search_carries_the_player_into_the_search() {
 }
 
 #[test]
+fn search_carries_the_owner_first_and_uses_the_chooser_when_the_owner_is_implicit() {
+    let tokens = lex_line(
+        "Search your library for a card, put it into your hand, then shuffle.",
+        0,
+    )
+    .unwrap();
+    let mut effects = parse_effect_chain_lexed(&tokens).unwrap();
+    let [search] = effects.as_mut_slice() else {
+        panic!("expected a single search");
+    };
+    for (owner, chooser, expected) in [
+        (
+            PlayerAst::TargetOpponent,
+            PlayerAst::You,
+            Some(PlayerAst::TargetOpponent),
+        ),
+        (PlayerAst::Implicit, PlayerAst::You, Some(PlayerAst::You)),
+        (PlayerAst::Implicit, PlayerAst::Implicit, None),
+    ] {
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                    player,
+                    chooser: search_chooser,
+                    ..
+                }),
+            ..
+        }) = search
+        else {
+            panic!("expected a library search");
+        };
+        *player = owner;
+        *search_chooser = chooser;
+        assert_eq!(
+            super::explicit_player_for_carry(search),
+            expected.map(CarryContext::Player)
+        );
+    }
+}
+
+#[test]
 fn imperative_search_does_not_inherit_a_leading_player() {
     let tokens = lex_line(
         "That player loses 3 life, then search your library for a card, put it into your hand, then shuffle.",

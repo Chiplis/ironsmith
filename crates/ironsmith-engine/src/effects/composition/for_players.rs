@@ -1013,15 +1013,7 @@ impl EffectExecutor for PlayerOccurrences {
         }
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -3525,10 +3517,6 @@ impl EffectExecutor for ForPlayersEffect {
                 .all(|effect| effect.0.shares_iterated_damage_action())
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
         (!self.effects.is_empty()
             && self
@@ -3544,15 +3532,7 @@ impl EffectExecutor for ForPlayersEffect {
         }
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,

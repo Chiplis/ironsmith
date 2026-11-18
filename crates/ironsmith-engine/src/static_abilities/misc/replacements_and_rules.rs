@@ -4726,8 +4726,16 @@ pub struct DeckConstructionRuleText {
 impl DeckConstructionRuleText {
     pub fn new(text: impl Into<String>) -> Self {
         let text = text.into();
-        let color_choices = ironsmith_core::deck_construction_color_choice_count(&text);
-        Self { text, copy_limit: None, color_choices }
+        use ironsmith_core::static_ability_model::DeckConstructionRule;
+        match DeckConstructionRule::from_text(&text) {
+            DeckConstructionRule::CopyLimit(maximum) => Self::with_copy_limit(text, maximum),
+            DeckConstructionRule::ChooseColors(count) => Self::with_color_choices(text, count),
+            DeckConstructionRule::Instruction => Self {
+                text,
+                copy_limit: None,
+                color_choices: None,
+            },
+        }
     }
 
     pub fn with_copy_limit(text: impl Into<String>, maximum: Option<u32>) -> Self {

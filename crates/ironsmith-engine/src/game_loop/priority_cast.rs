@@ -1487,6 +1487,65 @@ pub(super) fn apply_splice_price_response(
     apply_splice_response(game,trigger_queue,state,&selected,decision_maker)
 }
 
+/// Bind each payment to its donor before source movement or symbol announcements.
+fn splice_payment_options(
+    game: &GameState,
+    pending: &PendingCast,
+    donor: ObjectId,
+    spec: &crate::static_abilities::SpliceSpec<crate::costs::Cost>,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<Vec<crate::cost::TotalCost>, GameLoopError> {
+    use crate::cost::{CostPaymentError, TotalCost};
+    let mut prices = Vec::new();
+    let mut unavailable = None;
+    for parts in spec.cost.payment_branches() {
+        let bound = parts
+            .iter()
+            .map(|part| {
+                let Some(dynamic) = part.dynamic_mana_cost_ref() else {
+                    return Ok(part.clone());
+                };
+                let mut context =
+                    ExecutionContext::new(donor, pending.caster, &mut *decision_maker)
+                        .with_provenance(pending.provenance);
+                crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, &mut context)
+                    .map(crate::costs::Cost::mana)
+            })
+            .collect::<Result<Vec<_>, _>>();
+        match bound {
+            Ok(parts) => prices.push(TotalCost::from_costs(parts)),
+            Err(CostPaymentError::ExecutionFailed(error)) => {
+                return Err(GameLoopError::ExecutionFailed(error));
+            }
+            Err(CostPaymentError::Cancelled) => {
+                return Err(GameLoopError::ActionCancelled(
+                    "Splice payment cancelled".into(),
+                ));
+            }
+            Err(error) => unavailable = Some(error),
+        }
+    }
+    if prices.is_empty() {
+        let message = unavailable.map_or_else(
+            || "Selected text source has no payment alternatives".into(),
+            |error| format!("Selected text source has no payable dynamic mana cost: {error:?}"),
+        );
+        return Err(GameLoopError::ActionCancelled(message));
+    }
+    if let Some(keyword) = spec.custom_keyword.as_deref() {
+        let spell = game
+            .object(pending.spell_id)
+            .ok_or_else(|| GameLoopError::InvalidState("Proposed spell no longer exists".into()))?;
+        let modifiers = crate::casting_price_modifiers::CastingPriceModifiers::for_spell(
+            game,
+            spell,
+            pending.caster,
+        );
+        return Ok(modifiers.named_prices(keyword, prices.iter().map(TotalCost::costs)));
+    }
+    Ok(prices)
+}
+
 /// Apply the simultaneous splice reveal/order choice and extend the proposed
 /// stack spell with copied resolution programs and additional costs.
 pub(super) fn apply_splice_response(
@@ -1561,33 +1620,41 @@ pub(super) fn apply_splice_response(
         let source_program = card.spell_effect_owned().unwrap_or_default();
         // Bind a selected text source's dynamic prices before it moves. The
         // receiving spell is a distinct object and cannot supply these costs.
-        let mut cost = if let Some(frozen)=pending.splice_prices.get(card_id) {frozen.clone()} else {
-        let mut components = Vec::new();
-        for component in spec.cost.costs() {
-            if let Some(dynamic) = component.dynamic_mana_cost_ref() {
-                let mut context = ExecutionContext::new(*card_id, pending.caster, &mut *decision_maker)
-                    .with_provenance(pending.provenance);
-                let mana = crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, &mut context)
-                    .map_err(|error| {
-                        state.rollback_action(game);
-                        GameLoopError::ActionCancelled(format!("Selected text source has no payable dynamic mana cost: {error:?}"))
-                    })?;
-                components.push(crate::costs::Cost::mana(mana));
-            } else {
-                components.push(component.clone());
+        let mut cost = if let Some(frozen) = pending.splice_prices.get(card_id) {
+            frozen.clone()
+        } else {
+            let prices = splice_payment_options(game, &pending, *card_id, &spec, decision_maker)
+                .inspect_err(|_| {
+                    state.rollback_action(game);
+                })?;
+            if prices.len() > 1 {
+                let options = prices
+                    .iter()
+                    .enumerate()
+                    .map(|(index, cost)| {
+                        crate::decisions::context::SelectableOption::new(index, cost.display())
+                    })
+                    .collect();
+                let context = crate::decisions::context::SelectOptionsContext::new(
+                    pending.caster,
+                    Some(pending.spell_id),
+                    "Choose a named casting price",
+                    options,
+                    1,
+                    1,
+                );
+                pending.splice_price_offer = Some((selected_cards.to_vec(), *card_id, prices));
+                state.pending_cast = Some(pending);
+                return Ok(GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::SelectOptions(context),
+                ));
             }
-        }
-        let cost = crate::cost::TotalCost::from_costs(components);
-        let prices=spec.custom_keyword.as_deref().map(|label|crate::named_casting_price_reduction::alternatives(game,pending.spell_id,pending.caster,label,&cost)).unwrap_or_else(||vec![cost.clone()]);
-        if prices.len()>1 {
-            let options=prices.iter().enumerate().map(|(index,cost)|crate::decisions::context::SelectableOption::new(index,cost.display())).collect();
-            let context=crate::decisions::context::SelectOptionsContext::new(pending.caster,Some(pending.spell_id),"Choose a named casting price",options,1,1);
-            pending.splice_price_offer=Some((selected_cards.to_vec(),*card_id,prices));
-            state.pending_cast=Some(pending);
-            return Ok(GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(context)));
-        }
-        let chosen=prices.into_iter().next().unwrap_or(cost);
-        pending.splice_prices.insert(*card_id,chosen.clone());chosen
+            let chosen = prices
+                .into_iter()
+                .next()
+                .expect("splice payment options are nonempty");
+            pending.splice_prices.insert(*card_id, chosen.clone());
+            chosen
         };
         if let Some(destination) = spec.source_destination {
             let mut filter = crate::filter::ObjectFilter::default();
@@ -2086,8 +2153,6 @@ fn cast_spell_from_resolving_effect_with_captured_price_and_outputs(
         let mut other = crate::decision::spell_view_for_split_other_half_cast(game, spell);
         let mut front_allowed = true;
         if let Some((requirement, filter_ctx)) = spell_requirement {
-            let mut front = spell.clone();
-            front.split_combined = None;
             let face_matches = |face: &crate::object::Object| {
                 match crate::decision::spell_matches_requirement_with_defined_x(game, caster, face, requirement, filter_ctx) {
                     Ok(Some(allowed)) => allowed,
@@ -2098,7 +2163,7 @@ fn cast_spell_from_resolving_effect_with_captured_price_and_outputs(
                     Err(error) => { game.record_token_resource_failure(&error); false }
                 }
             };
-            front_allowed = face_matches(&front);
+            front_allowed = face_matches(spell.projected_front_half().as_ref().unwrap_or(spell));
             other = other.filter(|view| face_matches(view));
             if !front_allowed && other.is_none() {
                 return Ok(None);
@@ -3248,16 +3313,7 @@ fn unspent_alternative_base_reduction(pending: &PendingCast) -> u32 {
             .costs()
             .iter()
             .filter_map(|cost| cost.mana_cost_ref())
-            .map(|mana| {
-                mana.generic_mana_total().saturating_add(
-                    (mana
-                        .pips()
-                        .iter()
-                        .filter(|pip| pip.contains(&crate::mana::ManaSymbol::X))
-                        .count() as u32)
-                        .saturating_mul(pending.x_value.unwrap_or(0)),
-                )
-            })
+            .map(|mana| mana.generic_mana_total_at_x(pending.x_value.unwrap_or(0)))
             .fold(0u32, u32::saturating_add);
         pending
             .effect_alternative_base_generic_reduction
@@ -3504,7 +3560,7 @@ fn offering_resource_choices(
             .flat_map(|id| {
                 // CR 702.48a: the sacrificed permanent's current mana cost.
                 let cost = crate::filter::object_current_mana_cost(game, id).unwrap_or_default();
-                crate::decision::offering_mana_reduction_choices(&cost)
+                cost.offering_reduction_choices()
                     .into_iter()
                     .map(move |reduction| (id, reduction))
             })
@@ -4951,10 +5007,8 @@ pub(super) fn begin_spell_mana_payment(
     pending: PendingCast,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    let can_assist = pending.mana_cost_to_pay.as_ref().is_some_and(|cost| {
-        assist_payable_generic_total(cost, pending.x_value.unwrap_or(0)) > 0
-            && game.spell_allows_other_player_generic_payment(pending.spell_id)
-    });
+    let can_assist = pending.assist_limit() > 0
+        && game.spell_allows_other_player_generic_payment(pending.spell_id);
     if can_assist && !pending.assist_player_choice_made {
         return prompt_spell_assist_player(game, state, pending);
     }
@@ -4973,19 +5027,6 @@ pub(super) fn eligible_assist_players(game: &GameState, caster: PlayerId) -> Vec
         .collect()
 }
 
-pub(super) fn assist_payable_generic_total(cost: &crate::mana::ManaCost, x_value: u32) -> u32 {
-    let x_pips = cost
-        .pips()
-        .iter()
-        .filter(|pip| {
-            pip.iter()
-                .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::X))
-        })
-        .count() as u32;
-    cost.generic_mana_total()
-        .saturating_add(x_pips.saturating_mul(x_value))
-}
-
 pub(super) fn prompt_spell_assist_player(
     game: &GameState,
     state: &mut PriorityLoopState,
@@ -4999,6 +5040,7 @@ pub(super) fn prompt_spell_assist_player(
             "Do not choose a player to assist",
             caster_can_pay,
         )];
+        let maximum = pending.assist_limit();
         for (offset, player) in eligible_assist_players(game, pending.caster)
             .into_iter()
             .enumerate()
@@ -5007,11 +5049,6 @@ pub(super) fn prompt_spell_assist_player(
                 .player(player)
                 .map(|candidate| candidate.name.clone())
                 .unwrap_or_else(|| format!("Player {}", player.0));
-            let maximum = pending
-                .mana_cost_to_pay
-                .as_ref()
-                .map(|cost| assist_payable_generic_total(cost, pending.x_value.unwrap_or(0)))
-                .unwrap_or(0);
             let can_complete = (1..=maximum)
                 .any(|amount| assist_generic_contribution_is_legal(game, &pending, player, amount));
             options.push(crate::decisions::context::SelectableOption::with_legality(
@@ -5054,11 +5091,7 @@ pub(super) fn max_assist_generic_contribution(game: &GameState, pending: &Pendin
     let Some(assistant) = pending.assist_player else {
         return 0;
     };
-    let maximum = pending
-        .mana_cost_to_pay
-        .as_ref()
-        .map(|cost| assist_payable_generic_total(cost, pending.x_value.unwrap_or(0)))
-        .unwrap_or(0);
+    let maximum = pending.assist_limit();
     (1..=maximum)
         .rev()
         .find(|amount| assist_generic_contribution_is_legal(game, pending, assistant, *amount))
@@ -5074,16 +5107,9 @@ fn assist_payment_request(
     let total = pending.mana_cost_to_pay.as_ref().ok_or_else(|| {
         GameLoopError::InvalidState("Assist payment has no total mana cost".into())
     })?;
-    let cost = crate::mana::ManaCost::new()
-        .add_generic(amount)
-        .inherit_transaction_spending_restrictions(total);
-    let mut request = crate::mana_payment::ManaPaymentRequest::new(
-        assistant,
-        pending.spell_id,
-        crate::costs::PaymentReason::CastSpell,
-        cost,
-    )
-    .with_spend_policy(game.mana_spend_policy_for_cast(assistant, Some(pending.spell_id)));
+    let mut request = crate::mana_payment::ManaPaymentRequest::assist_contribution(
+        game, assistant, pending.spell_id, total, amount,
+    );
     if total.has_x_spending_restriction() || total.has_waterbend_obligation() {
         let mut caster_pending = pending.clone();
         caster_pending.assist_generic_contribution = amount;
@@ -5100,11 +5126,7 @@ pub(super) fn assist_generic_contribution_is_legal(
     assistant: PlayerId,
     amount: u32,
 ) -> bool {
-    let maximum = pending
-        .mana_cost_to_pay
-        .as_ref()
-        .map(|cost| assist_payable_generic_total(cost, pending.x_value.unwrap_or(0)))
-        .unwrap_or(0);
+    let maximum = pending.assist_limit();
     if amount > maximum {
         return false;
     }
@@ -5207,11 +5229,7 @@ pub(super) fn prompt_spell_assist_contribution(
     let assistant = pending.assist_player.ok_or_else(|| {
         GameLoopError::InvalidState("Assist contribution has no chosen player".to_string())
     })?;
-    let maximum = pending
-        .mana_cost_to_pay
-        .as_ref()
-        .map(|cost| assist_payable_generic_total(cost, pending.x_value.unwrap_or(0)))
-        .unwrap_or(0);
+    let maximum = pending.assist_limit();
     let options = crate::decision::with_complete_legality_query(game, |game| {
         let options = (0..=maximum)
             .map(|amount| {
@@ -5343,11 +5361,7 @@ pub(super) fn spell_mana_payment_is_legal(game: &GameState, pending: &PendingCas
     {
         return true;
     }
-    let maximum = pending
-        .mana_cost_to_pay
-        .as_ref()
-        .map(|cost| assist_payable_generic_total(cost, pending.x_value.unwrap_or(0)))
-        .unwrap_or(0);
+    let maximum = pending.assist_limit();
     if maximum == 0
         || !game.spell_allows_other_player_generic_payment(pending.spell_id)
     {
@@ -8358,7 +8372,7 @@ pub(super) fn continue_activation(
         match pending.stage {
             ActivationStage::ChoosingCostReduction => {
                 let capacity = pending.announced_cost.as_ref().map_or(0, |announced| {
-                    crate::decision::optional_activation_reduction_capacity(game, pending.activator, pending.source, &pending.chosen_targets, &announced.facts)
+                    crate::decision::optional_activation_reduction_capacity(game, pending.source, &pending.chosen_targets, &announced.facts)
                 });
                 if capacity == 0 {
                     pending.optional_reduction_ready = true;

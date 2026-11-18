@@ -11,10 +11,6 @@ use crate::zone::Zone;
 pub use ironsmith_core::{PutRetainedSpellCopyOntoStackEffect, RetainSpellChoicesEffect};
 
 impl EffectExecutor for RetainSpellChoicesEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,
@@ -47,10 +43,6 @@ impl EffectExecutor for RetainSpellChoicesEffect {
 }
 
 impl EffectExecutor for PutRetainedSpellCopyOntoStackEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn execute(
         &self,
         game: &mut GameState,

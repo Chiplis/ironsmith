@@ -241,6 +241,7 @@ impl CompilerTagClass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompilerReferenceTag {
     AdditionalCostObject,
+    RememberedOriginalArrivals,
     ThisWaySacrificed,
     PriorExiledCard,
     ExiledThisWay,
@@ -450,6 +451,7 @@ impl CompilerReferenceTag {
             Self::CurrentIteratedObject => ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG,
             Self::CastModifiedCreatures => "__cast_modified_creatures__",
             Self::CastControlledObjects => "__cast_controlled_objects__",
+            Self::RememberedOriginalArrivals => "__remembered_original_arrivals__",
             Self::Triggering => "triggering",
             Self::Enchanted => "enchanted",
             Self::Equipped => "equipped",

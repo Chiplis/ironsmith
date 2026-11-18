@@ -25,10 +25,6 @@ impl ManaRetainedEffect {
 }
 
 impl EffectExecutor for ManaRetainedEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         for effect in &self.effects {
             visitor(effect);

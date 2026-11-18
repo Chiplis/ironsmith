@@ -433,6 +433,7 @@ pub(super) fn parse_effect_clause_unstacked(
             "put",
             "sacrifice",
             "create",
+            "audition",
             "investigate",
             "attach",
             "unattach",

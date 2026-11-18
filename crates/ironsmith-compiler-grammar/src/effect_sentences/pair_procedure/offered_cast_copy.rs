@@ -7,8 +7,8 @@
 //! spell that offer puts on the stack is the one "that spell" names, so the
 //! offer tags what it cast. The copy is made on the stack and its controller
 //! may choose new targets for it (CR 707.10, 707.10c). "If they do" / "If
-//! they don't" read whether the offered cast happened; the fallback sentence
-//! is optional.
+//! they don't" read whether the offered cast happened. The ordinary conditional
+//! sentence reader handles an optional decline branch.
 use super::*;
 use crate::cards::builders::{ConditionalEffectAst, PermissionEffectAst};
 
@@ -50,37 +50,16 @@ fn offer_effects(
         }
     }
     let tokens = crate::util::trim_edge_punctuation_tokens(sentence.lowered());
-    let mut effects = super::super::dispatch_entry::parse_target_active_opponent_sentence(tokens)
-        .or_else(|| {
-            crate::grammar::primitives::probe_shape(super::super::parse_effect_sentence_lexed(tokens))
-        })?;
+    let mut effects = crate::grammar::primitives::probe_shape(super::super::parse_effect_sentence_lexed(tokens))?;
     let last = effects.last_mut()?;
     tag_offered_cast(last, cast_tag).then_some(effects)
-}
-
-/// "If they don't, <effects>." — the fallback when the offered cast didn't
-/// happen.
-fn declined_effects(sentence: &SentenceInput) -> Option<Vec<EffectAst>> {
-    let tokens = crate::util::trim_edge_punctuation_tokens(sentence.lowered());
-    let head = match words(sentence).as_slice() {
-        ["if", "they", "don't" | "dont", _, ..] => 3,
-        ["if", "they", "do", "not", _, ..] => 4,
-        _ => return None,
-    };
-    let view = crate::lexer::TokenWordView::new(tokens);
-    let start = view.token_start_indices().get(head).copied()?;
-    let rest = crate::util::trim_commas(&tokens[start..]);
-    let effects = crate::grammar::primitives::probe_shape(super::super::parse_effect_sentence_lexed(&rest))?;
-    (!effects.is_empty()).then_some(effects)
 }
 
 pub(super) fn read(
     sentences: &[SentenceInput],
     index: usize,
-    with_fallback: bool,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let count = if with_fallback { 4 } else { 3 };
-    let Some(group) = sentences.get(index..index + count) else {
+    let Some(group) = sentences.get(index..index + 3) else {
         return Ok(None);
     };
     // 2. "If they do, [you] copy that spell."
@@ -97,15 +76,6 @@ pub(super) fn read(
     if !retarget.may_choose || !retarget.has_new {
         return Ok(None);
     }
-    // 4. "If they don't, <effects>."
-    let declined = if with_fallback {
-        let Some(declined) = declined_effects(&group[3]) else {
-            return Ok(None);
-        };
-        Some(declined)
-    } else {
-        None
-    };
     // 1. "<player> may cast a spell ... without paying its mana cost."
     let cast_tag = crate::tag::TagRef::of(helper_tag_for_tokens(group[0].lowered(), "offered_cast"));
     let Some(mut effects) = offer_effects(&group[0], &cast_tag) else {
@@ -127,11 +97,5 @@ pub(super) fn read(
         predicate: IfResultPredicate::Did,
         effects: vec![copy],
     }));
-    if let Some(declined) = declined {
-        effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: IfResultPredicate::DidNot,
-            effects: declined,
-        }));
-    }
     Ok(Some(effects))
 }

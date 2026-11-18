@@ -5894,13 +5894,14 @@ fn try_push_complete_typed_quoted_gain_statement(
     {
         return Ok(false);
     }
-    let Some(parsed_effects) = crate::effect_sentences::parse_gain_ability_sentence(&line.tokens)?
+    let Some(mut parsed_effects) = crate::effect_sentences::parse_gain_ability_sentence(&line.tokens)?
     else {
         return Ok(false);
     };
     if parsed_effects.is_empty() {
         return Ok(false);
     }
+    crate::effect_sentences::bind_single_outer_where_x(&mut parsed_effects, &line.tokens)?;
     let recognized = RecognizedLine::Statement(RecognizedStatementLine {
         info: line.info.clone(),
         text: line.info.normalized.normalized.clone(),

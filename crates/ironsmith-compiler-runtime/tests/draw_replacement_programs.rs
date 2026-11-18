@@ -189,6 +189,31 @@ fn obstinate_decline_draws_normally_acceptance_cancels_only_this_draw_and_replay
     }
 }
 #[test]
+fn empty_library_optional_replacement_can_decline_the_life_gain_and_attempt_the_draw() {
+    let definition = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Optional replacement",
+        "Type: Enchantment\nIf you would draw a card while your library has no cards in it, instead you may gain 2 life.",
+        false,
+    ).unwrap();
+    for decline in [false, true] {
+        let mut game = game();
+        let host = game.create_object_from_definition(&definition, a(), Zone::Battlefield);
+        let mut dm = OptionalDraw {
+            decline,
+            pause: false,
+            pending: false,
+            calls: 0,
+        };
+        DrawCardsEffect::you(1)
+            .execute(&mut game, &mut EffectContext::new(host, a(), &mut dm))
+            .unwrap();
+        let player = game.player(a()).unwrap();
+        assert_eq!(dm.calls, 1);
+        assert_eq!(player.life, if decline { 20 } else { 22 });
+        assert_eq!(player.attempted_draw_from_empty_library, decline);
+    }
+}
+#[test]
 fn forbidden_crypt_returns_a_card_then_loses_only_when_no_return_is_possible() {
     for definition in definitions("Forbidden Crypt") {
         let mut game = game();

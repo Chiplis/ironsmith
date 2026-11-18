@@ -117,7 +117,7 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
     // retains its affected-object antecedent.
     if let TriggerSpec::NamedAction { source_filter, .. } = trigger
         && source_filter != &ObjectFilter::default() {
-        return Some(TagKey::from("__named_action_source"));
+        return Some(TagKey::from(ironsmith_core::tag::NAMED_ACTION_PERFORMER_TAG));
     }
     if matches!(trigger, TriggerSpec::PlayerPaysLife(_)) { return None; }
     if matches!(trigger,TriggerSpec::PlayerBecomesMonarch(_)){return None;}

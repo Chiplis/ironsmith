@@ -62,10 +62,7 @@ pub fn collapse_token_copy_next_end_step_exile_followup_lexed(
             (
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                            ..
-                        }),
+                        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(subject_verb),
@@ -91,12 +88,6 @@ pub fn collapse_token_copy_next_end_step_exile_followup_lexed(
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
-                    exile_at_next_end_step,
-                    exile_at_next_end_step_reference_surface,
-                    next_end_step_player: effect_next_end_step_player,
-                    ..
-                })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                     exile_at_next_end_step,
                     exile_at_next_end_step_reference_surface,
                     next_end_step_player: effect_next_end_step_player,

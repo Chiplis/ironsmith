@@ -87,6 +87,25 @@ pub enum CardType {
 }
 
 impl CardType {
+    /// Every card type in alphabetical order, including the nontraditional types (CR 205.2a).
+    pub const ALL: &'static [Self] = &[
+        Self::Artifact,
+        Self::Battle,
+        Self::Conspiracy,
+        Self::Creature,
+        Self::Dungeon,
+        Self::Enchantment,
+        Self::Instant,
+        Self::Kindred,
+        Self::Land,
+        Self::Phenomenon,
+        Self::Plane,
+        Self::Planeswalker,
+        Self::Scheme,
+        Self::Sorcery,
+        Self::Vanguard,
+    ];
+
     /// CR 110.4: the permanent types are artifact, battle, creature,
     /// enchantment, land, and planeswalker.
     pub const fn is_permanent_type(self) -> bool {

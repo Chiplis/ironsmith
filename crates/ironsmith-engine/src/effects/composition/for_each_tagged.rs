@@ -12,31 +12,7 @@ use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
-use super::object_iteration::correlated_player_count;
-
-fn add_correlated_player_count(
-    player_counts: &mut Vec<(PlayerId, i64)>,
-    player: PlayerId,
-    outcomes: &[EffectOutcome],
-) {
-    let count = correlated_player_count(outcomes);
-    if let Some((_, total)) = player_counts.iter_mut().find(|(actor, _)| *actor == player) {
-        *total += count;
-    } else {
-        player_counts.push((player, count));
-    }
-}
-
-fn summarize_tagged_iterations(
-    outcomes: Vec<EffectOutcome>,
-    ranges: &[(PlayerId, usize, usize)],
-) -> EffectOutcome {
-    let mut player_counts = Vec::new();
-    for &(player, start, end) in ranges {
-        add_correlated_player_count(&mut player_counts, player, &outcomes[start..end]);
-    }
-    EffectOutcome::aggregate_summing_counts(outcomes).with_player_counts(player_counts)
-}
+use super::object_iteration_proposal::{ObjectIterationProposal, summarize_tagged_iterations};
 
 /// Effect that applies effects once for each tagged object.
 ///
@@ -125,162 +101,6 @@ impl ForEachTaggedEffect {
     }
 }
 
-/// Prepared iterations over one player's captured tagged set.
-///
-/// The shared execution context is reused while every player's simultaneous
-/// action is prepared. Retaining these snapshots keeps each player's tagged
-/// cards paired with the proposals prepared for those cards.
-#[derive(Debug)]
-struct ForEachTaggedProposal {
-    iterated_players: Vec<PlayerId>,
-    iterations: Vec<Vec<Box<dyn SimultaneousEffectProposal>>>,
-}
-
-impl SimultaneousEffectProposal for ForEachTaggedProposal {
-    fn damage_action_inputs(&self) -> Option<crate::effects::damage::DamageActionInputs> {
-        crate::effects::damage::DamageActionInputs::collect(
-            self.iterations
-                .iter()
-                .flatten()
-                .map(|proposal| proposal.damage_action_inputs()),
-        )
-    }
-
-    fn bind_damage_action(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        owner: &crate::effects::CompletedEffectOutputs,
-    ) -> Result<crate::effects::DamageActionBinding, ExecutionError> {
-        let mut bindings = Vec::new();
-        let mut ranges = Vec::new();
-        for (player, proposals) in self.iterated_players.into_iter().zip(self.iterations) {
-            let start = bindings.len();
-            for proposal in proposals {
-                // Each child retains the object, controller and tagged history
-                // captured during preparation. Binding never repeats selection
-                // or commits the shared physical damage action.
-                bindings.push(proposal.bind_damage_action(game, ctx, owner)?);
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(crate::effects::DamageActionBinding::from_outcome(
-                        EffectOutcome::count(0),
-                    ));
-                }
-            }
-            ranges.push((player, start, bindings.len()));
-        }
-        Ok(crate::effects::DamageActionBinding::from_bindings(
-            bindings,
-            |outcomes| summarize_tagged_iterations(outcomes, &ranges),
-        ))
-    }
-
-    fn declared_payment_resources(&self) -> Vec<crate::effects::PaymentResourceClaim> {
-        self.iterations
-            .iter()
-            .flatten()
-            .flat_map(|proposal| proposal.declared_payment_resources())
-            .collect()
-    }
-
-    fn declared_life_payments(&self) -> Vec<(crate::ids::PlayerId, u32)> {
-        self.iterations
-            .iter()
-            .flatten()
-            .flat_map(|proposal| proposal.declared_life_payments())
-            .collect()
-    }
-
-    fn prepare_selection(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<(), ExecutionError> {
-        for proposal in self.iterations.iter_mut().flatten() {
-            proposal.prepare_selection(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(());
-            }
-        }
-        Ok(())
-    }
-
-    fn prepare_original(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<(), ExecutionError> {
-        for proposal in self.iterations.iter_mut().flatten() {
-            proposal.prepare_original(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(());
-            }
-        }
-        Ok(())
-    }
-
-    fn seal_original(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<(), ExecutionError> {
-        for proposal in self.iterations.iter_mut().flatten() {
-            proposal.seal_original(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(());
-            }
-        }
-        Ok(())
-    }
-
-    fn commit_original(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
-        self.commit_original_with_outputs(game, ctx)
-            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
-    }
-
-    fn commit_original_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<
-        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
-        ExecutionError,
-    > {
-        let mut receipts = Vec::new();
-        let mut ranges = Vec::new();
-        for (player, proposals) in self.iterated_players.into_iter().zip(self.iterations) {
-            let start = receipts.len();
-            for proposal in proposals {
-                receipts.push(proposal.commit_original_with_outputs(game, ctx)?);
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                        crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ),
-                    ));
-                }
-            }
-            ranges.push((player, start, receipts.len()));
-        }
-        Ok(super::compose_original_commits_with_projection_outputs(
-            receipts,
-            Box::new(move |outcomes| summarize_tagged_iterations(outcomes, &ranges)),
-        ))
-    }
-
-    fn commit(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        super::complete_prepared_original(self, game, ctx)
-    }
-}
-
 fn tagged_iteration_snapshots(
     effect: &ForEachTaggedEffect,
     ctx: &ExecutionContext,
@@ -295,57 +115,54 @@ fn prepare_tagged_iteration_proposal(
 ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
     let it_tag = TagKey::from("__it__");
     let previous_tag = TagKey::from(ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG);
-    let domain_exact=ctx.exact_object_reference_tags.contains(&effect.tag);
+    let current_tag = TagKey::from(ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG);
+    let domain_exact = ctx.exact_object_reference_tags.contains(&effect.tag);
     super::with_iteration_tags(
         ctx,
         vec![(it_tag.clone(), None), (previous_tag.clone(), None)],
         |ctx| {
-            let mut iterations = Vec::with_capacity(snapshots.len());
-            let mut iterated_players = Vec::with_capacity(snapshots.len());
+            let mut proposal = ObjectIterationProposal::per_player(snapshots.len());
             for (index, snapshot) in snapshots.iter().enumerate() {
-                // Query the same loop-visible bindings before installing
-                // the current iteration's history and subject tags.
-                let iterated_player = effect.iterated_player(game, ctx, snapshot)?;
+                // Resolve the player before installing this iteration's history and subject.
+                let player = effect.iterated_player(game, ctx, snapshot)?;
                 ctx.set_tagged_objects(previous_tag.clone(), snapshots[..index].to_vec());
                 ctx.set_tagged_objects(it_tag.clone(), vec![snapshot.clone()]);
-                let proposals = super::with_object_iteration(
+                let exact_tags = || {
+                    if domain_exact {
+                        vec![(current_tag.clone(), vec![snapshot.clone()])]
+                    } else {
+                        Vec::new()
+                    }
+                };
+                super::with_object_iteration(
                     ctx,
                     snapshot.object_id,
-                    iterated_player,
-                    if domain_exact{vec![(TagKey::from(ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG),vec![snapshot.clone()])]}else{Vec::new()},
+                    player,
+                    exact_tags(),
                     |ctx| {
-                        effect
-                            .effects
-                            .iter()
-                            .map_while(|child| {
-                                if ctx.decision_maker.awaiting_choice() {
-                                    return None;
-                                }
-                                Some(child.prepare_simultaneous_player_action(game, ctx).map(
-                                    |inner| {
-                                        let mut tags=vec![
-                                            (effect.tag.clone(), snapshots.clone()),
-                                            (it_tag.clone(), vec![snapshot.clone()]),
-                                            (previous_tag.clone(), snapshots[..index].to_vec()),
-                                        ];
-                                        if domain_exact{tags.push((TagKey::from(ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG),vec![snapshot.clone()]));}
-                                        super::scope_prepared_iteration(inner,snapshot.object_id,iterated_player,tags)
-                                    },
-                                ))
-                            })
-                            .collect::<Result<Vec<_>, ExecutionError>>()
+                        proposal.prepare_children(
+                            &effect.effects,
+                            game,
+                            ctx,
+                            snapshot.object_id,
+                            player,
+                            || {
+                                let mut tags = vec![
+                                    (effect.tag.clone(), snapshots.clone()),
+                                    (it_tag.clone(), vec![snapshot.clone()]),
+                                    (previous_tag.clone(), snapshots[..index].to_vec()),
+                                ];
+                                tags.extend(exact_tags());
+                                tags
+                            },
+                        )
                     },
                 )?;
-                iterated_players.push(iterated_player);
-                iterations.push(proposals);
                 if ctx.decision_maker.awaiting_choice() {
                     break;
                 }
             }
-            Ok(Box::new(ForEachTaggedProposal {
-                iterated_players,
-                iterations,
-            }) as Box<dyn SimultaneousEffectProposal>)
+            Ok(Box::new(proposal) as Box<dyn SimultaneousEffectProposal>)
         },
     )
 }
@@ -365,10 +182,6 @@ impl EffectExecutor for ForEachTaggedEffect {
             return Ok(None);
         }
         Ok(Some(tagged_object_cursor(self, game, ctx)?))
-    }
-
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
     }
 
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
@@ -401,15 +214,7 @@ impl EffectExecutor for ForEachTaggedEffect {
         prepare_tagged_iteration_proposal(self, game, ctx, snapshots)
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -500,25 +305,13 @@ impl EffectExecutor for ForEachControllerOfTaggedEffect {
         Ok(Some(tagged_controller_cursor(self, ctx)))
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         for effect in &self.effects {
             visitor(effect);
         }
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -589,25 +382,13 @@ impl EffectExecutor for ForEachTaggedPlayerEffect {
         Ok(Some(tagged_player_cursor(self, ctx)?))
     }
 
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
-
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         for effect in &self.effects {
             visitor(effect);
         }
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
+    #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
@@ -830,7 +611,7 @@ fn execute_tagged_player_iterations(
 mod tests {
     use super::*;
     use crate::effect::ExecutionFact;
-    use super::super::object_iteration::correlated_player_count;
+    use super::super::object_iteration_proposal::correlated_player_count;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};

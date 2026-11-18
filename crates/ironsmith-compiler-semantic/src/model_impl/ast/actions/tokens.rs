@@ -17,53 +17,18 @@ pub struct TokenCombatEntryAst {
     pub must_attack_player_this_turn: Option<PlayerAst>,
 }
 
+/// The copied object can be remembered from an earlier instruction or selected
+/// by an authored target expression with its own choices and reference hints.
+#[derive(Clone, PartialEq, TagKeyWalk)]
+pub enum TokenCopySourceAst {
+    Object(ObjectRefAst),
+    Target(TargetAst),
+}
+
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum TokenActionAst {
     CreateTokenCopy {
-        object: ObjectRefAst,
-        count: Value,
-        player: PlayerAst,
-        enters_tapped: bool,
-        enters_attacking: bool,
-        entry_tapped_attacking_followup: bool,
-        attack_target_player_or_planeswalker_controlled_by: Option<PlayerAst>,
-        attack_target_player_only: bool,
-        half_power_toughness_round_up: bool,
-        has_haste: bool,
-        haste_followup_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
-        exile_at_end_of_combat: bool,
-        exile_at_end_of_combat_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
-        loses_soulbond: bool,
-        removed_ability_designations: Vec<String>,
-        ability_loss_until: Option<crate::effect::Until>,
-        sacrifice_at_next_end_step: bool,
-        sacrifice_at_next_end_step_reference_surface:
-            Option<crate::effect::TokenCopyReferenceSurface>,
-        sacrifice_at_next_end_step_ability_surface: Option<TokenCopySacrificeAbilitySurface>,
-        exile_at_next_end_step: bool,
-        exile_at_next_end_step_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
-        next_end_step_player: PlayerFilter,
-        without_mana_cost: bool,
-        set_colors: Option<ColorSet>,
-        /// CR 707.9b: "in addition to its other colors and types".
-        added_colors: ColorSet,
-        set_card_types: Option<Vec<CardType>>,
-        set_subtypes: Option<Vec<Subtype>>,
-        preserve_noncreature_subtypes: bool,
-        added_card_types: Vec<CardType>,
-        added_subtypes: Vec<Subtype>,
-        removed_supertypes: Vec<Supertype>,
-        set_base_power_toughness: Option<(i32, i32)>,
-        set_base_power_toughness_to_source_totals: bool,
-        starting_loyalty: Option<u32>,
-        granted_abilities: Vec<GrantedAbilityAst>,
-        /// "a token that's a copy of it attached to <object>": the copy
-        /// enters attached there instead of its controller choosing what an
-        /// Aura copy enchants (CR 303.4f).
-        attached_to: Option<TargetAst>,
-    },
-    CreateTokenCopyFromSource {
-        source: TargetAst,
+        source: TokenCopySourceAst,
         count: Value,
         player: PlayerAst,
         enters_tapped: bool,

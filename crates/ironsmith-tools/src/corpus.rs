@@ -1,8 +1,8 @@
 //! Corpus observations have one canonical aggregate and independent face snapshots.
-use crate::{CardPayload, CompilationSnapshot, ParseStatus, load_registry_cards};
+use crate::{CardPayload, CompilationSnapshot, ParseStatus};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::error::Error;
+use std::{collections::BTreeSet, error::Error};
 
 #[derive(Debug)]
 pub struct CorpusCard {
@@ -27,13 +27,17 @@ impl CorpusCard {
 }
 
 pub fn load_corpus_cards(path: &str) -> Result<Vec<CorpusCard>, Box<dyn Error>> {
-    load_registry_cards(path)?
-        .into_values()
-        .map(|record| {
-            let raw: Value = serde_json::from_str(&record.raw_card_json)?;
-            CorpusCard::from_record(record.payload, &raw)
-        })
-        .collect()
+    ironsmith_card_source::load_registry_cards_with(
+        path,
+        &BTreeSet::new(),
+        Vec::new(),
+        |card, input| {
+            let payload = crate::tooling::tooling_registry_record(card, input).payload;
+            CorpusCard::from_record(payload, card)
+        },
+    )?
+    .into_values()
+    .collect()
 }
 
 /// The weakest face determines coverage. Keep each face's full diagnostics in
@@ -237,7 +241,7 @@ mod tests {
             let mut cards = fixture();
             cards[0]["layout"] = json!(layout);
             std::fs::write(&source, cards.to_string()).unwrap();
-            let records = load_registry_cards(source.to_str().unwrap())
+            let records = crate::load_registry_cards(source.to_str().unwrap())
                 .unwrap()
                 .into_values()
                 .collect::<Vec<_>>();

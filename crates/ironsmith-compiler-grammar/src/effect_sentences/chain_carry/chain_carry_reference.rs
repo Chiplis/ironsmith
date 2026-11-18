@@ -539,400 +539,212 @@ pub(super) fn player_target_carry_context(target: &TargetAst) -> Option<CarryCon
     }
 }
 
-pub fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
-    if let EffectAst::Sequence { effects } = effect {
-        return effects.iter().find_map(explicit_player_for_carry);
-    }
-    if matches!(
-        effect,
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })
-    ) {
-        return Some(CarryContext::ForEachPlayer);
-    }
-    if let EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { count, .. }) = effect {
-        return Some(CarryContext::ForEachTargetPlayers(*count));
-    }
-    if matches!(
-        effect,
-        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { .. })
-    ) {
-        return Some(CarryContext::ForEachOpponent);
-    }
-    if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::TargetOnly { target, .. } = &subject_verb.action
-        && let Some(context) = player_target_carry_context(target)
-    {
-        return Some(context);
-    }
-    if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }) =
-            &subject_verb.action
-        && let Some(player) = player_owner_filter_from_target_for_carry(target)
-    {
-        return Some(CarryContext::Player(player));
-    }
-    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves {
-                target, ..
-            }),
-        ..
-    }) = effect
-        && let Some(player) = player_owner_filter_from_target_for_carry(target)
-    {
-        return Some(CarryContext::Player(player));
-    }
-    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. }),
-        ..
-    }) = effect
-        && let Some(owner) = filter.owner.as_ref()
-        && let Some(player) = player_ast_from_filter_for_carry(owner)
-    {
-        return Some(CarryContext::Player(player));
-    }
-    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { filter }),
-        ..
-    }) = effect
-        && let Some(controller) = filter.controller.as_ref()
-        && let Some(player) = player_ast_from_filter_for_carry(controller)
-    {
-        // In a clause such as "they tap all lands they control and lose all
-        // unspent mana", the explicit player is represented by the tapped
-        // objects' controller rather than the SubjectVerb subject.  Retain it
-        // for the coordinated implicit player action that follows.
-        return Some(CarryContext::Player(player));
-    }
-    if matches!(
-        effect,
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. }),
-            ..
-        })
-    ) {
-        return Some(CarryContext::Player(PlayerAst::That));
-    }
+fn carries_subject_player(action: &SubjectVerbActionAst) -> bool {
+    matches!(
+        action,
+        SubjectVerbActionAst::LifeResources(
+            LifeResourceActionAst::Draw { .. }
+                | LifeResourceActionAst::LoseLife { .. }
+                | LifeResourceActionAst::PayLife { .. }
+                | LifeResourceActionAst::GainLife { .. }
+                | LifeResourceActionAst::PayEnergy { .. }
+                | LifeResourceActionAst::PayAnyEnergy { .. }
+                | LifeResourceActionAst::PayAnyLife { .. }
+                | LifeResourceActionAst::NoteLifeTotal
+                | LifeResourceActionAst::RedistributeLifeTotals
+        ) | SubjectVerbActionAst::RevealLook(
+            RevealLookActionAst::RevealHand
+                | RevealLookActionAst::RevealTop
+                | RevealLookActionAst::RevealCardsFromHand { .. }
+        ) | SubjectVerbActionAst::Library(
+            LibraryActionAst::Mill { .. }
+                | LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary
+                | LibraryActionAst::ShuffleGraveyardIntoLibrary { .. }
+                | LibraryActionAst::ShuffleObjectsIntoLibrary { .. }
+                | LibraryActionAst::ExileTopOfLibrary { .. }
+                | LibraryActionAst::ReorderGraveyard
+                | LibraryActionAst::ReorderGraveyardAtRandom
+                | LibraryActionAst::ShuffleLibrary
+        ) | SubjectVerbActionAst::KeywordActions(
+            KeywordActionAst::Scry { .. }
+                | KeywordActionAst::Surveil { .. }
+                | KeywordActionAst::Investigate { .. }
+                | KeywordActionAst::RingTemptsYou
+                | KeywordActionAst::VentureIntoDungeon { .. }
+                | KeywordActionAst::TakeInitiative
+        ) | SubjectVerbActionAst::ZoneMoves(
+            ZoneMoveActionAst::Discard { .. }
+                | ZoneMoveActionAst::DiscardHand
+                | ZoneMoveActionAst::ReturnToBattlefield { .. }
+                | ZoneMoveActionAst::ReturnAllToBattlefield { .. }
+                | ZoneMoveActionAst::ReturnToHand { .. }
+                | ZoneMoveActionAst::ReturnAllToHand { .. }
+                | ZoneMoveActionAst::MoveToZone { .. }
+                | ZoneMoveActionAst::Sacrifice { .. }
+        ) | SubjectVerbActionAst::Counters(
+            CounterActionAst::PoisonCounters { .. }
+                | CounterActionAst::EnergyCounters { .. }
+                | CounterActionAst::ExperienceCounters { .. }
+                | CounterActionAst::RadCounters { .. }
+                | CounterActionAst::TicketCounters { .. }
+        ) | SubjectVerbActionAst::Mana(
+            ManaActionAst::PayMana { .. }
+                | ManaActionAst::DoubleManaPool
+                | ManaActionAst::EmptyManaPool
+                | ManaActionAst::ActivateManaAbilityOfEachLand
+                | ManaActionAst::AddMana { .. }
+                | ManaActionAst::AddManaScaled { .. }
+                | ManaActionAst::AddManaAnyColor { .. }
+                | ManaActionAst::AddManaAnyOneColor { .. }
+                | ManaActionAst::AddManaChosenColor { .. }
+                | ManaActionAst::AddManaNotedType { .. }
+                | ManaActionAst::AddManaLostThisWay { .. }
+                | ManaActionAst::AddManaFromLandCouldProduce { .. }
+                | ManaActionAst::AddManaAnyColorAmong { .. }
+                | ManaActionAst::AddManaDraftChosenColors { .. }
+                | ManaActionAst::AddManaCommanderIdentity { .. }
+        ) | SubjectVerbActionAst::Characteristics(
+            CharacteristicActionAst::SetLifeTotal { .. }
+                | CharacteristicActionAst::ReduceSpeed { .. }
+                | CharacteristicActionAst::BecomeMonarch
+        ) | SubjectVerbActionAst::TurnStructure(
+            TurnStructureActionAst::SkipTurn
+                | TurnStructureActionAst::SkipCombatPhases
+                | TurnStructureActionAst::SkipNextCombatPhaseThisTurn
+                | TurnStructureActionAst::SkipMainPhasesThisTurn
+                | TurnStructureActionAst::SkipCombatPhasesThisTurn
+                | TurnStructureActionAst::SkipDrawStep
+                | TurnStructureActionAst::SkipScheduled { .. }
+                | TurnStructureActionAst::AdditionalLandPlays { .. }
+                | TurnStructureActionAst::AdditionalSteps { .. }
+        ) | SubjectVerbActionAst::Game(
+            GameActionAst::EndTurn
+                | GameActionAst::LoseGame
+                | GameActionAst::WinGame
+                | GameActionAst::ExtraTurnAfterTurn { .. }
+        ) | SubjectVerbActionAst::Tokens(TokenActionAst::CreateEmblem { .. })
+            | SubjectVerbActionAst::Random(
+                RandomActionAst::FlipCoin
+                    | RandomActionAst::FlipCoinFaceOnly
+                    | RandomActionAst::RollDie { .. }
+                    | RandomActionAst::ChooseNumberAtRandom { .. }
+                    | RandomActionAst::RollDiceChooseResult { .. }
+                    | RandomActionAst::RollDiceTotal { .. }
+            )
+            | SubjectVerbActionAst::Choices(
+                ChoiceActionAst::ChooseColor
+                    | ChoiceActionAst::ChooseColorAmong { .. }
+                    | ChoiceActionAst::ChooseCardType { .. }
+                    | ChoiceActionAst::ChooseNamedOption { .. }
+                    | ChoiceActionAst::ChooseNumber { .. }
+                    | ChoiceActionAst::ChooseCreatureType { .. }
+                    | ChoiceActionAst::ChooseLandType { .. }
+                    | ChoiceActionAst::ChooseCardName { .. }
+                    | ChoiceActionAst::ChoosePlayer { .. }
+            )
+            | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
+    )
+}
 
-    let player = match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
-                    chooser,
-                    player,
-                    ..
-                }),
-            ..
-        }) => {
-            if !matches!(player, PlayerAst::Implicit) {
-                *player
-            } else if !matches!(chooser, PlayerAst::Implicit) {
-                *chooser
-            } else {
-                return None;
-            }
+// Matching on the caller's borrow gives the same fields for inspection and binding.
+// A search carries its library owner first, with the chooser as a fallback.
+macro_rules! carry_player_slots {
+    ($effect:expr) => {
+        match $effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { player, chooser, .. }),
+                ..
+            }) => (Some(player), Some(chooser)),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Tokens(
+                    TokenActionAst::CreateTokenCopy { player, .. }
+                    | TokenActionAst::CreateTokenWithMods { player, .. }
+                ),
+                ..
+            })
+            | EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseObjects { player, .. }
+                | ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
+                | ObjectChoiceEffectAst::ChooseSourceLinkedCollection { player, .. }
+            ) => (Some(player), None),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject: SubjectVerbSubjectAst { player, .. },
+                action,
+            }) if carries_subject_player(action) => (Some(player), None),
+            _ => (None, None),
         }
-        EffectAst::SubjectVerb(_) => subject_verb_player_action_player(effect)?,
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
-            player,
-            ..
-        }) => *player,
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
-            player,
-            ..
-        }) => *player,
-        _ => return None,
     };
+}
 
-    if matches!(player, PlayerAst::Implicit) {
-        None
-    } else {
-        Some(CarryContext::Player(player))
-    }
+fn players_for_carry(effect: &EffectAst) -> impl Iterator<Item = PlayerAst> {
+    let (primary, search_chooser) = carry_player_slots!(effect);
+    primary.into_iter().chain(search_chooser).copied()
+}
+
+pub fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
+    let context = match effect {
+        EffectAst::Sequence { effects } => effects.iter().find_map(explicit_player_for_carry),
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. }) => {
+            Some(CarryContext::ForEachPlayer)
+        }
+        EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { count, .. }) => {
+            Some(CarryContext::ForEachTargetPlayers(*count))
+        }
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { .. }) => {
+            Some(CarryContext::ForEachOpponent)
+        }
+        EffectAst::SubjectVerb(subject) => match &subject.action {
+            SubjectVerbActionAst::TargetOnly { target, .. } => player_target_carry_context(target),
+            SubjectVerbActionAst::ZoneMoves(
+                ZoneMoveActionAst::Exile { target, .. }
+                | ZoneMoveActionAst::ExileUntilSourceLeaves { target, .. },
+            ) => player_owner_filter_from_target_for_carry(target).map(CarryContext::Player),
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. }) => filter
+                .owner
+                .as_ref()
+                .and_then(player_ast_from_filter_for_carry)
+                .map(CarryContext::Player),
+            // In "they tap all lands they control and lose all unspent mana",
+            // the tapped objects' controller supplies the subject of "lose".
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { filter }) => {
+                filter
+                    .controller
+                    .as_ref()
+                    .and_then(player_ast_from_filter_for_carry)
+                    .map(CarryContext::Player)
+            }
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. }) => {
+                Some(CarryContext::Player(PlayerAst::That))
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+    context.or_else(|| {
+        players_for_carry(effect)
+            .find(|player| *player != PlayerAst::Implicit)
+            .map(CarryContext::Player)
+    })
 }
 
 pub fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
-                    chooser,
-                    player,
-                    ..
-                }),
-            ..
-        }) => matches!(*chooser, PlayerAst::Implicit) || matches!(*player, PlayerAst::Implicit),
-        EffectAst::SubjectVerb(_) => {
-            matches!(
-                subject_verb_player_action_player(effect),
-                Some(PlayerAst::Implicit)
-            )
-        }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
-            player,
-            ..
-        })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
-            player,
-            ..
-        }) => {
-            matches!(*player, PlayerAst::Implicit)
-        }
-        _ => false,
-    }
+    players_for_carry(effect).any(|player| player == PlayerAst::Implicit)
 }
 
-pub(super) fn effect_uses_that_player(effect: &EffectAst) -> bool {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
-                    chooser,
-                    player,
-                    ..
-                }),
-            ..
-        }) => matches!(*chooser, PlayerAst::That) || matches!(*player, PlayerAst::That),
-        EffectAst::SubjectVerb(_) => {
-            matches!(
-                subject_verb_player_action_player(effect),
-                Some(PlayerAst::That)
-            )
-        }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
-            player,
-            ..
-        })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
-            player,
-            ..
-        }) => {
-            matches!(*player, PlayerAst::That)
-        }
-        _ => false,
-    }
-}
-
-pub(super) fn subject_verb_player_action_player_mut(
+fn wrap_carried_player_effect(
     effect: &mut EffectAst,
-) -> Option<&mut PlayerAst> {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                    player, ..
-                })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. }),
-            ..
-        }) => Some(player),
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            subject: SubjectVerbSubjectAst { player, .. },
-            action:
-                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. })
-                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand)
-                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
-                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { .. })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { .. })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
-                | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyEnergy { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::PayMana { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
-                | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
-                | SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand)
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { .. })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { .. })
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
-                | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipNextCombatPhaseThisTurn)
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn)
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn)
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon { .. })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeMonarch)
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TakeInitiative)
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateEmblem { .. })
-                | SubjectVerbActionAst::Game(GameActionAst::LoseGame)
-                | SubjectVerbActionAst::Game(GameActionAst::WinGame)
-                | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
-                | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
-                | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
-                | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
-                | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
-                | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
-                | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::RedistributeLifeTotals)
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. })
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
-                    ..
-                })
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
-                    ..
-                })
-                | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
-                | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-        }) => Some(player),
-        _ => None,
-    }
-}
-
-pub(super) fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                    player, ..
-                })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. }),
-            ..
-        }) => Some(*player),
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            subject: SubjectVerbSubjectAst { player, .. },
-            action:
-                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. })
-                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand)
-                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
-                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { .. })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { .. })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
-                | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyEnergy { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::PayMana { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
-                | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
-                | SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand)
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { .. })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { .. })
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
-                | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipNextCombatPhaseThisTurn)
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn)
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn)
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon { .. })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeMonarch)
-                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TakeInitiative)
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateEmblem { .. })
-                | SubjectVerbActionAst::Game(GameActionAst::LoseGame)
-                | SubjectVerbActionAst::Game(GameActionAst::WinGame)
-                | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
-                | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
-                | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
-                | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
-                | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
-                | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
-                | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColorAmong { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
-            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
-                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. })
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
-                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::RedistributeLifeTotals)
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. })
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
-                    ..
-                })
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
-                    ..
-                })
-                | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
-                | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
-                | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-        }) => Some(*player),
-        _ => None,
+    wrap: impl FnOnce(Vec<EffectAst>) -> ForEachEffectAst,
+) {
+    if players_for_carry(effect)
+        .any(|player| matches!(player, PlayerAst::Implicit | PlayerAst::That))
+    {
+        let inner = std::mem::replace(
+            effect,
+            EffectAst::Sequence {
+                effects: Vec::new(),
+            },
+        );
+        *effect = EffectAst::ForEach(wrap(vec![inner]));
     }
 }
 
@@ -943,75 +755,29 @@ pub fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: Carry
             // bind to the previously selected target ("that player") instead of creating
             // a fresh explicit target. This preserves shared-target semantics for chains
             // like "Target player mills..., draws..., and loses...".
-            let carried_player = match carried_player {
-                PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
-                other => other,
-            };
-            match effect {
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action:
-                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
-                            player, ..
-                        }),
-                    ..
-                }) => {
-                    // A bare `search` is imperative: its omitted actor is the
-                    // spell or ability's controller. A target introduced by
-                    // "target player's library" is the library owner, not a
-                    // grammatical subject to carry into the chooser slot.
-                    if matches!(*player, PlayerAst::Implicit) {
-                        *player = carried_player;
-                    }
-                }
-                EffectAst::SubjectVerb(_) => {
-                    if let Some(player) = subject_verb_player_action_player_mut(effect)
-                        && *player == PlayerAst::Implicit
-                    {
-                        *player = carried_player;
-                    }
-                }
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    player, ..
-                })
-                | EffectAst::ObjectChoices(
-                    ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. },
-                )
-                | EffectAst::ObjectChoices(
-                    ObjectChoiceEffectAst::ChooseSourceLinkedCollection { player, .. },
-                ) => {
-                    if matches!(*player, PlayerAst::Implicit) {
-                        *player = carried_player;
-                    }
-                }
-                _ => {}
+            let carried_player = carried_player.in_followup();
+            // An imperative search can inherit the library owner. Its omitted
+            // chooser still refers to the controller of the spell or ability.
+            let (primary, _) = carry_player_slots!(effect);
+            if let Some(player) = primary
+                && *player == PlayerAst::Implicit
+            {
+                *player = carried_player;
             }
         }
-        CarryContext::ForEachPlayer => {
-            if effect_uses_implicit_player(effect) || effect_uses_that_player(effect) {
-                let wrapped = effect.clone();
-                *effect = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-                    effects: vec![wrapped],
-                });
-            }
-        }
+        CarryContext::ForEachPlayer => wrap_carried_player_effect(effect, |effects| {
+            ForEachEffectAst::ForEachPlayer { effects }
+        }),
         CarryContext::ForEachTargetPlayers(count) => {
-            if effect_uses_implicit_player(effect) || effect_uses_that_player(effect) {
-                let wrapped = effect.clone();
-                *effect = EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers {
-                    count,
-                    filter: PlayerFilter::Any,
-                    effects: vec![wrapped],
-                });
-            }
+            wrap_carried_player_effect(effect, |effects| ForEachEffectAst::ForEachTargetPlayers {
+                count,
+                filter: PlayerFilter::Any,
+                effects,
+            })
         }
-        CarryContext::ForEachOpponent => {
-            if effect_uses_implicit_player(effect) || effect_uses_that_player(effect) {
-                let wrapped = effect.clone();
-                *effect = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
-                    effects: vec![wrapped],
-                });
-            }
-        }
+        CarryContext::ForEachOpponent => wrap_carried_player_effect(effect, |effects| {
+            ForEachEffectAst::ForEachOpponent { effects }
+        }),
     }
 }
 
@@ -1049,10 +815,7 @@ pub(super) fn maybe_apply_carried_player_with_clause_facts(
         }) = effect
         && subject.player == PlayerAst::ItsController
     {
-        subject.player = match carried_player {
-            PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
-            player => player,
-        };
+        subject.player = carried_player.in_followup();
     }
 
     let imperative_collection_move = facts.imperative_collection_move
@@ -1290,22 +1053,6 @@ pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
                 *effect_player = player;
             }
         }
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
-                    player: effect_player,
-                    chooser,
-                    ..
-                }),
-            ..
-        }) => {
-            if matches!(*effect_player, PlayerAst::Implicit) {
-                *effect_player = player;
-            }
-            if matches!(*chooser, PlayerAst::Implicit) {
-                *chooser = player;
-            }
-        }
         // "Target opponent may sacrifice any number of creatures": the
         // implicit sacrificer of the chosen set is the same actor that chose
         // it (CR 701.21a), not the ability's controller.
@@ -1316,17 +1063,15 @@ pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
             if matches!(subject.player, PlayerAst::Implicit) {
                 // An announced target actor is referenced, not re-targeted:
                 // the enclosing offer owns the one target declaration.
-                subject.player = match player {
-                    PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
-                    other => other,
-                };
+                subject.player = player.in_followup();
             }
         }
         EffectAst::SubjectVerb(_) => {
-            if let Some(effect_player) = subject_verb_player_action_player_mut(effect)
-                && matches!(*effect_player, PlayerAst::Implicit)
-            {
-                *effect_player = player;
+            let (primary, search_chooser) = carry_player_slots!(effect);
+            for slot in primary.into_iter().chain(search_chooser) {
+                if *slot == PlayerAst::Implicit {
+                    *slot = player;
+                }
             }
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {

@@ -36,23 +36,6 @@ pub fn get_declare_attackers_decision(
     )
 }
 
-pub(super) fn generic_mana_cost(amount: u32) -> crate::mana::ManaCost {
-    use crate::mana::ManaSymbol;
-
-    if amount == 0 {
-        return crate::mana::ManaCost::new();
-    }
-
-    let mut pips = Vec::new();
-    let mut remaining = amount;
-    while remaining > 0 {
-        let chunk = remaining.min(u8::MAX as u32) as u8;
-        pips.push(vec![ManaSymbol::Generic(chunk)]);
-        remaining -= chunk as u32;
-    }
-    crate::mana::ManaCost::from_pips(pips)
-}
-
 pub(super) fn static_abilities_for_object_with_effects(
     game: &GameState,
     object_id: ObjectId,
@@ -359,79 +342,6 @@ pub fn combat_damage_assignment_player_for_attacker(
     Some(attacking_player)
 }
 
-fn generic_attack_tax_per_attacker_against_defender(
-    game: &GameState,
-    defending_player: PlayerId,
-    target_kind: crate::static_abilities::AttackTaxTargetKind,
-    effects: &[crate::continuous::ContinuousEffect],
-) -> u32 {
-    let mut tax = 0u32;
-
-    for &object_id in &game.battlefield {
-        let Some(object) = game.object(object_id) else {
-            continue;
-        };
-        if game.controller_of(object) != defending_player {
-            continue;
-        }
-
-        let abilities = static_abilities_for_object_with_effects(game, object_id, effects);
-
-        for ability in abilities {
-            if !ability.generic_attack_tax_applies_to(target_kind) {
-                continue;
-            }
-            if let Some(per_attacker_tax) = ability.generic_attack_tax_per_attacker_against_you(
-                game,
-                object_id,
-                defending_player,
-            ) {
-                tax = tax.saturating_add(per_attacker_tax);
-            }
-        }
-    }
-
-    for restriction in &game.effect_store.restriction_effects {
-        if restriction.controller != defending_player
-            || !restriction.is_active(game, game.turn.turn_number)
-        {
-            continue;
-        }
-        if let crate::effect::Restriction::AttackYouUnlessControllerPaysPerAttacker(
-            per_attacker_tax,
-            covers_planeswalkers,
-        ) = &restriction.restriction
-        {
-            let applies = matches!(
-                target_kind,
-                crate::static_abilities::AttackTaxTargetKind::Player
-            ) || (*covers_planeswalkers
-                && matches!(
-                    target_kind,
-                    crate::static_abilities::AttackTaxTargetKind::Planeswalker
-                ));
-            if applies {
-                tax = tax.saturating_add(*per_attacker_tax);
-            }
-        }
-    }
-
-    tax
-}
-
-pub(super) fn generic_attack_tax_per_attacker_against_player(
-    game: &GameState,
-    defending_player: PlayerId,
-    effects: &[crate::continuous::ContinuousEffect],
-) -> u32 {
-    generic_attack_tax_per_attacker_against_defender(
-        game,
-        defending_player,
-        crate::static_abilities::AttackTaxTargetKind::Player,
-        effects,
-    )
-}
-
 fn generic_attack_tax_per_attacker_against_target(
     game: &GameState,
     target: &AttackTarget,
@@ -442,11 +352,11 @@ fn generic_attack_tax_per_attacker_against_target(
     else {
         return 0;
     };
-    generic_attack_tax_per_attacker_against_defender(
+    crate::static_abilities::generic_attack_tax_against_defender(
         game,
         defending_player,
         crate::static_abilities::AttackTaxTargetKind::from(target),
-        effects,
+        |object| static_abilities_for_object_with_effects(game, object.id, effects),
     )
 }
 
@@ -1232,7 +1142,7 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
             locked_costs.push(LockedCombatCost {
                 payer,
                 source: None,
-                cost: crate::cost::TotalCost::mana(generic_mana_cost(amount)),
+                cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_generic(amount)),
                 display: "Attack cost".into(),
             });
         }
@@ -3723,7 +3633,7 @@ mod declaration_batch_tests {
             let ability = StaticAbility::attack_cost(
                 ObjectFilter::creature().with_colors(crate::color::ColorSet::WHITE),
                 covers_planeswalkers,
-                crate::cost::TotalCost::mana(generic_mana_cost(2)),
+                crate::cost::TotalCost::mana(crate::mana::ManaCost::from_generic(2)),
                 "typed tax",
             );
             for target in [
@@ -3767,7 +3677,7 @@ mod declaration_batch_tests {
             add_typed_attack_tax(
                 &mut game,
                 bob,
-                crate::cost::TotalCost::mana(generic_mana_cost(amount)),
+                crate::cost::TotalCost::mana(crate::mana::ManaCost::from_generic(amount)),
                 false,
             );
             game.player_mut(alice)
@@ -3908,7 +3818,7 @@ mod declaration_batch_tests {
         game.move_object_by_effect(source, Zone::Graveyard)
             .expect("the source can leave after its trigger resolves");
         assert_eq!(
-            generic_attack_tax_per_attacker_against_player(&game, bob, &[]),
+            generic_attack_tax_per_attacker_against_target(&game, &AttackTarget::Player(bob), &[]),
             2,
             "the resolving restriction is independent of its source remaining on the battlefield"
         );
@@ -3916,7 +3826,7 @@ mod declaration_batch_tests {
         game.turn.turn_number = game.turn.turn_number.saturating_add(1);
         game.turn.active_player = bob;
         assert_eq!(
-            generic_attack_tax_per_attacker_against_player(&game, bob, &[]),
+            generic_attack_tax_per_attacker_against_target(&game, &AttackTarget::Player(bob), &[]),
             0,
             "the tax expires as the protected player's next turn begins"
         );
@@ -4226,7 +4136,7 @@ mod declaration_batch_tests {
             .push(Ability::static_ability(StaticAbility::block_cost(
                 ObjectFilter::default(),
                 ObjectFilter::default(),
-                crate::cost::TotalCost::mana(generic_mana_cost(1)),
+                crate::cost::TotalCost::mana(crate::mana::ManaCost::from_generic(1)),
                 "Creatures can't block unless their controller pays {1} for each blocking creature they control.",
             )));
         game.refresh_continuous_state().expect("test continuous state refresh succeeds");
@@ -4371,7 +4281,7 @@ mod declaration_batch_tests {
             .push(Ability::static_ability(StaticAbility::block_cost(
                 ObjectFilter::default(),
                 ObjectFilter::default(),
-                crate::cost::TotalCost::mana(generic_mana_cost(1)),
+                crate::cost::TotalCost::mana(crate::mana::ManaCost::from_generic(1)),
                 "Creatures can't block unless their controller pays {1} for each blocking creature they control.",
             )));
         game.player_mut(bob)
@@ -4462,7 +4372,7 @@ mod declaration_batch_tests {
             StaticAbility::attached_block_cost(
                 ObjectFilter::creature(),
                 ObjectFilter::creature(),
-                crate::cost::TotalCost::mana(generic_mana_cost(1)),
+                crate::cost::TotalCost::mana(crate::mana::ManaCost::from_generic(1)),
                 "Enchanted creature can't block unless its controller pays {1}.",
             ),
         ));
@@ -4532,7 +4442,7 @@ mod declaration_batch_tests {
             payer: bob,
             source: Some(source),
             cost: crate::cost::TotalCost::from_costs(vec![
-                crate::costs::Cost::mana(generic_mana_cost(1)),
+                crate::costs::Cost::mana(crate::mana::ManaCost::from_generic(1)),
                 crate::costs::Cost::life(1),
             ]),
             display: "Pay {1} and 1 life to block".to_string(),

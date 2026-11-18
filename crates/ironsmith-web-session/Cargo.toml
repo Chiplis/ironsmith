@@ -44,6 +44,7 @@ generated-registry = ["ironsmith/generated-registry"]
 dynamic-compile = ["dep:ironsmith-dynamic-compile", "dep:ironsmith-card-source-build", "dep:ironsmith-compiler-runtime-build"]
 wasm = ["ironsmith/wasm"]
 wasm-lean = ["ironsmith/wasm-lean"]
+xmage-fixtures = []
 shadow-continuous = ["ironsmith/shadow-continuous"]
 paranoid-invariants = ["ironsmith/paranoid-invariants"]
 

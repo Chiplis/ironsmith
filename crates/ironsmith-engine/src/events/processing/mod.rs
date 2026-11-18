@@ -5635,7 +5635,7 @@ impl ReadyTypedMoveOriginal {
         recipient.0.append(&mut self.nested.0);
         recipient.1.append(&mut self.nested.1);
         recipient.2.append(&mut self.nested.2);
-        let mut ctx = self.scope.reborrow(dm);
+        let mut ctx = self.scope.into_context(dm);
         let outputs = self.original.complete_tail(
             game,
             &mut ctx,

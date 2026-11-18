@@ -6,7 +6,7 @@ use crate::tag::TagKey;
 use crate::zone::Zone;
 
 use super::ast::PredicateAst;
-use super::reference_state::ReferenceEnv;
+use super::reference_state::{ReferenceEnv, SnapshotBindings};
 
 #[derive(Debug, Clone)]
 pub enum MetadataLine {
@@ -211,7 +211,7 @@ pub struct LoweringFrame {
     /// in `last_object_tag` at snapshot time. Consulted during tag/filter
     /// resolution so composed effects can reference an earlier looked-at pool
     /// even after a later `ChooseObjects` clobbers `last_object_tag`.
-    pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
+    pub snapshot_bindings: SnapshotBindings,
     /// `(created, source)`: the result tag of an unmodified token-copy
     /// creation and the tag of the object it copied. A later "create a token
     /// that's a copy of that creature" names the copied object, not the token
@@ -400,7 +400,7 @@ impl EffectLoweringContext {
         self.counter_removal_cost = frame.counter_removal_cost;
         self.last_object_tag = frame.last_object_tag;
         self.last_card_name_choice_tag = frame.last_card_name_choice_tag;
-        self.snapshot_tag_aliases = frame.snapshot_tag_aliases;
+        self.snapshot_bindings = frame.snapshot_bindings;
         self.last_it_choice_is_set = frame.last_it_choice_is_set;
         // ReferenceEnv does not model the concrete exile collection. Preserve
         // this lowering-only memory, like its plural flag, across annotations.

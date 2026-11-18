@@ -118,3 +118,37 @@ fn enchanted_permanent_price_prohibition_tracks_only_current_attachment() {
   assert!(g.attach_object_to_target(aura,ironsmith::object::AttachmentTarget::Object(second)));assert_eq!(offered(&g,first,A).len(),1);assert!(offered(&g,second,A).is_empty());
  }
 }
+
+#[test]
+fn reminder_defined_price_uses_the_whole_keyword_name_and_cost() {
+    let source = "Type: Creature\nSoul Wander {1}{U} (You may cast this from the battlefield for its soul wander cost.)";
+    for definition in definitions(source) {
+        let mut g = game();
+        let creature = g.create_object_from_definition(&definition, A, Zone::Battlefield);
+        g.player_mut(A)
+            .unwrap()
+            .mana_pool
+            .add(ironsmith::mana::ManaSymbol::Colorless, 2);
+        assert!(offered(&g, creature, A).is_empty());
+        g.player_mut(A)
+            .unwrap()
+            .mana_pool
+            .add(ironsmith::mana::ManaSymbol::Blue, 1);
+        let actions = offered(&g, creature, A);
+        assert_eq!(actions.len(), 1);
+        cast(&mut g, actions.into_iter().next().unwrap());
+        assert_eq!(g.player(A).unwrap().mana_pool.total(), 1);
+    }
+    for invalid in ["its wander cost", "its soul wander costume"] {
+        let text = source.replace("its soul wander cost", invalid);
+        assert!(
+            ironsmith_compiler_runtime::compile_to_runtime_definition(
+                "Independent battlefield cast",
+                &text,
+                false
+            )
+            .is_err(),
+            "{invalid}"
+        );
+    }
+}

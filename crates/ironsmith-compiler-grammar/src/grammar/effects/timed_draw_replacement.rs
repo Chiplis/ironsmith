@@ -37,18 +37,7 @@ fn header<'a>(input: &mut LexStream<'a>) -> WResult<(&'a [OwnedLexToken], bool, 
 }
 pub fn parse_timed_draw_replacement(tokens: &[OwnedLexToken]) -> Option<TimedDrawReplacement<'_>> {
     let ((player, one_shot, lose_game), body) = primitives::parse_prefix(tokens, header)?;
-    let (leading, body) = if let Some((_, rest)) = primitives::parse_prefix(body, primitives::kw("instead")) {
-        (true, rest)
-    } else { (false, body) };
-    let mut quoted = false;
-    let end = body.iter().position(|token| {
-        if token.is_quote() { quoted = !quoted; }
-        !quoted && token.is_period()
-    }).unwrap_or(body.len());
-    let trailing = end > 0 && body[end - 1].is_word("instead");
-    if leading == trailing { return None; }
-    let mut body = body.to_vec();
-    if trailing { body.remove(end - 1); }
+    let mut body = crate::grammar::draw_replacement::replacement_body(body)?;
     // Skipping this proposed draw is the empty original of the replacement;
     // it does not create an additional skipped future draw step or draw card.
     if let Some((_, rest)) = primitives::parse_prefix(&body,

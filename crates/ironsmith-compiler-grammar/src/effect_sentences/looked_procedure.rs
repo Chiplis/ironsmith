@@ -94,13 +94,6 @@ pub(super) struct ViewedGroup {
     pub(super) consumed: usize,
 }
 
-fn remainder_owner(owner: PlayerAst) -> PlayerAst {
-    match owner {
-        PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
-        player => player,
-    }
-}
-
 fn it() -> TargetAst {
     TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
 }
@@ -128,7 +121,7 @@ fn continues(
         || selections::same_sentence_shape(next).is_some()
         || partitions::partition_shape(next, revealed).is_some()
         || partitions::counted_hand_remainder_shape(next, revealed, owner).is_some()
-        || partitions::singleton_hand_disposition(next, revealed).is_some()
+        || partitions::singleton_hand_disposition(next).is_some()
         || partitions::three_way_disposition(next, revealed, count).is_some()
         || partitions::reveal_top_followup(next, revealed, owner).is_some()
         || partitions::exile_selection_shape(next).is_some()
@@ -229,7 +222,7 @@ pub(super) fn open(sentences: &[SentenceInput], sentence_idx: usize) -> Option<V
         view_tokens: sentence.lowered().to_vec(),
         selected: None,
         pending: None,
-        remainder_player: remainder_owner(owner),
+        remainder_player: owner.in_followup(),
         gated,
         optional,
         awaiting_permission: None,

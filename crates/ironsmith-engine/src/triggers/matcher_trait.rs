@@ -223,6 +223,8 @@ pub(crate) fn current_turn_matches_player_filter(
     }
 }
 
+crate::boxed_clone::define_boxed_clone!(TriggerMatcherClone, TriggerMatcher);
+
 /// Trait for matching game events to trigger conditions.
 ///
 /// All modular triggers implement this trait. Each trigger is responsible for:
@@ -251,20 +253,6 @@ pub(crate) fn current_turn_matches_player_filter(
 ///     }
 /// }
 /// ```
-pub trait TriggerMatcherClone {
-    /// Clone this trigger into a boxed trait object.
-    fn clone_boxed(&self) -> Box<dyn TriggerMatcher>;
-}
-
-impl<T> TriggerMatcherClone for T
-where
-    T: TriggerMatcher + Clone + 'static,
-{
-    fn clone_boxed(&self) -> Box<dyn TriggerMatcher> {
-        Box::new(self.clone())
-    }
-}
-
 pub trait TriggerMatcher:
     std::fmt::Debug + Send + Sync + TriggerMatcherClone + std::any::Any
 {

@@ -368,24 +368,16 @@ pub(super) fn parse_static_line_impl(
             chosen_option,
         );
     }
-    if matches!(
-        special_shape,
-        Some(semantic_grammar::StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
-    ) {
-        // "A deck can have any number of cards named X": the whole rule is
-        // read back by deck validation (name and copy limit). Open-ended
-        // deck-building instructions stay unclaimed.
-        if semantic_grammar::is_named_deck_construction(
-            &crate::lexer::parser_token_word_refs(parse_tokens),
+    if let Some(semantic_grammar::StaticSpecialLineShape::DeckConstruction(rule)) = special_shape {
+        if matches!(
+            rule,
+            ironsmith_core::static_ability_model::DeckConstructionRule::CopyLimit(_)
         ) {
             crate::word_claims::claim_tokens(parse_tokens);
         }
-        let display = render_token_slice(parse_tokens)
-            .trim()
-            .trim_end_matches('.')
-            .to_string();
+        let display = render_token_slice(parse_tokens).trim().trim_end_matches('.').to_owned();
         return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(StaticAbility::deck_construction_rule_text(display).into()),
+            LineAst::StaticAbility(StaticAbility::deck_construction_rule(rule, display).into()),
             chosen_option,
         );
     }

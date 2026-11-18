@@ -2766,28 +2766,8 @@ impl GameState {
     ) -> Vec<Vec<crate::mana::ManaSymbol>> {
         use crate::mana::ManaSymbol;
 
-        let x_value = cost.payment_x_value(x_value);
-        let mut pips = Vec::new();
-        for pip in cost.pips() {
-            if pip.len() == 1 {
-                match pip[0] {
-                    ManaSymbol::Generic(amount) => {
-                        pips.extend((0..amount).map(|_| vec![ManaSymbol::Generic(1)]));
-                        continue;
-                    }
-                    ManaSymbol::X => {
-                        pips.extend((0..x_value).map(|_| vec![ManaSymbol::Generic(1)]));
-                        continue;
-                    }
-                    ManaSymbol::Black if allow_black_life => {
-                        pips.push(vec![ManaSymbol::Black, ManaSymbol::Life(2)]);
-                        continue;
-                    }
-                    _ => {}
-                }
-            }
-            pips.push(pip.clone());
-        }
+        let mut pips =
+            crate::mana::unit_payment_pips(cost, cost.payment_x_value(x_value), allow_black_life);
         pips.sort_by_key(|pip| {
             if pip.iter().any(|symbol| matches!(symbol, ManaSymbol::Snow)) {
                 0u8

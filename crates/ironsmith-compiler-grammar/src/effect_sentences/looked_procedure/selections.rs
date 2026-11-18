@@ -14,7 +14,7 @@ use super::super::sequence_rules::generic_subject_verb_sequences::ordered_contro
     looked_card_choice_filter_branches, parse_cast_from_among_looked_cards_action,
     parse_counted_from_looked_cards_action,
 };
-use super::{ViewStyle, ViewedGroup, it, remainder_owner};
+use super::{ViewStyle, ViewedGroup, it};
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, LibraryActionAst, ObjectChoiceEffectAst, ObjectFilter,
@@ -314,7 +314,7 @@ pub(super) fn select(
             }
             if let Some(put) = &pending.put {
                 group.selected = Some(put.tag.clone());
-                group.remainder_player = remainder_owner(group.owner);
+                group.remainder_player = group.owner.in_followup();
             }
             if let Some(both) = &pending.both {
                 group.selected = Some(helper_tag_for_tokens(&both.tokens, "kept").into());
@@ -476,12 +476,12 @@ fn spell_put_from_among(
     if tail_words.ends_with(&["then", "shuffle"]) {
         group.effects.push(EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
-            remainder_owner(group.owner),
+            group.owner.in_followup(),
             SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ));
     }
     group.selected = Some(chosen_tag);
-    group.remainder_player = remainder_owner(group.owner);
+    group.remainder_player = group.owner.in_followup();
     true
 }
 
