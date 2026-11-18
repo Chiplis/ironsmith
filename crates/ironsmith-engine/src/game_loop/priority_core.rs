@@ -297,6 +297,22 @@ pub fn priority_analysis_bounded_proof_budget() -> usize {
     BOUNDED_PROOF_BUDGET.with(|value| value.get())
 }
 
+thread_local! {
+    static PROVEN_OFFERS_ONLY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Players (one bit per player index) whose budgeted bounded menu holds only
+/// proven offers. A person can cancel a payment prompt that opened unfunded;
+/// an automated player that answers the same prompt the same way cannot get
+/// out of it, so it is not shown an offer whose payment was not found.
+pub fn set_priority_analysis_proven_offers_only(players: u64) {
+    PROVEN_OFFERS_ONLY.with(|value| value.set(players));
+}
+
+pub fn priority_analysis_proven_offers_only() -> u64 {
+    PROVEN_OFFERS_ONLY.with(|value| value.get())
+}
+
 /// Whether announcing `action` shows other players a card they could not see:
 /// an ability activated from hand (cycling), a face-down permanent turned up,
 /// a card opened from blind exile.
@@ -322,9 +338,10 @@ fn announcement_reveals_hidden_information(game: &GameState, action: &LegalActio
 /// search, as a candidate does in the browser's deferred menu, limited to
 /// `budget` units. A source whose search finishes keeps exactly the actions it
 /// proved. One whose search does not finish keeps its unproven offers: their
-/// payment prompt opens unfunded and can be cancelled. The exception is an
+/// payment prompt opens unfunded and can be cancelled. The exceptions are an
 /// offer that reveals hidden information as it is announced, which cannot be
-/// taken back and so is made only with its proof.
+/// taken back, and any offer to a player marked proven-only: those are made
+/// only with their proof.
 fn proven_bounded_menu(
     game: &GameState,
     player: PlayerId,
@@ -375,10 +392,15 @@ fn proven_bounded_menu(
             settled.push(source);
         }
     }
+    let proven_only = u32::try_from(player.index())
+        .ok()
+        .and_then(|index| 1u64.checked_shl(index))
+        .is_some_and(|bit| priority_analysis_proven_offers_only() & bit != 0);
     actions.retain(|action| {
         !needs_proof(action)
             || proven.contains(action)
-            || (!settled.contains(&legal_action_source(action))
+            || (!proven_only
+                && !settled.contains(&legal_action_source(action))
                 && !announcement_reveals_hidden_information(game, action))
     });
     Ok(actions)

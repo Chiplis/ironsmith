@@ -568,23 +568,35 @@ fn manabrew_match_setup(input: &ManabrewMatchConfigInput) -> MatchSetupInput {
 struct ManabrewMenuPolicy {
     bounded: bool,
     proof_budget: usize,
+    proven_only: u64,
 }
 
 /// Payment-search units a menu may spend per card proving what it offers: the
 /// cap the browser's deferred menu gives a candidate. A card that needs more
-/// stays offered, and its payment prompt may then open unfunded.
+/// stays offered to a person, whose payment prompt may then open unfunded.
 const MANABREW_MENU_PROOF_BUDGET: usize = 128;
 
 impl ManabrewMenuPolicy {
-    fn enter() -> Self {
+    /// `humans[i]` says whether seat `i` is played by a person. A bot answers
+    /// a prompt it was refused the same way again, so it is offered only what
+    /// was proven payable.
+    fn enter(humans: &[bool]) -> Self {
         let previous = Self {
             bounded: ironsmith::game_loop::priority_analysis_bounded(),
             proof_budget: ironsmith::game_loop::priority_analysis_bounded_proof_budget(),
+            proven_only: ironsmith::game_loop::priority_analysis_proven_offers_only(),
         };
+        let bots = humans
+            .iter()
+            .enumerate()
+            .take(64)
+            .filter(|(_, human)| !**human)
+            .fold(0u64, |mask, (seat, _)| mask | (1 << seat));
         ironsmith::game_loop::set_priority_analysis_bounded(true);
         ironsmith::game_loop::set_priority_analysis_bounded_proof_budget(
             MANABREW_MENU_PROOF_BUDGET,
         );
+        ironsmith::game_loop::set_priority_analysis_proven_offers_only(bots);
         previous
     }
 }
@@ -593,6 +605,7 @@ impl Drop for ManabrewMenuPolicy {
     fn drop(&mut self) {
         ironsmith::game_loop::set_priority_analysis_bounded(self.bounded);
         ironsmith::game_loop::set_priority_analysis_bounded_proof_budget(self.proof_budget);
+        ironsmith::game_loop::set_priority_analysis_proven_offers_only(self.proven_only);
     }
 }
 
@@ -4011,7 +4024,6 @@ impl WasmGame {
 
     #[wasm_bindgen(js_name = startManabrewMatch)]
     pub fn start_manabrew_match(&mut self, config: JsValue) -> Result<JsValue, JsValue> {
-        let _menu_policy = ManabrewMenuPolicy::enter();
         let input: ManabrewMatchConfigInput =
             serde_wasm_bindgen::from_value(config).map_err(|error| {
                 JsValue::from_str(&format!("invalid Manabrew match config: {error}"))
@@ -4022,6 +4034,15 @@ impl WasmGame {
         if let Some(issue) = Self::manabrew_printed_stat_issues(&input).first() {
             return Err(JsValue::from_str(&issue.error));
         }
+        // The seats are known before the first menu is built.
+        self.manabrew_human_players = if input.human_players.len() == input.player_names.len() {
+            input.human_players.clone()
+        } else {
+            (0..input.player_names.len())
+                .map(|index| !input.bot_players.contains(&(index as u8)))
+                .collect()
+        };
+        let _menu_policy = ManabrewMenuPolicy::enter(&self.manabrew_human_players);
         self.register_manabrew_deck_sources_input(&input.decks);
         let setup = manabrew_match_setup(&input);
         let seed = setup.seed;
@@ -4031,13 +4052,6 @@ impl WasmGame {
             .game_id
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| format!("ironsmith-{seed:016x}"));
-        self.manabrew_human_players = if input.human_players.len() == input.player_names.len() {
-            input.human_players
-        } else {
-            (0..input.player_names.len())
-                .map(|index| !input.bot_players.contains(&(index as u8)))
-                .collect()
-        };
         self.manabrew_next_prompt_id = 1;
         self.manabrew_open_prompt = None;
         Ok(result)
@@ -4046,7 +4060,7 @@ impl WasmGame {
     /// Build a typed player-specific view. Passing no viewer produces a spectator-safe public view.
     #[wasm_bindgen(js_name = manabrewView)]
     pub fn manabrew_view(&mut self, viewer: Option<u8>) -> Result<JsValue, JsValue> {
-        let _menu_policy = ManabrewMenuPolicy::enter();
+        let _menu_policy = ManabrewMenuPolicy::enter(&self.manabrew_human_players);
         let viewer = match viewer {
             Some(viewer) => match self.manabrew_player(viewer) {
                 Ok(player) => Some(player),
@@ -4081,7 +4095,7 @@ impl WasmGame {
         prompt_id: u32,
         output: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let _menu_policy = ManabrewMenuPolicy::enter();
+        let _menu_policy = ManabrewMenuPolicy::enter(&self.manabrew_human_players);
         let player = match self.manabrew_player(player) {
             Ok(player) => player,
             Err(error) => {
@@ -4178,7 +4192,7 @@ impl WasmGame {
         player: u8,
         directive: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let _menu_policy = ManabrewMenuPolicy::enter();
+        let _menu_policy = ManabrewMenuPolicy::enter(&self.manabrew_human_players);
         let player_id = match self.manabrew_player(player) {
             Ok(player) => player,
             Err(error) => {
