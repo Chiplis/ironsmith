@@ -40,7 +40,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Baloth Prime"
+          "name": "Baloth Prime",
+          "resolve": true
         },
         {
           "op": "activateAbility",

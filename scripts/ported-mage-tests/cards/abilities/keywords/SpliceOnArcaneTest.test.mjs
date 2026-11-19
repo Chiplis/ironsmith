@@ -103,6 +103,16 @@ registerPortedMageTests({
           "name": "Silvercoat Lion",
           "ability": "Haste",
           "expected": true
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "options": [
+            ""
+          ],
+          "exact": true
         }
       ]
     },
@@ -210,6 +220,16 @@ registerPortedMageTests({
           "player": 0,
           "name": "Mountain",
           "count": 0
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "options": [
+            ""
+          ],
+          "exact": true
         }
       ]
     },
@@ -365,6 +385,16 @@ registerPortedMageTests({
           "name": "Silvercoat Lion",
           "ability": "Haste",
           "expected": true
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "options": [
+            ""
+          ],
+          "exact": true
         }
       ]
     },
@@ -378,44 +408,63 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
           "name": "Forest",
-          "count": 2
+          "count": 2,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
           "name": "Swamp",
-          "count": 8
+          "count": 8,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": 0,
           "name": "Nourishing Shoal",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": 0,
-          "name": "Goryo's Vengeance",
-          "count": 1
+          "name": "Goryo's Vengeance@splice",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "name": "Goryo's Vengeance@response",
+          "count": 1,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "GRAVEYARD",
-          "player": 0,
           "name": "Griselbrand",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Nourishing Shoal"
+          "op": "setOptionChoices",
+          "description": "Choose casting method for Nourishing Shoal",
+          "choices": [
+            "Normal: {X}{G}{G}"
+          ],
+          "kind": "options",
+          "player": 0
+        },
+        {
+          "op": "setObjectChoices",
+          "description": "Reveal cards to splice onto Nourishing Shoal, in resolution order",
+          "choices": [
+            {
+              "alias": "@splice"
+            }
+          ],
+          "player": 0
         },
         {
           "op": "setChoice",
@@ -423,14 +472,36 @@ registerPortedMageTests({
           "value": "X=3"
         },
         {
-          "op": "setChoice",
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": true
+          "name": "Nourishing Shoal",
+          "target": {
+            "groups": [
+              [
+                "Griselbrand"
+              ]
+            ]
+          },
+          "holdStack": true
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Griselbrand"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Nourishing Shoal",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Griselbrand",
+          "targetCount": 1,
+          "xValue": 3
+        },
+        {
+          "op": "setObjectChoices",
+          "description": "Reveal cards to splice onto Goryo's Vengeance, in resolution order",
+          "choices": [],
+          "player": 0
         },
         {
           "op": "castSpell",
@@ -438,15 +509,14 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Goryo's Vengeance",
-          "target": "Griselbrand"
+          "target": "Griselbrand",
+          "holdStack": true,
+          "objectAlias": "@response"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -456,6 +526,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Goryo's Vengeance",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
           "player": 0,
           "name": "Goryo's Vengeance",
           "count": 1
@@ -476,8 +552,7 @@ registerPortedMageTests({
           "player": 1,
           "life": 20
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

@@ -20,6 +20,8 @@ scripts/__pycache__*
 !/crates/ironsmith-compiled-artifact/fixtures/v3.json
 !/crates/ironsmith-compiled-artifact/fixtures/v19-duration-player.json
 !/crates/ironsmith-compiled-artifact/fixtures/v19-relative-boundaries.json
+!/crates/ironsmith-compiled-artifact/fixtures/v20-next-turn-combat-duration.json
+!/crates/ironsmith-compiled-artifact/fixtures/v20-added-combat-trigger.json
 !/web/ui/package.json
 !/web/ui/tests/card-frame-regression-cases.json
 !/tools/deck-catalog/package.json

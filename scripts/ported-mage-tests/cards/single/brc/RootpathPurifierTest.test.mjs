@@ -220,6 +220,22 @@ registerPortedMageTests({
               "expected": true
             }
           ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "hand",
+            "player": 0,
+            "name": "Tree of Tales"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "supertype",
+              "value": "Basic",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -291,6 +307,22 @@ registerPortedMageTests({
           "player": 0,
           "name": "Murder",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 0,
+            "name": "Tree of Tales"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "supertype",
+              "value": "Basic",
+              "expected": false
+            }
+          ]
         }
       ]
     }

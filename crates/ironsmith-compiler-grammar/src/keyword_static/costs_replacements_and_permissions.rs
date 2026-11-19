@@ -3158,7 +3158,9 @@ pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
             filter.card_types.contains(&CardType::Land)
                 || filter.any_of.iter().any(includes_land)
         }
-        if !explicit_creature_type && includes_land(&filter) {
+        let source_is_named_as_land =
+            parser_token_word_refs(fact.subject_tokens) == ["this", "land"];
+        if !explicit_creature_type && (source_is_named_as_land || includes_land(&filter)) {
             return Ok(Some(vec![StaticAbility::add_chosen_basic_land_type(
                 filter,
                 render_token_slice(tokens),

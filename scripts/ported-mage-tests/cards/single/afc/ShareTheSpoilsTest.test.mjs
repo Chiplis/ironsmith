@@ -30,8 +30,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -65,6 +64,12 @@ registerPortedMageTests({
           "player": "playerD",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -128,6 +133,12 @@ registerPortedMageTests({
           "player": "playerD",
           "count": 0
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -219,8 +230,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "concede",
@@ -307,8 +317,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
@@ -408,8 +417,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -421,8 +429,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -474,11 +481,22 @@ registerPortedMageTests({
           "player": "playerD",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
       "name": "playLandOnOwnTurn",
       "operations": [
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
         {
           "op": "addCard",
           "zone": "HAND",
@@ -518,17 +536,47 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Tana, the Bloodsower",
+          "count": 1
+        },
+        {
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Exotic Orchard",
+            "Reliquary Tower"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Share the Spoils"
+          "name": "Share the Spoils",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Share the Spoils",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Exotic Orchard",
+          "count": 1
         },
         {
           "op": "playLand",
@@ -540,8 +588,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -593,6 +640,12 @@ registerPortedMageTests({
           "player": "playerD",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -646,8 +699,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPlayableAbility",
@@ -714,6 +766,12 @@ registerPortedMageTests({
           "player": 0,
           "count": 0
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -874,6 +932,12 @@ registerPortedMageTests({
           "player": "playerD",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -948,8 +1012,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -1038,6 +1101,12 @@ registerPortedMageTests({
           "player": "playerD",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -1098,8 +1167,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -1121,8 +1189,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPlayableAbility",
@@ -1181,6 +1248,12 @@ registerPortedMageTests({
           "player": 0,
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -1241,8 +1314,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -1264,8 +1336,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -1277,8 +1348,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPlayableAbility",
@@ -1337,11 +1407,22 @@ registerPortedMageTests({
           "player": 0,
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
       "name": "checkExileFromCorrectDeck",
       "operations": [
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
         {
           "op": "addCard",
           "zone": "HAND",
@@ -1381,17 +1462,47 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Reliquary Tower",
+          "count": 1
+        },
+        {
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Exotic Orchard",
+            "Lightning Bolt"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Share the Spoils"
+          "name": "Share the Spoils",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Share the Spoils",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Exotic Orchard",
+          "count": 1
         },
         {
           "op": "playLand",
@@ -1403,8 +1514,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": "playerD"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -1421,7 +1531,8 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Exotic Orchard",
-          "count": 1
+          "count": 1,
+          "player": 3
         },
         {
           "op": "assertExileCount",
@@ -1443,6 +1554,12 @@ registerPortedMageTests({
           "player": "playerD",
           "count": 2
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

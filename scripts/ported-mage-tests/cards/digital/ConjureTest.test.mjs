@@ -87,7 +87,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Wingsteed Trainer"
+          "name": "Wingsteed Trainer",
+          "resolve": true
         },
         {
           "op": "castSpell",

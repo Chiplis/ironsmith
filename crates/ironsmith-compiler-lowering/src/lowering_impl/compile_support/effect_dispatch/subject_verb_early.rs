@@ -1345,8 +1345,11 @@ pub(super) fn compile_subject_verb_early(
             let (mut effects, choices) =
                 compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                     let player = subject.into_player_filter();
-                    let mut effect = if cloak { ironsmith_core::ManifestTopCardOfLibraryEffect::cloak(player) }
-                        else { ironsmith_core::ManifestTopCardOfLibraryEffect::new(player) };
+                    let mut effect = if cloak { ironsmith_core::ManifestTopCardOfLibraryEffect::cloak(player.clone()) }
+                        else { ironsmith_core::ManifestTopCardOfLibraryEffect::new(player.clone()) };
+                    if role == SubjectRole::Actor {
+                        effect.controller = Some(player);
+                    }
                     effect.descriptive = descriptive;
                     Effect::new(effect)
                 })?;

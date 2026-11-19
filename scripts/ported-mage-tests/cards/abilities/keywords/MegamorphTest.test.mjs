@@ -54,6 +54,22 @@ registerPortedMageTests({
           "name": "Aerie Bowmasters",
           "power": 4,
           "toughness": 5
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Aerie Bowmasters",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "green",
+              "expected": true
+            }
+          ]
         }
       ]
     }

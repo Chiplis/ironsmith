@@ -40,7 +40,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip {4}",
-          "target": "Elite Vanguard"
+          "target": "Elite Vanguard",
+          "source": "Heavy Arbalest"
         },
         {
           "op": "waitStackResolved",
@@ -54,7 +55,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: {this} deals 2 damage",
-          "target": 1
+          "target": 1,
+          "source": "Elite Vanguard"
         },
         {
           "op": "setStopAt",
@@ -73,6 +75,19 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 18
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Heavy Arbalest",
+          "target": "Elite Vanguard",
+          "expected": true
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "tapped": true
         }
       ]
     },
@@ -113,7 +128,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip {4}",
-          "target": "Elite Vanguard"
+          "target": "Elite Vanguard",
+          "source": "Heavy Arbalest"
         },
         {
           "op": "waitStackResolved",
@@ -127,7 +143,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: {this} deals 2 damage",
-          "target": 1
+          "target": 1,
+          "source": "Elite Vanguard"
         },
         {
           "op": "waitStackResolved",
@@ -141,7 +158,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip {4}",
-          "target": "Llanowar Elves"
+          "target": "Llanowar Elves",
+          "source": "Heavy Arbalest"
         },
         {
           "op": "setStopAt",
@@ -160,6 +178,26 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 18
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Heavy Arbalest",
+          "target": "Elite Vanguard",
+          "expected": false
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "tapped": false
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Heavy Arbalest",
+          "target": "Llanowar Elves",
+          "expected": true
         }
       ]
     }

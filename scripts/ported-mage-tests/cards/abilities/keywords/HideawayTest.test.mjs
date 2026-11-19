@@ -178,6 +178,21 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Mosswort Bridge\", true)"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Ulamog, the Ceaseless Hunger",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "faceDown",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -480,6 +495,12 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Windbrisk Heights\", true)"
+        },
+        {
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "landsPlayedThisTurn",
+          "expected": 1
         }
       ]
     },
@@ -604,6 +625,12 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Windbrisk Heights\", true)"
+        },
+        {
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "landsPlayedThisTurn",
+          "expected": 2
         }
       ]
     },
@@ -1167,6 +1194,12 @@ registerPortedMageTests({
           "op": "assertExileCount",
           "player": 0,
           "count": 1
+        },
+        {
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "landsPlayedThisTurn",
+          "expected": 1
         }
       ]
     },
@@ -1316,6 +1349,12 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Windbrisk Heights\", true)"
+        },
+        {
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "landsPlayedThisTurn",
+          "expected": 2
         }
       ]
     },

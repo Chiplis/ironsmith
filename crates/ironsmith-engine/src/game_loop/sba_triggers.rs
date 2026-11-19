@@ -1944,14 +1944,14 @@ fn add_triggering_object_tag(
                     .and_then(|_| game.source_departure_snapshot(object_id).cloned())
             })
     {
-        tagged_objects
-            .entry(crate::tag::TagKey::from("__it__"))
-            .or_default()
-            .push(snapshot.clone());
-        tagged_objects
-            .entry(crate::tag::TagKey::from("triggering"))
-            .or_default()
-            .push(snapshot);
+        // Event matching may already have captured this participant. A
+        // reference to the triggering object must include it only once.
+        for tag in ["__it__", "triggering"] {
+            let participants = tagged_objects.entry(crate::tag::TagKey::from(tag)).or_default();
+            if !participants.iter().any(|participant| participant.object_id == snapshot.object_id) {
+                participants.push(snapshot.clone());
+            }
+        }
     }
 }
 

@@ -199,7 +199,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Darksteel Relic"
+          "name": "Darksteel Relic",
+          "resolve": true
         },
         {
           "op": "castSpell",

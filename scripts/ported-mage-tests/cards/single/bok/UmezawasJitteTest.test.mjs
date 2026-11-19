@@ -47,7 +47,37 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Spiked Baloth"
+          "target": "Spiked Baloth",
+          "source": "Umezawa's Jitte"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Umezawa's Jitte",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Spiked Baloth"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Spiked Baloth"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 1
+            }
+          ]
         },
         {
           "op": "attack",
@@ -71,14 +101,25 @@ registerPortedMageTests({
           "attacker": "Spiked Baloth"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "X=1"
+          "kind": "distribution",
+          "description": "Assign 4 combat damage from Spiked Baloth (assign exactly 4 total)",
+          "choices": [
+            "Memnite",
+            "Darksteel Myr",
+            "Bob",
+            "Bob"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "X=1"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Umezawa's Jitte",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeChoices": true
         },
         {
           "op": "setStrictChooseMode",

@@ -32,7 +32,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Coveted Falcon using Disguise"
+          "name": "Coveted Falcon using Disguise",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -129,7 +130,9 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "player": null,
+          "once": true
         },
         {
           "op": "assertPermanentCount",
@@ -249,7 +252,9 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "player": null,
+          "once": true
         },
         {
           "op": "assertPermanentCount",
@@ -369,7 +374,9 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "player": null,
+          "once": true
         },
         {
           "op": "assertPermanentCount",
@@ -654,21 +661,26 @@ registerPortedMageTests({
           "name": "Coveted Falcon using Disguise"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                1
+              ],
+              [
+                "Guardian Beast",
+                "Darksteel Relic"
+              ]
+            ]
+          }
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{1}{U}: Turn this face-down permanent face up."
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "true ? \"Guardian Beast^Darksteel Relic\" : \"Darksteel Relic^Guardian Beast\""
         },
         {
           "op": "setStrictChooseMode",
@@ -698,9 +710,14 @@ registerPortedMageTests({
           "op": "assertHandCount",
           "player": 0,
           "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Darksteel Relic",
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "test_GiveGuardianBeastAndArtifactsB",
@@ -741,21 +758,26 @@ registerPortedMageTests({
           "name": "Coveted Falcon using Disguise"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": {
+            "groups": [
+              [
+                1
+              ],
+              [
+                "Darksteel Relic",
+                "Guardian Beast"
+              ]
+            ]
+          }
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{1}{U}: Turn this face-down permanent face up."
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "false ? \"Guardian Beast^Darksteel Relic\" : \"Darksteel Relic^Guardian Beast\""
         },
         {
           "op": "setStrictChooseMode",
@@ -785,9 +807,14 @@ registerPortedMageTests({
           "op": "assertHandCount",
           "player": 0,
           "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Darksteel Relic",
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

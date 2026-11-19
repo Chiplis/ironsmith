@@ -139,7 +139,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Izzet Charm"
+          "name": "Izzet Charm",
+          "holdStack": true
         },
         {
           "op": "setModeChoice",
@@ -147,12 +148,47 @@ registerPortedMageTests({
           "value": "3"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Izzet Charm",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Possibility Storm",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Remand",
-          "target": "Izzet Charm"
+          "target": "Izzet Charm",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Remand",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Izzet Charm",
+          "targetCount": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Possibility Storm",
+          "count": 2,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -194,8 +230,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Silvercoat Lion\", true)"
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "tapped": true,
+          "count": 1
         },
         {
           "op": "assertHandCount",

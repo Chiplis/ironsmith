@@ -105,6 +105,22 @@ registerPortedMageTests({
           "player": 0,
           "name": "Hold the Gates",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Heliod, God of the Sun"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            }
+          ]
         }
       ]
     }

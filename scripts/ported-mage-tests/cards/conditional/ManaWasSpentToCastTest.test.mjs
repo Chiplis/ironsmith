@@ -749,7 +749,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Strike It Rich"
+          "name": "Strike It Rich",
+          "resolve": true
         },
         {
           "op": "activateManaAbility",
@@ -1016,7 +1017,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Pyretic Ritual"
+          "name": "Pyretic Ritual",
+          "resolve": true
         },
         {
           "op": "castSpell",

@@ -36,6 +36,7 @@ pub enum NumericKeywordShape {
 pub enum ManifestPlayerShape {
     You,
     ThatPlayerOrTargetController,
+    ThatPlayerActs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -720,13 +721,13 @@ fn parse_manifest_cards_from_hand<'a>(
 fn parse_manifest_top_that_player<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<KeywordMechanicShape<'a>> {
-    alt((
+    let player = alt((
         primitives::phrase(&[
             "manifest", "the", "top", "card", "of", "that", "player's", "library",
-        ]),
+        ]).value(ManifestPlayerShape::ThatPlayerOrTargetController),
         primitives::phrase(&[
             "manifest", "the", "top", "card", "of", "that", "players", "library",
-        ]),
+        ]).value(ManifestPlayerShape::ThatPlayerOrTargetController),
         primitives::phrase(&[
             "its",
             "controller",
@@ -737,7 +738,7 @@ fn parse_manifest_top_that_player<'a>(
             "of",
             "their",
             "library",
-        ]),
+        ]).value(ManifestPlayerShape::ThatPlayerActs),
         primitives::phrase(&[
             "that",
             "player",
@@ -748,24 +749,24 @@ fn parse_manifest_top_that_player<'a>(
             "of",
             "their",
             "library",
-        ]),
+        ]).value(ManifestPlayerShape::ThatPlayerActs),
     ))
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::ManifestTop {
-        player: ManifestPlayerShape::ThatPlayerOrTargetController,
+        player,
         count: 1,
     })
 }
 
 fn parse_cloak_top_that_player<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
-    alt((
+    let player = alt((
         primitives::phrase(&[
             "cloak", "the", "top", "card", "of", "that", "player's", "library",
-        ]),
+        ]).value(ManifestPlayerShape::ThatPlayerOrTargetController),
         primitives::phrase(&[
             "cloak", "the", "top", "card", "of", "that", "players", "library",
-        ]),
+        ]).value(ManifestPlayerShape::ThatPlayerOrTargetController),
         primitives::phrase(&[
             "its",
             "controller",
@@ -776,16 +777,14 @@ fn parse_cloak_top_that_player<'a>(input: &mut LexStream<'a>) -> WResult<Keyword
             "of",
             "their",
             "library",
-        ]),
+        ]).value(ManifestPlayerShape::ThatPlayerActs),
         primitives::phrase(&[
             "that", "player", "cloaks", "the", "top", "card", "of", "their", "library",
-        ]),
+        ]).value(ManifestPlayerShape::ThatPlayerActs),
     ))
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
-    Ok(KeywordMechanicShape::CloakTop {
-        player: ManifestPlayerShape::ThatPlayerOrTargetController,
-    })
+    Ok(KeywordMechanicShape::CloakTop { player })
 }
 
 fn parse_populate<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {

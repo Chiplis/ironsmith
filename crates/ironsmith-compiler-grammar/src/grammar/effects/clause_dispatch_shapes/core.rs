@@ -210,7 +210,11 @@ fn map_pump_duration(duration: leaf::LeafDurationPhrase) -> Option<Until> {
     match duration {
         leaf::LeafDurationPhrase::UntilEndOfTurn => Some(Until::EndOfTurn),
         leaf::LeafDurationPhrase::UntilYourNextTurn => Some(Until::YourNextTurn),
+        leaf::LeafDurationPhrase::UntilYourNextUpkeep => Some(Until::YourNextUpkeep),
         leaf::LeafDurationPhrase::UntilEndOfCombat => Some(Until::EndOfCombat),
+        leaf::LeafDurationPhrase::UntilEndOfCombatOnYourNextTurn => {
+            Some(Until::EndOfCombatOnYourNextTurn)
+        }
         _ => None,
     }
 }

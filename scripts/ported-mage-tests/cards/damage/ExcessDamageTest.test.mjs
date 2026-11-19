@@ -325,7 +325,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Gideon Jura"
+          "target": "Gideon Jura",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -497,7 +498,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Myr Superion"
+          "target": "Myr Superion",
+          "resolve": true
         },
         {
           "op": "attack",

@@ -153,25 +153,41 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 1,
-          "value": true
+          "value": "Swamp"
+        },
+        {
+          "op": "useOpeningHandAction",
+          "player": 1,
+          "name": "Gemstone Caverns"
         },
         {
           "op": "setChoice",
           "player": 1,
-          "value": "Swamp"
+          "value": "White"
         },
         {
           "op": "activateManaAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "{T}: Add",
+          "ability": "Add",
+          "count": 1,
+          "source": "Gemstone Caverns"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "Gemstone Caverns",
+          "counter": "LUCK",
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "value": "White"
+          "amount": 2,
+          "colors": "W"
         },
         {
           "op": "castSpell",
@@ -200,7 +216,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Gemstone Caverns",
           "counter": "LUCK",
           "count": 1
@@ -217,8 +233,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Gemstone Caverns\", true)"
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Gemstone Caverns",
+          "tapped": true,
+          "count": 1
         }
       ]
     },
@@ -263,25 +282,41 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 1,
-          "value": true
+          "value": "Swamp"
+        },
+        {
+          "op": "useOpeningHandAction",
+          "player": 1,
+          "name": "Gemstone Caverns"
         },
         {
           "op": "setChoice",
           "player": 1,
-          "value": "Swamp"
+          "value": "White"
         },
         {
           "op": "activateManaAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "{T}: Add {C}",
+          "ability": "Add",
+          "count": 1,
+          "source": "Gemstone Caverns"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "Gemstone Caverns",
+          "counter": "LUCK",
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertManaPool",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "value": "White"
+          "amount": 1,
+          "colors": "W"
         },
         {
           "op": "castSpell",
@@ -310,7 +345,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 1,
           "name": "Gemstone Caverns",
           "counter": "LUCK",
           "count": 1
@@ -322,8 +357,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Gemstone Caverns\", true)"
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Gemstone Caverns",
+          "tapped": true,
+          "count": 1
         }
       ]
     },

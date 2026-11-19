@@ -133,6 +133,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "source": "Osseous Sticktwister",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "setChoice",
           "player": 1,
           "value": true
@@ -140,12 +148,17 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 1,
-          "value": false
+          "value": "Discard a card"
         },
         {
           "op": "setChoice",
           "player": 1,
           "value": "Priest of Titania"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
         },
         {
           "op": "setStopAt",

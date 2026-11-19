@@ -96,15 +96,45 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "UPKEEP",
           "player": 0,
+          "source": "Enraging Licid",
           "ability": "{R},",
           "target": "Pillarfield Ox"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Enraging Licid",
+          "target": "Pillarfield Ox",
+          "expected": true
+        },
+        {
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Pillarfield Ox",
+          "ability": "Haste",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "source": "Enraging Licid",
           "ability": "{R}: End"
+        },
+        {
+          "op": "assertNoAction",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "kind": "special_action",
+          "label": "End",
+          "source": "Enraging Licid"
         },
         {
           "op": "setStopAt",
@@ -115,33 +145,35 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertActionsCount(playerA, 0)"
-        },
-        {
-          "op": "assertAbility",
+          "op": "assertKeywordCount",
           "player": 0,
           "name": "Pillarfield Ox",
           "ability": "Haste",
-          "expected": false
+          "count": 0
         },
         {
-          "op": "assertAbility",
+          "op": "assertType",
           "player": 0,
           "name": "Enraging Licid",
-          "ability": "ColoredManaSymbol.R",
-          "expected": true
+          "cardType": "CREATURE",
+          "extra": "true"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Enraging Licid\", CardType.ENCHANTMENT, false)"
+          "op": "assertType",
+          "player": 0,
+          "name": "Enraging Licid",
+          "cardType": "ENCHANTMENT",
+          "extra": "false"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Enraging Licid\", CardType.CREATURE, true)"
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Enraging Licid",
+          "kind": "activated",
+          "textPattern": "becomes an Aura",
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore: Test player can't activate special actions yet"
+      ]
     },
     {
       "name": "EnchantedCreatureDiesTest",

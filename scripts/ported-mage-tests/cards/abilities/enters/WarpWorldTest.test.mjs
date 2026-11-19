@@ -21,6 +21,11 @@ registerPortedMageTests({
           "count": 8
         },
         {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,

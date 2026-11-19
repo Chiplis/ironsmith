@@ -412,15 +412,39 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "DECLARE_ATTACKERS",
-          "player": 1
+          "source": "Craig Boone, Novac Guard",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Indomitable Ancients"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Craig Boone, Novac Guard",
+          "counter": "quest",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Craig Boone, Novac Guard",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Indomitable Ancients"
         },
         {
           "op": "setChoice",
@@ -433,7 +457,49 @@ registerPortedMageTests({
           "phase": "DECLARE_ATTACKERS",
           "player": 1,
           "name": "Doom Blade",
-          "target": "Craig Boone, Novac Guard"
+          "target": "Craig Boone, Novac Guard",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Doom Blade",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Craig Boone, Novac Guard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Craig Boone, Novac Guard",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Craig Boone, Novac Guard",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Indomitable Ancients"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Indomitable Ancients",
+          "damage": 0
         },
         {
           "op": "setStopAt",
@@ -442,10 +508,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, \"Indomitable Ancients\", 0)"
         },
         {
           "op": "assertLife",

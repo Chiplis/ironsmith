@@ -1463,8 +1463,11 @@ pub(crate) fn stack_entry_execution_context<'a>(
     // Captures are owned by this exact granted ability, independently of
     // any other grant on the same permanent. Refresh only the sampled IDs;
     // absence/new incarnation never widens into source-wide linked cards.
-    if let Some(program) = &entry.ability_effects {
+    if let Some(program) = &entry.ability_effects
+        && !program.captured_object_references.is_empty()
+    {
         let named_copy_tags = named_copy_cast_tags(program);
+        let attachment_hosts = crate::effects::helpers::attachment_host_reference_tags(program);
         for (tag, ids) in &program.captured_object_references {
             let mut snapshots = ids.iter().filter_map(|id|game.object(*id).filter(|object|game.find_object_by_stable_id(object.stable_id)==Some(*id)))
                 .map(|object| ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game))
@@ -1475,6 +1478,13 @@ pub(crate) fn stack_entry_execution_context<'a>(
             // information; the copy is made from its printed definition.
             if snapshots.is_empty() && named_copy_tags.contains(tag) {
                 snapshots = ids.iter().filter_map(|id| game.source_last_known_snapshot(*id).cloned()).collect();
+            }
+            if attachment_hosts.contains(tag) {
+                snapshots.extend(ids.iter().filter_map(|id| {
+                    game.source_departure_snapshot(*id)
+                        .filter(|snapshot| snapshot.zone == crate::zone::Zone::Battlefield)
+                        .cloned()
+                }));
             }
             ctx.set_tagged_objects(tag.clone(), snapshots);
             ctx.exact_object_reference_tags.insert(tag.clone());

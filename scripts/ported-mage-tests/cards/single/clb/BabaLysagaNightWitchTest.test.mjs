@@ -25,18 +25,59 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "source": "Mishra's Factory",
+          "ability": "Add {C}"
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "UPKEEP",
           "player": 0,
-          "ability": "{1}: {this} becomes a 2/2 Assembly-Worker artifact creature until end of turn. It's still a land."
+          "ability": "becomes a 2/2",
+          "source": "Mishra's Factory"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Mishra's Factory"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Artifact",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}, Sacrifice up to three permanents: If there "
+          "ability": "Sacrifice up to three",
+          "source": "Baba Lysaga, Night Witch"
         },
         {
           "op": "setChoice",
@@ -105,7 +146,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}, Sacrifice up to three permanents: If there "
+          "ability": "Sacrifice up to three",
+          "source": "Baba Lysaga, Night Witch"
         },
         {
           "op": "setChoice",

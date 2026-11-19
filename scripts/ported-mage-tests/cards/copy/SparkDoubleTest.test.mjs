@@ -470,7 +470,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Spark Double",
+          "name": "Spark Double@spark",
           "count": 1
         },
         {
@@ -490,21 +490,20 @@ registerPortedMageTests({
           "extra": "true"
         },
         {
+          "op": "setOptionChoices",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Gideon Blackblade"
+          ],
+          "kind": "options",
+          "player": 0
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Spark Double"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Gideon Blackblade"
         },
         {
           "op": "setStrictChooseMode",
@@ -523,9 +522,44 @@ registerPortedMageTests({
           "player": 0,
           "name": "Gideon Blackblade",
           "count": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@spark"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Planeswalker",
+              "expected": true
+            },
+            {
+              "property": "supertype",
+              "value": "Legendary",
+              "expected": false
+            },
+            {
+              "property": "counter",
+              "value": "loyalty",
+              "expected": 5
+            },
+            {
+              "property": "counter",
+              "value": "+1/+1",
+              "expected": 1
+            }
+          ]
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "test_CopyOfSparksCopy_BySpell",
@@ -598,8 +632,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -630,8 +663,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -735,8 +767,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -761,8 +792,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

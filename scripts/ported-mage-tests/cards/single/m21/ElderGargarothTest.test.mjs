@@ -63,9 +63,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
+          "kind": "options",
           "player": 0,
-          "value": "2"
+          "choices": [
+            "You gain 3 life."
+          ],
+          "description": "Choose a mode"
         },
         {
           "op": "setStrictChooseMode",
@@ -104,9 +108,13 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
+          "kind": "options",
           "player": 0,
-          "value": "3"
+          "choices": [
+            "Draw a card."
+          ],
+          "description": "Choose a mode"
         },
         {
           "op": "setStrictChooseMode",

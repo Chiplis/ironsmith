@@ -3356,7 +3356,13 @@ fn pending_cast_base_mana_cost(
         );
     }
     if pending.base_mana_cost_waived {
-        return Some(crate::mana::ManaCost::new());
+        return Some(crate::decision::spell_mana_cost_with_base(
+            game,
+            pending.caster,
+            game.object(pending.spell_id)?,
+            crate::mana::ManaCost::new(),
+            pending.from_zone,
+        ));
     }
     get_spell_mana_cost(
         game,

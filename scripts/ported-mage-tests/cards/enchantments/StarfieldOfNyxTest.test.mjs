@@ -53,7 +53,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Starfield of Nyx"
+          "name": "Starfield of Nyx",
+          "resolve": true
         },
         {
           "op": "castSpell",

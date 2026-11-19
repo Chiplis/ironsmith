@@ -60,11 +60,18 @@ fn inspect(effect: &Effect, producers: &mut usize, compatible: &mut usize, consu
 /// static, and independently authored native bodies keep absent metadata and
 /// cannot use the scalar reader. Run after all program-rebuilding finalizers.
 pub(super) fn bind_scalar_linked_exile(definition: &mut CardDefinition) {
-    // Until reference analysis exports explicit multi-pair relationships, a
-    // third ability scope (including a static producer or a second pair) is
-    // not evidence that these two abilities are linked. Nonmana costs may
-    // themselves exile objects and need a separate typed producer inventory.
-    if definition.abilities.len() != 2 || definition.abilities.iter().any(|ability| {
+    use ironsmith_core::tag::TagKeyWalk;
+    // A chapter can refer to the sole exile producer in an earlier chapter.
+    // Other definitions still require the unambiguous two-ability shape.
+    let saga_chapters = definition.abilities.iter().map(|ability| {
+        let AbilityKind::Triggered(ability) = &ability.kind else { return None };
+        let ironsmith_core::TriggerKind::SagaChapter { chapters } = &ability.trigger.kind
+            else { return None };
+        Some(chapters.as_slice())
+    }).collect::<Option<Vec<_>>>();
+    let is_saga = saga_chapters.is_some();
+    if (!is_saga && definition.abilities.len() != 2)
+        || definition.abilities.iter().any(|ability| {
         match &ability.kind {
             AbilityKind::Triggered(_) => false,
             AbilityKind::Activated(ability) => ability.mana_cost.has_non_mana_costs()
@@ -75,6 +82,7 @@ pub(super) fn bind_scalar_linked_exile(definition: &mut CardDefinition) {
     }) { return; }
     let mut producer = None;
     let mut consumers = Vec::new();
+    let mut has_scalar_consumer = false;
     let mut total = 0;
     let mut compatible_total = 0;
     for (slot, ability) in definition.abilities.iter().enumerate() {
@@ -86,10 +94,29 @@ pub(super) fn bind_scalar_linked_exile(definition: &mut CardDefinition) {
         total += count;
         compatible_total += compatible;
         if compatible == 1 { producer = Some(slot); }
+        has_scalar_consumer |= consumes;
+        if is_saga {
+            program.for_each_tag_key(&mut |tag| {
+                consumes |= tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG;
+            });
+        }
         if consumes { consumers.push(slot); }
     }
     let Some(producer) = producer else { return; };
-    if total != 1 || compatible_total != 1 || consumers.len() != 1 || consumers[0] == producer { return; }
+    if total != 1 || compatible_total != 1 || !has_scalar_consumer || consumers.contains(&producer) {
+        return;
+    }
+    if let Some(chapters) = saga_chapters {
+        let Some(last_producer_chapter) = chapters[producer].iter().max() else { return };
+        if consumers.iter().any(|slot| {
+            chapters[*slot].is_empty()
+                || chapters[*slot].iter().any(|chapter| chapter <= last_producer_chapter)
+        }) {
+            return;
+        }
+    } else if consumers.len() != 1 {
+        return;
+    }
     // Hash typed executable definitions, never a caller's local card number,
     // physical host or Debug rendering. Pair compatibility above uses only
     // typed effects and values; presentation fields never decide membership.
@@ -105,8 +132,55 @@ pub(super) fn bind_scalar_linked_exile(definition: &mut CardDefinition) {
             AbilityKind::Activated(ability) => &mut ability.effects,
             _ => continue,
         };
+        if is_saga && slot != producer {
+            route_remaining_linked_exile_to_hand(effects);
+        }
         effects.linked_exile_pair = Some(pair);
     }
+}
+
+fn route_remaining_linked_exile_to_hand(program: &mut ResolutionProgram) {
+    use crate::effect::{Condition, EffectPredicate};
+    use crate::effects::{ConditionalEffect, IfEffect, MayEffect, MoveToZoneEffect, WithIdEffect};
+    use crate::zone::Zone;
+
+    let [segment] = program.segments.as_slice() else { return };
+    let [instruction] = segment.default_effects.as_slice() else { return };
+    let Some(branch) = instruction.downcast_ref::<ConditionalEffect>() else { return };
+    let Condition::TaggedObjectMatches(tag, _) = &branch.condition else { return };
+    if tag.as_str() != ironsmith_core::SOURCE_EXILED_TAG || !segment.self_replacements.is_empty() {
+        return;
+    }
+    let [choice, otherwise] = branch.if_true.as_slice() else { return };
+    let Some(choice) = choice.downcast_ref::<WithIdEffect>() else { return };
+    let Some(optional_move) = choice.effect.downcast_ref::<MayEffect<Effect>>() else { return };
+    let [move_effect] = optional_move.effects.as_slice() else { return };
+    let Some(to_battlefield) = crate::compile_support::effect_without_result_tags(move_effect)
+        .downcast_ref::<MoveToZoneEffect>() else { return };
+    let Some(otherwise) = otherwise.downcast_ref::<IfEffect>() else { return };
+    let [fallback] = otherwise.then.as_slice() else { return };
+    let Some(to_hand) = fallback.downcast_ref::<MoveToZoneEffect>() else { return };
+    let [when_no_creature] = branch.if_false.as_slice() else { return };
+    if optional_move.pay_as_cost
+        || otherwise.condition != choice.id
+        || otherwise.predicate != EffectPredicate::WasDeclined
+        || otherwise.per_player_result
+        || !otherwise.else_.is_empty()
+        || when_no_creature.downcast_ref::<MoveToZoneEffect>() != Some(to_hand)
+        || to_battlefield.zone != Zone::Battlefield
+        || to_hand.zone != Zone::Hand
+        || to_battlefield.target != ChooseSpec::Tagged(tag.clone())
+        || to_hand.target != to_battlefield.target
+    {
+        return;
+    }
+    // A single decision covers the linked set. The fallback reads the same
+    // pair again after the move, so only cards still in exile go to hand.
+    let mut branch = branch.clone();
+    branch.if_true[1] = fallback.clone();
+    let mut segment = segment.clone();
+    segment.default_effects[0] = Effect::new(branch);
+    program.replace_segments(vec![segment]);
 }
 
 /// Sentence boundaries and sequential composition do not create another

@@ -542,6 +542,7 @@ pub struct ManifestDreadEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManifestTopCardOfLibraryEffect {
     pub player: PlayerFilter,
+    pub controller: Option<PlayerFilter>,
     pub cloak: bool,
     pub descriptive: bool,
 }
@@ -556,6 +557,7 @@ impl ManifestTopCardOfLibraryEffect {
         Self {
             descriptive: false,
             player,
+            controller: None,
             cloak: false,
         }
     }
@@ -564,6 +566,7 @@ impl ManifestTopCardOfLibraryEffect {
         Self {
             descriptive: false,
             player,
+            controller: None,
             cloak: true,
         }
     }
@@ -1043,14 +1046,14 @@ fn manifest_selected_card(
     select: impl FnOnce(
         &mut GameState,
         &mut ExecutionContext,
-    ) -> Result<Option<ObjectId>, ExecutionError>,
+    ) -> Result<Option<(ObjectId, PlayerId)>, ExecutionError>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     super::execute_transaction(
         game,
         ctx,
         || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         |game, ctx| {
-            let Some(card) = select(game, ctx)? else {
+            let Some((card, controller)) = select(game, ctx)? else {
                 return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                     EffectOutcome::count(0),
                 ));
@@ -1059,7 +1062,7 @@ fn manifest_selected_card(
                 game,
                 ctx,
                 card,
-                ctx.controller,
+                controller,
                 cloak,
                 (!descriptive).then_some(if cloak {
                     KeywordActionKind::Cloak
@@ -1088,7 +1091,10 @@ impl EffectExecutor for ManifestTopCardOfLibraryEffect {
                 return Ok(None);
             };
 
-            Ok(Some(card_id))
+            let controller = self.controller.as_ref().map_or(Ok(ctx.controller), |player| {
+                crate::effects::helpers::resolve_player_filter(game, player, ctx)
+            })?;
+            Ok(Some((card_id, controller)))
         })
     }
 }
@@ -1137,7 +1143,7 @@ impl EffectExecutor for ManifestCardFromHandEffect {
                 return Ok(None);
             };
 
-            Ok(Some(card_id))
+            Ok(Some((card_id, ctx.controller)))
         })
     }
 }

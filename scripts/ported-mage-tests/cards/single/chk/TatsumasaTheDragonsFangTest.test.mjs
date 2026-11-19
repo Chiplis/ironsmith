@@ -17,7 +17,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Tatsumasa, the Dragon's Fang",
+          "name": "Tatsumasa, the Dragon's Fang@fang",
           "count": 1
         },
         {
@@ -32,7 +32,33 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{6}"
+          "ability": "Create a 5/5 blue Dragon Spirit creature token",
+          "source": "Tatsumasa, the Dragon's Fang"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tatsumasa, the Dragon's Fang",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@fang",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Dragon Spirit Token",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -40,11 +66,46 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Murder",
+          "holdStack": true,
           "target": "Dragon Spirit Token"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Murder",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Dragon Spirit Token"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Tatsumasa, the Dragon's Fang",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Dragon Spirit Token",
+          "count": 0
         },
         {
           "op": "setStopAt",
@@ -57,7 +118,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "Tatsumasa, the Dragon's Fang",
+          "name": "@fang",
           "count": 1
         },
         {

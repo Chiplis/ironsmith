@@ -914,6 +914,13 @@ registerPortedMageTests({
           "name": "Plains",
           "tapped": true,
           "count": 5
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Battlefield Thaumaturge",
+          "ability": "Hexproof",
+          "expected": true
         }
       ]
     }

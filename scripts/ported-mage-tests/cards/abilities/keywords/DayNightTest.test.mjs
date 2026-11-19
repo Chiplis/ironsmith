@@ -861,6 +861,13 @@ registerPortedMageTests({
           "player": 0,
           "name": "Leeching Lurker",
           "count": 0
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Curse of Leeches",
+          "attachedPlayer": 1,
+          "expected": true
         }
       ]
     },
@@ -1075,6 +1082,13 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 0,
           "life": 21
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Curse of Leeches",
+          "attachedPlayer": 1,
+          "expected": true
         }
       ]
     },
@@ -1272,7 +1286,7 @@ registerPortedMageTests({
           "op": "execute"
         }
       ],
-      "skip": "upstream @Ignore"
+      "skip": "XMage profiling driver forces day and night directly for 300 turns and checks only the final turn number"
     }
   ]
 });

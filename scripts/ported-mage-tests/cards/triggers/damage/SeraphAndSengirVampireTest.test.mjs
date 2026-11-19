@@ -39,6 +39,29 @@ registerPortedMageTests({
           "attacker": "Seraph"
         },
         {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Seraph",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeChoices": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Sengir Vampire",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeChoices": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
           "op": "setStopAt",
           "turn": 4,
           "phase": "POSTCOMBAT_MAIN"

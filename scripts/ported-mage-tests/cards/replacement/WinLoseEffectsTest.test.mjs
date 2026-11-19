@@ -50,6 +50,11 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "count": 0
         }
       ]
     },

@@ -46,7 +46,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "UPKEEP",
           "player": 1,
-          "name": "Quicken"
+          "name": "Quicken",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -140,7 +141,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "UPKEEP",
           "player": 1,
-          "name": "Quicken"
+          "name": "Quicken",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -234,7 +236,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "UPKEEP",
           "player": 1,
-          "name": "Quicken"
+          "name": "Quicken",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -328,7 +331,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "UPKEEP",
           "player": 1,
-          "name": "Quicken"
+          "name": "Quicken",
+          "resolve": true
         },
         {
           "op": "castSpell",

@@ -64,6 +64,30 @@ registerPortedMageTests({
           "name": "Mephidross Vampire",
           "power": 4,
           "toughness": 5
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 1,
+          "name": "Mephidross Vampire",
+          "kind": "triggered",
+          "textPattern": "\\bdeals damage to a creature\\b",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Mephidross Vampire"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "+1/+1",
+              "expected": 1
+            }
+          ]
         }
       ]
     }

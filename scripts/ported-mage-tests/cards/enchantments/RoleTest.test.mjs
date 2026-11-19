@@ -449,7 +449,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "castSpell",
@@ -539,7 +540,46 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Monstrous Rage",
-          "target": "Azorius First-Wing"
+          "target": "Azorius First-Wing",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Monstrous Rage",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Azorius First-Wing"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Nexus Wardens",
+          "count": 0,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Azorius First-Wing",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 0
+            }
+          ]
         },
         {
           "op": "setStrictChooseMode",

@@ -413,7 +413,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Glorious Anthem"
+          "name": "Glorious Anthem",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -426,7 +427,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Cloudshift",
-          "target": "Demon of Fate's Design"
+          "target": "Demon of Fate's Design",
+          "resolve": true
         },
         {
           "op": "castSpell",

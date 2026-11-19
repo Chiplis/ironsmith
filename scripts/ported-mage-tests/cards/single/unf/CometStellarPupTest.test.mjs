@@ -232,9 +232,13 @@ registerPortedMageTests({
           "source": "setDieRollResult(playerA, 4)"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "PlayerB"
+          "op": "setOptionChoices",
+          "description": "Choose damage recipient",
+          "choices": [
+            "Bob"
+          ],
+          "kind": "options",
+          "player": 0
         },
         {
           "op": "activateAbility",
@@ -277,8 +281,7 @@ registerPortedMageTests({
           "counter": "LOYALTY",
           "count": 3
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testRoll5",

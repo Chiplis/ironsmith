@@ -1044,6 +1044,9 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::BeginningOfCombat(player) => {
                 Self::beginning_of_combat(player)
             }
+            ironsmith_core::DelayedTriggerSpec::BeginningOfAddedCombat => {
+                Self::new(super::BeginningOfAddedCombatTrigger { order: None })
+            }
             ironsmith_core::DelayedTriggerSpec::BeginningOfMainPhase(player) => {
                 Self::beginning_of_main_phase(player)
             }

@@ -122,7 +122,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "activateAbility",

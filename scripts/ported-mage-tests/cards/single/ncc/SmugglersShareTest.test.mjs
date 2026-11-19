@@ -451,7 +451,8 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Treasure Token",
-          "count": 2
+          "count": 2,
+          "player": 3
         },
         {
           "op": "assertHandCount",

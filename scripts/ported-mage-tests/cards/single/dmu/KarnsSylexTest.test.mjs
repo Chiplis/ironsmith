@@ -129,12 +129,45 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Thran"
+          "value": "Mountain"
         },
         {
-          "op": "setChoice",
+          "op": "assertEachObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Thran Portal"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Mountain",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "value": "Mountain"
+          "source": "Thran Portal",
+          "ability": "Add {R}",
+          "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "R",
+          "amount": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 19
         },
         {
           "op": "castSpell",
@@ -142,7 +175,21 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": 1
+          "target": 1,
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

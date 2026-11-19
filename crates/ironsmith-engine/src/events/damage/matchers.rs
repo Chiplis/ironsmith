@@ -40,6 +40,10 @@ impl DamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -79,6 +83,10 @@ pub struct PreventableDamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageToPlayerMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -124,6 +132,10 @@ impl DamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToObjectMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -172,6 +184,10 @@ impl DamageToPlayerOrObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -210,6 +226,10 @@ impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
 pub struct CombatDamageMatcher;
 
 impl ReplacementMatcher for CombatDamageMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -245,6 +265,10 @@ impl PreventableCombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableCombatDamageToObjectMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -297,6 +321,10 @@ impl PreventableNoncombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -341,6 +369,10 @@ impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
 pub struct NoncombatDamageMatcher;
 
 impl ReplacementMatcher for NoncombatDamageMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -416,6 +448,10 @@ impl DamageFromSourceMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -459,6 +495,10 @@ impl DamageFromSourceToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToPlayerMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -553,6 +593,10 @@ impl DamageFromSourceToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToObjectMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -611,6 +655,10 @@ impl Default for DamageFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -662,6 +710,10 @@ impl Default for DamageToOrFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToOrFromSelfMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -713,6 +765,10 @@ impl Default for DamageFromSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfCombatMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -827,6 +883,10 @@ impl PreventableDamageConstraintMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageConstraintMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -919,6 +979,10 @@ impl Default for DamageToSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -965,6 +1029,10 @@ impl Default for DamageToAttachedObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToAttachedObjectMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -1035,6 +1103,10 @@ impl DamageToSelfConstraintMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfConstraintMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -1101,6 +1173,10 @@ impl Default for DamageToSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfCombatMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -1155,6 +1231,10 @@ impl DamageToOtherCreatureYouControlMatcher {
 }
 
 impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
@@ -1234,6 +1314,10 @@ impl DamageToSelfFromSourceFilterMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage

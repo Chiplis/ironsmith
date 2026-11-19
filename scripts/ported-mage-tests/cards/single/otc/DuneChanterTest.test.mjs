@@ -60,7 +60,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Dune Chanter"
+          "name": "Dune Chanter",
+          "resolve": true
         },
         {
           "op": "setStopAt",

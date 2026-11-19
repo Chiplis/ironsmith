@@ -162,12 +162,50 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Cast Hopeful Eidolon using bestow",
+          "name": "Hopeful Eidolon using bestow",
+          "holdStack": true,
           "target": "Brine Comber"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Hopeful Eidolon",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Brine Comber"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Brine Comber",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Brine Comber"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 1
+            }
+          ]
         },
         {
           "op": "setStopAt",

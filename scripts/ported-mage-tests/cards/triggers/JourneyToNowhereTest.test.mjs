@@ -200,12 +200,37 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Journey to Nowhere"
+          "name": "Journey to Nowhere",
+          "holdStack": true
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Silvercoat Lion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Journey to Nowhere",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Journey to Nowhere",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Silvercoat Lion",
+          "completeTargets": true
         },
         {
           "op": "castSpell",
@@ -214,14 +239,75 @@ registerPortedMageTests({
           "player": 0,
           "name": "Boomerang",
           "target": "Journey to Nowhere",
-          "waitForStack": "WHILE_NOT_ON_STACK"
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Boomerang",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Journey to Nowhere"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Journey to Nowhere"
+          "name": "Journey to Nowhere",
+          "holdStack": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Pillarfield Ox"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Journey to Nowhere",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Journey to Nowhere",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Pillarfield Ox",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Pillarfield Ox",
+          "count": 1
         },
         {
           "op": "castSpell",

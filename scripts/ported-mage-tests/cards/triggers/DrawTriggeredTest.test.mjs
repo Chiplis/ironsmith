@@ -124,29 +124,49 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Draw two cards",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": false
+          "kind": "boolean",
+          "description": "Draw two cards",
+          "choices": [
+            "No"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": false
+          "kind": "boolean",
+          "description": "Draw two cards",
+          "choices": [
+            "No"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
+          "kind": "boolean",
+          "description": "Draw two cards",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": false
+          "kind": "boolean",
+          "description": "Draw two cards",
+          "choices": [
+            "No"
+          ]
         },
         {
           "op": "setStopAt",

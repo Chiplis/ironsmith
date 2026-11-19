@@ -57,6 +57,16 @@ registerPortedMageTests({
           "player": 1,
           "name": "Oracle of Mul Daya",
           "count": 1
+        },
+        {
+          "op": "assertTopCardRevealed",
+          "player": 0,
+          "expected": false
+        },
+        {
+          "op": "assertTopCardRevealed",
+          "player": 1,
+          "expected": true
         }
       ]
     },
@@ -133,6 +143,16 @@ registerPortedMageTests({
           "player": 1,
           "name": "Oracle of Mul Daya",
           "count": 1
+        },
+        {
+          "op": "assertTopCardRevealed",
+          "player": 0,
+          "expected": false
+        },
+        {
+          "op": "assertTopCardRevealed",
+          "player": 1,
+          "expected": true
         }
       ]
     },

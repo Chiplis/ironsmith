@@ -156,7 +156,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Akoum Warrior",
+          "name": "Akoum Warrior@warrior",
           "count": 1
         },
         {
@@ -164,14 +164,73 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ornithopter"
+          "name": "Ornithopter",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ornithopter",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Akoum Warrior"
+          "name": "Akoum Warrior",
+          "holdStack": true,
+          "objectAlias": "@warrior"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Akoum Warrior",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Taigam, Master Opportunist",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@warrior",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "alias": "@warrior"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "time",
+              "expected": 4
+            }
+          ]
         },
         {
           "op": "setChoice",
@@ -184,12 +243,14 @@ registerPortedMageTests({
           "value": "Play Akoum Teeth"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 9,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "UPKEEP"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 9,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -198,8 +259,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Akoum Teeth\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Akoum Teeth",
+          "tapped": true,
+          "count": 1
         }
       ]
     },
@@ -235,7 +299,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Akoum Warrior",
+          "name": "Akoum Warrior@warrior",
           "count": 1
         },
         {
@@ -243,7 +307,17 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Akoum Warrior"
+          "name": "Akoum Warrior",
+          "holdStack": true,
+          "objectAlias": "@warrior"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Akoum Warrior",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "castSpell",
@@ -251,7 +325,50 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Delay",
-          "target": "Akoum Warrior"
+          "holdStack": true,
+          "target": {
+            "groups": [
+              [
+                "@warrior"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Delay",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "@warrior"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@warrior",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 0,
+            "alias": "@warrior"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "time",
+              "expected": 3
+            }
+          ]
         },
         {
           "op": "setChoice",
@@ -264,12 +381,14 @@ registerPortedMageTests({
           "value": "Play Akoum Teeth"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 7,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "UPKEEP"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -278,8 +397,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Akoum Teeth\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Akoum Teeth",
+          "tapped": true,
+          "count": 1
         }
       ]
     },

@@ -50,6 +50,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "options": [
+            "{G}"
+          ],
+          "exact": true
+        },
+        {
           "op": "activateManaAbility",
           "turn": 3,
           "phase": "BEGIN_COMBAT",
@@ -133,6 +143,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "options": [
+            "{G}{G}{G}{G}"
+          ],
+          "exact": true
+        },
+        {
           "op": "activateManaAbility",
           "turn": 3,
           "phase": "BEGIN_COMBAT",
@@ -209,6 +229,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "options": [
+            "{G}{G}"
+          ],
+          "exact": true
+        },
+        {
           "op": "activateManaAbility",
           "turn": 3,
           "phase": "BEGIN_COMBAT",
@@ -247,6 +277,17 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "options": [
+            "{C}"
+          ],
+          "exact": true,
+          "prefundManaCosts": true
         },
         {
           "op": "activateManaAbility",
@@ -466,31 +507,84 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
           "name": "Deathrite Shaman",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "GRAVEYARD",
+          "name": "Mountain@land",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "assertManaOptions",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "options": [
+            ""
+          ],
+          "exact": true
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Add one mana of any color",
+          "choices": [
+            "Green"
+          ],
+          "kind": "colors",
+          "player": 0
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Deathrite Shaman",
+          "ability": "Exile target land card",
+          "target": {
+            "groups": [
+              [
+                "@land"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Deathrite Shaman",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "@land"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "WUBRGC",
+          "amount": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
           "player": 0,
           "name": "Mountain",
-          "count": 3
+          "count": 1
         },
         {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertManaOptions(\"{Any}\", manaOptions)"
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "TestEyeOfRamos",
@@ -545,6 +639,16 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "options": [
+            "{C}{C}{C}{C}{C}"
+          ],
+          "exact": true
         },
         {
           "op": "activateManaAbility",
@@ -757,6 +861,28 @@ registerPortedMageTests({
             "{Any}"
           ],
           "exact": true
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Pili-Pala"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Paradise Mantle",
+          "target": "Pili-Pala",
+          "expected": true
         }
       ]
     }

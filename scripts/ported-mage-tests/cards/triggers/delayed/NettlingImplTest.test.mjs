@@ -97,7 +97,22 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{T}: Choose",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "source": "Nettling Imp"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Nettling Imp",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -105,7 +120,42 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Pressure Point",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT",
+          "source": "Pressure Point",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1,
+          "tapped": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "END_TURN",
+          "source": "Nettling Imp",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "END_TURN"
         },
         {
           "op": "setStopAt",

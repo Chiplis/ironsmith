@@ -43,7 +43,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bond Beetle"
+          "name": "Bond Beetle",
+          "resolve": true
         },
         {
           "op": "addTarget",
@@ -133,7 +134,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bond Beetle"
+          "name": "Bond Beetle",
+          "resolve": true
         },
         {
           "op": "addTarget",
@@ -561,7 +563,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bond Beetle"
+          "name": "Bond Beetle",
+          "resolve": true
         },
         {
           "op": "addTarget",

@@ -62,6 +62,11 @@ registerPortedMageTests({
           "player": 0,
           "name": "Archangel's Light",
           "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "count": 77
         }
       ]
     }

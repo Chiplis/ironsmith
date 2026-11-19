@@ -39,7 +39,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tergrid's Lantern"
+          "name": "Tergrid's Lantern",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -125,7 +126,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tergrid's Lantern"
+          "name": "Tergrid's Lantern",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -219,7 +221,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Memnarch",
+          "name": "Memnarch@discard",
           "count": 1
         },
         {
@@ -227,34 +229,78 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tergrid's Lantern"
+          "name": "Tergrid's Lantern",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tergrid's Lantern",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Target player"
+          "source": "Tergrid's Lantern",
+          "ability": "Target player loses 3 life",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tergrid's Lantern",
+          "count": 1,
+          "abilityKind": "Activated",
+          "playerTarget": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "Yes"
+          "kind": "boolean",
+          "description": "Sacrifice a nonland permanent or Discard a card to prevent effect?",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": "No"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Discard a card"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 1,
-          "value": "Memnarch"
+          "choices": [
+            {
+              "alias": "@discard"
+            }
+          ],
+          "description": "Choose 1 card to discard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -271,7 +317,7 @@ registerPortedMageTests({
         {
           "op": "assertLife",
           "player": 1,
-          "life": "currentGame.getStartingLife()"
+          "life": 20
         },
         {
           "op": "assertPermanentCount",
@@ -282,13 +328,13 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 1,
-          "name": "Memnarch",
+          "name": "@discard",
           "count": 1
         },
         {
           "op": "assertHandCount",
           "player": 1,
-          "name": "Memnarch",
+          "name": "@discard",
           "count": 0
         }
       ]

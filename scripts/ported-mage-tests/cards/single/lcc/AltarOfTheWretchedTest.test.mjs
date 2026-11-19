@@ -69,7 +69,9 @@ registerPortedMageTests({
           "player": 0,
           "name": "Wretched Bonemass",
           "abilities": [
-            "abilities"
+            "Flying",
+            "Vigilance",
+            "Lifelink"
           ]
         }
       ]

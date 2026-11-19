@@ -56,6 +56,7 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::BeginningOfCombat(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfCombat(player.clone()),
         ),
+        TriggerSpec::BeginningOfAddedCombat => Ok(ironsmith_core::DelayedTriggerSpec::BeginningOfAddedCombat),
         TriggerSpec::BeginningOfPrecombatMain(player) => {
             Ok(ironsmith_core::DelayedTriggerSpec::BeginningOfPrecombatMainPhase(player.clone()))
         }

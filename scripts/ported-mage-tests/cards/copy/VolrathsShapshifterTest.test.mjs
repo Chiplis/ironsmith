@@ -54,6 +54,37 @@ registerPortedMageTests({
           "name": "Assault Griffin",
           "power": 3,
           "toughness": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Assault Griffin"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Griffin",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Assault Griffin",
+          "ability": "Flying",
+          "expected": true
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Assault Griffin",
+          "kind": "activated",
+          "textPattern": "\\bdiscard a card",
+          "count": 1
         }
       ]
     },
@@ -123,6 +154,30 @@ registerPortedMageTests({
           "name": "Volrath's Shapeshifter",
           "power": 0,
           "toughness": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Volrath's Shapeshifter"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Shapeshifter",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Volrath's Shapeshifter",
+          "kind": "activated",
+          "textPattern": "\\bdiscard a card",
+          "count": 1
         }
       ]
     },

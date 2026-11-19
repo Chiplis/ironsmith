@@ -67,14 +67,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Yawgmoth's Will"
+          "name": "Yawgmoth's Will",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Reviving Dose"
+          "name": "Reviving Dose",
+          "resolve": true
         },
         {
           "op": "castSpell",

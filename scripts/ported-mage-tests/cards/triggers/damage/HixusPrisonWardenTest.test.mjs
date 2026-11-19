@@ -167,6 +167,21 @@ registerPortedMageTests({
           "player": 1,
           "name": "Silvercoat Lion",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "summoningSick",
+              "expected": true
+            }
+          ]
         }
       ]
     }

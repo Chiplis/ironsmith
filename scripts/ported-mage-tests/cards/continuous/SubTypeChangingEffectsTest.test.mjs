@@ -187,6 +187,48 @@ registerPortedMageTests({
               "expected": false
             }
           ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -360,6 +402,27 @@ registerPortedMageTests({
               "property": "subtype",
               "value": "CAT",
               "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": false
             }
           ]
         }
@@ -567,6 +630,48 @@ registerPortedMageTests({
               "property": "subtype",
               "value": "CAT",
               "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": false
             }
           ]
         }
@@ -796,6 +901,69 @@ registerPortedMageTests({
               "property": "subtype",
               "value": "CAT",
               "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Beast Token"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Beast",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Wurm Token"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Wurm",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": false
             }
           ]
         }
@@ -1087,6 +1255,48 @@ registerPortedMageTests({
               "expected": false
             }
           ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -1281,6 +1491,48 @@ registerPortedMageTests({
             {
               "property": "subtype",
               "value": "ORC",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Orc",
               "expected": false
             }
           ]

@@ -40,6 +40,18 @@ pub fn base_trigger_functional_zones(trigger: &TriggerSpec) -> Vec<Zone> {
             qualified_zones(condition)
                 .unwrap_or_else(|| base_trigger_functional_zones(trigger))
         }
+        // CR 603.6c: a card's "put into a graveyard from anywhere" trigger
+        // is acquired on arrival, including when it came from the battlefield.
+        TriggerSpec::PutIntoGraveyard(filter) if filter.source => vec![Zone::Graveyard],
+        TriggerSpec::ZoneChange(change)
+            if change.to == Some(Zone::Graveyard)
+                && change.from.is_none()
+                && change.from_zones.is_none()
+                && change.from_excluded.is_none()
+                && (change.this || change.filter.as_ref().is_some_and(|filter| filter.source)) =>
+        {
+            vec![Zone::Graveyard]
+        }
         TriggerSpec::ZoneChange(ironsmith_core::trigger_model::ZoneChangeTrigger {
             this: true, from: Some(origin), ..
         }) => vec![*origin],

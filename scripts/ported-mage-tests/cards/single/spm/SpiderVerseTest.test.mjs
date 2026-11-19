@@ -47,49 +47,154 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-7"
+          "ability": "-7",
+          "source": "Ashiok, Nightmare Muse"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Lightning Bolt"
+          "kind": "boolean",
+          "description": "Cast a spell without paying its mana cost?",
+          "choices": [
+            "Yes"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Cast a spell without paying its mana cost?",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Cast a spell without paying its mana cost?",
+          "choices": [
+            "No"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Cast Lightning Bolt"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Copy it",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Perform the effect",
+          "choices": [
+            "Yes"
+          ]
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "playerD"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "target": {
+            "groups": [
+              [
+                3
+              ]
+            ]
+          }
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Bear Cub",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 3,
+          "life": 17
         },
         {
           "op": "activateAbility",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-7"
+          "ability": "-7",
+          "source": "Ashiok, Nightmare Muse"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "boolean",
+          "description": "Cast a spell without paying its mana cost?",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Copy it",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Bear Cub",
+            "player": 0,
+            "token": true
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Haste",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "attack",
@@ -121,6 +226,12 @@ registerPortedMageTests({
           "player": "playerC",
           "life": 18
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

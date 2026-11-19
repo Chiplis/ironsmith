@@ -38,8 +38,22 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
+          "name": "Mountain@first",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Mountain@second",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
           "name": "Mountain",
-          "count": 10
+          "count": 8
         },
         {
           "op": "activateAbility",
@@ -55,6 +69,49 @@ registerPortedMageTests({
           "player": 1,
           "attacker": "Primeval Titan",
           "defender": 0
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "boolean",
+          "description": "Search your library for up to two land cards, put them onto the battlefield tapped, then shuffle",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 1,
+          "description": "objects",
+          "choices": [
+            {
+              "alias": "@first"
+            },
+            {
+              "alias": "@second"
+            }
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Primeval Titan",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "controller": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Mountain",
+          "count": 2,
+          "tapped": true
         },
         {
           "op": "setStopAt",
@@ -97,6 +154,26 @@ registerPortedMageTests({
           "player": 0,
           "name": "Mountain",
           "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "cardType": "Land"
+          },
+          "count": 0,
+          "checks": []
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "cardType": "Land"
+          },
+          "count": 2,
+          "checks": []
         }
       ]
     }

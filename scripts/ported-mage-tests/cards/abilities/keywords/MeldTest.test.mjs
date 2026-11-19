@@ -334,14 +334,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bruna, the Fading Light"
+          "name": "Bruna, the Fading Light",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Silvercoat Lion"
+          "name": "Silvercoat Lion",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -718,7 +720,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bruna, the Fading Light"
+          "name": "Bruna, the Fading Light",
+          "resolve": true
         },
         {
           "op": "castSpell",

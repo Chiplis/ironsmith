@@ -31,7 +31,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Memnite",
+          "name": "Memnite@target",
           "count": 1
         },
         {
@@ -67,12 +67,60 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Banishment"
+          "name": "Banishment",
+          "holdStack": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Memnite"
+          "target": "@target"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Banishment",
+          "isSpell": true,
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Banishment",
+          "abilityKind": "Triggered",
+          "objectTarget": "Memnite",
+          "completeTargets": true,
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "@target",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 3,
+          "name": "Memnite",
+          "count": 5
+        },
+        {
+          "op": "assertExileCount",
+          "player": 2,
+          "name": "Memnite",
+          "count": 0
         },
         {
           "op": "setStopAt",
@@ -109,19 +157,30 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Memnite",
-          "count": 5
+          "count": 5,
+          "player": 2
         },
         {
           "op": "assertPermanentCount",
           "name": "Steel Overseer",
-          "count": 1
+          "count": 1,
+          "player": 2
         },
         {
           "op": "assertPermanentCount",
           "name": "Memnite",
-          "count": 0
+          "count": 0,
+          "player": 3
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "rangeOfInfluence": 1,
+      "deferredPriorityAnalysis": true
     },
     {
       "name": "testDestroyBanishment",
@@ -151,7 +210,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Memnite",
+          "name": "Memnite@target",
           "count": 1
         },
         {
@@ -187,12 +246,60 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Banishment"
+          "name": "Banishment",
+          "holdStack": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Memnite"
+          "target": "@target"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Banishment",
+          "isSpell": true,
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Banishment",
+          "abilityKind": "Triggered",
+          "objectTarget": "Memnite",
+          "completeTargets": true,
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "@target",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 3,
+          "name": "Memnite",
+          "count": 5
+        },
+        {
+          "op": "assertExileCount",
+          "player": 2,
+          "name": "Memnite",
+          "count": 0
         },
         {
           "op": "castSpell",
@@ -235,19 +342,30 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Memnite",
-          "count": 5
+          "count": 5,
+          "player": 2
         },
         {
           "op": "assertPermanentCount",
           "name": "Steel Overseer",
-          "count": 1
+          "count": 1,
+          "player": 2
         },
         {
           "op": "assertPermanentCount",
           "name": "Memnite",
-          "count": 5
+          "count": 5,
+          "player": 3
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "rangeOfInfluence": 1,
+      "deferredPriorityAnalysis": true
     }
   ]
 });

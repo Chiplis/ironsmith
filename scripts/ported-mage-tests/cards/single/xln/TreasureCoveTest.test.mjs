@@ -22,35 +22,89 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
+          "name": "Plateau",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
           "name": "Forging the Tyrite Sword",
           "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Forging the Tyrite Sword",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Forging the Tyrite Sword",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
         },
         {
-          "op": "assertHandCount",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "count": 0
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Forging the Tyrite Sword",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
+          "player": 0,
+          "name": "Treasure Token",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
+          "source": "Forging the Tyrite Sword",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": null,
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
           "name": "Treasure Token",
           "count": 2
         },
         {
           "op": "activateAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}, Sacrifice"
+          "source": "Treasure Cove",
+          "ability": "Draw a card"
         },
         {
           "op": "setChoice",
@@ -58,36 +112,29 @@ registerPortedMageTests({
           "value": "Treasure Token"
         },
         {
-          "op": "waitStackResolved",
-          "turn": 1,
+          "op": "assertStackObject",
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "source": "Treasure Cove",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertHandCount",
-          "player": 1,
-          "name": "PRECOMBAT_MAIN",
-          "count": 0
+          "player": 0,
+          "name": null,
+          "count": 2
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Treasure Token",
           "count": 1
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
         }
       ]
     }

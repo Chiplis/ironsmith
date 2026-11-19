@@ -140,11 +140,18 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 Some(copier.clone())
             }
         }
-        TriggerSpec::PlayerAttackDeclaration { grouping, .. } => {
-            let tag = if *grouping == ironsmith_core::trigger_model::PlayerAttackGrouping::Defender {
-                ironsmith_core::tag::ATTACK_DECLARATION_DEFENDER_TAG
-            } else {
-                ironsmith_core::tag::ATTACK_DECLARATION_ACTOR_TAG
+        TriggerSpec::PlayerAttackDeclaration { attacker, grouping, .. } => {
+            use ironsmith_core::trigger_model::PlayerAttackGrouping;
+
+            // In “you attack a player,” the defending player is the
+            // antecedent of “that player.” In “a player attacks you,” it
+            // is the attacking player.
+            let tag = match grouping {
+                PlayerAttackGrouping::Defender => ironsmith_core::tag::ATTACK_DECLARATION_DEFENDER_TAG,
+                PlayerAttackGrouping::Pair if *attacker == PlayerFilter::You => {
+                    ironsmith_core::tag::ATTACK_DECLARATION_DEFENDER_TAG
+                }
+                _ => ironsmith_core::tag::ATTACK_DECLARATION_ACTOR_TAG,
             };
             Some(PlayerFilter::TaggedPlayer(tag.into()))
         }
@@ -448,5 +455,37 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
             }
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ironsmith_core::trigger_model::PlayerAttackGrouping;
+
+    #[test]
+    fn an_attack_pair_refers_to_the_other_player() {
+        for (attacker, defender, referent) in [
+            (
+                PlayerFilter::You,
+                PlayerFilter::Any,
+                ironsmith_core::tag::ATTACK_DECLARATION_DEFENDER_TAG,
+            ),
+            (
+                PlayerFilter::Any,
+                PlayerFilter::You,
+                ironsmith_core::tag::ATTACK_DECLARATION_ACTOR_TAG,
+            ),
+        ] {
+            let trigger = TriggerSpec::PlayerAttackDeclaration {
+                attacker,
+                defender,
+                grouping: PlayerAttackGrouping::Pair,
+            };
+            assert_eq!(
+                inferred_trigger_player_filter(&trigger),
+                Some(PlayerFilter::TaggedPlayer(referent.into()))
+            );
+        }
     }
 }

@@ -63,8 +63,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: {this} deals",
-          "target": 1
+          "ability": "1 damage",
+          "target": 1,
+          "source": "Syr Carah, the Bold"
         },
         {
           "op": "waitStackResolved",
@@ -99,8 +100,9 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "{1}, {T}, Sacrifice",
-          "target": 0
+          "ability": "2 damage",
+          "target": 0,
+          "source": "Aeolipile"
         },
         {
           "op": "unsupported",
@@ -178,7 +180,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip {3}",
-          "target": "Syr Carah, the Bold"
+          "target": "Syr Carah, the Bold",
+          "source": "Illusionist's Bracers"
         },
         {
           "op": "waitStackResolved",
@@ -192,15 +195,17 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
-          "count": 0
+          "count": 0,
+          "seatIndependent": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: {this} deals",
-          "target": 1
+          "ability": "1 damage",
+          "target": 1,
+          "source": "Syr Carah, the Bold"
         },
         {
           "op": "setChoice",
@@ -223,7 +228,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Balduvian Bears",
-          "count": 2
+          "count": 2,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",

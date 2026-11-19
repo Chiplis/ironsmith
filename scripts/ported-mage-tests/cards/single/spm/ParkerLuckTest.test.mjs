@@ -37,12 +37,29 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "playerC"
+          "target": {
+            "groups": [
+              [
+                2,
+                3
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "playerD"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "source": "Parker Luck",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "targetCount": 2,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
         },
         {
           "op": "setStopAt",
@@ -72,6 +89,12 @@ registerPortedMageTests({
           "player": "playerD",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -106,12 +129,29 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "playerC"
+          "target": {
+            "groups": [
+              [
+                2,
+                3
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "playerD"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "source": "Parker Luck",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "targetCount": 2,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
         },
         {
           "op": "setStopAt",
@@ -131,6 +171,12 @@ registerPortedMageTests({
           "player": "playerD",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

@@ -51,7 +51,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Omo, Queen of Vesuva"
+          "name": "Omo, Queen of Vesuva",
+          "resolve": true
         },
         {
           "op": "addTarget",
@@ -94,7 +95,14 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Island",
-          "count": 3
+          "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island@everything",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -122,29 +130,101 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Omo, Queen of Vesuva"
+          "name": "Omo, Queen of Vesuva",
+          "holdStack": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Island"
+          "target": {
+            "groups": [
+              [
+                "@everything"
+              ],
+              []
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Omo, Queen of Vesuva",
+          "count": 1,
+          "isSpell": true
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Omo, Queen of Vesuva",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
           "player": 0,
-          "value": "Green"
+          "name": "@everything",
+          "count": 1,
+          "counter": "Everything"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@everything"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Forest",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Coiling Woodworm",
+          "power": 1,
+          "toughness": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "@everything",
+          "ability": "Add {G}",
+          "actionLabel": "Activate Island: {T}: Add {G}."
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Llanowar Elves"
+          "name": "Llanowar Elves",
+          "resolve": true
         },
         {
           "op": "setStrictChooseMode",
@@ -213,7 +293,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Omo, Queen of Vesuva"
+          "name": "Omo, Queen of Vesuva",
+          "resolve": true
         },
         {
           "op": "addTarget",

@@ -334,7 +334,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Painter's Servant"
+          "name": "Painter's Servant",
+          "resolve": true
         },
         {
           "op": "setChoice",

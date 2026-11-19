@@ -46,7 +46,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Widespread Panic"
+          "name": "Widespread Panic",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -126,7 +127,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Widespread Panic"
+          "name": "Widespread Panic",
+          "resolve": true
         },
         {
           "op": "castSpell",

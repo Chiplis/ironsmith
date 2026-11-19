@@ -371,8 +371,22 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Silvercoat Lion",
-          "count": 3
+          "name": "Silvercoat Lion@one",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Silvercoat Lion@two",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Silvercoat Lion@survivor",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -380,7 +394,81 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Animate Dead",
-          "target": "Dragonlord Atarka"
+          "target": "Dragonlord Atarka",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Animate Dead",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "@one"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "@two"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "distribution",
+          "description": "Divide 5 among the chosen targets (assign exactly 5 total)",
+          "choices": [
+            {
+              "description": "Silvercoat Lion",
+              "object": "@one"
+            },
+            {
+              "description": "Silvercoat Lion",
+              "object": "@one"
+            },
+            {
+              "description": "Silvercoat Lion",
+              "object": "@two"
+            },
+            {
+              "description": "Silvercoat Lion",
+              "object": "@two"
+            },
+            {
+              "description": "Silvercoat Lion",
+              "object": "@two"
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Dragonlord Atarka",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "targetCount": 2,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -407,6 +495,24 @@ registerPortedMageTests({
           "player": 1,
           "name": "Silvercoat Lion",
           "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "@one",
+          "count": 1,
+          "player": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "@two",
+          "count": 1,
+          "player": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "@survivor",
+          "count": 1,
+          "player": 1
         }
       ]
     },

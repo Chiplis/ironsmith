@@ -61,8 +61,25 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(cityOnFire, CardType.CREATURE, SubType.ELEMENTAL)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "City on Fire"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "CREATURE",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "ELEMENTAL",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
@@ -86,15 +103,33 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "City on Fire",
-          "ability": 1,
-          "expected": true
+          "kind": "triggered",
+          "textPattern": "deals combat damage to a player.*draw",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertType(thranDynamo, CardType.CREATURE, SubType.ELEMENTAL)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Thran Dynamo"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "CREATURE",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "ELEMENTAL",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
@@ -118,11 +153,12 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Thran Dynamo",
-          "ability": 1,
-          "expected": true
+          "kind": "triggered",
+          "textPattern": "deals combat damage to a player.*draw",
+          "count": 1
         }
       ]
     },
@@ -191,18 +227,52 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(ashaya, CardType.CREATURE, SubType.ELEMENTAL)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Ashaya, Soul of the Wild"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "CREATURE",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "ELEMENTAL",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(ashaya, CardType.LAND, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Ashaya, Soul of the Wild"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "LAND",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "FOREST",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertAbility",
           "player": 0,
           "name": "Ashaya, Soul of the Wild",
-          "ability": "new GreenManaAbility()",
+          "ability": "Add {G}",
           "expected": true
         },
         {
@@ -220,19 +290,54 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Ashaya, Soul of the Wild",
-          "ability": 1,
-          "expected": false
+          "kind": "triggered",
+          "textPattern": "deals combat damage to a player.*draw",
+          "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertType(cityOnFire, CardType.LAND, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "City on Fire"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "LAND",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "FOREST",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(cityOnFire, CardType.CREATURE, SubType.ELEMENTAL)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "City on Fire"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "CREATURE",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "ELEMENTAL",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertPowerToughness",
@@ -256,11 +361,12 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "City on Fire",
-          "ability": 1,
-          "expected": true
+          "kind": "triggered",
+          "textPattern": "deals combat damage to a player.*draw",
+          "count": 1
         }
       ]
     },
@@ -343,11 +449,12 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Tangleweave Armor",
-          "ability": 1,
-          "expected": false
+          "kind": "triggered",
+          "textPattern": "deals combat damage to a player.*draw",
+          "count": 0
         }
       ]
     },
@@ -449,11 +556,12 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Bear Umbra",
-          "ability": 1,
-          "expected": false
+          "kind": "triggered",
+          "textPattern": "deals combat damage to a player.*draw",
+          "count": 0
         }
       ]
     },
@@ -536,11 +644,12 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Aggravated Assault",
-          "ability": 1,
-          "expected": false
+          "kind": "triggered",
+          "textPattern": "deals combat damage to a player.*draw",
+          "count": 0
         }
       ]
     },
@@ -623,11 +732,12 @@ registerPortedMageTests({
           "expected": false
         },
         {
-          "op": "assertAbility",
+          "op": "assertAbilityKindCount",
           "player": 0,
           "name": "Abandoned Sarcophagus",
-          "ability": 1,
-          "expected": false
+          "kind": "triggered",
+          "textPattern": "deals combat damage to a player.*draw",
+          "count": 0
         }
       ]
     }

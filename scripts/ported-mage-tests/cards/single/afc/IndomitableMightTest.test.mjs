@@ -54,7 +54,22 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Indomitable Might",
-          "target": "Runeclaw Bear"
+          "target": "Runeclaw Bear",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Indomitable Might",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Runeclaw Bear"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPowerToughness",
@@ -94,9 +109,17 @@ registerPortedMageTests({
           "attacker": "Runeclaw Bear"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "distribution",
+          "description": "Assign 5 combat damage from Runeclaw Bear (assign exactly 5 total)",
+          "choices": [
+            "Bob",
+            "Bob",
+            "Bob",
+            "Bob",
+            "Bob"
+          ]
         },
         {
           "op": "setStrictChooseMode",
@@ -105,7 +128,7 @@ registerPortedMageTests({
         {
           "op": "setStopAt",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "execute"
@@ -121,20 +144,28 @@ registerPortedMageTests({
           "life": 15
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, bear, 1)"
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Runeclaw Bear",
+          "damage": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, centaur, 2)"
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Centaur Courser",
+          "damage": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, drake, 3)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Azure Drake",
+          "damage": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, crab, 0)"
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Fortress Crab",
+          "damage": 0
         }
       ]
     }

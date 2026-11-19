@@ -237,7 +237,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tergrid's Lantern"
+          "name": "Tergrid's Lantern",
+          "resolve": true
         },
         {
           "op": "activateAbility",

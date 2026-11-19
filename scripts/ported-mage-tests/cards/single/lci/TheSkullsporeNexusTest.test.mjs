@@ -57,7 +57,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Grave Titan"
+          "name": "Grave Titan",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -74,8 +75,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPowerToughness",

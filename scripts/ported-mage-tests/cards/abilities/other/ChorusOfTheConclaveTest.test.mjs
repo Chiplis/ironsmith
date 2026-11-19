@@ -135,7 +135,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Goblin Roughrider"
+          "name": "Goblin Roughrider",
+          "resolve": true
         },
         {
           "op": "setChoice",

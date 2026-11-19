@@ -1410,6 +1410,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::BeginningOfUpkeep(player) => Trigger::beginning_of_upkeep(player),
         TriggerSpec::BeginningOfDrawStep(player) => Trigger::beginning_of_draw_step(player),
         TriggerSpec::BeginningOfCombat(player) => Trigger::beginning_of_combat(player),
+        TriggerSpec::BeginningOfAddedCombat => {
+            unreachable!("added-combat starts are compiled as delayed triggers")
+        }
         TriggerSpec::EndOfCombat => Trigger::end_of_combat(),
         TriggerSpec::BeginningOfEndStep(player) => Trigger::beginning_of_end_step(player),
         TriggerSpec::BeginningOfTheEndStep => Trigger::beginning_of_the_end_step(),
@@ -1668,6 +1671,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
 
 pub fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTextError> {
     match trigger {
+        TriggerSpec::BeginningOfAddedCombat => Err(CardTextError::ParseError(
+            "the beginning of an added combat requires a delayed trigger".into(),
+        )),
         TriggerSpec::WithIntro { trigger, .. } => ensure_concrete_trigger_spec(trigger),
         TriggerSpec::ZoneChange(event)
             if event.this

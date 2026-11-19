@@ -46,7 +46,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Liliana, Death's Majesty"
+          "name": "Liliana, Death's Majesty",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -163,7 +164,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Liliana, Untouched by Death"
+          "name": "Liliana, Untouched by Death",
+          "resolve": true
         },
         {
           "op": "activateAbility",

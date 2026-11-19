@@ -47,7 +47,16 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": 1
+          "target": 1,
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "castSpell",
@@ -55,7 +64,15 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Deflecting Palm",
-          "target": "Lightning Bolt"
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Deflecting Palm",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "setChoice",
@@ -285,7 +302,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Lightning Bolt",
+          "name": "Lightning Bolt@bolt",
           "count": 1
         },
         {
@@ -298,7 +315,17 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Lightning Bolt",
-          "target": 0
+          "target": 0,
+          "holdStack": true,
+          "objectAlias": "@bolt"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "castSpell",
@@ -306,12 +333,45 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Deflecting Palm",
-          "target": "Lightning Bolt"
+          "holdStack": true
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Deflecting Palm",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Lightning Bolt"
+          "description": "Choose a source",
+          "choices": [
+            {
+              "alias": "@bolt"
+            }
+          ]
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "count": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "isSpell": true,
+          "count": 1
         },
         {
           "op": "addTarget",

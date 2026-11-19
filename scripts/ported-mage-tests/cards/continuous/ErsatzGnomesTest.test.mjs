@@ -32,15 +32,25 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Silvercoat Lion"
+          "name": "Silvercoat Lion",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Silvercoat Lion",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Target spell",
-          "target": "Silvercoat Lion"
+          "ability": "Target spell",
+          "target": "Silvercoat Lion",
+          "source": "Ersatz Gnomes"
         },
         {
           "op": "setStopAt",
@@ -59,6 +69,21 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Ersatz Gnomes\", true)"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Silvercoat Lion",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "colorCount",
+              "expected": 0
+            }
+          ]
         }
       ]
     },
@@ -105,15 +130,25 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Silvercoat Lion"
+          "name": "Silvercoat Lion",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Silvercoat Lion",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Target spell",
-          "target": "Silvercoat Lion"
+          "ability": "Target spell",
+          "target": "Silvercoat Lion",
+          "source": "Ersatz Gnomes"
         },
         {
           "op": "castSpell",
@@ -159,6 +194,26 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Ersatz Gnomes\", true)"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Silvercoat Lion",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "colorCount",
+              "expected": 1
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "white"
+            }
+          ]
         }
       ]
     },
@@ -213,15 +268,25 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Hopeful Eidolon using bestow",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Hopeful Eidolon",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Target spell",
-          "target": "Hopeful Eidolon"
+          "ability": "Target spell",
+          "target": "Hopeful Eidolon",
+          "source": "Ersatz Gnomes"
         },
         {
           "op": "setStopAt",
@@ -253,6 +318,21 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Ersatz Gnomes\", true)"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Hopeful Eidolon",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "colorCount",
+              "expected": 0
+            }
+          ]
         }
       ]
     },
@@ -299,15 +379,25 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Hopeful Eidolon"
+          "name": "Hopeful Eidolon",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Hopeful Eidolon",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Target spell",
-          "target": "Hopeful Eidolon"
+          "ability": "Target spell",
+          "target": "Hopeful Eidolon",
+          "source": "Ersatz Gnomes"
         },
         {
           "op": "castSpell",
@@ -353,6 +443,26 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(\"Ersatz Gnomes\", true)"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Hopeful Eidolon",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "colorCount",
+              "expected": 1
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "white"
+            }
+          ]
         }
       ]
     }

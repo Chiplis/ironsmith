@@ -1443,10 +1443,12 @@ pub fn hand_exile_filter_and_count(
     target: &TargetAst,
     ctx: &EffectLoweringContext,
 ) -> Result<Option<(ObjectFilter, ChoiceCount, Vec<Zone>)>, CardTextError> {
+    // This path chooses from a hand at resolution. Explicit targets go through
+    // generic target lowering so an activation announces and locks them in.
     let (filter, count) = match target {
-        TargetAst::Object(filter, _, _) => (filter, ChoiceCount::exactly(1)),
+        TargetAst::Object(filter, None, _) => (filter, ChoiceCount::exactly(1)),
         TargetAst::WithCount(inner, count) => match inner.as_ref() {
-            TargetAst::Object(filter, _, _) => (filter, *count),
+            TargetAst::Object(filter, None, _) => (filter, *count),
             _ => return Ok(None),
         },
         _ => return Ok(None),
@@ -1987,21 +1989,18 @@ fn compile_exchange_life_totals_effect(
     let subject1 = LoweredSubject::resolve_affected_player(player1, ctx, true, true, true)?;
     let subject2 = LoweredSubject::resolve_affected_player(player2, ctx, true, true, true)?;
 
-    let effect = Effect::exchange_life_totals(
-        subject1.clone_player_filter(),
-        subject2.clone_player_filter(),
-    );
+    let filter1 = subject1.clone_player_filter();
+    let filter2 = subject2.clone_player_filter();
     let mut choices = Vec::new();
 
-    if subject1.choices().len() == 1
-        && subject2.choices().len() == 1
-        && subject1.choices()[0].base() == subject2.choices()[0].base()
-        && subject1.choices()[0].is_target()
+    // Both participants are targets even when the reference frame reused
+    // the first participant's choice while resolving the second filter.
+    if let (PlayerFilter::Target(first), PlayerFilter::Target(second)) = (&filter1, &filter2)
+        && first == second
     {
         push_choice(
             &mut choices,
-            subject1.choices()[0]
-                .clone()
+            ChooseSpec::target(ChooseSpec::Player(first.as_ref().clone()))
                 .with_count(ChoiceCount::exactly(2)),
         );
     } else {
@@ -2014,6 +2013,7 @@ fn compile_exchange_life_totals_effect(
         }
     }
 
+    let effect = Effect::exchange_life_totals(filter1, filter2);
     let mut effects = Vec::new();
     if effect.target_spec().is_none() {
         for choice in &choices {

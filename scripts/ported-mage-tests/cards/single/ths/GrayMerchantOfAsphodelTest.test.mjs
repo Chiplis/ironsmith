@@ -105,7 +105,13 @@ registerPortedMageTests({
           "count": 2
         }
       ],
-      "rangeOfInfluence": 1
+      "rangeOfInfluence": 1,
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ]
     }
   ]
 });

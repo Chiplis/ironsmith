@@ -18,6 +18,10 @@ struct ChosenTypeDamageSourceMatcher {
 }
 
 impl ReplacementMatcher for ChosenTypeDamageSourceMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
         matches!(kind, crate::events::EventKind::Damage)
     }
@@ -459,6 +463,10 @@ impl DamageAmountReplacementMatcher {
 }
 
 impl ReplacementMatcher for DamageAmountReplacementMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        self.maximum_damage.is_none() && self.amount_less_than.is_none()
+    }
+
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
         matches!(kind, crate::events::EventKind::Damage)
     }
@@ -832,6 +840,10 @@ impl WouldPutCountersOrEnterWithCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn matches_prepared_event(
         &self,
@@ -2577,6 +2589,10 @@ struct ConditionalWouldDrawCardMatcher {
 }
 
 impl ReplacementMatcher for ConditionalWouldDrawCardMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if !WouldDrawCardMatcher::you().matches_prepared_event(event, ctx) {
@@ -2716,6 +2732,10 @@ struct WouldDrawInstructionMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawInstructionMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == if self.per_instruction { EventKind::KeywordAction } else { EventKind::Draw }
@@ -2958,6 +2978,10 @@ struct WouldDrawByPlayerMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawByPlayerMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if !WouldDrawCardMatcher::new(self.drawer.clone()).matches_prepared_event(event, ctx) {
@@ -3459,6 +3483,10 @@ impl WouldGoToGraveyardFromAnywhereMatcher {
 }
 
 impl ReplacementMatcher for WouldGoToGraveyardFromAnywhereMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         match event.event_kind() {
@@ -4319,6 +4347,10 @@ struct ConditionalWouldChangeLifeMatcher {
 }
 
 impl ReplacementMatcher for ConditionalWouldChangeLifeMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         let matches_change = if self.loss {
@@ -5542,6 +5574,10 @@ impl StaticAbilityKind for ConvertUnspentMana {
 #[derive(Debug, Clone)]
 pub(crate) struct ChosenPlayersDamageMatcher { pub ability_source: ObjectId }
 impl ReplacementMatcher for ChosenPlayersDamageMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
     fn matches_prepared_event(&self, event: &dyn crate::events::traits::GameEventType,
         ctx: &crate::events::context::PreparedEventContext) -> bool {
         let Some(damage) = downcast_event::<DamageEvent>(event) else { return false; };

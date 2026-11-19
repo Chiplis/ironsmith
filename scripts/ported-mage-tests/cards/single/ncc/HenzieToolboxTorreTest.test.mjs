@@ -32,7 +32,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Aerathi Berserker with Blitz"
+          "name": "Aerathi Berserker with Blitz",
+          "resolve": true
         },
         {
           "op": "setStopAt",
@@ -48,6 +49,12 @@ registerPortedMageTests({
           "name": "Aerathi Berserker",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -79,7 +86,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Henzie \"Toolbox\" Torre"
+          "name": "Henzie \"Toolbox\" Torre",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -102,6 +110,12 @@ registerPortedMageTests({
           "name": "Aerathi Berserker",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -148,9 +162,23 @@ registerPortedMageTests({
           "player": 0,
           "name": "Aerathi Berserker",
           "count": 1
+        },
+        {
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Aerathi Berserker",
+          "ability": "Haste",
+          "count": 1
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Aerathi Berserker",
+          "kind": "triggered",
+          "textPattern": "dies.*draw (?:a card|cards)",
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "exileCastBlitz",
@@ -191,14 +219,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Embrace the Unknown"
+          "name": "Embrace the Unknown",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Aerathi Berserker with Blitz"
+          "name": "Aerathi Berserker with Blitz",
+          "resolve": true
         },
         {
           "op": "setStopAt",
@@ -214,6 +244,12 @@ registerPortedMageTests({
           "name": "Aerathi Berserker",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

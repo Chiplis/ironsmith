@@ -25,7 +25,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ajani Goldmane"
+          "name": "Ajani Goldmane",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -96,14 +97,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Oath of Gideon"
+          "name": "Oath of Gideon",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ajani Goldmane"
+          "name": "Ajani Goldmane",
+          "resolve": true
         },
         {
           "op": "activateAbility",

@@ -581,7 +581,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Tarmogoyf",
+          "name": "Tarmogoyf@original",
           "count": 1
         },
         {
@@ -602,7 +602,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Quicksilver Gargantuan",
+          "name": "Quicksilver Gargantuan@clone",
           "count": 1
         },
         {
@@ -610,7 +610,33 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Quicksilver Gargantuan"
+          "name": "Quicksilver Gargantuan",
+          "holdStack": true,
+          "objectAlias": "@clone"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Quicksilver Gargantuan",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Tarmogoyf"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@clone",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -623,14 +649,14 @@ registerPortedMageTests({
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Tarmogoyf",
+          "name": "@original",
           "power": 3,
           "toughness": 4
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Tarmogoyf",
+          "name": "@clone",
           "power": 9,
           "toughness": 9
         }

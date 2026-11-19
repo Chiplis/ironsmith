@@ -14,12 +14,19 @@ use crate::snapshot::ObjectSnapshot;
 pub struct BeginningOfCombatEvent {
     /// The player whose combat phase it is
     pub player: PlayerId,
+    /// Creation order of the additional combat reached at this boundary.
+    pub(crate) added_combat_order: Option<u64>,
 }
 
 impl BeginningOfCombatEvent {
     /// Create a new beginning of combat event.
     pub fn new(player: PlayerId) -> Self {
-        Self { player }
+        Self { player, added_combat_order: None }
+    }
+
+    pub(crate) fn with_added_combat_order(mut self, order: Option<u64>) -> Self {
+        self.added_combat_order = order;
+        self
     }
 }
 

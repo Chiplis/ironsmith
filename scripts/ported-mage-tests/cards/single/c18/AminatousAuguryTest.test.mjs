@@ -102,7 +102,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Aminatou's Augury"
+          "name": "Aminatou's Augury",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -119,7 +120,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Adarkar Sentinel"
+          "name": "Adarkar Sentinel",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -127,11 +129,20 @@ registerPortedMageTests({
           "value": "Artifact"
         },
         {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Adarkar Sentinel",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Aegis of the Gods"
+          "name": "Aegis of the Gods",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -139,11 +150,28 @@ registerPortedMageTests({
           "value": "Enchantment"
         },
         {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Aegis of the Gods",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Storm Crow"
+          "name": "Storm Crow",
+          "resolve": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Storm Crow",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -170,6 +198,12 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": "Silvercoat Lion"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Pillarfield Ox",
+          "count": 1
         },
         {
           "op": "assertPlayableAbility",

@@ -99,7 +99,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Bane Alley Blackguard",
+          "name": "Bane Alley Blackguard@blackguard",
           "count": 1
         },
         {
@@ -121,7 +121,7 @@ registerPortedMageTests({
           "turn": 2,
           "player": 1,
           "attacker": "Bane Alley Blackguard",
-          "defender": 1
+          "defender": 0
         },
         {
           "op": "block",
@@ -131,12 +131,61 @@ registerPortedMageTests({
           "attacker": "Bane Alley Blackguard"
         },
         {
+          "op": "assertDamageReceived",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "player": 0,
+          "name": "Defiant Vanguard",
+          "damage": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertDamageReceived",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "player": 1,
+          "name": "Bane Alley Blackguard",
+          "damage": 2,
+          "seatIndependent": true
+        },
+        {
           "op": "castSpell",
           "turn": 2,
-          "phase": "FIRST_COMBAT_DAMAGE",
+          "phase": "COMBAT_DAMAGE",
           "player": 1,
           "name": "Cloudshift",
-          "target": "Bane Alley Blackguard"
+          "target": {
+            "groups": [
+              [
+                "@blackguard"
+              ]
+            ]
+          },
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Cloudshift",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "@blackguard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "COMBAT_DAMAGE"
+        },
+        {
+          "op": "assertReenteredFixtures",
+          "player": 1,
+          "fixtures": [
+            "@blackguard"
+          ],
+          "counts": [
+            1
+          ]
         },
         {
           "op": "setStopAt",
@@ -164,8 +213,7 @@ registerPortedMageTests({
           "name": "Bane Alley Blackguard",
           "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

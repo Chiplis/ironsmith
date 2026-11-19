@@ -280,14 +280,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Cerodon Yearling"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Watchwolf"
+          "op": "setObjectChoices",
+          "description": "Choose between 1 and 7 permanents",
+          "choices": [
+            "Cerodon Yearling",
+            "Watchwolf"
+          ],
+          "player": 0
         },
         {
           "op": "activateAbility",
@@ -297,11 +296,36 @@ registerPortedMageTests({
           "ability": "Craft"
         },
         {
-          "op": "activateAbility",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Cerodon Yearling",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Watchwolf",
+          "count": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Sunbird Effigy",
+          "power": 3,
+          "toughness": 3
+        },
+        {
+          "op": "activateManaAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: For each"
+          "ability": "For each",
+          "source": "Sunbird Effigy"
         },
         {
           "op": "castSpell",
@@ -341,8 +365,7 @@ registerPortedMageTests({
           "power": 3,
           "toughness": 3
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testMarketGnomeExilePermanent",
@@ -733,6 +756,14 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setObjectChoices",
+          "description": "Choose exactly 1 permanent",
+          "choices": [
+            "Elvish Mystic"
+          ],
+          "player": 0
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -740,15 +771,37 @@ registerPortedMageTests({
           "ability": "Craft"
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jade Seedstones",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertExileCount",
           "player": 0,
-          "target": "Elvish Mystic"
+          "name": "Elvish Mystic",
+          "count": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jadeheart Attendant",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -759,8 +812,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "checkLife(\"after craft\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, 20 + 1)"
+          "op": "assertLife",
+          "player": 0,
+          "life": 21
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Elvish Mystic",
+          "count": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Llanowar Elves"
         },
         {
           "op": "castSpell",
@@ -768,11 +833,6 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Bond Beetle"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Llanowar Elves"
         },
         {
           "op": "waitStackResolved",
@@ -802,8 +862,7 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "test_OreRichStalactite",
@@ -877,7 +936,7 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
         },
         {
           "op": "assertPlayableAbility",

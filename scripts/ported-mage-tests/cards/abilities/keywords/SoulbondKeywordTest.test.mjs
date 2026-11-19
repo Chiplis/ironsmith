@@ -177,7 +177,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Trusted Forcemage"
+          "name": "Trusted Forcemage",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -267,7 +268,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Trusted Forcemage"
+          "name": "Trusted Forcemage",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -1521,7 +1523,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Trusted Forcemage"
+          "name": "Trusted Forcemage",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -1905,7 +1908,7 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
         },
         {
           "op": "castSpell",

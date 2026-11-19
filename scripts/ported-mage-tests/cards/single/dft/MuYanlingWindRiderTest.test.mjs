@@ -25,7 +25,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Mu Yanling, Wind Rider"
+          "name": "Mu Yanling, Wind Rider",
+          "resolve": true
         },
         {
           "op": "setStopAt",
@@ -114,7 +115,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Memnite"
+          "name": "Memnite",
+          "resolve": true
         },
         {
           "op": "activateAbility",

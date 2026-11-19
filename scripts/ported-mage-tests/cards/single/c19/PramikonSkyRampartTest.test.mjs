@@ -128,6 +128,12 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
+      ],
+      "turnOrder": [
+        0,
+        1,
+        2,
+        3
       ]
     },
     {
@@ -254,6 +260,12 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
+      ],
+      "turnOrder": [
+        0,
+        1,
+        2,
+        3
       ]
     },
     {
@@ -415,6 +427,12 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
+      ],
+      "turnOrder": [
+        0,
+        1,
+        2,
+        3
       ]
     },
     {
@@ -576,6 +594,12 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
+      ],
+      "turnOrder": [
+        0,
+        1,
+        2,
+        3
       ]
     }
   ],

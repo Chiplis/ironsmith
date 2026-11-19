@@ -107,6 +107,28 @@ registerPortedMageTests({
           "name": "Silvercoat Lion",
           "power": 2,
           "toughness": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 0
+            }
+          ]
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Leonin Scimitar",
+          "target": null,
+          "expected": true
         }
       ]
     }

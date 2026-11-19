@@ -65,6 +65,82 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Merfolk Looter",
+            "player": 0
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Sky Spirit",
+            "player": 0
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 3
+            },
+            {
+              "property": "toughness",
+              "expected": 3
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Merfolk Looter",
+            "player": 1
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Sky Spirit",
+            "player": 1
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            }
+          ]
         }
       ]
     },
@@ -130,6 +206,82 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Merfolk Looter",
+            "player": 0
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Sky Spirit",
+            "player": 0
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 5
+            },
+            {
+              "property": "toughness",
+              "expected": 5
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Merfolk Looter",
+            "player": 1
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Sky Spirit",
+            "player": 1
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 2
+            },
+            {
+              "property": "toughness",
+              "expected": 2
+            }
+          ]
         }
       ]
     }

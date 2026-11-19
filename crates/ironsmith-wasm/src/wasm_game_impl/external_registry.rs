@@ -62,6 +62,41 @@ impl WasmGame {
         Ok(definitions)
     }
 
+    /// Load a printed meld back face along with either physical front.
+    fn load_embedded_meld_result(&mut self, name: &str) -> Result<(), String> {
+        let Some(result_name) = ironsmith::cards::meld_result_name(name) else {
+            return Ok(());
+        };
+        if self.registry.get(result_name).is_some() {
+            return Ok(());
+        }
+
+        let route = result_name
+            .split(|ch: char| !ch.is_ascii_alphanumeric())
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("-")
+            .to_ascii_lowercase();
+        let Some(source) = crate::embedded_card_catalog::embedded_source_json(&route)? else {
+            return Ok(());
+        };
+        #[derive(Deserialize)]
+        struct MeldResultAsset {
+            artifacts: Vec<CompiledCardArtifact>,
+        }
+        let asset: MeldResultAsset = serde_json::from_str(&source).map_err(|err| err.to_string())?;
+        let definitions = Self::materialize_compiled_artifact_batch(&asset.artifacts)?;
+        let [definition] = definitions.as_slice() else {
+            return Err(format!("expected one embedded meld result for {result_name}"));
+        };
+        if definition.name() != result_name {
+            return Err(format!("unexpected embedded meld result for {result_name}"));
+        }
+        self.registry.register(definition.clone());
+        self.game.register_linked_face_definition(definition);
+        Ok(())
+    }
+
     /// The names this source claims in the registry.
     ///
     /// A prepare card claims only its creature face: the spell face is a copy
@@ -604,8 +639,18 @@ impl WasmGame {
         self.register_external_source_metadata(&source);
         let definitions = Self::materialize_compiled_artifact_batch(&artifacts)
             .map_err(|err| JsValue::from_str(&format!("compiled card registration failed: {err}")))?;
+        // Face blocks can omit Fuse, which is printed on the split card as a whole.
+        let source_has_fuse = matches!(
+            &source.group,
+            ExternalCardSourceGroup::Linked { layout, has_fuse: true, .. } if layout == "split"
+        );
         let loaded = definitions.len();
-        for definition in definitions {
+        for mut definition in definitions {
+            if source_has_fuse
+                && definition.card.linked_face_layout == ironsmith::card::LinkedFaceLayout::Split
+            {
+                definition.has_fuse = true;
+            }
             self.clear_external_error(definition.name());
             self.registry.register(definition.clone());
             self.game.register_linked_face_definition(&definition);

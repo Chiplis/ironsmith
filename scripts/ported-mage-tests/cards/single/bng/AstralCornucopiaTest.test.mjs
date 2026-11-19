@@ -32,7 +32,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Astral Cornucopia"
+          "name": "Astral Cornucopia",
+          "resolve": true
         },
         {
           "op": "setChoice",

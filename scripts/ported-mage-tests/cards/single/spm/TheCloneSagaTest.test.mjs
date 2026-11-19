@@ -12,7 +12,7 @@ registerPortedMageTests({
         },
         {
           "op": "addCard",
-          "zone": "BATTLEFIELD",
+          "zone": "HAND",
           "player": 0,
           "name": "The Clone Saga",
           "count": 1
@@ -21,25 +21,111 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Ragavan, Nimble Pilferer",
+          "name": "Ragavan, Nimble Pilferer@original",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Mountain",
+          "name": "Volcanic Island",
+          "count": 4
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "The Clone Saga",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Clone Saga",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Clone Saga",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "choices": [],
+          "description": "Surveil 3 — select cards to put on graveyard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Clone Saga",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ragavan, Nimble Pilferer",
+          "holdStack": true,
+          "objectAlias": "@original"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ragavan, Nimble Pilferer",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertTokenCount",
+          "player": 0,
+          "name": "Ragavan, Nimble Pilferer",
           "count": 1
         },
         {
-          "op": "addTarget",
+          "op": "assertPermanentCount",
           "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "name": "Ragavan, Nimble Pilferer",
+          "count": 2
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Mountain"
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Clone Saga",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -48,49 +134,46 @@ registerPortedMageTests({
         },
         {
           "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Ragavan, Nimble Pilferer"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast with no alternative cost"
+          "turn": 5,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
-          "turn": 3,
+          "turn": 5,
           "player": 0,
           "attacker": "Ragavan, Nimble Pilferer",
           "defender": 1
         },
         {
           "op": "attack",
-          "turn": 3,
+          "turn": 5,
           "player": 0,
           "attacker": "Ragavan, Nimble Pilferer",
           "defender": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Whenever a creature with the chosen name"
+          "op": "assertStackObject",
+          "turn": 5,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Ragavan, Nimble Pilferer",
+          "count": 2,
+          "abilityKind": "Triggered",
+          "completeChoices": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Whenever {this} deals"
+          "op": "assertStackSize",
+          "turn": 5,
+          "phase": "COMBAT_DAMAGE",
+          "count": 4
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 5,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "setStopAt",
-          "turn": 3,
+          "turn": 5,
           "phase": "END_TURN"
         },
         {
@@ -104,7 +187,8 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
-          "count": 3
+          "name": null,
+          "count": 4
         },
         {
           "op": "assertPermanentCount",

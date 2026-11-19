@@ -372,7 +372,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Concordant Crossroads"
+          "name": "Concordant Crossroads",
+          "resolve": true
         },
         {
           "op": "castSpell",

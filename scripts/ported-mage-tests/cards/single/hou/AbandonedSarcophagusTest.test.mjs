@@ -257,7 +257,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Astral Drift"
+          "name": "Astral Drift",
+          "resolve": true
         },
         {
           "op": "playLand",
@@ -305,6 +306,18 @@ registerPortedMageTests({
           "op": "assertExileCount",
           "player": 0,
           "count": 2
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Astral Drift",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Ash Barrens",
+          "count": 1
         }
       ]
     }

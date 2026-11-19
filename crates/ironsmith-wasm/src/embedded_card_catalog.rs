@@ -101,6 +101,10 @@ fn read_catalog<T>(
     })
 }
 
+pub(crate) fn embedded_source_json(route: &str) -> Result<Option<String>, String> {
+    read_catalog(|catalog| catalog.source_json(route))
+}
+
 #[wasm_bindgen]
 impl WasmGame {
     /// Read the embedded browsing index, or return None for an unbundled build.
@@ -112,8 +116,7 @@ impl WasmGame {
     /// Read one catalog route without inflating the complete source catalog.
     #[wasm_bindgen(js_name = getEmbeddedCardSourceJson)]
     pub fn get_embedded_card_source_json(&self, route: String) -> Result<Option<String>, JsValue> {
-        read_catalog(|catalog| catalog.source_json(&route))
-            .map_err(|error| JsValue::from_str(&error))
+        embedded_source_json(&route).map_err(|error| JsValue::from_str(&error))
     }
 }
 

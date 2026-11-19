@@ -57,7 +57,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Pyrogoyf"
+          "name": "Pyrogoyf",
+          "resolve": true
         },
         {
           "op": "addTarget",
@@ -69,7 +70,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tarmogoyf"
+          "name": "Tarmogoyf",
+          "resolve": true
         },
         {
           "op": "addTarget",
@@ -148,7 +150,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "addTarget",
@@ -241,7 +244,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "addTarget",
@@ -330,7 +334,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "addTarget",

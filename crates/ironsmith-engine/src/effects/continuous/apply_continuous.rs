@@ -1351,6 +1351,12 @@ fn acquire_continuous_action(
     if let Some(locked_targets) = locked_targets {
         source_type = Some(EffectSourceType::Resolution { locked_targets });
     }
+    if let Some(EffectSourceType::Resolution { locked_targets }) = &source_type
+        && locked_targets.is_empty()
+    {
+        // CR 611.2c: no object can join a recipient set locked at resolution.
+        return Ok(AcquiredContinuousAction::Terminal(EffectOutcome::resolved()));
+    }
 
     let materialized_until = match &definition.until {
         Until::UntilControllersNextUntapStep { object } => {
@@ -1596,7 +1602,6 @@ impl ContinuousActionInputs {
             Until::EndOfTurn
             | Until::EndOfTurnOrAnyPlayerRolls { .. }
             | Until::YourNextTurn
-            | Until::YourNextUpkeep
             | Until::ControllersNextUntapStep => game.turn.turn_number,
             Until::YourNextTurnEnd => next_turn_number_for_player(game, ctx.controller),
             // Created during or after this turn's end step: the next end
@@ -2722,6 +2727,30 @@ mod tests {
             }
             _ => panic!("expected resolution-locked effect for tagged filter"),
         }
+    }
+
+    #[test]
+    fn control_effect_with_no_recipients_does_not_register_a_duration() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Control source", alice);
+        let bystander = create_creature(&mut game, "Nonblocking creature", bob);
+        let mut filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
+        filter.blocking = true;
+        let effect = Effect::new(ApplyContinuousEffect::with_spec(
+            ChooseSpec::Object(filter),
+            Modification::ChangeController(alice),
+            Until::YouStopControllingThis,
+        ));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        for _ in 0..2 {
+            execute_effect(&mut game, &effect, &mut ctx).expect("empty resolution");
+        }
+
+        assert!(game.effect_store.continuous_effects.effects().is_empty());
+        assert_eq!(game.current_controller(bystander), Some(bob));
     }
 
     #[test]

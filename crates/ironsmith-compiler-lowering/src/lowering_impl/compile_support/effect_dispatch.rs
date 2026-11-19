@@ -2956,7 +2956,14 @@ fn compile_subject_verb_effect(
         ctx.iterated_player = outer_iteration;
         let (effects, mut choices) = result?;
         for choice in subject.into_choices() {
-            push_choice(&mut choices, choice);
+            // The action can declare the grammatical subject as part of a
+            // quantified target group. The lexical reference is already
+            // bound by that declaration.
+            if !choices.iter().any(|declared| {
+                matches!(declared, ChooseSpec::WithCount(spec, _) if spec.as_ref() == &choice)
+            }) {
+                push_choice(&mut choices, choice);
+            }
         }
         return Ok((effects, choices));
     }

@@ -328,7 +328,8 @@ registerPortedMageTests({
           "phase": "END_COMBAT",
           "player": 0,
           "name": "Shoot the Sheriff",
-          "target": "Grizzly Bears"
+          "target": "Grizzly Bears",
+          "resolve": true
         },
         {
           "op": "setStopAt",
@@ -506,7 +507,8 @@ registerPortedMageTests({
           "phase": "END_COMBAT",
           "player": 0,
           "name": "Shoot the Sheriff",
-          "target": "Anodet Lurker"
+          "target": "Anodet Lurker",
+          "resolve": true
         },
         {
           "op": "setChoice",

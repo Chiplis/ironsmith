@@ -1429,9 +1429,12 @@ impl ContinuousEffectManager {
     {
         effect.id = id;
         effect.registration_id = Some(id);
-        if effect.duration == Until::YourNextUpkeepEnd {
-            // Unarmed until the next actual upkeep begins. Do not predict a
-            // turn number: skipped and additional upkeeps change the boundary.
+        if matches!(
+            effect.duration,
+            Until::YourNextUpkeepEnd | Until::EndOfCombatOnYourNextTurn
+        ) {
+            // Arm the duration at the actual upkeep or turn start. Skipped
+            // and additional turns or steps can change that boundary.
             effect.expires_end_of_turn = u32::MAX;
         }
         if effect.timestamp == 0 {
@@ -1784,13 +1787,16 @@ impl ContinuousEffectManager {
         let mut duration_changed = false;
         for effect in effects.iter_mut().filter(|effect| {
             effect.controller == player
-                && matches!(
-                    effect.duration,
-                    Until::YourNextTurn
-                        | Until::YourNextTurnEnd
-                        | Until::YourNextUpkeep
-                        | Until::YourNextUpkeepEnd
-                        | Until::ControllersNextUntapStep
+                && (matches!(
+                        effect.duration,
+                        Until::YourNextTurn
+                            | Until::YourNextTurnEnd
+                            | Until::YourNextUpkeep
+                            | Until::YourNextUpkeepEnd
+                            | Until::ControllersNextUntapStep
+                    )
+                    || (effect.duration == Until::EndOfCombatOnYourNextTurn
+                        && effect.expires_end_of_turn == u32::MAX)
                 )
         }) {
             effect.duration = Until::YourNextTurnEnd;
@@ -1820,45 +1826,47 @@ impl ContinuousEffectManager {
 
     /// Remove turn-relative effects whose duration ended at this turn boundary.
     ///
-    /// CR 611.2a: an "until your next turn" effect ends once, when its
-    /// controller's next turn begins, and an "until your next upkeep" effect
-    /// ends during that turn's upkeep. The duration predicate alone would let
-    /// both apply again on every later turn of another player, so remove them
-    /// here: "next turn" effects when the controller's next turn starts, and
-    /// "next upkeep" effects at the start of the turn after the controller's
-    /// next turn (the predicate already reports them inactive from that
-    /// upkeep's end on).
+    /// CR 611.2a: an "until your next turn" effect ends when the
+    /// controller's next turn begins. Step-relative durations have their
+    /// own step boundaries.
     pub fn expire_at_turn_start(
         &mut self,
         turn_number: u32,
-        completed_turn_players: &[PlayerId],
         active_players: &[PlayerId],
     ) {
-        let completed_turn_number = turn_number.saturating_sub(1);
         let expired = |effect: &ContinuousEffect| match effect.duration {
             Until::YourNextTurn => {
                 turn_number > effect.expires_end_of_turn
                     && active_players.contains(&effect.controller)
             }
-            Until::YourNextUpkeep => {
-                completed_turn_number > effect.expires_end_of_turn
-                    && completed_turn_players.contains(&effect.controller)
-            }
             Until::NextEndStep | Until::YourNextEndStep => turn_number > effect.expires_end_of_turn,
             Until::YourNextUpkeepEnd => turn_number > effect.expires_end_of_turn,
             _ => false,
         };
-        if !self.effects.iter().any(expired) {
+        let starts_now = |effect: &ContinuousEffect| {
+            effect.duration == Until::EndOfCombatOnYourNextTurn
+                && effect.expires_end_of_turn == u32::MAX
+                && active_players.contains(&effect.controller)
+        };
+        if !self
+            .effects
+            .iter()
+            .any(|effect| expired(effect) || starts_now(effect))
+        {
             return;
         }
         let effects = Arc::make_mut(&mut self.effects);
         let states = self.latched_duration_states.get_mut();
-        effects.retain(|effect| {
-            let keep = !expired(effect);
-            if !keep {
+        effects.retain_mut(|effect| {
+            if expired(effect) {
                 states.remove(&effect.id);
+                return false;
             }
-            keep
+            if starts_now(effect) {
+                // Keep this exact turn even if its combat is skipped.
+                effect.expires_end_of_turn = turn_number;
+            }
+            true
         });
         self.revision += 1;
     }
@@ -1904,21 +1912,30 @@ impl ContinuousEffectManager {
         self.revision += 1;
     }
 
-    /// Arm already-existing effects at the controller's next actual upkeep.
-    /// Effects created after this boundary wait for a later occurrence.
+    /// End start-of-upkeep durations and arm end-of-upkeep durations. Effects
+    /// created after this boundary wait for the next actual occurrence.
     pub fn mark_upkeep_began(&mut self, player: PlayerId, turn_number: u32) {
-        if !self.effects.iter().any(|effect| effect.duration == Until::YourNextUpkeepEnd
-            && effect.controller == player && effect.expires_end_of_turn == u32::MAX)
-        {
+        let reaches_boundary = |effect: &ContinuousEffect| {
+            effect.controller == player
+                && (effect.duration == Until::YourNextUpkeep
+                    || (effect.duration == Until::YourNextUpkeepEnd
+                        && effect.expires_end_of_turn == u32::MAX))
+        };
+        if !self.effects.iter().any(&reaches_boundary) {
             return;
         }
-        for effect in Arc::make_mut(&mut self.effects).iter_mut() {
-            if effect.duration == Until::YourNextUpkeepEnd
-                && effect.controller == player && effect.expires_end_of_turn == u32::MAX
-            {
-                effect.expires_end_of_turn = turn_number;
+        let states = self.latched_duration_states.get_mut();
+        Arc::make_mut(&mut self.effects).retain_mut(|effect| {
+            if !reaches_boundary(effect) {
+                return true;
             }
-        }
+            if effect.duration == Until::YourNextUpkeep {
+                states.remove(&effect.id);
+                return false;
+            }
+            effect.expires_end_of_turn = turn_number;
+            true
+        });
         self.revision += 1;
     }
 
@@ -1950,10 +1967,16 @@ impl ContinuousEffectManager {
     }
 
     /// Remove all effects whose duration ends with the current combat.
-    pub fn cleanup_end_of_combat(&mut self) {
+    pub fn cleanup_end_of_combat(&mut self, completed_combat_turn: Option<u32>) {
         let effects = Arc::make_mut(&mut self.effects);
         let before = effects.len();
-        effects.retain(|effect| !matches!(effect.duration, Until::EndOfCombat));
+        effects.retain(|effect| match effect.duration {
+            Until::EndOfCombat => false,
+            Until::EndOfCombatOnYourNextTurn => {
+                Some(effect.expires_end_of_turn) != completed_combat_turn
+            }
+            _ => true,
+        });
         if effects.len() != before {
             self.revision += 1;
         }
@@ -6285,20 +6308,9 @@ fn continuous_effect_duration_is_active(
                 || (game.turn.turn_number == effect.expires_end_of_turn
                     && !matches!(game.turn.phase, crate::game_state::Phase::Ending))
         }
-        Until::YourNextUpkeep => {
-            if game.turn.turn_number <= effect.expires_end_of_turn
-                || !game.is_active_player(effect.controller)
-            {
-                true
-            } else if matches!(game.turn.phase, crate::game_state::Phase::Beginning) {
-                !matches!(
-                    game.turn.step,
-                    Some(crate::game_state::Step::Upkeep | crate::game_state::Step::Draw)
-                )
-            } else {
-                false
-            }
-        }
+        // Removed by mark_upkeep_began before the next actual upkeep's
+        // triggers. A skipped upkeep never reaches that boundary.
+        Until::YourNextUpkeep => true,
         Until::YourNextUpkeepEnd => {
             effect.expires_end_of_turn == u32::MAX
                 || (game.turn.turn_number == effect.expires_end_of_turn
@@ -6320,9 +6332,14 @@ fn continuous_effect_duration_is_active(
             if manager.latched_duration_is_expired(effect.id) {
                 return false;
             }
+            // The source-controller query can revisit this duration through
+            // another control effect in the same layer.
+            let Some(_guard) = DurationPredicateEvaluationGuard::enter(effect.id) else {
+                return true;
+            };
             let active = continuous_duration_object_is_visible(game, effect.source)
                 && game
-                    .current_controller_excluding_change_effect(effect.source, Some(effect.id))
+                    .current_controller_excluding_change_effect(effect.source, effect.registration_id)
                     .is_some_and(|controller| controller == effect.controller);
             if !active {
                 manager.expire_latched_duration(effect.id);
@@ -6337,7 +6354,7 @@ fn continuous_effect_duration_is_active(
             let Some(_guard) = DurationPredicateEvaluationGuard::enter(effect.id) else {
                 return true;
             };
-            let active = continuous_duration_predicate_matches_excluding(predicate, game, Some(effect.id));
+            let active = continuous_duration_predicate_matches_excluding(predicate, game, effect.registration_id);
             if !active {
                 manager.expire_latched_duration(effect.id);
             }

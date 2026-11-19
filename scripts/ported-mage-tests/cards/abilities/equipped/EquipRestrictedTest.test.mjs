@@ -174,6 +174,13 @@ registerPortedMageTests({
           "name": "Kranioceros",
           "power": 8,
           "toughness": 5
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Gate Smasher",
+          "target": "Kranioceros",
+          "expected": true
         }
       ]
     },
@@ -230,6 +237,13 @@ registerPortedMageTests({
           "name": "Kranioceros",
           "power": 5,
           "toughness": 2
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Gate Smasher",
+          "target": null,
+          "expected": true
         }
       ]
     }

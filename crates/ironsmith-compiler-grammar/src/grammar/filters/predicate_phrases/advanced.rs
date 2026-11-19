@@ -5935,16 +5935,15 @@ pub(super) fn parse_revealed_or_controlled_subtype_predicate(
     }
     let subtype = parse_subtype_word(revealed_token.parser_text())?;
 
+    let mut filter = ObjectFilter::default().with_subtype(subtype);
+    filter.set_as_you_cast_this_turn_surface(true);
     Some(PredicateAst::Or(
         Box::new(PredicateAst::ThisSpellPaidLabel(
-            crate::cost::OptionalCostRef::with_discriminator(
-                crate::cost::OptionalCostKind::Behold,
-                subtype.to_string(),
-            ),
+            crate::cost::OptionalCostRef::reveal_from_hand_subtype(subtype),
         )),
         Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: PlayerAst::You,
-            filter: ObjectFilter::default().with_subtype(subtype),
+            filter,
         })),
     ))
 }

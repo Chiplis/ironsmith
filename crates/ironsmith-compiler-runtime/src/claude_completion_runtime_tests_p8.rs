@@ -117,7 +117,7 @@ fn p8_swinging_ship_adds_a_combat_after_the_first_with_an_untap_rider() {
     assert!(debug.contains("FirstCombatPhaseOfTurn"), "{debug}");
     assert!(debug.contains("AdditionalPhases") && debug.contains("Combat"), "{debug}");
     assert!(debug.contains("EndOfCombat"), "before combat, the phase is added at the first end of combat: {debug}");
-    assert!(debug.contains("BeginningOfCombat"), "the untap rider waits for that combat: {debug}");
+    assert!(debug.contains("BeginningOfAddedCombat"), "the untap rider waits for that combat: {debug}");
     assert!(debug.contains("Untap"), "{debug}");
     assert!(!debug.contains("AdditionalPhase::Main") && !debug.contains("Main]"), "no extra main phase: {debug}");
 }

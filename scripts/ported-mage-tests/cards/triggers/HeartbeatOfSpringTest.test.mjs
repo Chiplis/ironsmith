@@ -39,7 +39,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Heartbeat of Spring"
+          "name": "Heartbeat of Spring",
+          "resolve": true
         },
         {
           "op": "playLand",
@@ -53,8 +54,15 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}:",
-          "count": 1
+          "ability": "Add {C}",
+          "count": 1,
+          "source": "Urza's Mine"
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "C",
+          "amount": 2
         },
         {
           "op": "castSpell",

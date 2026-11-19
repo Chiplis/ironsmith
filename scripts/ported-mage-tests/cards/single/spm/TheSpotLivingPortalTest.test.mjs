@@ -107,8 +107,17 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "unsupported",
-          "source": "addCustomEffect_TargetDestroy(playerB)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Swamp",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Murder"
         },
         {
           "op": "addCard",
@@ -143,29 +152,98 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "The Spot, Living Portal"
+          "name": "The Spot, Living Portal",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Spot, Living Portal",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "target": {
+            "groups": [
+              [],
+              [
+                "Bear Cub"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Spot, Living Portal",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "objectTarget": "Bear Cub"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
           "player": 0,
-          "target": "Bear Cub"
+          "name": "Bear Cub",
+          "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Fugitive Wizard",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "ability": "target destroy"
+          "name": "Murder",
+          "holdStack": true,
+          "target": "The Spot, Living Portal"
         },
         {
-          "op": "addTarget",
-          "player": 1,
-          "target": "The Spot, Living Portal"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Murder",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "The Spot, Living Portal"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "The Spot, Living Portal",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

@@ -485,25 +485,69 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Blisterstick Shaman"
+          "name": "Blisterstick Shaman",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Blisterstick Shaman",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "addTarget",
           "player": 1,
-          "target": 0
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Blisterstick Shaman",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "playerTarget": 0,
+          "completeTargets": true
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}",
-          "target": "stack ability (When"
+          "ability": "The next time a red source",
+          "source": "Circle of Protection: Red"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Blisterstick Shaman"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Circle of Protection: Red",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -532,7 +576,8 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Plains",
           "tapped": true,
-          "count": 1
+          "count": 1,
+          "player": 0
         }
       ]
     },
@@ -655,20 +700,49 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "{R},",
-          "target": 0
+          "target": {
+            "groups": [
+              [
+                0
+              ]
+            ]
+          },
+          "source": "Anaba Shaman"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Anaba Shaman",
+          "count": 1,
+          "abilityKind": "Activated",
+          "playerTarget": 0
         },
         {
           "op": "activateAbility",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}",
-          "target": "stack ability ({R}"
+          "ability": "The next time a red source",
+          "source": "Circle of Protection: Red"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Anaba Shaman"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Circle of Protection: Red",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -686,13 +760,15 @@ registerPortedMageTests({
           "op": "assertTappedCount",
           "name": "Anaba Shaman",
           "tapped": true,
-          "count": 1
+          "count": 1,
+          "player": 1
         },
         {
           "op": "assertTappedCount",
           "name": "Plains",
           "tapped": true,
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "assertLife",

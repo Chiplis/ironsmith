@@ -1,5 +1,6 @@
 import { registerPortedMageTests } from "../../../../mage-port-runner.mjs";
 
+// The current Oracle effect creates a Horror token, named under CR 111.4.
 registerPortedMageTests({
   "sourcePath": "scripts/cards/single/cmr/ProfaneTransfusionTest.java",
   "tests": [
@@ -95,13 +96,13 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "Phyrexian Horror Token",
+          "name": "Horror Token",
           "count": 1
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Phyrexian Horror Token",
+          "name": "Horror Token",
           "power": 8,
           "toughness": 8
         },
@@ -212,13 +213,13 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "Phyrexian Horror Token",
+          "name": "Horror Token",
           "count": 1
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Phyrexian Horror Token",
+          "name": "Horror Token",
           "power": 8,
           "toughness": 8
         },
@@ -329,13 +330,13 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "Phyrexian Horror Token",
+          "name": "Horror Token",
           "count": 1
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Phyrexian Horror Token",
+          "name": "Horror Token",
           "power": 16,
           "toughness": 16
         },
@@ -450,13 +451,13 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "Phyrexian Horror Token",
+          "name": "Horror Token",
           "count": 1
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Phyrexian Horror Token",
+          "name": "Horror Token",
           "power": 3,
           "toughness": 3
         },

@@ -506,12 +506,32 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Alhammarret, High Arbiter"
+          "name": "Alhammarret, High Arbiter",
+          "holdStack": true
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alhammarret, High Arbiter",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "target": "Damnation"
+          "value": "Damnation"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Alhammarret, High Arbiter",
+          "count": 1
         },
         {
           "op": "assertPlayableAbility",

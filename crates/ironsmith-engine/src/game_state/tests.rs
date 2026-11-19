@@ -1936,14 +1936,44 @@ fn current_controller_skips_unrelated_stop_controlling_effects_before_duration_c
 
     let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
     let target_id = game.create_object_from_card(&target_card, bob, Zone::Battlefield);
+    let other_target_id = game.create_object_from_card(&target_card, bob, Zone::Battlefield);
 
-    game.effect_store.continuous_effects.add_effect(
-        ContinuousEffect::gain_control(source_id, alice, target_id, alice)
-            .until(Until::YouStopControllingThis),
-    );
+    for recipient in [target_id, other_target_id] {
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::gain_control(source_id, alice, recipient, alice)
+                .until(Until::YouStopControllingThis),
+        );
+    }
 
+    game.refresh_continuous_state().expect("control effects refresh");
     assert_eq!(game.current_controller(source_id), Some(alice));
     assert_eq!(game.current_controller(target_id), Some(alice));
+    assert_eq!(game.current_controller(other_target_id), Some(alice));
+
+    let aura = CardDefinitionBuilder::new(CardId::new(), "Control Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Aura])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::control_attached_permanent(
+                "You control enchanted creature.".to_string(),
+            ),
+        ))
+        .build();
+    let aura_id = game.create_object_from_definition(&aura, bob, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        aura_id,
+        crate::object::AttachmentTarget::Object(source_id)
+    ));
+    game.refresh_continuous_state().expect("attached control applies");
+    assert_eq!(game.current_controller(source_id), Some(bob));
+    assert_eq!(game.current_controller(target_id), Some(bob));
+    assert_eq!(game.current_controller(other_target_id), Some(bob));
+
+    game.move_object_by_effect(aura_id, Zone::Graveyard).expect("aura leaves");
+    game.refresh_continuous_state().expect("attached control ends");
+    assert_eq!(game.current_controller(source_id), Some(alice));
+    assert_eq!(game.current_controller(target_id), Some(bob));
+    assert_eq!(game.current_controller(other_target_id), Some(bob));
 }
 
 #[test]

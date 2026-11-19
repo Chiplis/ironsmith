@@ -39,7 +39,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Soul Warden"
+          "name": "Soul Warden",
+          "resolve": true
         },
         {
           "op": "castSpell",

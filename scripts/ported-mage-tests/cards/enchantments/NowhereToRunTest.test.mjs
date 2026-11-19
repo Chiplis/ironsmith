@@ -106,17 +106,36 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Swords to Plowshares"
-        },
-        {
-          "op": "addTarget",
-          "player": 1,
-          "target": "Waterfall Aerialist"
+          "name": "Swords to Plowshares",
+          "target": "Waterfall Aerialist",
+          "holdStack": true
         },
         {
           "op": "setChoice",
           "player": 1,
           "value": false
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Swords to Plowshares",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Waterfall Aerialist"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Waterfall Aerialist",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

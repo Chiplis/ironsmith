@@ -204,7 +204,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 1,
-          "name": "Twice Upon a Time",
+          "name": "Twice Upon a Time@story",
           "count": 1
         },
         {
@@ -212,12 +212,43 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Diluvian Primordial"
+          "name": "Diluvian Primordial",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Diluvian Primordial",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Twice Upon a Time"
+          "target": {
+            "groups": [
+              [
+                "@story"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Diluvian Primordial",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "objectTarget": "@story"
         },
         {
           "op": "setChoice",
@@ -225,14 +256,37 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Unlikely Meeting"
+          "kind": "options",
+          "description": "Choose which spell to cast",
+          "choices": [
+            "Unlikely Meeting"
+          ]
         },
         {
-          "op": "addTarget",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Unlikely Meeting",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "setChoice",
           "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "value": "TestPlayer.CHOICE_SKIP"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -245,7 +299,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 1,
-          "name": "Twice Upon a Time",
+          "name": "@story",
           "count": 1
         }
       ]

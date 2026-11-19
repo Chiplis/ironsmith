@@ -5657,6 +5657,7 @@ pub(crate) fn describe_until(until: &Until) -> String {
             crate::triggers::describe_player_filter_possessive(player)
         ),
         Until::EndOfCombat => "until end of combat".to_string(),
+        Until::EndOfCombatOnYourNextTurn => "until end of combat on your next turn".to_string(),
         Until::AnyPlayerCastsCreatureSpell { .. } => {
             "until a player casts a creature spell".to_string()
         }

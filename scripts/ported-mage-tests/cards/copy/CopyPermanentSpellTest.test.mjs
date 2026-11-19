@@ -493,7 +493,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Memnite"
+          "name": "Memnite",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -763,9 +764,17 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
+          "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "No"
+          ],
+          "kind": "boolean",
+          "player": 0
         },
         {
           "op": "castSpell",
@@ -773,12 +782,35 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Nimbus Naiad using bestow",
-          "target": "Grizzly Bears"
+          "target": "Grizzly Bears",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
           "player": 0,
-          "value": false
+          "name": "Nimbus Naiad",
+          "count": 2
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Nimbus Naiad",
+          "cardType": "ENCHANTMENT",
+          "extra": "true"
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "No"
+          ],
+          "kind": "boolean",
+          "player": 0
         },
         {
           "op": "castSpell",
@@ -786,21 +818,13 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Murder",
-          "target": "Grizzly Bears"
+          "target": "Grizzly Bears",
+          "holdStack": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Grizzly Bears",
-          "count": 0
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -811,11 +835,42 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
+          "name": "Grizzly Bears",
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Nimbus Naiad"
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Enchantment",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Aura",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertTokenCount",
+          "player": 0,
           "name": "Nimbus Naiad",
-          "count": 2
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testBestowRedirectFallOff",
@@ -868,9 +923,17 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
+          "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "Yes"
+          ],
+          "kind": "boolean",
+          "player": 0
         },
         {
           "op": "castSpell",
@@ -878,12 +941,40 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Nimbus Naiad using bestow",
-          "target": "Grizzly Bears"
+          "target": "Grizzly Bears",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
+          "op": "addTarget",
           "player": 0,
-          "value": true
+          "target": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Nimbus Naiad",
+          "count": 2
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Nimbus Naiad",
+          "cardType": "ENCHANTMENT",
+          "extra": "true"
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "Yes"
+          ],
+          "kind": "boolean",
+          "player": 0
         },
         {
           "op": "castSpell",
@@ -891,21 +982,18 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Murder",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "holdStack": true
         },
         {
-          "op": "setStopAt",
+          "op": "addTarget",
+          "player": 0,
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Grizzly Bears",
-          "count": 0
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -916,7 +1004,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "Silvercoat Lion",
+          "name": "Grizzly Bears",
           "count": 0
         },
         {
@@ -927,12 +1015,43 @@ registerPortedMageTests({
         },
         {
           "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Nimbus Naiad"
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Enchantment",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Aura",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertTokenCount",
           "player": 0,
           "name": "Nimbus Naiad",
-          "count": 2
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testBestowIllegalTarget",
@@ -978,9 +1097,17 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
+          "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "No"
+          ],
+          "kind": "boolean",
+          "player": 0
         },
         {
           "op": "castSpell",
@@ -988,19 +1115,32 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Nimbus Naiad using bestow",
-          "target": "Grizzly Bears"
+          "target": "Grizzly Bears",
+          "holdStack": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "resolutions": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Nimbus Naiad",
+          "count": 2,
+          "isSpell": true,
+          "objectTarget": "Grizzly Bears"
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Choose new targets for the copy",
+          "choices": [
+            "No"
+          ],
+          "kind": "boolean",
+          "player": 0
         },
         {
           "op": "castSpell",
@@ -1008,21 +1148,13 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Murder",
-          "target": "Grizzly Bears"
+          "target": "Grizzly Bears",
+          "holdStack": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Grizzly Bears",
-          "count": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertGraveyardCount",
@@ -1033,11 +1165,42 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
+          "name": "Grizzly Bears",
+          "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Nimbus Naiad"
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Enchantment",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Aura",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertTokenCount",
+          "player": 0,
           "name": "Nimbus Naiad",
-          "count": 2
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

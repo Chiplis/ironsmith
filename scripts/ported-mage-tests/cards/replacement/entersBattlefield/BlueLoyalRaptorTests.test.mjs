@@ -47,14 +47,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Huatli's Snubhorn"
+          "name": "Huatli's Snubhorn",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Memnite"
+          "name": "Memnite",
+          "resolve": true
         },
         {
           "op": "setStopAt",

@@ -1338,6 +1338,11 @@ pub enum CostPaymentWindow {
 }
 
 impl OptionalCostRef {
+    /// The additional cost of revealing a card of this subtype from hand.
+    pub fn reveal_from_hand_subtype(subtype: crate::types::Subtype) -> Self {
+        Self::with_discriminator(OptionalCostKind::Additional, format!("Reveal {subtype}"))
+    }
+
     pub fn new(kind: OptionalCostKind) -> Self {
         Self {
             kind,

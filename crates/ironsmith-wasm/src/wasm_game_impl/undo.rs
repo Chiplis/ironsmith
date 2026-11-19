@@ -974,6 +974,11 @@ impl WasmGame {
             .collect::<Vec<_>>();
         self.registry
             .ensure_cards_loaded(names.iter().map(String::as_str));
+        for name in &names {
+            if let Err(error) = self.load_embedded_meld_result(name) {
+                self.remember_external_error(name, &error);
+            }
+        }
 
         #[cfg(test)]
         for query in names {

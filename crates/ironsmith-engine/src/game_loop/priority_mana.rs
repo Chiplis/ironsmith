@@ -5020,16 +5020,23 @@ pub(super) fn finalize_spell_cast(
     }
 
     // All nonmana components have already been paid by the staged transaction.
-    let mut base_mana_cost = if mana_already_paid {
+    let base_mana_cost = if mana_already_paid {
         None
     } else {
         game.object(spell_id).and_then(|obj| {
-            crate::decision::spell_mana_cost_for_cast(game, caster, obj, &casting_method, from_zone)
+            if base_mana_cost_waived {
+                Some(crate::decision::spell_mana_cost_with_base(
+                    game,
+                    caster,
+                    obj,
+                    crate::mana::ManaCost::new(),
+                    from_zone,
+                ))
+            } else {
+                crate::decision::spell_mana_cost_for_cast(game, caster, obj, &casting_method, from_zone)
+            }
         })
     };
-    if base_mana_cost_waived && !mana_already_paid {
-        base_mana_cost = Some(crate::mana::ManaCost::new());
-    }
 
     let effective_cost = if let Some(ref base_cost) = base_mana_cost {
         if let Some(obj) = game.object(spell_id) {
@@ -5261,7 +5268,12 @@ pub(super) fn finalize_spell_cast(
         .into_iter()
         .filter_map(|id| game.object(id))
         .filter(|object| cast_controlled_filter.matches(object, &cast_filter_ctx, game))
-        .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+        .map(|object| {
+            let mut snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+            // Only this object's characteristics belong to the current cast.
+            snapshot.cast_controlled_objects = None;
+            snapshot
+        })
         .collect();
     stack_entry_tagged_objects.insert(
         crate::tag::TagKey::from(ironsmith_core::CAST_CONTROLLED_OBJECTS_TAG),

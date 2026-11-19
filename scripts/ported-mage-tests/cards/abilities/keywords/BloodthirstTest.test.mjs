@@ -114,7 +114,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bloodlord of Vaasgoth"
+          "name": "Bloodlord of Vaasgoth",
+          "resolve": true
         },
         {
           "op": "castSpell",

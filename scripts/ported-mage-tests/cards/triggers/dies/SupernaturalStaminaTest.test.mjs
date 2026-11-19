@@ -53,7 +53,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Channeler Initiate"
+          "name": "Channeler Initiate",
+          "resolve": true
         },
         {
           "op": "castSpell",

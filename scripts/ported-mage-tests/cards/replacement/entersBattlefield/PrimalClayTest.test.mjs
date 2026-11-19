@@ -139,9 +139,13 @@ registerPortedMageTests({
           "name": "Primal Clay"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "a 1/6 Wall artifact creature with defender"
+          "op": "setOptionChoices",
+          "description": "Choose one",
+          "choices": [
+            "1/6"
+          ],
+          "kind": "options",
+          "player": 0
         },
         {
           "op": "setStrictChooseMode",
@@ -163,18 +167,34 @@ registerPortedMageTests({
           "toughness": 6
         },
         {
-          "op": "assertAbility",
+          "op": "assertKeywordCount",
           "player": 0,
           "name": "Primal Clay",
           "ability": "Defender",
-          "expected": true
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(clay, SubType.WALL)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Primal Clay"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Wall",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Shapeshifter",
+              "expected": true
+            }
+          ]
         }
-      ],
-      "skip": "upstream @Ignore: current workaround implementation doesn't account for this"
+      ]
     },
     {
       "name": "testClayCopyPTOnBattlefield",
@@ -289,14 +309,14 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Primal Clay",
+          "name": "Primal Clay@clay",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Cryptoplasm",
+          "name": "Cryptoplasm@cryptoplasm",
           "count": 1
         },
         {
@@ -328,9 +348,13 @@ registerPortedMageTests({
           "name": "Primal Clay"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "a 1/6 Wall artifact creature with defender"
+          "op": "setOptionChoices",
+          "description": "Choose one",
+          "choices": [
+            "1/6"
+          ],
+          "kind": "options",
+          "player": 0
         },
         {
           "op": "waitStackResolved",
@@ -356,12 +380,45 @@ registerPortedMageTests({
           "target": "Primal Clay"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@cryptoplasm"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Wall",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "value": null,
+              "expected": 1
+            },
+            {
+              "property": "toughness",
+              "value": null,
+              "expected": 6
+            }
+          ],
+          "turn": 3,
+          "phase": "UPKEEP"
+        },
+        {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Tunnel",
-          "target": "Primal Clay"
+          "target": "@clay"
         },
         {
           "op": "waitStackResolved",
@@ -375,7 +432,7 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Tunnel",
-          "target": "Primal Clay"
+          "target": "@cryptoplasm"
         },
         {
           "op": "setStrictChooseMode",
@@ -401,8 +458,7 @@ registerPortedMageTests({
           "name": "Cryptoplasm",
           "count": 1
         }
-      ],
-      "skip": "upstream @Ignore: Chosen characteristics of Primal Clay should be copiable values"
+      ]
     },
     {
       "name": "testPlasmaClone",

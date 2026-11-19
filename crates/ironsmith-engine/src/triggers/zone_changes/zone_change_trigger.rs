@@ -2062,8 +2062,11 @@ impl TriggerMatcher for ZoneChangeTrigger {
         let leaves_battlefield = zc.from == Zone::Battlefield
             && zc.to != Zone::Battlefield
             && source_zone_is_explicitly_looked_back(&self.from, Zone::Battlefield);
+        // CR 603.6a: an enters trigger can constrain the previous zone
+        // while still observing the permanent as it exists after entry.
         let leaves_graveyard = zc.from == Zone::Graveyard
             && zc.to != Zone::Graveyard
+            && self.to != ZonePattern::Specific(Zone::Battlefield)
             && source_zone_is_explicitly_looked_back(&self.from, Zone::Graveyard);
         let public_to_hand_or_library = is_public_to_hand_or_library_zone_change(&zc)
             && matches!(zc.to, Zone::Hand | Zone::Library);
@@ -2130,6 +2133,24 @@ mod tests {
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
         game.create_object_from_card(&card, owner, zone)
+    }
+
+    #[test]
+    fn graveyard_entry_and_departure_use_different_source_snapshots() {
+        let event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                ObjectId::from_raw(1),
+                Zone::Graveyard,
+                Zone::Battlefield,
+                EventCause::from_effect(ObjectId::from_raw(2), PlayerId::from_index(0)),
+                None,
+            ),
+            Default::default(),
+        );
+        let leaves = ZoneChangeTrigger::new().from(Zone::Graveyard);
+        let enters = leaves.clone().to(Zone::Battlefield);
+        assert!(leaves.looks_back_for_source(&event));
+        assert!(!enters.looks_back_for_source(&event));
     }
 
     fn spell_or_ability_you_control_exile_trigger() -> ZoneChangeTrigger {

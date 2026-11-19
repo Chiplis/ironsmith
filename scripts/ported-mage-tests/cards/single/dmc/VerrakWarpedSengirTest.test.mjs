@@ -240,7 +240,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}{B}: Each opponent"
+          "ability": "{4}{B}: Each opponent",
+          "source": "Kami of Jealous Thirst"
         },
         {
           "op": "setChoice",
@@ -251,6 +252,14 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Verrak, Warped Sengir",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "waitStackResolved",
@@ -273,7 +282,7 @@ registerPortedMageTests({
         {
           "op": "assertLife",
           "player": 0,
-          "life": "20 - 2 * 22 * 2"
+          "life": 20
         },
         {
           "op": "assertLife",

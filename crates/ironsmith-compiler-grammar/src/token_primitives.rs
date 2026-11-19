@@ -33,6 +33,8 @@ fn until_from_leaf_duration(duration: LeafDurationPhrase) -> Option<Until> {
     Some(match duration {
         LeafDurationPhrase::ThisTurn | LeafDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
         LeafDurationPhrase::UntilEndOfCombat => Until::EndOfCombat,
+        // The continuous-effect grammar owns this boundary.
+        LeafDurationPhrase::UntilEndOfCombatOnYourNextTurn => return None,
         LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
         LeafDurationPhrase::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
         LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,

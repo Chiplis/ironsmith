@@ -43,7 +43,21 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "-8: You get an emblem"
+          "ability": "-8: You get an emblem",
+          "source": "Venser, the Sojourner"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Venser, the Sojourner",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -51,7 +65,39 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": 1
+          "target": 1,
+          "holdStack": true
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Elite Vanguard"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "count": 2,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Elite Vanguard",
+          "count": 1
         },
         {
           "op": "setStopAt",

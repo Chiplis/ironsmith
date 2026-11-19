@@ -61,14 +61,20 @@ function getInspectionState(game) {
 }
 
 export function registerPortedMageTests(fileSpec) {
-  for (const testSpec of fileSpec.tests || []) {
+  const tests = fileSpec.tests || [];
+  const selectedOccurrences = process.env.MAGE_PORT_REPLAY_OCCURRENCES;
+  const selected = selectedOccurrences
+    ? new Set(JSON.parse(selectedOccurrences)[fileSpec.sourcePath] ?? [])
+    : null;
+  for (const [index, testSpec] of tests.entries()) {
+    if (selected && !selected.has(index)) continue;
     const options = testSpec.skip ? { skip: testSpec.skip } : undefined;
     test(`${fileSpec.sourcePath} :: ${testSpec.name}`, options, async (t) => {
       if (process.env.MAGE_PORT_TEST_START_TRACE) {
         console.error(`[mage-port-test-start] ${fileSpec.sourcePath} :: ${testSpec.name}`);
       }
       const repeat = testSpec.repeat;
-      const fixture = repeat ? fileSpec.tests.find(candidate => candidate.name === repeat.name) : testSpec;
+      const fixture = repeat ? tests.find(candidate => candidate.name === repeat.name) : testSpec;
       assert(fixture && !fixture.repeat, `unknown or nested repeated fixture: ${repeat?.name}`);
       for (const seed of repeat?.seeds ?? [fixture.seed]) {
         let context = null;
@@ -1532,13 +1538,18 @@ function topStackAbilitySourceIsAlsoStackSpell(game) {
 
 export async function castSpell(context, operation) {
   const player = playerIndex(operation.player);
-  ensurePerspective(context, player);
+  const decisionPlayer = playerIndex(operation.decisionPlayer ?? player);
+  ensurePerspective(context, decisionPlayer);
   let state = context.game.uiState();
   const name = cardName(operation.name).replace(/^fused\s+/i, "");
   applyDayNightCastSideEffects(context, operation);
   if (!isPriorityDecisionFor(state, player)) {
     await advanceToPriorityPlayer(context, player);
     state = context.game.uiState();
+  }
+  if (operation.decisionPlayer !== undefined) {
+    assert(state.decision?.player === decisionPlayer,
+      `expected player ${decisionPlayer} to make the casting decision for player ${player}`, state.decision);
   }
   if (process.env.MAGE_PORT_DUMP_STATE) {
     console.error(`[mage-port-state] ${JSON.stringify(state, null, 2).slice(0, 20000)}`);
@@ -1549,8 +1560,14 @@ export async function castSpell(context, operation) {
   assert(!alias || aliasedCard, `scripted cast object ${operation.objectAlias} is unavailable`);
   const cardId = aliasedCard ? Number(aliasedCard.id) : findCardIdInHand(context, player, name, { optional: true });
   const castingMethod = castingMethodChoice(operation.name);
+  const permissionAlias = operation.permissionSource && resolveMageObjectAlias(context, operation.permissionSource);
   const permissionSource = operation.permissionSource === undefined ? null :
-    findPermanentForMageArg(context, player, operation.permissionSource);
+    permissionAlias
+      ? context.game.getHiddenCardState().objects.find(object => objectMatchesAliasEntry(object, permissionAlias))
+      : findPermanentForMageArg(context, player, operation.permissionSource);
+  assert(!permissionAlias || permissionSource, `scripted permission source ${operation.permissionSource} is unavailable`);
+  const permissionSourceIds = [permissionSource?.id, permissionAlias?.objectId]
+    .filter(id => id !== undefined && id !== null).map(Number);
   const priceSource = operation.priceSource === undefined ? null :
     findPermanentForMageArg(context, player, operation.priceSource);
   if (!operation.holdStack && shouldSettleStackBeforeTargetedCast(context, operation, cardId)) {
@@ -1566,7 +1583,8 @@ export async function castSpell(context, operation) {
         return false;
       }
       if (operation.actionLabel !== undefined && candidate.label !== operation.actionLabel) return false;
-      if (permissionSource && Number(candidate.action_ref?.casting_method?.source) !== Number(permissionSource.id)) return false;
+    if (permissionSourceIds.length &&
+        !permissionSourceIds.includes(Number(candidate.action_ref?.casting_method?.source))) return false;
       if (priceSource && Number(castingPriceSupplier(candidate.action_ref?.casting_method)) !== Number(priceSource.id)) return false;
       const actionObjectId =
         candidate.object_id ?? candidate.action_ref?.spell_id ?? candidate.action_ref?.object_id;
@@ -1752,11 +1770,12 @@ async function activateManaAbility(context, operation) {
       state,
       (candidate) =>
         candidate.kind === "activate_mana_ability" &&
+        (operation.actionLabel === undefined || candidate.label === operation.actionLabel) &&
         (!operation.source || (source
           ? Number(candidate.action_ref?.source) === source.objectId
           : normalizeActionSearch(candidate.label).includes(normalizeActionSearch(operation.source)))) &&
         actionLabelMatches(candidate, operation.ability),
-      `mana ability ${operation.ability}`,
+      `mana ability ${operation.actionLabel ?? operation.ability}`,
     );
     context.game.dispatch(priorityCommand(action));
     await answerPendingDecisions(context);
@@ -2176,7 +2195,14 @@ async function assertPlayableAbility(context, operation) {
     });
   assert(matching.every(action => typeof action.payment_proven === "boolean"),
     `missing engine payment analysis for ${operation.label}`, matching);
-  const has = matching.some(action => action.payment_proven);
+  const payableCount = matching.filter(action => action.payment_proven).length;
+  if (operation.expectedCount !== undefined) {
+    assert(payableCount === operation.expectedCount,
+      `expected ${operation.expectedCount} payable actions matching ${operation.label}, got ${payableCount}`,
+      matching.length ? matching : showAvailableAbilities({ decision }));
+    return;
+  }
+  const has = payableCount > 0;
   const expected = operation.expected === "Boolean.FALSE" ? false : operation.expected;
   assert(typeof expected === "boolean", `invalid playable ability expectation ${operation.expected}`);
   if (process.env.MAGE_PORT_DUMP_CHECKPOINT) {
@@ -2593,7 +2619,7 @@ async function assertSpeed(context, operation) {
   assert(seat.speed === expected, `expected speed ${expected} for ${player}, got ${seat.speed}`);
 }
 
-async function assertStackObject(context, operation) {
+export async function assertStackObject(context, operation) {
   const state = await prepareStackAssertion(context, operation);
   const expectedCount = numericValue(operation.count);
   const expectedText = normalizeActionSearch(operation.text);
@@ -2602,6 +2628,8 @@ async function assertStackObject(context, operation) {
     : "";
   const stackObjects = state.stack_objects || state.stackObjects || [];
   const source = resolveMageObjectAlias(context, operation.source);
+  const objectTarget = resolveMageObjectAlias(context, operation.objectTarget);
+  const checkpoint = objectTarget && getInspectionState(context.game);
   const matching = stackObjects.filter((object) => {
     if (operation.source !== undefined && (source
       ? Number(object.source_stable_id) !== source.stableId
@@ -2609,12 +2637,15 @@ async function assertStackObject(context, operation) {
     if (operation.isSpell !== undefined && (object.ability_kind == null) !== operation.isSpell) return false;
     if (operation.abilityKind !== undefined && object.ability_kind !== operation.abilityKind) return false;
     if (operation.controller !== undefined && Number(object.controller) !== playerIndex(operation.controller)) return false;
+    if (operation.playerTarget !== undefined && !object.targets?.some(target =>
+      target.kind === "player" && Number(target.player) === playerIndex(operation.playerTarget))) return false;
     if (operation.objectTarget !== undefined && !object.targets?.some(target =>
-      target.kind === "object" && target.name === operation.objectTarget &&
+      target.kind === "object" &&
+      (objectTarget ? targetMatchesAliasEntry(target, objectTarget, checkpoint) : target.name === operation.objectTarget) &&
       (operation.objectTargetKind === undefined ||
         safeObjectDetails(context, target)?.kind === operation.objectTargetKind))) return false;
     if (operation.text === undefined) return operation.source !== undefined || operation.abilityKind !== undefined ||
-      operation.objectTarget !== undefined || operation.controller !== undefined;
+      operation.objectTarget !== undefined || operation.playerTarget !== undefined || operation.controller !== undefined;
     const text = normalizeActionSearch(
       [object.name, object.ability_text, object.abilityText, object.effect_text, object.effectText]
         .filter(Boolean)
@@ -3409,6 +3440,13 @@ function scriptedObjectSelection(context, decision, choices) {
 
 function scriptManaPayment(context, state, operation) {
   const player = playerIndex(operation.player);
+  const lifeOptions = [...(state.mana_payment.life_options ?? [])];
+  const lifeChoices = (operation.lifePips ?? []).map(symbol => {
+    const index = lifeOptions.findIndex(({ pip_id }) => state.mana_payment.payment_pips[pip_id]?.includes(symbol));
+    assert(index >= 0, `expected a life payment for ${symbol} when paying for ${operation.source}`,
+      state.mana_payment);
+    return lifeOptions.splice(index, 1)[0];
+  });
   const alternatives = (operation.alternatives ?? []).map(({ source, kind }) => {
     const permanent = findPermanentForMageArg(context, player, source);
     const id = String(permanent.id);
@@ -3423,6 +3461,7 @@ function scriptManaPayment(context, state, operation) {
       action: "replan",
       excluded_source_ids: state.mana_payment.fixed_excluded_source_ids,
       required_alternatives: alternatives,
+      required_life_pips: lifeChoices.map(choice => choice.pip_id),
       x_allocation: operation.xAllocation,
     },
   });
@@ -3433,6 +3472,10 @@ function scriptManaPayment(context, state, operation) {
     assert(payment.planned_sources.some(source =>
       source.source_id === alternative.source_id && source.payment_kind === alternative.payment_kind),
     `scripted payment for ${operation.source} did not use ${alternative.payment_kind} from ${alternative.source_id}`, payment);
+  }
+  if (operation.lifePips !== undefined) {
+    const life = lifeChoices.reduce((sum, choice) => sum + choice.life, 0);
+    assert(payment.life_to_pay === life, `expected to pay ${life} life for ${operation.source}`, payment);
   }
   if (operation.xAllocation !== undefined) {
     assert(JSON.stringify(payment.planned_x_allocation) === JSON.stringify(operation.xAllocation),
@@ -3829,7 +3872,9 @@ function nextQueuedObjectTarget(context, decision) {
 
 function nextTargetChoice(context, decision, immediateTarget = undefined) {
   const requirements = decision.requirements || [];
-  if (Array.isArray(immediateTarget?.groups)) return immediateTarget;
+  if (immediateTarget === "TestPlayer.TARGET_SKIP" || Array.isArray(immediateTarget?.groups)) {
+    return immediateTarget;
+  }
   if (immediateTarget === undefined || immediateTarget === null) {
     const first = nextQueuedTarget(context, decision.player);
     if (first === "TestPlayer.TARGET_SKIP" || Array.isArray(first?.groups)) return first;
@@ -5187,6 +5232,13 @@ async function assertEachObject(context, operation) {
   const checkManaValue = operation.checks.some(check => check.property === "manaValue");
   const checkFace = operation.checks.some(check => check.property === "transformed" || check.property === "doubleFaced");
   const checkGoaded = operation.checks.some(check => check.property === "goaded");
+  const renownedById = operation.checks.some(check => check.property === "renowned")
+    ? new Map(context.game.exportPublicAuditCheckpoint().objects.map(card => [Number(card.id), card.renowned]))
+    : null;
+  const summoningSicknessById = operation.checks.some(check => check.property === "summoningSick")
+    ? new Map(context.game.uiState().players.flatMap(seat => seat.battlefield.flatMap(group =>
+      group.member_ids.map(id => [Number(id), group.summoning_sick]))))
+    : null;
   const keywordCards = operation.checks.some(check => check.property === "keyword")
     ? new Map(context.game.manabrewPublicState().gameView.zones
       .filter(entry => entry.zone === zone)
@@ -5215,6 +5267,15 @@ async function assertEachObject(context, operation) {
         const displayName = getObjectDetails(context.game, card.id).name;
         // The engine's face-down label represents a nameless object in rules comparisons.
         actual = displayName === "Face-down creature" ? "" : displayName;
+      } else if (check.property === "attachmentCount") {
+        assert(Array.isArray(card.attachments), `missing attachment inspection for ${card.name} in ${zone}`);
+        actual = card.attachments.length;
+      } else if (check.property === "renowned") {
+        actual = renownedById.get(Number(card.id));
+        assert(typeof actual === "boolean", `missing renowned inspection for ${card.name} in ${zone}`);
+      } else if (check.property === "summoningSick") {
+        actual = summoningSicknessById.get(Number(card.id));
+        assert(typeof actual === "boolean", `missing summoning sickness inspection for ${card.name} in ${zone}`);
       } else if (check.property === "counter" || check.property === "counterKinds") {
         assert(Array.isArray(card.counters), `missing counter inspection for ${card.name} in ${zone}`);
         const counters = card.counters.filter(counter => counter.amount > 0);
@@ -5293,8 +5354,12 @@ async function assertPlayerState(context, operation) {
   await prepareAssertion(context, operation);
   const seat = playerIndex(operation.targetPlayer ?? operation.player);
   const player = context.game.exportPublicAuditCheckpoint().players.find(entry => Number(entry.id) === seat);
-  const actual = player?.[operation.property];
-  assert(typeof actual === "boolean", `missing player ${seat} ${operation.property} inspection`);
+  const actual = operation.property === "restrictedManaCount" && player
+    // The audit snapshot omits the restricted mana array when it is empty.
+    ? (player.restrictedMana ?? []).length
+    : player?.[operation.property];
+  const available = typeof operation.expected === "number" ? Number.isFinite(actual) : typeof actual === "boolean";
+  assert(available, `missing player ${seat} ${operation.property} inspection`);
   assert(actual === operation.expected,
     `expected player ${seat} ${operation.property}=${operation.expected}, got ${actual}`);
 }

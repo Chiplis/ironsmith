@@ -898,6 +898,14 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "label": "Play",
+          "expectedCount": 2
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
           "label": "Play Branchloft Pathway",
           "expected": true
         },
@@ -2775,7 +2783,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "assertStackSize",
@@ -2884,7 +2893,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "assertStackSize",
@@ -3447,8 +3457,22 @@ registerPortedMageTests({
           "extra": "true"
         },
         {
-          "op": "unsupported",
-          "source": "checkSubType(\"server must use side 1 - subtype\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"Tergrid, God of Fright\", SubType.GOD, true)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Tergrid, God of Fright"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "God",
+              "expected": true
+            }
+          ],
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPowerToughness",
@@ -3487,6 +3511,26 @@ registerPortedMageTests({
           "expected": true
         },
         {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Tergrid, God of Fright",
+          "kind": "activated",
+          "textPattern": "\\buntap\\b",
+          "count": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Tergrid, God of Fright",
+          "kind": "activated",
+          "textPattern": "\\btarget player loses\\b",
+          "count": 0,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "setStrictChooseMode",
           "value": true
         },
@@ -3504,6 +3548,38 @@ registerPortedMageTests({
           "name": "Tergrid, God of Fright",
           "power": 4,
           "toughness": 5
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Tergrid, God of Fright"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "God",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Tergrid, God of Fright",
+          "kind": "activated",
+          "textPattern": "\\buntap\\b",
+          "count": 0
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Tergrid, God of Fright",
+          "kind": "activated",
+          "textPattern": "\\btarget player loses\\b",
+          "count": 0
         }
       ]
     },

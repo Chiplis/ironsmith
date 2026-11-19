@@ -651,7 +651,8 @@ registerPortedMageTests({
           "name": "Falkenrath Reaver",
           "objectAlias": "@court.1",
           "actionLabel": "Cast Falkenrath Reaver (without paying its mana cost, from exile)",
-          "permissionSource": "Court of Locthwain"
+          "permissionSource": "Court of Locthwain",
+          "resolve": true
         },
         {
           "op": "setStopAt",

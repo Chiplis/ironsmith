@@ -46,7 +46,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}{R}{G}: Until end of turn, {this} becomes a 3/3 red and green Elemental creature with \"Whenever this creature attacks, put a +1/+1 counter on it.\" It's still a land."
+          "ability": "becomes a 3/3",
+          "source": "Raging Ravine"
         },
         {
           "op": "waitStackResolved",
@@ -146,7 +147,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}{R}{G}: Until end of turn, {this} becomes a 3/3 red and green Elemental creature with \"Whenever this creature attacks, put a +1/+1 counter on it.\" It's still a land."
+          "ability": "becomes a 3/3",
+          "source": "Raging Ravine"
         },
         {
           "op": "waitStackResolved",
@@ -167,7 +169,8 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}{R}{G}: Until end of turn, {this} becomes a 3/3 red and green Elemental creature with \"Whenever this creature attacks, put a +1/+1 counter on it.\" It's still a land."
+          "ability": "becomes a 3/3",
+          "source": "Raging Ravine"
         },
         {
           "op": "attack",

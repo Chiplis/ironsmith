@@ -39,7 +39,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{5}"
+          "ability": "Transform",
+          "source": "Ayara, Widow of the Realm"
         },
         {
           "op": "setChoice",

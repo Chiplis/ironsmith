@@ -124,7 +124,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Mishra's Domination",
-          "target": "Grizzly Bears"
+          "target": "Grizzly Bears",
+          "resolve": true
         },
         {
           "op": "assertPowerToughness",

@@ -229,6 +229,46 @@ registerPortedMageTests({
       "name": "test_Simple_ManifestFromOpponentLibrary",
       "operations": [
         {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "LIBRARY",
+          "name": "Plains",
+          "count": 8
+        },
+        {
+          "op": "addCard",
+          "player": 1,
+          "zone": "LIBRARY",
+          "name": "Forest",
+          "count": 8
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "count": 8,
+          "phase": "PRECOMBAT_MAIN",
+          "turn": 1,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "count": 8,
+          "phase": "PRECOMBAT_MAIN",
+          "turn": 1,
+          "seatIndependent": true
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -348,6 +388,16 @@ registerPortedMageTests({
           "player": 1,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
           "count": 0
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "count": 6
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "count": 4
         }
       ]
     },
@@ -2208,6 +2258,22 @@ registerPortedMageTests({
           "name": "Aerie Bowmasters",
           "power": 4,
           "toughness": 5
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Aerie Bowmasters",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "green",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -2324,6 +2390,22 @@ registerPortedMageTests({
           "name": "Aerie Bowmasters",
           "power": 3,
           "toughness": 4
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Aerie Bowmasters",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "green",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -2727,8 +2809,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 2,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",

@@ -1053,7 +1053,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Indominus Rex, Alpha"
+          "name": "Indominus Rex, Alpha",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -1141,7 +1142,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Indominus Rex, Alpha"
+          "name": "Indominus Rex, Alpha",
+          "resolve": true
         },
         {
           "op": "setChoice",

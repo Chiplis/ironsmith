@@ -46,7 +46,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Autumn's Veil"
+          "name": "Autumn's Veil",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -132,7 +133,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Autumn's Veil"
+          "name": "Autumn's Veil",
+          "resolve": true
         },
         {
           "op": "castSpell",

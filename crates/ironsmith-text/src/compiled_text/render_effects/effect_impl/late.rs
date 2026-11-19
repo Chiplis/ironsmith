@@ -1787,6 +1787,14 @@
             _ => describe_possessive_player_filter(&manifest.player),
         };
         let action = if manifest.cloak { "Cloak" } else { "Manifest" };
+        if let Some(controller) = &manifest.controller {
+            let actor = match controller {
+                PlayerFilter::TargetPlayerOrControllerOfTarget => "Its controller".to_string(),
+                _ => capitalize_first(&describe_player_filter(controller)),
+            };
+            let owner = if controller == &manifest.player { "their" } else { &owner };
+            return format!("{actor} {}s the top card of {owner} library", lowercase_first(action));
+        }
         return format!("{action} the top card of {owner} library");
     }
     if effect

@@ -178,6 +178,19 @@ fn damage_target_object_matches(
 }
 
 impl ReplacementMatcher for ReplacedEventMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        match &self.event {
+            // Thresholds over the proposed amount.
+            ReplacedEventSpec::DrawInstruction { .. }
+            | ReplacedEventSpec::LifeReducedToZeroOrLess { .. } => false,
+            ReplacedEventSpec::LifePayment {
+                require_library_capacity,
+                ..
+            } => !*require_library_capacity,
+            _ => true,
+        }
+    }
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         match &self.event {
             ReplacedEventSpec::DamageToPlayer { .. } | ReplacedEventSpec::DamageToObject { .. } => {

@@ -50,7 +50,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Aether Herder"
+          "name": "Aether Herder",
+          "resolve": true
         },
         {
           "op": "castSpell",

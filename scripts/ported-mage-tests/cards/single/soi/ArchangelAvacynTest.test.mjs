@@ -120,6 +120,12 @@ registerPortedMageTests({
           "player": 1,
           "name": "Hill Giant",
           "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Avacyn, the Purifier",
+          "damage": 0
         }
       ]
     },

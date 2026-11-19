@@ -24,7 +24,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Squee, the Immortal",
+          "name": "Squee, the Immortal@squee",
           "count": 1
         },
         {
@@ -32,19 +32,43 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}{R}"
+          "ability": "{2}{R}",
+          "source": "Fires of Mount Doom"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "name": "@squee",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Squee, the Immortal"
+          "name": "Squee, the Immortal",
+          "castingMethod": "play_from",
+          "objectAlias": "@squee",
+          "permissionSource": "Fires of Mount Doom",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Fires of Mount Doom"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Squee, the Immortal",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "skipInitShuffling"
@@ -71,6 +95,11 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": "currentGame.getStartingLife() - 2"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
         }
       ]
     },
@@ -95,7 +124,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Squee, the Immortal",
+          "name": "Squee, the Immortal@squee",
           "count": 1
         },
         {
@@ -103,19 +132,43 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}{R}"
+          "ability": "{2}{R}",
+          "source": "Fires of Mount Doom"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "name": "@squee",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Squee, the Immortal"
+          "name": "Squee, the Immortal",
+          "castingMethod": "play_from",
+          "objectAlias": "@squee",
+          "permissionSource": "@squee",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Squee"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Squee, the Immortal",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "skipInitShuffling"
@@ -142,6 +195,11 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": "currentGame.getStartingLife()"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
         }
       ]
     }

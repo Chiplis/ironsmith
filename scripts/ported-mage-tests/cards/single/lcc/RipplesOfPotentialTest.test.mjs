@@ -53,12 +53,28 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ripples of Potential"
+          "name": "Ripples of Potential",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ripples of Potential",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Blast Zone^Arcbound Javelineer^Chandra, Pyromaster^Atraxa's Skitterfang"
+          "kind": "proliferate",
+          "description": "Choose permanents and/or players to proliferate",
+          "choices": [
+            "Permanent: Blast Zone",
+            "Permanent: Arcbound Javelineer",
+            "Permanent: Chandra, Pyromaster",
+            "Permanent: Atraxa's Skitterfang"
+          ]
         },
         {
           "op": "setChoice",
@@ -68,12 +84,12 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "value": false
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",

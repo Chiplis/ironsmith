@@ -84,6 +84,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "description": "Choose optional costs for Aether Figment",
+          "choices": [
+            "Kicker: 3"
+          ],
+          "kind": "options",
+          "player": 0
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -92,7 +101,7 @@ registerPortedMageTests({
         },
         {
           "op": "setStrictChooseMode",
-          "value": false
+          "value": true
         },
         {
           "op": "setStopAt",
@@ -122,8 +131,7 @@ registerPortedMageTests({
           "power": 3,
           "toughness": 3
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "test_DontUse_Manual",
@@ -206,6 +214,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "description": "Choose optional costs for Aether Figment",
+          "choices": [],
+          "kind": "options",
+          "player": 0
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -214,7 +229,7 @@ registerPortedMageTests({
         },
         {
           "op": "setStrictChooseMode",
-          "value": false
+          "value": true
         },
         {
           "op": "setStopAt",
@@ -244,8 +259,7 @@ registerPortedMageTests({
           "power": 1,
           "toughness": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "test_Multikicker_UseOnce",
@@ -2020,6 +2034,16 @@ registerPortedMageTests({
           "op": "assertHandCount",
           "player": 1,
           "count": 0
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "options": [
+            ""
+          ],
+          "exact": true
         }
       ]
     },

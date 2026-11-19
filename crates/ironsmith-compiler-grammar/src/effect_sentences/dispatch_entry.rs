@@ -6265,18 +6265,29 @@ pub(crate) fn parse_complete_get_pump_statement(
     else {
         return Ok(None);
     };
-    if verb_idx == 0
-        || !matches!(verb, super::chain_carry::Verb::Get)
-        || super::lex_chain_helpers::split_effect_chain_on_and_lexed(sentence).len() > 1
-        || sentence.first().is_some_and(|token| {
+    if verb_idx == 0 || !matches!(verb, super::chain_carry::Verb::Get) {
+        return Ok(None);
+    }
+    let subject_tokens = &sentence[..verb_idx];
+    // The pump parser owns this duration. Check for competing sentence
+    // structures on the subject after the recognized leading phrase.
+    let subject_body = crate::grammar::leaf::parse_leaf_restriction_duration_prefix_tokens(
+        subject_tokens,
+    )
+    .filter(|prefix| {
+        prefix.duration == crate::grammar::leaf::LeafDurationPhrase::UntilYourNextUpkeep
+    })
+    .map_or(subject_tokens, |prefix| {
+        crate::lexer::trim_lexed_commas(prefix.rest)
+    });
+    if super::lex_chain_helpers::split_effect_chain_on_and_lexed(sentence).len() > 1
+        || subject_body.first().is_some_and(|token| {
             token.is_any_word(&["if", "when", "whenever", "unless", "at", "as", "until"])
         })
-        || sentence[..verb_idx]
+        || subject_body
             .iter()
             .any(|token| token.kind == TokenKind::Comma)
-        || sentence[..verb_idx]
-            .iter()
-            .any(|token| token.is_word("may"))
+        || subject_body.iter().any(|token| token.is_word("may"))
     {
         // An optional pump keeps its `may` scope; the may-aware chain routes
         // own the wrapper.
@@ -6302,7 +6313,7 @@ pub(crate) fn parse_complete_get_pump_statement(
         })));
     }
     super::clause_dispatch::parse_get_pump_clause(
-        &sentence[..verb_idx],
+        subject_tokens,
         &sentence[verb_idx + 1..],
         sentence,
     )

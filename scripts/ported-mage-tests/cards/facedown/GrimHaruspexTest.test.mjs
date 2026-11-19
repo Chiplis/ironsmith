@@ -36,7 +36,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Grim Haruspex using Morph"
+          "name": "Grim Haruspex using Morph",
+          "resolve": true
         },
         {
           "op": "castSpell",

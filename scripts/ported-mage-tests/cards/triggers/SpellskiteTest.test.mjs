@@ -165,7 +165,7 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
         },
         {
           "op": "activateAbility",

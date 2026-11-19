@@ -75,10 +75,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, hw, bear, true)"
-        },
-        {
           "op": "assertHandCount",
           "player": 0,
           "count": 1
@@ -92,9 +88,15 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Historian's Wisdom",
+          "target": "Runeclaw Bear",
+          "expected": true
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

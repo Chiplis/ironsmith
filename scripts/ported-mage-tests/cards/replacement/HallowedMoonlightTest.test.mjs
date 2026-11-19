@@ -74,7 +74,8 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Spiritual Visit"
+          "name": "Spiritual Visit",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -191,7 +192,8 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Rally the Ancestors"
+          "name": "Rally the Ancestors",
+          "holdStack": true
         },
         {
           "op": "setChoice",
@@ -199,12 +201,58 @@ registerPortedMageTests({
           "value": "X=4"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Rally the Ancestors",
+          "count": 1,
+          "isSpell": true,
+          "onTop": true,
+          "xValue": 4
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Hallowed Moonlight",
-          "target": "TestPlayer.NO_TARGET"
+          "target": "TestPlayer.NO_TARGET",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Hallowed Moonlight",
+          "count": 1,
+          "isSpell": true,
+          "onTop": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Pillarfield Ox",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Rally the Ancestors",
+          "count": 1,
+          "isSpell": true,
+          "xValue": 4
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

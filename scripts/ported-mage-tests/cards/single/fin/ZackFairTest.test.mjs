@@ -32,7 +32,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Zack Fair"
+          "name": "Zack Fair",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -99,7 +100,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Zack Fair"
+          "name": "Zack Fair",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -116,8 +118,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -191,7 +192,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Zack Fair"
+          "name": "Zack Fair",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -204,8 +206,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -283,7 +284,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Zack Fair"
+          "name": "Zack Fair",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -296,8 +298,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -310,8 +311,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",

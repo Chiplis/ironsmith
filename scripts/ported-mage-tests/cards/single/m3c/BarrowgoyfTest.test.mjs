@@ -196,7 +196,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Baneslayer Angel",
+          "name": "Baneslayer Angel@milled",
           "count": 1
         },
         {
@@ -219,9 +219,24 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "TestPlayer.CHOICE_SKIP"
+          "choices": [],
+          "description": "Choose up to 1 creature card"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Barrowgoyf",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeChoices": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "setStopAt",
@@ -247,6 +262,18 @@ registerPortedMageTests({
           "name": "Barrowgoyf",
           "power": 4,
           "toughness": 5
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@milled",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "@milled",
+          "count": 0
         }
       ]
     },

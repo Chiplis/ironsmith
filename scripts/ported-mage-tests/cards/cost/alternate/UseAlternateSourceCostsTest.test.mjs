@@ -611,7 +611,7 @@ registerPortedMageTests({
           "op": "execute"
         }
       ],
-      "skip": "upstream @Ignore"
+      "skip": "Upstream placeholder uses card name xxx and contains no cast or gameplay assertion"
     }
   ]
 });

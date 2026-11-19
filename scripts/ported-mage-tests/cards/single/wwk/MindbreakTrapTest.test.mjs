@@ -71,7 +71,7 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
         },
         {
           "op": "castSpell",

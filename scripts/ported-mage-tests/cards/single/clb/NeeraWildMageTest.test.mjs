@@ -28,6 +28,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
@@ -56,7 +61,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Consider"
+          "name": "Consider",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Consider",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "setChoice",

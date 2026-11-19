@@ -289,7 +289,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Liliana's Caress"
+          "name": "Liliana's Caress",
+          "resolve": true
         },
         {
           "op": "castSpell",

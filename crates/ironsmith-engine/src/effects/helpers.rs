@@ -12,7 +12,7 @@ use crate::cost::OptionalCostsPaid;
 use crate::decisions::context::ViewCardsContext;
 use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
 use crate::effect::{
-    EffectMetric, EffectMetricSource, EffectOutcome, EventValueSpec, OutcomeStatus,
+    Effect, EffectMetric, EffectMetricSource, EffectOutcome, EventValueSpec, OutcomeStatus,
     PriorEffectMetricQuery, Value,
 };
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
@@ -3428,6 +3428,40 @@ pub(crate) fn tagged_relation_names_members(
     )
 }
 
+/// Attachment relations read information about their named host. An
+/// instruction may still need that host's snapshot after it leaves play.
+pub(crate) fn attachment_host_reference_tags(
+    program: &crate::resolution::ResolutionProgram,
+) -> std::collections::HashSet<crate::tag::TagKey> {
+    fn visit_filter(
+        filter: &crate::filter::ObjectFilter,
+        tags: &mut std::collections::HashSet<crate::tag::TagKey>,
+    ) {
+        tags.extend(filter.tagged_constraints.iter().filter_map(|constraint| {
+            (constraint.relation == crate::filter::TaggedOpbjectRelation::AttachedToTaggedObject)
+                .then(|| constraint.tag.clone())
+        }));
+        for branch in &filter.any_of {
+            visit_filter(branch, tags);
+        }
+    }
+
+    fn visit_effect(effect: &Effect, tags: &mut std::collections::HashSet<crate::tag::TagKey>) {
+        if let Some(ChooseSpec::Object(filter) | ChooseSpec::All(filter)) =
+            effect.0.result_action_object_spec().map(ChooseSpec::base)
+        {
+            visit_filter(filter, tags);
+        }
+        effect.visit_child_effects(&mut |child| visit_effect(child, tags));
+    }
+
+    let mut tags = std::collections::HashSet::new();
+    for effect in program.all_effects() {
+        visit_effect(effect, &mut tags);
+    }
+    tags
+}
+
 fn filter_names_tagged_members(filter: &crate::filter::ObjectFilter) -> bool {
     filter
         .tagged_constraints
@@ -3435,7 +3469,7 @@ fn filter_names_tagged_members(filter: &crate::filter::ObjectFilter) -> bool {
         .any(|constraint| tagged_relation_names_members(constraint.relation))
 }
 
-fn candidate_object_ids_for_filter(
+pub(super) fn candidate_object_ids_for_filter(
     game: &GameState,
     filter: &crate::filter::ObjectFilter,
     ctx: &ExecutionContext,

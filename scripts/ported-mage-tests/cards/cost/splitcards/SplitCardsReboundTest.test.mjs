@@ -13,59 +13,83 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
           "name": "Cast Through Time",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
           "name": "Mountain",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
           "name": "Swamp",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": 0,
           "name": "Fire // Ice",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Fire"
+          "name": "Fire",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          },
+          "holdStack": true
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, playerB, 2)"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Fire",
+          "count": 1,
+          "isSpell": true,
+          "playerTarget": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Fire // Ice",
           "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "setOptionChoices",
+          "description": "Perform the effect",
+          "choices": [
+            "Yes"
+          ],
+          "kind": "boolean",
+          "player": 0
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Cast Ice"
+          "op": "setOptionChoices",
+          "description": "Choose which spell to cast",
+          "choices": [
+            "Ice"
+          ],
+          "kind": "options",
+          "player": 0
         },
         {
           "op": "addTarget",
@@ -92,15 +116,23 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Mountain\", true)"
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Swamp\", false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": false
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

@@ -64,11 +64,41 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertAbilityCount(playerA, \"Balduvian Bears\", LandwalkAbility.class, 5)"
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "ability": "Plainswalk",
+          "count": 1
+        },
+        {
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "ability": "Islandwalk",
+          "count": 1
+        },
+        {
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "ability": "Swampwalk",
+          "count": 1
+        },
+        {
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "ability": "Mountainwalk",
+          "count": 1
+        },
+        {
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "ability": "Forestwalk",
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore: Failing because permanent LKI does not save MageObjectAttribute values"
+      ]
     }
   ]
 });

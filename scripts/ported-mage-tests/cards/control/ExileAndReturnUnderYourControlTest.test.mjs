@@ -161,6 +161,16 @@ registerPortedMageTests({
           "player": 0,
           "name": "Courser of Kruphix",
           "count": 1
+        },
+        {
+          "op": "assertTopCardRevealed",
+          "player": 0,
+          "expected": true
+        },
+        {
+          "op": "assertTopCardRevealed",
+          "player": 1,
+          "expected": false
         }
       ]
     },

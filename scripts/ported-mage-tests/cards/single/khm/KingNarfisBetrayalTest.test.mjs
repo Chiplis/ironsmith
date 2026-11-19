@@ -87,15 +87,15 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 5,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 5,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "resolve": true
         },
         {
           "op": "castSpell",

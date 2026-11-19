@@ -58,6 +58,22 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Highway Robber",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "playerTarget": 1,
+          "targetCount": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
           "player": null
         },
         {
@@ -119,6 +135,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 18
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Highway Robber",
+          "abilityKind": "Triggered",
+          "count": 0
         }
       ]
     },

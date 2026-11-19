@@ -1243,6 +1243,8 @@ pub struct TurnStore {
     pub additional_phases: Vec<Phase>,
     /// Creation sequence parallel to `additional_phases`.
     pub additional_phase_orders: Vec<u64>,
+    /// Order of the added combat chosen by the phase scheduler, if any.
+    pub(crate) added_combat_order: Option<u64>,
     /// Optional sole step for CR 500.10 synthetic phases, parallel to the queue.
     pub additional_phase_only_steps: Vec<Option<Step>>,
     /// Monotonic creation sequence shared by phase and step additions.
@@ -10092,9 +10094,16 @@ impl GameState {
 
     /// Expire every duration tied to the end of the current combat.
     ///
-    /// This is shared by the ordinary end-of-combat step and CR 724.2, whose
-    /// procedure skips that step and therefore cannot rely on its event.
+    /// This is shared by ordinary combat and an effect that ends combat.
     pub fn cleanup_effects_end_of_combat(&mut self) {
+        self.cleanup_combat_effects(Some(self.turn.turn_number));
+    }
+
+    pub(crate) fn cleanup_effects_for_skipped_combat(&mut self) {
+        self.cleanup_combat_effects(None);
+    }
+
+    fn cleanup_combat_effects(&mut self, completed_combat_turn: Option<u32>) {
         // The active player's next combat phase is over: spend its pending
         // attack requirements.
         let active = self.turn.active_player;
@@ -10104,7 +10113,9 @@ impl GameState {
         self.end_combat_phase_player_control();
         self.cleanup_restrictions_end_of_combat();
         self.cleanup_combat_damage_assignment_suppressions_end_of_combat();
-        self.effect_store.continuous_effects.cleanup_end_of_combat();
+        self.effect_store
+            .continuous_effects
+            .cleanup_end_of_combat(completed_combat_turn);
         self.effect_store
             .delayed_triggers
             .retain(|trigger| !trigger.expires_at_end_of_combat);
@@ -11721,8 +11732,13 @@ impl GameState {
         catalog: &C,
     ) {
         self.cache_linked_face_definition(def);
+        let other_face_name = def
+            .card
+            .other_face_name
+            .as_deref()
+            .or_else(|| crate::cards::meld_result_name(def.name()));
         if let Some(other_def) = catalog
-            .linked_face_definition(def.card.other_face_name.as_deref(), def.card.other_face)
+            .linked_face_definition(other_face_name, def.card.other_face)
             .cloned()
         {
             self.register_card_subtypes(&other_def.card);
@@ -12262,6 +12278,29 @@ impl GameState {
         }
 
         self.load_linked_face_definition(name, id)
+    }
+
+    /// Resolve a noted name to a printed face without requiring the note to
+    /// preserve the capitalization of the registered card definition.
+    pub(crate) fn printed_definition_for_noted_name(
+        &self,
+        name: &str,
+    ) -> Option<crate::cards::CardDefinition> {
+        let name = name.trim();
+        if let Some(definition) = self.linked_face_definitions_by_name.get(name) {
+            return Some(definition.clone());
+        }
+        let folded = name.to_lowercase();
+        let mut matches = self
+            .linked_face_definitions_by_name
+            .iter()
+            .filter(|(registered, _)| registered.to_lowercase() == folded);
+        if let Some((_, definition)) = matches.next()
+            && matches.next().is_none()
+        {
+            return Some(definition.clone());
+        }
+        self.load_linked_face_definition(Some(name), None)
     }
 }
 

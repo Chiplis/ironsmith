@@ -4499,10 +4499,17 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                                 .downcast::<crate::events::ZoneChangeEvent>()
                                 .is_none()
                             {
-                                for snapshots in tagged.values_mut() {
+                                let attachment_hosts =
+                                    crate::effects::helpers::attachment_host_reference_tags(&delayed.effects);
+                                for (tag, snapshots) in &mut tagged {
                                     snapshots.retain(|snapshot| {
                                         game.find_object_by_stable_id(snapshot.stable_id)
                                             == Some(snapshot.object_id)
+                                            || (attachment_hosts.contains(tag)
+                                                && snapshot.zone == Zone::Battlefield
+                                                && game.source_departure_snapshot(snapshot.object_id)
+                                                    .is_some_and(|last| last.zone == snapshot.zone
+                                                        && last.stable_id == snapshot.stable_id))
                                     });
                                 }
                             }
@@ -4959,9 +4966,11 @@ pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<
                 crate::provenance::ProvNodeId::default(),
             )
         }),
-        (Phase::Combat, Some(Step::BeginCombat)) => events(|active| {
+        (Phase::Combat, Some(Step::BeginCombat)) => active_player_events(game, |active| {
+            let added_combat_order = game.turn_store.added_combat_order
+                .filter(|_| game.turn_store.active_added_step.is_none());
             TriggerEvent::new_with_provenance(
-                BeginningOfCombatEvent::new(active),
+                BeginningOfCombatEvent::new(active).with_added_combat_order(added_combat_order),
                 crate::provenance::ProvNodeId::default(),
             )
         }),

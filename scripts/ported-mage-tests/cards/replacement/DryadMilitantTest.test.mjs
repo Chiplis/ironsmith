@@ -478,7 +478,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1"
+          "ability": "+1",
+          "source": "Chandra Ablaze"
         },
         {
           "op": "addTarget",
@@ -491,9 +492,13 @@ registerPortedMageTests({
           "value": "Alchemist's Greeting"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Alchemist's Greeting"
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Exile this discarded card with Madness"
+          ]
         },
         {
           "op": "setChoice",
@@ -504,6 +509,20 @@ registerPortedMageTests({
           "op": "addTarget",
           "player": 0,
           "target": "Grizzly Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chandra Ablaze",
+          "count": 1,
+          "abilityKind": "Activated",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",

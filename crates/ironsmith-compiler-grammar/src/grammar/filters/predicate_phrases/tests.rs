@@ -3264,7 +3264,7 @@ fn parse_predicate_preserves_ordered_graveyard_cards_above_source() -> Result<()
 }
 
 #[test]
-fn parse_predicate_behold_or_controlled_subtype_uses_capture_parser() -> Result<(), CardTextError> {
+fn parse_predicate_revealed_or_controlled_subtype_retains_cast_evidence() -> Result<(), CardTextError> {
     let tokens = lex_line(
         "If you revealed a Dragon card or controlled a Dragon as you cast this spell",
         0,
@@ -3272,20 +3272,18 @@ fn parse_predicate_behold_or_controlled_subtype_uses_capture_parser() -> Result<
     let predicate_tokens = predicate_tokens_after_if(&tokens);
 
     let parsed = parse_predicate(&predicate_tokens)?;
+    let mut filter = ObjectFilter::default().with_subtype(Subtype::Dragon);
+    filter.set_as_you_cast_this_turn_surface(true);
 
     assert_eq!(
         parsed,
         PredicateAst::Or(
             Box::new(PredicateAst::ThisSpellPaidLabel(
-                crate::cost::OptionalCostRef::with_discriminator(
-                    crate::cost::OptionalCostKind::Behold,
-                    crate::types::Subtype::Dragon.to_string(),
-                ),
+                crate::cost::OptionalCostRef::reveal_from_hand_subtype(Subtype::Dragon),
             )),
             Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
                 player: PlayerAst::You,
-                filter: ObjectFilter::default()
-                    .with_subtype(parse_subtype_word("dragon").expect("dragon subtype")),
+                filter,
             })),
         )
     );

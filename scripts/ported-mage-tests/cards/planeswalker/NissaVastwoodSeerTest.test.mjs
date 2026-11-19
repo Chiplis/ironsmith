@@ -43,7 +43,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Nissa, Vastwood Seer"
+          "name": "Nissa, Vastwood Seer",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -56,6 +57,14 @@ registerPortedMageTests({
           "target": "Forest"
         },
         {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Forest",
+          "count": 1
+        },
+        {
           "op": "playLand",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -63,39 +72,49 @@ registerPortedMageTests({
           "name": "Forest"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Reveal"
+          "ability": "+1: Reveal",
+          "source": "Nissa, Sage Animist"
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Reveal"
+          "ability": "+1: Reveal",
+          "source": "Nissa, Sage Animist"
         },
         {
           "op": "activateAbility",
           "turn": 5,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Reveal"
+          "ability": "+1: Reveal",
+          "source": "Nissa, Sage Animist"
         },
         {
           "op": "activateAbility",
           "turn": 7,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Reveal"
+          "ability": "+1: Reveal",
+          "source": "Nissa, Sage Animist"
         },
         {
           "op": "activateAbility",
           "turn": 9,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "-7: Untap up to six target"
+          "ability": "-7: Untap up to six target",
+          "source": "Nissa, Sage Animist"
         },
         {
           "op": "addTarget",
@@ -149,7 +168,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Forest",
           "power": 6,
-          "toughness": 6
+          "toughness": 6,
+          "scope": "All"
         }
       ]
     }

@@ -65,6 +65,12 @@ registerPortedMageTests({
           "name": "Alpha Myr",
           "count": 0
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

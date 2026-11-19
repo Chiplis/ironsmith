@@ -67,6 +67,10 @@ registerPortedMageTests({
           "player": 1,
           "name": "Silvercoat Lion",
           "count": 1
+        },
+        {
+          "op": "assertMonarch",
+          "monarch": 0
         }
       ]
     },
@@ -153,8 +157,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -228,6 +231,10 @@ registerPortedMageTests({
           "player": 1,
           "name": "Pillarfield Ox",
           "count": 1
+        },
+        {
+          "op": "assertMonarch",
+          "monarch": 1
         }
       ]
     }

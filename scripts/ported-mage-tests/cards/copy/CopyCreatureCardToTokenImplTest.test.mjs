@@ -33,12 +33,64 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Hour of Eternity",
-          "target": "Unesh, Criosphinx Sovereign"
+          "target": "Unesh, Criosphinx Sovereign",
+          "holdStack": true
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "X=1"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Unesh, Criosphinx Sovereign",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertTokenCount",
+          "player": 0,
+          "name": "Unesh, Criosphinx Sovereign",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Unesh, Criosphinx Sovereign"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Zombie",
+              "expected": true
+            },
+            {
+              "property": "power",
+              "value": null,
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "value": null,
+              "expected": 4
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -92,8 +144,7 @@ registerPortedMageTests({
           "player": 0,
           "count": 2
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testFaerieArtisans",

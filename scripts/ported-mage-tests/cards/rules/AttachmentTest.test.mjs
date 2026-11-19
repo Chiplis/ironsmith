@@ -1180,8 +1180,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -1194,8 +1193,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -1208,8 +1206,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN",
-          "player": 0
+          "phase": "END_TURN"
         },
         {
           "op": "setStopAt",
@@ -1308,17 +1305,25 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "unsupported",
-          "source": "assertAttachedTo(playerA, \"Dream Leash\", \"Omniscience\", true)"
-        },
-        {
           "op": "assertHandCount",
           "player": 0,
           "name": "Dream Leash",
           "count": 0
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Dream Leash",
+          "target": "Omniscience",
+          "expected": true
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Omniscience",
+          "tapped": false
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

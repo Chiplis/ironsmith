@@ -70,6 +70,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "description": "Choose optional costs for Arco-Flagellant",
+          "choices": [],
+          "kind": "options",
+          "player": 0
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -78,7 +85,7 @@ registerPortedMageTests({
         },
         {
           "op": "setStrictChooseMode",
-          "value": false
+          "value": true
         },
         {
           "op": "setStopAt",
@@ -93,9 +100,14 @@ registerPortedMageTests({
           "player": 0,
           "name": "Arco-Flagellant",
           "count": 1
+        },
+        {
+          "op": "assertTokenCount",
+          "player": 0,
+          "name": "Arco-Flagellant",
+          "count": 0
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "test_Squad_UseOnce",

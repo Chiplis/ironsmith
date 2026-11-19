@@ -96,9 +96,15 @@ registerPortedMageTests({
           "attacker": "Belligerent Guest"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
+          "kind": "distribution",
           "player": 0,
-          "value": "X=1"
+          "description": "Assign 3 combat damage from Belligerent Guest (assign exactly 3 total)",
+          "choices": [
+            "Moss Viper",
+            "Bob",
+            "Bob"
+          ]
         },
         {
           "op": "setChoice",
@@ -110,7 +116,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "COMBAT_DAMAGE",
           "player": 0,
-          "count": 2
+          "count": 2,
+          "completeChoices": true
         },
         {
           "op": "setStopAt",
@@ -119,6 +126,23 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Blood Token",
+          "count": 2
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Belligerent Guest",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 18
         }
       ]
     },
@@ -208,7 +232,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Curiosity",
-          "target": "Nettle Drone"
+          "target": "Nettle Drone",
+          "resolve": true
         },
         {
           "op": "activateAbility",

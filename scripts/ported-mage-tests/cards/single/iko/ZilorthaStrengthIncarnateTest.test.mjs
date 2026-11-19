@@ -288,7 +288,22 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Flame Spill",
-          "target": "Savai Sabertooth"
+          "target": "Savai Sabertooth",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Flame Spill",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Savai Sabertooth"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",

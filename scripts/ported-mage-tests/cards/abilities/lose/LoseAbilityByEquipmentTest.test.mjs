@@ -53,7 +53,8 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Cobbled Wings"
+          "name": "Cobbled Wings",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -83,6 +84,34 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 0,
           "life": 20
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Silvercoat Lion",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 2
+            },
+            {
+              "property": "power",
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "expected": 6
+            },
+            {
+              "property": "keyword",
+              "value": "Flying",
+              "expected": false
+            }
+          ]
         }
       ]
     }

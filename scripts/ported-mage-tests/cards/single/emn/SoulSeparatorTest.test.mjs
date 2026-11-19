@@ -87,6 +87,36 @@ registerPortedMageTests({
           "name": "Sylvan Advocate",
           "power": 1,
           "toughness": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Sylvan Advocate"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Spirit",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Sylvan Advocate",
+          "ability": "Flying",
+          "expected": true
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Sylvan Advocate",
+          "ability": "Vigilance",
+          "expected": true
         }
       ]
     },
@@ -196,6 +226,36 @@ registerPortedMageTests({
           "name": "Tree of Perdition",
           "power": 1,
           "toughness": 20
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Tree of Perdition"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Spirit",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Tree of Perdition",
+          "ability": "Flying",
+          "expected": true
+        },
+        {
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Tree of Perdition",
+          "ability": "Defender",
+          "count": 1
         }
       ]
     }

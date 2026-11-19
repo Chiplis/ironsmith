@@ -193,6 +193,11 @@ registerPortedMageTests({
       "name": "testEmptyLibraryCascasde",
       "operations": [
         {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
@@ -240,12 +245,33 @@ registerPortedMageTests({
           "player": 0,
           "name": "Ardent Plea",
           "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "count": 10
+        },
+        {
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "hasLeftGame",
+          "expected": false
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "ONGOING"
         }
       ]
     },
     {
       "name": "testEmptyLibraryCascasdeNexus",
       "operations": [
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
         {
           "op": "addCard",
           "zone": "LIBRARY",
@@ -306,12 +332,33 @@ registerPortedMageTests({
           "player": 0,
           "name": "Aven Skirmisher",
           "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "count": 2
+        },
+        {
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "hasLeftGame",
+          "expected": false
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "ONGOING"
         }
       ]
     },
     {
       "name": "testRecastCascadeCard",
       "operations": [
+        {
+          "op": "clearZone",
+          "zone": "library",
+          "player": 0
+        },
         {
           "op": "addCard",
           "zone": "LIBRARY",
@@ -385,7 +432,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Unsummon",
-          "target": "Enlisted Wurm"
+          "target": "Enlisted Wurm",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -430,6 +478,11 @@ registerPortedMageTests({
     {
       "name": "testHaveToPayAdditionalCosts",
       "operations": [
+        {
+          "op": "clearZone",
+          "zone": "library",
+          "player": 0
+        },
         {
           "op": "addCard",
           "zone": "LIBRARY",
@@ -522,6 +575,11 @@ registerPortedMageTests({
     {
       "name": "testWithSplitSpell",
       "operations": [
+        {
+          "op": "clearZone",
+          "zone": "library",
+          "player": 0
+        },
         {
           "op": "addCard",
           "zone": "LIBRARY",
@@ -730,6 +788,11 @@ registerPortedMageTests({
       "name": "testRemovedFromStack",
       "operations": [
         {
+          "op": "clearZone",
+          "zone": "library",
+          "player": 0
+        },
+        {
           "op": "skipInitShuffling"
         },
         {
@@ -779,7 +842,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Balduvian Bears"
+          "name": "Balduvian Bears",
+          "holdStack": true
         },
         {
           "op": "setChoice",

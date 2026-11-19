@@ -46,8 +46,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Equip {2}",
-          "target": "Silvercoat Lion"
+          "ability": "Equip",
+          "target": "Silvercoat Lion",
+          "source": "Vulshok Morningstar"
         },
         {
           "op": "setChoice",
@@ -65,8 +66,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Equip {1}",
-          "target": "Silvercoat Lion"
+          "ability": "Equip",
+          "target": "Silvercoat Lion",
+          "source": "Bonesplitter"
         },
         {
           "op": "setStrictChooseMode",

@@ -39,7 +39,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Arcbound Bruiser"
+          "name": "Arcbound Bruiser",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -127,14 +128,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Arcbound Bruiser"
+          "name": "Arcbound Bruiser",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Arcbound Hybrid"
+          "name": "Arcbound Hybrid",
+          "resolve": true
         },
         {
           "op": "castSpell",

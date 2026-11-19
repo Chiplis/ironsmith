@@ -84,7 +84,9 @@ registerPortedMageTests({
           "player": 0,
           "turn": 1,
           "phase": "BEGIN_COMBAT",
-          "target": 0
+          "target": {
+            "groups": [[0, 1]]
+          }
         },
         {
           "op": "assertStackObject",

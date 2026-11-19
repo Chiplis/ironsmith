@@ -46,7 +46,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Birthing Hulk"
+          "name": "Birthing Hulk",
+          "resolve": true
         },
         {
           "op": "castSpell",

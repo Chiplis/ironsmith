@@ -185,6 +185,9 @@ fn explicit_chosen_creature_family_does_not_infer_a_basic_land_choice_from_recip
     let bare = parse_subject_are_card_types_in_addition_to_their_other_types_line(&lex(
         "Lands you control are the chosen type in addition to their other types.")).unwrap().unwrap();
     assert!(matches!(&bare[0].payload, P::AddChosenBasicLandType { .. }));
+    let source = parse_subject_are_card_types_in_addition_to_their_other_types_line(&lex(
+        "This land is the chosen type in addition to its other types.")).unwrap().unwrap();
+    assert!(matches!(&source[0].payload, P::AddChosenBasicLandType { filter, .. } if filter.source));
 }
 
 #[test]

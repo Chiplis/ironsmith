@@ -93,6 +93,13 @@ registerPortedMageTests({
           "player": 0,
           "name": "Metallic Sliver",
           "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Metallic Sliver",
+          "tapped": true,
+          "count": 1
         }
       ]
     },
@@ -154,6 +161,13 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Metallic Sliver",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Metallic Sliver",
+          "tapped": false,
           "count": 1
         }
       ]

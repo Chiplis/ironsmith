@@ -179,6 +179,29 @@ registerPortedMageTests({
           "player": 0,
           "name": "Blitz Automaton",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "graveyard",
+            "player": 0,
+            "name": "Blitz Automaton"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "colorCount",
+              "expected": 0
+            },
+            {
+              "property": "power",
+              "expected": 6
+            },
+            {
+              "property": "toughness",
+              "expected": 4
+            }
+          ]
         }
       ]
     },

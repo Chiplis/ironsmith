@@ -119,6 +119,12 @@ registerPortedMageTests({
           "player": 1,
           "life": 20
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -267,6 +273,12 @@ registerPortedMageTests({
           "player": 1,
           "life": 20
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -296,14 +308,14 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
+          "player": 2,
           "name": "Teferi, Master of Time",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": "playerC",
+          "player": 2,
           "name": "Blazing Archon",
           "count": 1
         },
@@ -319,22 +331,66 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "DECLARE_ATTACKERS",
           "player": 1,
-          "name": "Misleading Signpost"
+          "name": "Misleading Signpost",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Misleading Signpost",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "addTarget",
           "player": 1,
-          "target": "Silvercoat Lion"
+          "target": {
+            "groups": [
+              [
+                "Silvercoat Lion"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Misleading Signpost",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "setOptionChoices",
           "player": 1,
-          "target": "playerC"
+          "kind": "boolean",
+          "description": "Reselect which player or permanent target attacking creature is attacking",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 1,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "Charlie"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
           "op": "setStrictChooseMode",
@@ -350,16 +406,22 @@ registerPortedMageTests({
         },
         {
           "op": "assertLife",
-          "player": "playerC",
+          "player": 2,
           "life": 18
         },
         {
           "op": "assertCounterCount",
-          "player": 0,
+          "player": 2,
           "name": "Teferi, Master of Time",
           "counter": "LOYALTY",
           "count": 3
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

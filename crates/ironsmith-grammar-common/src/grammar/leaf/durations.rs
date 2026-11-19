@@ -16,6 +16,7 @@ pub enum LeafDurationPhrase {
     ThisTurn,
     UntilEndOfTurn,
     UntilEndOfCombat,
+    UntilEndOfCombatOnYourNextTurn,
     UntilYourNextTurn,
     UntilYourNextTurnEnd,
     UntilYourNextUpkeep,
@@ -110,6 +111,14 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
     (
         &["until", "your", "next", "untap", "step"],
         LeafDurationPhrase::ControllersNextUntapStep,
+    ),
+    (
+        &["until", "the", "end", "of", "combat", "on", "your", "next", "turn"],
+        LeafDurationPhrase::UntilEndOfCombatOnYourNextTurn,
+    ),
+    (
+        &["until", "end", "of", "combat", "on", "your", "next", "turn"],
+        LeafDurationPhrase::UntilEndOfCombatOnYourNextTurn,
     ),
     (
         &["until", "the", "end", "of", "combat"],
@@ -420,6 +429,7 @@ fn leaf_turn_duration_from_duration(
             Some(LeafTurnDurationPhrase::UntilYourNextTurnEnd)
         }
         LeafDurationPhrase::UntilEndOfCombat
+        | LeafDurationPhrase::UntilEndOfCombatOnYourNextTurn
         | LeafDurationPhrase::UntilYourNextUpkeep
         | LeafDurationPhrase::ControllersNextUntapStep
         | LeafDurationPhrase::YourNextUntapStep

@@ -54,6 +54,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "God-Eternal Bontu",
           "count": 0
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "God-Eternal Bontu",
+          "count": 1
         }
       ]
     },
@@ -115,6 +121,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "God-Eternal Bontu",
           "count": 0
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "God-Eternal Bontu",
+          "count": 1
         }
       ]
     },

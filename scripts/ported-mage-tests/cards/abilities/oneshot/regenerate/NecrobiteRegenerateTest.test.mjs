@@ -85,6 +85,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Craw Wurm",
           "count": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 1,
+          "name": "Elite Vanguard",
+          "tapped": true
         }
       ]
     }

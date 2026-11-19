@@ -347,12 +347,34 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Sacrifice two"
+          "ability": "Sacrifice two creatures",
+          "source": "Tooth and Claw"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Warpath Ghoul^Nether Traitor"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tooth and Claw",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Nether Traitor",
+          "count": 0,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -395,8 +417,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Swamp\", false)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": false,
+          "count": 1
         }
       ]
     }

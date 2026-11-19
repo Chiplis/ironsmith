@@ -91,7 +91,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Black Lotus"
+          "name": "Black Lotus",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -293,9 +294,26 @@ registerPortedMageTests({
           "name": "Black Lotus"
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Add three mana of any one color",
+          "choices": [
+            "White"
+          ],
+          "kind": "colors",
+          "player": 0
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": "White"
+          "source": "Black Lotus",
+          "ability": "Add three mana"
         },
         {
           "op": "castSpell",
@@ -303,6 +321,20 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Armory Mice"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Armory Mice",
+          "cardType": "LAND",
+          "extra": "true",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -331,9 +363,21 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "player": 0,
           "count": 2
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Ashaya, Soul of the Wild",
+          "count": 1
+        },
+        {
+          "op": "assertType",
+          "player": 0,
+          "name": "Armory Mice",
+          "cardType": "LAND",
+          "extra": "false"
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

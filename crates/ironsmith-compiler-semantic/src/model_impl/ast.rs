@@ -680,6 +680,7 @@ pub enum TriggerSpec {
     BeginningOfUpkeep(PlayerFilter),
     BeginningOfDrawStep(PlayerFilter),
     BeginningOfCombat(PlayerFilter),
+    BeginningOfAddedCombat,
     EndOfCombat,
     BeginningOfEndStep(PlayerFilter),
     BeginningOfTheEndStep,

@@ -25,7 +25,34 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Mikaeus, the Lunarch"
+          "name": "Mikaeus, the Lunarch",
+          "holdStack": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=2"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Mikaeus, the Lunarch",
+          "isSpell": true,
+          "count": 1,
+          "xValue": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Mikaeus, the Lunarch",
+          "counter": "+1/+1",
+          "count": 2
         },
         {
           "op": "setStopAt",

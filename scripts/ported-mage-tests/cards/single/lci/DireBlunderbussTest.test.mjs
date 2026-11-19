@@ -28,7 +28,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Balduvian Bears",
+          "name": "Balduvian Bears@bearsA",
           "count": 1
         },
         {
@@ -51,13 +51,34 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Balduvian Bears"
+          "target": {
+            "groups": [
+              [
+                "@bearsA"
+              ]
+            ]
+          },
+          "source": "Dire Blunderbuss"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Dire Blunderbuss",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "@bearsA"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "Balduvian Bears",
+          "attacker": "@bearsA",
           "defender": 1
         },
         {
@@ -66,14 +87,58 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": "Tormod's Crypt"
+          "choices": [
+            "Tormod's Crypt"
+          ],
+          "description": "Sacrifice exactly 1 artifact"
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "@bearsB"
+          "target": {
+            "groups": [
+              [
+                "@bearsB"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "@bearsA",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "@bearsA",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "objectTarget": "@bearsB"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Tormod's Crypt",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -86,7 +151,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 1,
-          "name": "Balduvian Bears",
+          "name": "@bearsB",
           "count": 1
         },
         {

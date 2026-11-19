@@ -32,6 +32,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "name": "The Death of Gwen Stacy",
+          "counter": "Lore",
+          "count": 1
+        },
+        {
           "op": "addTarget",
           "player": 0,
           "target": "Mountain"
@@ -50,6 +59,19 @@ registerPortedMageTests({
           "op": "addTarget",
           "player": 1,
           "target": "Mountain"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Death of Gwen Stacy",
+          "abilityKind": "Triggered",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -79,6 +101,12 @@ registerPortedMageTests({
           "player": "playerD",
           "life": 17
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

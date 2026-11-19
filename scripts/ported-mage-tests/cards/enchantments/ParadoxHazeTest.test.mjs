@@ -140,7 +140,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Copy Enchantment"
+          "name": "Copy Enchantment",
+          "resolve": true
         },
         {
           "op": "setChoice",

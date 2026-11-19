@@ -70,6 +70,10 @@ impl DamageToSpecificTargetMatcher {
 }
 
 impl ReplacementMatcher for DamageToSpecificTargetMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
         matches!(kind, crate::events::EventKind::Damage)
     }
@@ -102,6 +106,10 @@ struct DamageFromChosenSourceMatcher {
 }
 
 impl ReplacementMatcher for DamageFromChosenSourceMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }

@@ -63,7 +63,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Ertai's Familiar",
+          "name": "Ertai's Familiar@familiar",
           "count": 1
         },
         {
@@ -78,14 +78,43 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ertai's Familiar"
+          "name": "Ertai's Familiar",
+          "objectAlias": "@familiar",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ertai's Familiar",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}:"
+          "ability": "this creature can't phase out",
+          "source": "Ertai's Familiar"
+        },
+        {
+          "op": "assertStackObject",
+          "phase": "POSTCOMBAT_MAIN",
+          "turn": 1,
+          "source": "Ertai's Familiar",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "phase": "POSTCOMBAT_MAIN",
+          "turn": 1
         },
         {
           "op": "setStopAt",
@@ -119,7 +148,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Ertai's Familiar",
+          "name": "Ertai's Familiar@familiar",
           "count": 1
         },
         {
@@ -141,14 +170,43 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ertai's Familiar"
+          "name": "Ertai's Familiar",
+          "objectAlias": "@familiar",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ertai's Familiar",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 0,
-          "ability": "{U}:"
+          "ability": "this creature can't phase out",
+          "source": "Ertai's Familiar"
+        },
+        {
+          "op": "assertStackObject",
+          "phase": "BEGIN_COMBAT",
+          "turn": 1,
+          "source": "Ertai's Familiar",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "phase": "BEGIN_COMBAT",
+          "turn": 1
         },
         {
           "op": "castSpell",
@@ -156,7 +214,34 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Slip Out the Back",
-          "target": "Ertai's Familiar"
+          "target": {
+            "groups": [
+              [
+                "@familiar"
+              ]
+            ]
+          },
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Slip Out the Back",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "@familiar"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@familiar",
+          "count": 1
         },
         {
           "op": "setStopAt",

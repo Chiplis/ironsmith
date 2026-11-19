@@ -221,8 +221,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPlayableAbility",
@@ -501,8 +500,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPlayableAbility",

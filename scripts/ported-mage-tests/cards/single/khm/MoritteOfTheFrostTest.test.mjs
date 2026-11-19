@@ -180,7 +180,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Moritte of the Frost",
+          "name": "Moritte of the Frost@moritte",
           "count": 1
         },
         {
@@ -212,11 +212,18 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {C}{C}"
+          "source": "Myr Reservoir",
+          "ability": "Add {C}{C}"
+        },
+        {
+          "op": "assertPlayerState",
+          "property": "restrictedManaCount",
+          "expected": 2,
+          "player": 0
         },
         {
           "op": "assertPlayableAbility",
@@ -231,17 +238,31 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Moritte of the Frost"
+          "name": "Moritte of the Frost",
+          "holdStack": true,
+          "objectAlias": "@moritte"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Grizzly Bears"
+          ]
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Grizzly Bears"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Moritte of the Frost",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -260,6 +281,35 @@ registerPortedMageTests({
           "player": 0,
           "name": "Grizzly Bears",
           "count": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@moritte"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "power",
+              "expected": 5
+            },
+            {
+              "property": "toughness",
+              "expected": 5
+            },
+            {
+              "property": "subtype",
+              "value": "Myr",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Minion",
+              "expected": true
+            }
+          ]
         }
       ]
     }

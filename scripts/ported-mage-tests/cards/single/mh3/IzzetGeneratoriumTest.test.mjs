@@ -170,7 +170,18 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bristling Hydra"
+          "name": "Bristling Hydra",
+          "resolve": true
+        },
+        {
+          "op": "assertCounterCount",
+          "turn": 2,
+          "phase": "UPKEEP",
+          "seatIndependent": true,
+          "player": 0,
+          "name": 0,
+          "counter": "ENERGY",
+          "count": 4
         },
         {
           "op": "assertPlayableAbility",
@@ -178,7 +189,8 @@ registerPortedMageTests({
           "phase": "UPKEEP",
           "player": 0,
           "label": "{T}: Draw",
-          "expected": false
+          "expected": false,
+          "actionLabel": "Activate Izzet Generatorium: {T}: Draw a card. Activate only if you've paid or lost four or more {E} this turn."
         },
         {
           "op": "castSpell",
@@ -209,7 +221,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "{T}: Draw",
-          "expected": true
+          "expected": true,
+          "actionLabel": "Activate Izzet Generatorium: {T}: Draw a card. Activate only if you've paid or lost four or more {E} this turn."
         },
         {
           "op": "activateAbility",

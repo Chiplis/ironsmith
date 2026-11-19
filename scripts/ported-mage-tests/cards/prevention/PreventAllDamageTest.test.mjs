@@ -567,7 +567,35 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "DECLARE_ATTACKERS",
           "player": 1,
-          "name": "Haze Frog"
+          "name": "Haze Frog",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Haze Frog",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Haze Frog",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
         },
         {
           "op": "block",
@@ -608,6 +636,18 @@ registerPortedMageTests({
           "player": 0,
           "name": "Lagac Lizard",
           "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Lagac Lizard",
+          "damage": 0
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Daggerback Basilisk",
+          "damage": 0
         },
         {
           "op": "assertPermanentCount",

@@ -340,14 +340,16 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Swords to Plowshares",
-          "target": "Whipgrass Entangler"
+          "target": "Whipgrass Entangler",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Whipgrass Entangler"
+          "name": "Whipgrass Entangler",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -443,7 +445,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Whipgrass Entangler",
+          "name": "Whipgrass Entangler@original",
           "count": 1
         },
         {
@@ -473,7 +475,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{1}{W}: Until end of turn, ",
-          "target": "Akroma's Devoted"
+          "target": "Akroma's Devoted",
+          "source": "Whipgrass Entangler"
         },
         {
           "op": "waitStackResolved",
@@ -486,17 +489,26 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Sakashima the Impostor"
+          "name": "Sakashima the Impostor",
+          "resolve": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
+          "kind": "options",
           "player": 0,
-          "value": true
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Whipgrass Entangler"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "assertAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "value": "Whipgrass Entangler"
+          "name": "Sakashima the Impostor",
+          "ability": "Until end of turn",
+          "expected": true
         },
         {
           "op": "castSpell",
@@ -504,7 +516,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Swords to Plowshares",
-          "target": "Whipgrass Entangler"
+          "target": "@original",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -512,7 +525,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{1}{W}: Until end of turn, ",
-          "target": "Akroma's Devoted"
+          "target": "Akroma's Devoted",
+          "source": "Sakashima the Impostor"
         },
         {
           "op": "attack",

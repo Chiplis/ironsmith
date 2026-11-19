@@ -45,11 +45,27 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Snow-Covered Island",
+          "ability": "Add {U}",
+          "count": 2
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "U",
+          "amount": 2
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Graven Lore"
+          "name": "Graven Lore",
+          "holdStack": true
         },
         {
           "op": "addTarget",
@@ -60,6 +76,19 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": "Ancient Amphitheater"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Graven Lore",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",

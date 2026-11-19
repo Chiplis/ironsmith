@@ -475,7 +475,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Approach of the Second Sun"
+          "name": "Approach of the Second Sun",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -1126,8 +1127,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",

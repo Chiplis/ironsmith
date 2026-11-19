@@ -219,6 +219,7 @@ mod tests {
                 custom_statuses: Vec::new(), named_action_history:None,
         text_addition_sources: Vec::new(),
         entry_action_objects: Default::default(),
+        cast_controlled_objects: None,
                 ability_origins: None,
         source_definition_metadata: None,
                 stack_kind: None,

@@ -36,7 +36,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "White Glove Gourmand"
+          "name": "White Glove Gourmand",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -102,7 +103,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Doom Blade",
-          "target": "Avian Changeling"
+          "target": "Avian Changeling",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -168,7 +170,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Doom Blade",
-          "target": "Avian Changeling"
+          "target": "Avian Changeling",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -234,7 +237,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Doom Blade",
-          "target": "Goblin Piker"
+          "target": "Goblin Piker",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -277,7 +281,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "White Glove Gourmand",
+          "name": "White Glove Gourmand@gourmand",
           "count": 1
         },
         {
@@ -300,7 +304,27 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Go for the Throat",
-          "target": "White Glove Gourmand"
+          "target": "White Glove Gourmand",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Go for the Throat",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@gourmand",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -308,7 +332,37 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Reanimate",
-          "target": "White Glove Gourmand"
+          "target": "White Glove Gourmand",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Reanimate",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertReenteredFixtures",
+          "fixtures": [
+            "@gourmand"
+          ],
+          "player": 0,
+          "counts": [
+            1
+          ]
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Human Soldier Token",
+          "count": 2
         },
         {
           "op": "setStopAt",

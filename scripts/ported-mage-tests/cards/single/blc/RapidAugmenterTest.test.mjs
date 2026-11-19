@@ -39,7 +39,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Air Marshal"
+          "name": "Air Marshal",
+          "resolve": true
         },
         {
           "op": "attack",
@@ -124,7 +125,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Memnite"
+          "name": "Memnite",
+          "resolve": true
         },
         {
           "op": "attack",
@@ -230,7 +232,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ephemerate"
+          "name": "Ephemerate",
+          "resolve": true
         },
         {
           "op": "addTarget",
@@ -341,7 +344,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ephemerate"
+          "name": "Ephemerate",
+          "resolve": true
         },
         {
           "op": "addTarget",

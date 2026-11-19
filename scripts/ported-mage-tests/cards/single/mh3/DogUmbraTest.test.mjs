@@ -51,7 +51,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Dog Umbra",
-          "target": "Memnite"
+          "target": "Memnite",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -143,7 +144,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Dog Umbra",
-          "target": "Memnite"
+          "target": "Memnite",
+          "resolve": true
         },
         {
           "op": "castSpell",

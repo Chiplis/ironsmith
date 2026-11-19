@@ -121,17 +121,45 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Damnation"
+          "name": "Damnation",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Damnation",
+          "count": 1,
+          "isSpell": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Pulmonic Sliver"
+          ],
+          "player": 0
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Venom Sliver"
+          ],
+          "player": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 0,
-          "value": true
+          "name": "Venom Sliver",
+          "count": 0
         },
         {
           "op": "setStopAt",
@@ -146,12 +174,6 @@ registerPortedMageTests({
           "player": 1,
           "name": "Damnation",
           "count": 1
-        },
-        {
-          "op": "assertGraveyardCount",
-          "player": 0,
-          "name": "Venom Sliver",
-          "count": 0
         },
         {
           "op": "assertPermanentCount",

@@ -290,7 +290,21 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Elenda, the Dusk Rose"
+          "name": "Elenda, the Dusk Rose",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Elenda, the Dusk Rose",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -298,15 +312,30 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Lightning Bolt",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "holdStack": true
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
           "turn": 3,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 1,
-          "name": "Lightning Bolt",
-          "target": "Elenda, the Dusk Rose"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Angelic Renewal",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -314,9 +343,76 @@ registerPortedMageTests({
           "value": false
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Elenda, the Dusk Rose",
+          "power": 2,
+          "toughness": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Lightning Bolt",
+          "target": "Elenda, the Dusk Rose",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Angelic Renewal",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Angelic Renewal",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Elenda, the Dusk Rose",
+          "count": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Elenda, the Dusk Rose",
+          "power": 1,
+          "toughness": 1
         },
         {
           "op": "setStopAt",
@@ -443,14 +539,24 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Elenda, the Dusk Rose"
+          "name": "Elenda, the Dusk Rose",
+          "holdStack": true
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Sweltering Suns"
+          "name": "Sweltering Suns",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Sweltering Suns",
+          "isSpell": true,
+          "count": 1
         },
         {
           "op": "setChoice",

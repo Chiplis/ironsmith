@@ -39,7 +39,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Duress"
+          "name": "Duress",
+          "holdStack": true,
+          "target": 1
         },
         {
           "op": "setChoice",
@@ -47,9 +49,26 @@ registerPortedMageTests({
           "value": "Giant Growth"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 1,
-          "value": true
+          "kind": "options",
+          "description": "Reveal the discarded card and put it on top of your library instead?",
+          "choices": [
+            "Top of library"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Duress",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "execute"

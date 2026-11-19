@@ -60,54 +60,80 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Thraben Inspector"
+          "name": "Thraben Inspector",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Thraben Inspector",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Clue Token",
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Astrid Peth"
+          "name": "Astrid Peth",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Astrid Peth",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Food Token",
+          "count": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Farewell"
+          "name": "Farewell",
+          "holdStack": true
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "2"
+          "kind": "modes",
+          "description": "Choose mode for Farewell",
+          "choices": [
+            "Exile all creatures.",
+            "Exile all graveyards."
+          ]
         },
         {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "4"
-        },
-        {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "TestPlayer.MODE_SKIP"
-        },
-        {
-          "op": "waitStackResolved",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "source": "Farewell",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "setChoice",
@@ -133,6 +159,26 @@ registerPortedMageTests({
           "op": "addTarget",
           "player": 0,
           "target": "Llanowar Elves"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Kaya, Spirits' Justice",
+          "count": 2,
+          "abilityKind": "Triggered",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",

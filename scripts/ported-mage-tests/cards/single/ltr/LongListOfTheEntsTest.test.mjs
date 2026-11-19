@@ -124,7 +124,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Memnite"
+          "name": "Memnite",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -251,7 +252,8 @@ registerPortedMageTests({
           "turn": 9,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Balduvian Bears"
+          "name": "Balduvian Bears",
+          "resolve": true
         },
         {
           "op": "castSpell",

@@ -1125,7 +1125,7 @@ pub(super) fn pre_rule_after_second_main_additional_phases_followup(
                 return Ok(None);
             }
             phase_program.push(EffectAst::Delayed(crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
-                trigger: crate::cards::builders::TriggerSpec::BeginningOfCombat(crate::target::PlayerFilter::Any),
+                trigger: crate::cards::builders::TriggerSpec::BeginningOfAddedCombat,
                 effects: rider,
                 one_shot: true,
                 until_end_of_combat: false,
@@ -1159,10 +1159,7 @@ pub(super) fn pre_rule_after_second_main_additional_phases_followup(
 /// "There's an additional combat phase after this phase. At the beginning of
 /// that combat, untap all creatures you control." (Moraug, Fury of Akoum)
 ///
-/// The combat is inserted directly after the current phase, so "that combat"
-/// is the next combat this turn: its rider is a one-shot delayed
-/// beginning-of-combat trigger created with the phase, not a separate
-/// "at the beginning of each combat" ability.
+/// The one-shot delayed rider watches the exact combat this instruction adds.
 pub(super) fn pre_rule_additional_combat_after_this_phase_that_combat_followup(
     _state: &mut SentenceDispatchState<'_>,
     sentences: &[SentenceInput],
@@ -1203,9 +1200,7 @@ pub(super) fn pre_rule_additional_combat_after_this_phase_that_combat_followup(
     }
     program.push(EffectAst::Delayed(
         crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
-            trigger: crate::cards::builders::TriggerSpec::BeginningOfCombat(
-                crate::target::PlayerFilter::Any,
-            ),
+            trigger: crate::cards::builders::TriggerSpec::BeginningOfAddedCombat,
             effects: rider,
             one_shot: true,
             until_end_of_combat: false,
@@ -1263,7 +1258,7 @@ pub(super) fn pre_rule_after_first_combat_additional_combat_followup(
                 return Ok(None);
             }
             phase_program.push(EffectAst::Delayed(crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
-                trigger: crate::cards::builders::TriggerSpec::BeginningOfCombat(crate::target::PlayerFilter::Any),
+                trigger: crate::cards::builders::TriggerSpec::BeginningOfAddedCombat,
                 effects: rider,
                 one_shot: true,
                 until_end_of_combat: false,

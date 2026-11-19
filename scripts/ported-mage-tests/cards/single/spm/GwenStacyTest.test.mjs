@@ -36,44 +36,92 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ghost-Spider"
+          "name": "Ghost-Spider",
+          "resolve": true
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, ghostSpider, CounterType.P1P1, 1)"
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ghost-Spider",
+          "counter": "+1/+1",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, ghostSpider, CounterType.CHARGE, 1)"
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ghost-Spider",
+          "counter": "Charge",
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "addCounters(1, PhaseStep.PRECOMBAT_MAIN, playerA, ghostSpider, CounterType.P0P1, 1)"
+          "op": "addObjectCounters",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ghost-Spider",
+          "counter": "+0/+1",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "Remove two counters"
+          "ability": "Exile the top card",
+          "source": "Ghost-Spider"
         },
         {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 1)"
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose one object to remove counters from",
+          "choices": [
+            "Ghost-Spider"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "setChoiceAmount(playerA, 0)"
+          "op": "setCounterChoice",
+          "player": 0,
+          "counts": {
+            "Charge": 1,
+            "+0/+1": 1
+          }
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": null
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Mountain",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ghost-Spider",
+          "counter": "+1/+1",
+          "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ghost-Spider",
+          "counter": "+0/+1",
+          "count": 0
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ghost-Spider",
+          "counter": "Charge",
+          "count": 0
         },
         {
           "op": "playLand",

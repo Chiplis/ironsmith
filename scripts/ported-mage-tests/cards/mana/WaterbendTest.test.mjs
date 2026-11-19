@@ -375,7 +375,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Spirit Water Revival"
+          "name": "Spirit Water Revival",
+          "holdStack": true
         },
         {
           "op": "setChoice",
@@ -386,6 +387,33 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": "Balduvian Bears"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Spirit Water Revival",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Balduvian Bears",
+          "tapped": true,
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Island",
+          "tapped": true,
+          "count": 6
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

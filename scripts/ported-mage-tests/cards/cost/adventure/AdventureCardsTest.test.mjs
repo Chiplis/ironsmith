@@ -254,14 +254,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Treats to Share"
+          "name": "Treats to Share",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Curious Pair"
+          "name": "Curious Pair",
+          "resolve": true
         },
         {
           "op": "setStrictChooseMode",
@@ -515,14 +517,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Treats to Share"
+          "name": "Treats to Share",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Curious Pair"
+          "name": "Curious Pair",
+          "resolve": true
         },
         {
           "op": "setStrictChooseMode",
@@ -1156,7 +1160,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Treats to Share"
+          "name": "Treats to Share",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -1397,6 +1402,14 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "player": 0,
           "count": 0
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Rimrock Knight",
+          "kind": "static",
+          "textPattern": "can(?:not|.t) block",
+          "count": 1
         }
       ]
     },
@@ -1885,8 +1898,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",

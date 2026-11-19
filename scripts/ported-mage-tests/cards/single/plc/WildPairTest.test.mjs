@@ -99,7 +99,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Dross Crocodile",
+          "name": "Dross Crocodile@crocodile",
           "count": 1
         },
         {
@@ -107,17 +107,52 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Adaptive Shimmerer"
+          "name": "Adaptive Shimmerer",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Adaptive Shimmerer",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Adaptive Shimmerer",
+          "power": 3,
+          "toughness": 3
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Wild Pair",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Yes"
+          "value": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Dross Crocodile"
+          "target": "@crocodile"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -136,7 +171,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "Dross Crocodile",
+          "name": "@crocodile",
           "count": 1
         }
       ]

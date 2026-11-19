@@ -29,7 +29,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bottomless Pool"
+          "name": "Bottomless Pool",
+          "resolve": true
         },
         {
           "op": "addTarget",
@@ -119,7 +120,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Locker Room"
+          "name": "Locker Room",
+          "resolve": true
         },
         {
           "op": "setStopAt",
@@ -204,7 +206,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bottomless Pool"
+          "name": "Bottomless Pool",
+          "resolve": true
         },
         {
           "op": "addTarget",

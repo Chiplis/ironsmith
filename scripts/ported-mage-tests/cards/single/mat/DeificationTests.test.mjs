@@ -60,7 +60,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Deification"
+          "name": "Deification",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -174,7 +175,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Deification"
+          "name": "Deification",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -281,7 +283,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Deification"
+          "name": "Deification",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -293,7 +296,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Lightning Bolt"
+          "name": "Lightning Bolt",
+          "resolve": true
         },
         {
           "op": "addTarget",
@@ -388,7 +392,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Deification"
+          "name": "Deification",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -503,7 +508,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Deification"
+          "name": "Deification",
+          "resolve": true
         },
         {
           "op": "setChoice",

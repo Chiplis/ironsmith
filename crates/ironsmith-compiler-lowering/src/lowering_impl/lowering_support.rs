@@ -1247,6 +1247,9 @@ fn default_trigger_last_object_prelude(
     }
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => default_trigger_last_object_prelude(trigger, tag),
+        _ if tag.as_str() == crate::tag::CompilerReferenceTag::TriggeringSource.as_str() => {
+            Some(EffectPreludeTag::TriggeringSource(tag.clone()))
+        }
         TriggerSpec::BecomesTargetedBySourceController { target, .. } if target.source =>
             Some(EffectPreludeTag::TriggeringSource(tag.clone())),
         TriggerSpec::ThisBecomesTargetedBySpell(_)

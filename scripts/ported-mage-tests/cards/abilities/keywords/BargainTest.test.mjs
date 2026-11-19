@@ -368,7 +368,7 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
         },
         {
           "op": "addTarget",
@@ -716,7 +716,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Hamlet Glutton"
+          "name": "Hamlet Glutton",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -799,7 +800,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Hamlet Glutton"
+          "name": "Hamlet Glutton",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -888,7 +890,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Hamlet Glutton"
+          "name": "Hamlet Glutton",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -942,7 +945,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Hamlet Glutton"
+          "name": "Hamlet Glutton",
+          "resolve": true
         },
         {
           "op": "setStopAt",

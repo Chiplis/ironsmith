@@ -2018,6 +2018,21 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
+          "name": "Forest",
+          "count": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Forest",
+          "ability": "Add {G}"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
           "name": "Brine Elemental",
           "count": 1
         },
@@ -2076,6 +2091,15 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 1,
           "name": "Brine Elemental",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Forest",
+          "tapped": true,
           "count": 1
         }
       ]
@@ -2352,6 +2376,22 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertType(\"Akroma, Angel of Fury\", CardType.CREATURE, SubType.ANGEL)"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Akroma, Angel of Fury",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "red",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -3393,8 +3433,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -3411,8 +3450,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -3455,8 +3493,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",

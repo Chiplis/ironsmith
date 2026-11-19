@@ -2344,7 +2344,7 @@ pub(super) fn resolve_value_for_etb_for_choice(
 /// Dynamic additions keep the replacement controller, even when its source has
 /// changed control since a resolving registration. Missing/oversized values
 /// propagate to the enclosing replacement transaction instead of becoming zero.
-fn resolve_signed_value_for_replacement(
+pub(super) fn resolve_signed_value_for_replacement(
     value: &crate::effect::Value,
     game: &GameState,
     effect: &ReplacementEffect,

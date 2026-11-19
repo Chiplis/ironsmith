@@ -43,14 +43,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Krenko's Command"
+          "name": "Krenko's Command",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Strike It Rich"
+          "name": "Strike It Rich",
+          "resolve": true
         },
         {
           "op": "activateAbility",

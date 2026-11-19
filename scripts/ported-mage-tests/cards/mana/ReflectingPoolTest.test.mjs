@@ -563,11 +563,78 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Green"
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "City of Brass",
+          "ability": "Add one mana of any color",
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "options",
+          "description": "Choose one",
+          "choices": [
+            "{G}"
+          ]
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Reflecting Pool",
+          "ability": "Add one mana",
+          "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 2
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Plains",
+          "ability": "Add {W}",
+          "count": 2
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "W",
+          "amount": 2
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Razorclaw Bear"
+          "name": "Razorclaw Bear",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Razorclaw Bear",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

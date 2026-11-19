@@ -386,7 +386,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ulamog, the Defiler"
+          "name": "Ulamog, the Defiler",
+          "holdStack": true
         },
         {
           "op": "addTarget",
@@ -399,16 +400,73 @@ registerPortedMageTests({
           "target": "Ulamog, the Defiler"
         },
         {
-          "op": "attack",
-          "turn": 3,
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ulamog, the Defiler",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "source": "Luminarch Aspirant",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Ulamog, the Defiler",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertCounterCount",
           "player": 0,
-          "attacker": "Ulamog, the Defiler",
-          "defender": 1
+          "name": "Ulamog, the Defiler",
+          "count": 3,
+          "counter": "+1/+1"
         },
         {
           "op": "addTarget",
           "player": 0,
           "target": "Ulamog, the Defiler"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT",
+          "source": "Luminarch Aspirant",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Ulamog, the Defiler",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Ulamog, the Defiler",
+          "count": 4,
+          "counter": "+1/+1"
+        },
+        {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Ulamog, the Defiler",
+          "defender": 1
         },
         {
           "op": "setChoice",

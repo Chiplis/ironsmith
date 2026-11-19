@@ -2313,7 +2313,7 @@ pub(crate) fn describe_create_token_and_manifest_top_card(
     create: &crate::effects::CreateTokenEffect,
     manifest: &crate::effects::ManifestTopCardOfLibraryEffect,
 ) -> Option<String> {
-    if manifest.cloak {
+    if manifest.cloak || manifest.controller.is_some() {
         return None;
     }
     let create_text = describe_compact_create_token(create)?;

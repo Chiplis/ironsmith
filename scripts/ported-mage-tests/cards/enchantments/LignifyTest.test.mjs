@@ -68,6 +68,22 @@ registerPortedMageTests({
           "name": "Sliver Hivelord",
           "power": 0,
           "toughness": 4
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Sliver Hivelord"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Sliver",
+              "expected": false
+            }
+          ]
         }
       ]
     }

@@ -145,7 +145,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Binding Agony",
-          "target": "Grizzly Bears"
+          "target": "Grizzly Bears",
+          "resolve": true
         },
         {
           "op": "castSpell",

@@ -70,6 +70,12 @@ registerPortedMageTests({
           "name": "Jagged-Scar Archers",
           "power": 3,
           "toughness": 3
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Linvala, Keeper of Silence",
+          "damage": 0
         }
       ]
     }

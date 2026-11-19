@@ -166,7 +166,7 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
     }
 
     let phase = game.turn.phase;
-    legacy_finish_phase(game, phase, destination_after_phase(phase))
+    legacy_finish_phase(game, phase, destination_after_phase(phase), false)
 }
 
 fn destination_after_phase(phase: Phase) -> TurnScheduleDestination {
@@ -309,7 +309,7 @@ fn legacy_enter_phase(game: &mut GameState, phase: Phase) -> Result<(), TurnErro
     game.turn.phase = phase;
     game.turn.step = first_step_of_phase(phase);
     if skip_main || skip_combat {
-        return legacy_finish_phase(game, phase, destination_after_phase(phase));
+        return legacy_finish_phase(game, phase, destination_after_phase(phase), skip_combat);
     }
     if matches!(phase, Phase::Combat) {
         game.mark_combat_phase_started();
@@ -408,6 +408,9 @@ fn legacy_finish_step_and_phase(
     let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
     let active = game.turn_store.active_added_step.take();
     if active.is_none() || active.is_some_and(|scheduled| scheduled.isolated_phase) {
+        if phase == Phase::Combat {
+            game.cleanup_effects_end_of_combat();
+        }
         game.queue_added_step_phases_after(phase);
     }
     if active.is_some() {
@@ -431,6 +434,7 @@ fn legacy_finish_phase(
     game: &mut GameState,
     phase: Phase,
     normal_next: TurnScheduleDestination,
+    skipped_combat: bool,
 ) -> Result<(), TurnError> {
     if game.turn.step == Some(Step::Upkeep) {
         game.finish_upkeep_duration_tracking();
@@ -439,7 +443,9 @@ fn legacy_finish_phase(
         game.finish_draw_step_tracking();
     }
 
-    if matches!(phase, Phase::Combat) {
+    if skipped_combat {
+        game.cleanup_effects_for_skipped_combat();
+    } else if phase == Phase::Combat {
         game.cleanup_effects_end_of_combat();
     }
     game.queue_added_step_phases_after(phase);

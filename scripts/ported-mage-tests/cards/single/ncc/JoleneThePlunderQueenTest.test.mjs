@@ -48,6 +48,12 @@ registerPortedMageTests({
           "name": "Treasure Token",
           "count": 2
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -102,6 +108,12 @@ registerPortedMageTests({
           "name": "Treasure Token",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -142,6 +154,12 @@ registerPortedMageTests({
           "name": "Treasure Token",
           "count": 0
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -203,6 +221,12 @@ registerPortedMageTests({
           "name": "Treasure Token",
           "count": 6
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

@@ -215,7 +215,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Gonti, Lord of Luxury"
+          "name": "Gonti, Lord of Luxury",
+          "resolve": true
         },
         {
           "op": "setStrictChooseMode",

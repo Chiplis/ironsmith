@@ -60,7 +60,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Infernal Caretaker using Morph"
+          "name": "Infernal Caretaker using Morph",
+          "resolve": true
         },
         {
           "op": "activateAbility",

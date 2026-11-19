@@ -40,7 +40,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Murder",
-          "target": "Spiteful Squad"
+          "target": "Spiteful Squad",
+          "resolve": true
         },
         {
           "op": "addTarget",

@@ -68,7 +68,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Bear Cub"
+          "name": "Bear Cub",
+          "resolve": true
         },
         {
           "op": "castSpell",

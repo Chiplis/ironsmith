@@ -101,21 +101,56 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "description": "Choose optional costs for Chaplain's Blessing",
+          "choices": [
+            "Granted Casualty: special"
+          ],
+          "kind": "options",
+          "player": 0
+        },
+        {
+          "op": "setObjectChoices",
+          "description": "Sacrifice a creature",
+          "choices": [
+            "Silverquill, the Disputant"
+          ],
+          "player": 0
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Chaplain's Blessing"
+          "name": "Chaplain's Blessing",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chaplain's Blessing",
+          "count": 1,
+          "isSpell": true
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chaplain's Blessing",
+          "count": 0,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 0,
-          "value": "Silverquill, the Disputant"
+          "name": "Silverquill, the Disputant",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -140,8 +175,7 @@ registerPortedMageTests({
           "player": 0,
           "life": 25
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

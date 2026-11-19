@@ -194,7 +194,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Karador, Ghost Chieftain"
+          "name": "Karador, Ghost Chieftain",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -325,7 +326,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Karador, Ghost Chieftain"
+          "name": "Karador, Ghost Chieftain",
+          "resolve": true
         },
         {
           "op": "castSpell",

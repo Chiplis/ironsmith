@@ -83,8 +83,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",

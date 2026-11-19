@@ -77,7 +77,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Enduring Innocence",
+          "name": "Enduring Innocence@innocence",
           "count": 1
         },
         {
@@ -99,7 +99,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Llanowar Elves"
+          "name": "Llanowar Elves",
+          "resolve": true
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mountain",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -107,14 +116,39 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Momentary Blink",
-          "target": "Enduring Innocence"
+          "target": "@innocence",
+          "resolve": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertReenteredFixtures",
+          "fixtures": [
+            "@innocence"
+          ],
+          "player": 0,
+          "counts": [
+            1
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Llanowar Elves"
+          "name": "Llanowar Elves",
+          "resolve": true
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mountain",
+          "count": 2
         },
         {
           "op": "setStopAt",

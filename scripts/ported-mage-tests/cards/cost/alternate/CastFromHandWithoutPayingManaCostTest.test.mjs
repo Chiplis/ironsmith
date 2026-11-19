@@ -991,7 +991,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Omniscience"
+          "name": "Omniscience",
+          "resolve": true
         },
         {
           "op": "setChoice",

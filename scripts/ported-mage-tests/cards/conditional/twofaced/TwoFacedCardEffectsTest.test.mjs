@@ -47,6 +47,13 @@ registerPortedMageTests({
           "name": "Wolfir Avenger",
           "power": 4,
           "toughness": 4
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Elite Inquisitor",
+          "power": 2,
+          "toughness": 2
         }
       ]
     },

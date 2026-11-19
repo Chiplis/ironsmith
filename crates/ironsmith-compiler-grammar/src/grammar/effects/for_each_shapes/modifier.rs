@@ -81,9 +81,11 @@ fn duration_prefix(tokens: &[OwnedLexToken]) -> (Until, &[OwnedLexToken]) {
     let duration = match parsed.duration {
         leaf::LeafDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
         leaf::LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
+        leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,
         leaf::LeafDurationPhrase::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
         leaf::LeafDurationPhrase::UntilBeginningOfYourNextEndStep => Until::YourNextEndStep,
         leaf::LeafDurationPhrase::UntilEndOfCombat => Until::EndOfCombat,
+        leaf::LeafDurationPhrase::UntilEndOfCombatOnYourNextTurn => Until::EndOfCombatOnYourNextTurn,
         _ => return (Until::EndOfTurn, tokens),
     };
     (duration, trim_edge_punctuation_tokens(parsed.rest))
@@ -183,6 +185,9 @@ pub fn parse_modifier_tail_shape(tokens: &[OwnedLexToken]) -> ModifierTailShape<
                 leaf::LeafDurationPhrase::UntilEndOfTurn => Some(Until::EndOfTurn),
                 leaf::LeafDurationPhrase::UntilYourNextTurn => Some(Until::YourNextTurn),
                 leaf::LeafDurationPhrase::UntilEndOfCombat => Some(Until::EndOfCombat),
+                leaf::LeafDurationPhrase::UntilEndOfCombatOnYourNextTurn => {
+                    Some(Until::EndOfCombatOnYourNextTurn)
+                }
                 _ => None,
             };
             if let Some(suffix_duration) = suffix_duration {

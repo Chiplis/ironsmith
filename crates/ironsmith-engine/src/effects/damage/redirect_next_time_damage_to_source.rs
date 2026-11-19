@@ -33,6 +33,10 @@ struct DamageSourceToSpecificTargetMatcher {
 }
 
 impl ReplacementMatcher for DamageSourceToSpecificTargetMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool { kind == EventKind::Damage }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {

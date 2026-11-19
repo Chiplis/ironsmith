@@ -1740,6 +1740,7 @@ where
             crate::effects::ManifestTopCardOfLibraryEffect::new(payload.player.clone())
         };
         runtime.descriptive = payload.descriptive;
+        runtime.controller = payload.controller.clone();
         return Ok(Effect::new(runtime));
     }
     if M::downcast_ref::<ironsmith_core::ManifestCardFromHandEffect>(&effect).is_some() {

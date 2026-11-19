@@ -146,7 +146,7 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Hanweir Battlements",
-          "count": 1
+          "count": 0
         },
         {
           "op": "assertExileCount",
@@ -154,7 +154,7 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Hanweir Garrison",
-          "count": 1
+          "count": 0
         },
         {
           "op": "assertPermanentCount",

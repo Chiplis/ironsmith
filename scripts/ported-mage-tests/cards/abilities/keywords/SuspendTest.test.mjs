@@ -1191,6 +1191,7 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
+          "seatIndependent": true,
           "player": 1,
           "name": "Bident of Thassa",
           "count": 1
@@ -1199,6 +1200,7 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
+          "seatIndependent": true,
           "player": 1,
           "name": "Bow of Nylea",
           "count": 1
@@ -1207,6 +1209,7 @@ registerPortedMageTests({
           "op": "assertExileCount",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
+          "seatIndependent": true,
           "player": 0,
           "name": "Wear // Tear",
           "count": 1
@@ -1230,6 +1233,7 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "turn": 7,
           "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true,
           "player": 1,
           "name": "Bident of Thassa",
           "count": 0
@@ -1238,6 +1242,7 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "turn": 7,
           "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true,
           "player": 1,
           "name": "Bow of Nylea",
           "count": 1
@@ -1246,6 +1251,7 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "turn": 7,
           "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true,
           "player": 0,
           "name": "Wear // Tear",
           "count": 1

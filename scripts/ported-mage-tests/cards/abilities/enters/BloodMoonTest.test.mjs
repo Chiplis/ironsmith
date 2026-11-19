@@ -44,6 +44,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Grasslands",
+          "tapped": false
         }
       ]
     },
@@ -88,6 +94,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Kabira Crossroads",
+          "tapped": false
         }
       ]
     },
@@ -168,6 +180,16 @@ registerPortedMageTests({
           "op": "assertHandCount",
           "player": 0,
           "count": 1
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "options": [
+            "{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -248,6 +270,16 @@ registerPortedMageTests({
           "op": "assertHandCount",
           "player": 0,
           "count": 1
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "options": [
+            "{U}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -340,6 +372,16 @@ registerPortedMageTests({
           "player": 1,
           "name": "Ghost Quarter",
           "count": 2
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 1,
+          "turn": 2,
+          "phase": "END_TURN",
+          "options": [
+            "{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -418,6 +460,16 @@ registerPortedMageTests({
           "player": 0,
           "name": "Ghost Quarter",
           "count": 1
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "options": [
+            "{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -494,6 +546,16 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertType(\"Swamp\", CardType.LAND, SubType.SWAMP)"
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 2,
+          "phase": "END_TURN",
+          "options": [
+            "{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -570,6 +632,16 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertType(\"Swamp\", CardType.LAND, SubType.SWAMP)"
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "options": [
+            "{B}{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -710,11 +782,49 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Madblind Mountain\", false)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Madblind Mountain",
+          "tapped": false
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Madblind Mountain"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Mountain",
+              "expected": true
+            },
+            {
+              "property": "supertype",
+              "value": "Basic",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Madblind Mountain",
+          "kind": "activated",
+          "textPattern": "add.*R",
+          "count": 1
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Madblind Mountain",
+          "kind": "activated",
+          "textPattern": "shuffle",
+          "count": 0
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

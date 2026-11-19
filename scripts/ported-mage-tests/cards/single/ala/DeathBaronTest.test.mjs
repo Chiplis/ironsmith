@@ -164,8 +164,39 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Target creature gains",
-          "target": "Death Baron"
+          "ability": "gains all creature types",
+          "target": "Death Baron",
+          "source": "Amoeboid Changeling"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Amoeboid Changeling",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Death Baron"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Death Baron"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Skeleton",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "setStopAt",

@@ -55,6 +55,30 @@ impl TriggerMatcher for BeginningOfCombatTrigger {
     }
 }
 
+/// A delayed rider on the exact combat phase created by its resolution.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct BeginningOfAddedCombatTrigger {
+    pub(crate) order: Option<u64>,
+}
+
+impl TriggerMatcher for BeginningOfAddedCombatTrigger {
+    fn matches(&self, event: &TriggerEvent, _ctx: &TriggerContext) -> bool {
+        let Some(order) = self.order else {
+            return false;
+        };
+        event.downcast::<crate::events::BeginningOfCombatEvent>()
+            .is_some_and(|event| event.added_combat_order == Some(order))
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::BeginningOfCombat])
+    }
+
+    fn display(&self) -> String {
+        "At the beginning of that combat".to_string()
+    }
+}
+
 /// Which player's turn matches, shared with the end-step trigger so an
 /// "enchanted player's" / "enchanted permanent's controller's" turn is
 /// checked instead of matching every turn.

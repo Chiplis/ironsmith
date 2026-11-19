@@ -153,8 +153,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}{R}: {this} deals 1 damage to ",
-          "target": "Sejiri Merfolk"
+          "ability": "deals 1 damage",
+          "target": "Sejiri Merfolk",
+          "source": "Kumano, Master Yamabushi"
         },
         {
           "op": "setStopAt",

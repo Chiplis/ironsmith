@@ -123,7 +123,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Spellweaver Volute",
-          "target": "Lightning Bolt"
+          "target": "Lightning Bolt",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -248,7 +249,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Spellweaver Volute",
-          "target": "Lightning Bolt"
+          "target": "Lightning Bolt",
+          "resolve": true
         },
         {
           "op": "castSpell",

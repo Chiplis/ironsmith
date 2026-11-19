@@ -32,8 +32,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}",
-          "target": "Prodigal Pyromancer"
+          "ability": "You may cast",
+          "target": "Prodigal Pyromancer",
+          "source": "Havengul Lich"
         },
         {
           "op": "waitStackResolved",
@@ -46,15 +47,30 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Prodigal Pyromancer"
+          "name": "Prodigal Pyromancer",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "source": "Prodigal Pyromancer",
+          "isSpell": true,
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: {this} deals",
-          "target": 1
+          "ability": "Deal damage",
+          "target": 1,
+          "source": "Havengul Lich"
         },
         {
           "op": "setStopAt",

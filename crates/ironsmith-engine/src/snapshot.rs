@@ -722,6 +722,10 @@ pub struct ObjectSnapshot {
     /// Frozen original action recipients from this incarnation's entry program.
     #[cfg_attr(feature="serialization",serde(default,skip_serializing_if="std::collections::HashMap::is_empty"))]
     pub entry_action_objects: std::collections::HashMap<crate::tag::TagKey,Vec<ObjectSnapshot>>,
+    /// Native evidence of battlefield characteristics at the end of this
+    /// incarnation's cast, retained for pending abilities.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub cast_controlled_objects: Option<Arc<[ObjectSnapshot]>>,
     /// Exact incarnation's saddle designation. Missing historical/public
     /// evidence is unknown, never an unsaddled receipt.
     #[cfg_attr(feature = "serialization", serde(default))]
@@ -937,6 +941,7 @@ impl ObjectSnapshot {
             named_action_history: None,
             text_addition_sources: Vec::new(),
         entry_action_objects: Default::default(),
+        cast_controlled_objects: None,
             ring_bearer: None,
             flipped: false,
             face_down: false,
@@ -1147,6 +1152,9 @@ impl ObjectSnapshot {
             named_action_history: Some(game.named_action_history(obj.id)),
             text_addition_sources: obj.splice_cast_state.as_ref().map(|state|state.text_sources.clone()).unwrap_or_default(),
             entry_action_objects: obj.cast_tagged_objects.iter().filter(|(tag,_)|tag.as_str().starts_with("__entry_action_")).map(|(tag,objects)|(tag.clone(),objects.clone())).collect(),
+            cast_controlled_objects: obj.cast_tagged_objects
+                .get(ironsmith_core::CAST_CONTROLLED_OBJECTS_TAG)
+                .map(|snapshots| Arc::from(snapshots.as_slice())),
             ring_bearer: Some(obj.zone == Zone::Battlefield && game.player(game.controller_of(obj)).is_some_and(|player| player.ring_bearer == Some(obj.id))),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
@@ -1619,6 +1627,7 @@ impl ObjectSnapshot {
             named_action_history: None,
             text_addition_sources: Vec::new(),
         entry_action_objects: Default::default(),
+        cast_controlled_objects: None,
             ring_bearer: Some(false),
             flipped: false,
             face_down: false,

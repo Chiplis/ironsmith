@@ -265,6 +265,12 @@ registerPortedMageTests({
           "player": 1,
           "name": "Runeclaw Bear",
           "count": 6
+        },
+        {
+          "op": "assertTokenCount",
+          "player": 1,
+          "name": "Runeclaw Bear",
+          "count": 4
         }
       ]
     },

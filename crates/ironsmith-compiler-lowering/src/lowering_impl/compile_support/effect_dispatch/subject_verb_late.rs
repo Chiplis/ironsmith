@@ -496,6 +496,8 @@ pub(super) fn compile_put_counters_action(
                         && filter.specific.is_none()))
             {
                 subject.apply_player_refs_to_filter(&mut filter, ctx);
+                // Each resolution-time choice binds only this instruction's
+                // recipients, including when a mode repeats (CR 700.2d).
                 let tag = ctx.next_tag("counters");
                 let choose = crate::effects::ChooseObjectsEffect::new(
                     filter,
@@ -503,7 +505,8 @@ pub(super) fn compile_put_counters_action(
                     chooser,
                     tag.clone(),
                 )
-                .in_zone(Zone::Battlefield);
+                .in_zone(Zone::Battlefield)
+                .replace_tagged_objects();
                 let mut put_counters = crate::effects::PutCountersEffect::new(
                     *counter_type,
                     resolved_count,

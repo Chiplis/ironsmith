@@ -50,7 +50,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Damnation"
+          "name": "Damnation",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Damnation",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "setChoice",
@@ -66,6 +75,26 @@ registerPortedMageTests({
           "op": "addTarget",
           "player": 0,
           "target": "Memnite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jackdaw Savior",
+          "count": 2,
+          "abilityKind": "Triggered",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -126,8 +155,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Phantasmal Image",
-          "count": 2
+          "name": "Phantasmal Image@first",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Phantasmal Image@second",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -148,17 +184,17 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Phantasmal Image"
+          "name": "Phantasmal Image",
+          "objectAlias": "@first"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Air Elemental"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Air Elemental"
+          ]
         },
         {
           "op": "waitStackResolved",
@@ -176,7 +212,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Air Elemental[only copy]"
+          "target": "@first"
         },
         {
           "op": "waitStackResolved",
@@ -185,21 +221,27 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@first",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Phantasmal Image"
+          "name": "Phantasmal Image",
+          "objectAlias": "@second"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Air Elemental"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Air Elemental"
+          ]
         },
         {
           "op": "waitStackResolved",
@@ -217,17 +259,21 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Air Elemental[only copy]"
+          "target": "@second"
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Phantasmal Image"
+          "target": "@first"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": false
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Don't copy"
+          ]
         },
         {
           "op": "setStopAt",

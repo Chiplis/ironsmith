@@ -21,21 +21,40 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "kind": "options",
+          "description": "Choose optional costs for Verdeloth the Ancient",
+          "player": 0,
+          "choices": [
+            "Kicker: 0"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Verdeloth the Ancient"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "name": "Verdeloth the Ancient",
+          "holdStack": true
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "X=2"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Verdeloth the Ancient",
+          "isSpell": true,
+          "count": 1,
+          "xValue": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -92,32 +111,56 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {C}"
+          "ability": "Add {C}",
+          "source": "Rosheen Meanderer"
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"C\", 4)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "C",
+          "amount": 4
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "options",
+          "description": "Choose optional costs for Verdeloth the Ancient",
+          "player": 0,
+          "choices": [
+            "Kicker: 0"
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Verdeloth the Ancient"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "name": "Verdeloth the Ancient",
+          "holdStack": true
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "X=2"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Verdeloth the Ancient",
+          "isSpell": true,
+          "count": 1,
+          "xValue": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -174,32 +217,56 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {C}"
+          "ability": "Add {C}",
+          "source": "Rosheen Meanderer"
         },
         {
-          "op": "unsupported",
-          "source": "checkManaPool(\"mana\", 1, PhaseStep.PRECOMBAT_MAIN, playerA, \"C\", 4)"
+          "op": "assertManaPool",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "colors": "C",
+          "amount": 4
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "options",
+          "description": "Choose optional costs for Verdeloth the Ancient",
+          "player": 0,
+          "choices": [
+            "Kicker: 0"
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Verdeloth the Ancient"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "name": "Verdeloth the Ancient",
+          "holdStack": true
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "X=0"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Verdeloth the Ancient",
+          "isSpell": true,
+          "count": 1,
+          "xValue": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

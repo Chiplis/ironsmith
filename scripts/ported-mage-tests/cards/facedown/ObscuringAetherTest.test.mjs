@@ -25,7 +25,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Obscuring Aether"
+          "name": "Obscuring Aether",
+          "resolve": true
         },
         {
           "op": "activateAbility",

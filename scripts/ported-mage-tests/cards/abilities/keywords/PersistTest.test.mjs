@@ -76,6 +76,13 @@ registerPortedMageTests({
           "player": 0,
           "name": "Safehold Elite",
           "count": 1
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": 0,
+          "counter": "POISON",
+          "count": 1
         }
       ]
     },

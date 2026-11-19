@@ -123,7 +123,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Metallic Sliver",
+          "name": "Metallic Sliver@sliver",
           "count": 1
         },
         {
@@ -136,7 +136,64 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Metallic Sliver"
+          "holdStack": true,
+          "target": {
+            "groups": [
+              [
+                "@sliver"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "@sliver"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Mari, the Killing Quill",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "@sliver",
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 1,
+            "alias": "@sliver"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "HIT",
+              "expected": 1
+            }
+          ]
         },
         {
           "op": "attack",
@@ -146,14 +203,23 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Yes"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Universal Automaton",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeChoices": true
         },
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Metallic Sliver"
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "setStopAt",
@@ -181,8 +247,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertCounterOnExiledCardCount(sliver, CounterType.HIT, 0)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "exile",
+            "player": 1,
+            "alias": "@sliver"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "counter",
+              "value": "HIT",
+              "expected": 0
+            }
+          ]
         }
       ]
     }

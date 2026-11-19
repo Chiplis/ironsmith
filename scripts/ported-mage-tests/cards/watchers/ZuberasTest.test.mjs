@@ -68,7 +68,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Silent-Chant Zubera"
+          "target": "Silent-Chant Zubera",
+          "holdStack": true
         },
         {
           "op": "castSpell",
@@ -76,7 +77,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Floating-Dream Zubera"
+          "target": "Floating-Dream Zubera",
+          "holdStack": true
         },
         {
           "op": "castSpell",
@@ -84,7 +86,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Ember-Fist Zubera"
+          "target": "Ember-Fist Zubera",
+          "holdStack": true
         },
         {
           "op": "addTarget",
@@ -97,7 +100,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Ashen-Skin Zubera"
+          "target": "Ashen-Skin Zubera",
+          "holdStack": true
         },
         {
           "op": "castSpell",
@@ -105,7 +109,21 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Dripping-Tongue Zubera"
+          "target": "Dripping-Tongue Zubera",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 5,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

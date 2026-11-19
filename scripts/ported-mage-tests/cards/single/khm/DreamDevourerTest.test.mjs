@@ -600,8 +600,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Jorn, God of Winter",
-          "count": 2
+          "name": "Jorn, God of Winter@front",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Jorn, God of Winter@back",
+          "count": 1
         },
         {
           "op": "assertPlayableAbility",
@@ -656,30 +663,57 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "activateAbility",
+          "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Foretell {G}"
+          "name": "Jorn, God of Winter using foretell",
+          "holdStack": true,
+          "objectAlias": "@front"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Jorn, God of Winter",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "activateAbility",
+          "op": "assertPlayableAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Foretell {U}{B}"
+          "label": "Cast Kaldring",
+          "expected": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kaldring, the Rimestaff using foretell",
+          "holdStack": true,
+          "objectAlias": "@back",
+          "actionLabel": "Cast Kaldring, the Rimestaff (foretell)"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Kaldring, the Rimestaff",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",

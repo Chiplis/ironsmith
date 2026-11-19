@@ -64,20 +64,29 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}, {T}"
+          "ability": "can't be countered",
+          "source": "Mistrise Village"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Bear Cub"
+          "name": "Bear Cub",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Bear Cub",
+          "isSpell": true,
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -92,7 +101,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Balduvian Bears"
+          "name": "Balduvian Bears",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Balduvian Bears",
+          "isSpell": true,
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -194,26 +212,26 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}, {T}"
+          "ability": "can't be countered",
+          "source": "Mistrise Village"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Narset, Parter of Veils"
+          "name": "Narset, Parter of Veils",
+          "holdStack": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -237,7 +255,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Stock Up"
+          "name": "Stock Up",
+          "holdStack": true
         },
         {
           "op": "castSpell",
@@ -245,20 +264,21 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Force of Negation",
-          "target": "Stock Up"
+          "target": "Stock Up",
+          "castingMethod": "normal"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Aether Spellbomb"
+          "name": "Aether Spellbomb",
+          "holdStack": true
         },
         {
           "op": "setStopAt",
@@ -347,39 +367,53 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "activateAbility",
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}, {T}"
+          "source": "Island",
+          "ability": "Add {U}",
+          "count": 2
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}, {T}"
+          "ability": "can't be countered",
+          "source": "Mistrise Village"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "can't be countered",
+          "source": "Mistrise Village"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 2
+          "resolutions": 2
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Narset, Parter of Veils"
+          "name": "Narset, Parter of Veils",
+          "holdStack": true
         },
         {
           "op": "assertPlayableAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "label": "Cast Force",
-          "expected": true
+          "label": "Cast Force of Negation",
+          "expected": true,
+          "holdStack": true,
+          "castingMethod": "normal"
         },
         {
           "op": "castSpell",
@@ -387,18 +421,13 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Force of Negation",
-          "target": "Narset, Parter of Veils"
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Cast with no alternative cost"
+          "target": "Narset, Parter of Veils",
+          "castingMethod": "normal"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -422,7 +451,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Aether Spellbomb"
+          "name": "Aether Spellbomb",
+          "holdStack": true
         },
         {
           "op": "castSpell",
@@ -430,7 +460,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Force of Negation",
-          "target": "Aether Spellbomb"
+          "target": "Aether Spellbomb",
+          "castingMethod": "normal"
         },
         {
           "op": "setStopAt",
@@ -513,24 +544,44 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Island",
+          "ability": "Add {U}",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}, {T}"
+          "ability": "can't be countered",
+          "source": "Mistrise Village"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "source": "Island",
+          "ability": "Add {U}",
+          "count": 3
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Narset, Parter of Veils"
+          "name": "Narset, Parter of Veils",
+          "holdStack": true
         },
         {
           "op": "castSpell",
@@ -538,18 +589,13 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Force of Negation",
-          "target": "Narset, Parter of Veils"
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Cast with no alternative cost"
+          "target": "Narset, Parter of Veils",
+          "castingMethod": "normal"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -569,24 +615,35 @@ registerPortedMageTests({
           "target": "Aether Spellbomb"
         },
         {
+          "op": "activateManaAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Island",
+          "ability": "Add {U}",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}, {T}"
+          "ability": "can't be countered",
+          "source": "Mistrise Village"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Aether Spellbomb"
+          "name": "Aether Spellbomb",
+          "holdStack": true
         },
         {
           "op": "castSpell",
@@ -594,7 +651,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Force of Negation",
-          "target": "Aether Spellbomb"
+          "target": "Aether Spellbomb",
+          "castingMethod": "normal"
         },
         {
           "op": "setStopAt",
@@ -688,20 +746,22 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{U}, {T}"
+          "ability": "can't be countered",
+          "source": "Mistrise Village"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 2
+          "resolutions": 2
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Narset, Parter of Veils"
+          "name": "Narset, Parter of Veils",
+          "holdStack": true
         },
         {
           "op": "castSpell",
@@ -716,25 +776,21 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Force of Negation",
-          "target": "Narset, Parter of Veils"
-        },
-        {
-          "op": "setChoice",
-          "player": 1,
-          "value": "Cast with no alternative cost"
+          "target": "Narset, Parter of Veils",
+          "castingMethod": "normal"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Aether Spellbomb"
+          "name": "Aether Spellbomb",
+          "holdStack": true
         },
         {
           "op": "castSpell",
@@ -742,7 +798,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Force of Negation",
-          "target": "Aether Spellbomb"
+          "target": "Aether Spellbomb",
+          "castingMethod": "normal"
         },
         {
           "op": "setStopAt",

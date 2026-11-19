@@ -98,8 +98,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -225,7 +224,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Fugitive Codebreaker using Disguise"
+          "name": "Fugitive Codebreaker using Disguise",
+          "resolve": true
         },
         {
           "op": "activateAbility",

@@ -739,12 +739,38 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "High Perfect Morcant"
+          "name": "High Perfect Morcant",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "High Perfect Morcant",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "High Perfect Morcant",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setObjectChoices",
           "player": 1,
-          "value": "Memnite"
+          "description": "Choose exactly 1 creature",
+          "choices": [
+            "Memnite"
+          ]
         },
         {
           "op": "setStrictChooseMode",

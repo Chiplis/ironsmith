@@ -39,7 +39,38 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "This Town Ain't Big Enough"
+          "name": "This Town Ain't Big Enough",
+          "holdStack": true,
+          "target": {
+            "groups": [
+              [
+                "Goblin Piker",
+                "Warpath Ghoul"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "This Town Ain't Big Enough",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Goblin Piker",
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Island",
+          "tapped": true,
+          "count": 2
         },
         {
           "op": "setStopAt",
@@ -105,7 +136,38 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "This Town Ain't Big Enough"
+          "name": "This Town Ain't Big Enough",
+          "holdStack": true,
+          "target": {
+            "groups": [
+              [
+                "Warpath Ghoul",
+                "Goblin Piker"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "This Town Ain't Big Enough",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Warpath Ghoul",
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Island",
+          "tapped": true,
+          "count": 2
         },
         {
           "op": "setStopAt",

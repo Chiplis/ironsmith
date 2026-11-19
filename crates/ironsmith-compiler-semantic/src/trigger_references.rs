@@ -77,6 +77,7 @@ pub fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool
         TriggerSpec::BeginningOfUpkeep(_)
             | TriggerSpec::BeginningOfDrawStep(_)
             | TriggerSpec::BeginningOfCombat(_)
+            | TriggerSpec::BeginningOfAddedCombat
             | TriggerSpec::EndOfCombat
             | TriggerSpec::BeginningOfEndStep(_)
             | TriggerSpec::BeginningOfTheEndStep
@@ -231,6 +232,16 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
         }
     ) {
         return Some((crate::tag::CompilerReferenceTag::ManifestDreadGraveyard.bind()).into());
+    }
+    // When the trigger names its own source as the damage recipient, the
+    // other participant is the creature or spell that dealt the damage.
+    if matches!(
+        trigger,
+        TriggerSpec::DealsDamageTo { target, .. }
+            | TriggerSpec::DealsCombatDamageTo { target, .. }
+                if target.source
+    ) {
+        return Some(crate::tag::CompilerReferenceTag::TriggeringSource.bind().into());
     }
     if matches!(
         trigger,

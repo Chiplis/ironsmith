@@ -154,6 +154,7 @@ def main():
         stripped_text = strip_comments(text)
         file_constants = extract_constants(stripped_text, {})
         helper_methods = extract_helper_methods(stripped_text)
+        multiplayer_setup = source_multiplayer_setup(stripped_text)
 
         rel = source.relative_to(SOURCE_ROOT)
         out = OUTPUT_ROOT / rel.with_suffix(".test.mjs")
@@ -162,7 +163,7 @@ def main():
         for name, body, ignore_reason in tests:
             operations, unsupported = translate_body(body, file_constants, helper_methods)
             unsupported_statements += unsupported
-            spec = {"name": name, "operations": operations}
+            spec = {"name": name, "operations": operations, **multiplayer_setup}
             if ignore_reason is not None:
                 spec["skip"] = ignore_reason
             test_specs.append(spec)
@@ -189,6 +190,22 @@ def main():
     print(json.dumps(manifest, indent=2))
 
 
+def source_multiplayer_setup(text):
+    base = re.search(r"\bextends (CardTestMultiPlayerBase(?:WithRangeAll)?|CardTestCommander4Players)\b", text)
+    if not base:
+        return {}
+    setup = {"turnOrder": [0, 3, 2, 1]}
+    override = re.search(
+        r"new FreeForAll\(MultiplayerAttackOption\.\w+,\s*RangeOfInfluence\.(\w+),[^;]*,\s*(\d+),\s*\d+\)",
+        text,
+    )
+    if override:
+        setup["startingLife"] = int(override[2])
+    if (override and override[1] == "ONE") or (not override and base[1] == "CardTestMultiPlayerBase"):
+        setup["rangeOfInfluence"] = 1
+    return setup
+
+
 def extract_tests(text):
     tests = []
     for match in re.finditer(r"@Test\b", text):
@@ -207,6 +224,7 @@ def extract_tests(text):
 
 
 def extract_ignore_reason(annotation_text):
+    annotation_text = strip_comments(annotation_text)
     if "@Ignore" not in annotation_text:
         return None
     match = re.search(r'@Ignore\s*(?:\(\s*"((?:\\.|[^"])*)"\s*\))?', annotation_text)
@@ -370,7 +388,12 @@ def translate_body(body, file_constants=None, helpers=None, depth=0):
             operations.append({"op": "unsupported", "source": compact(statement)})
             unsupported += 1
             continue
-        ability_decl = re.match(r"(?:Abilities<[^>]+>|List<[^>]+>)\s+(\w+)\s*=\s*(?:new\s+AbilitiesImpl<[^>]*>\(\)|new\s+AbilitiesImpl\(\)|Arrays\.asList\((.*)\))$", statement, re.S)
+        ability_decl = re.match(
+            r"(?:Abilities<[^>]+>|List<[^>]+>)\s+(\w+)\s*=\s*"
+            r"(?:new\s+(?:AbilitiesImpl|ArrayList)(?:<[^>]*>)?\(\)|Arrays\.asList\((.*)\))$",
+            statement,
+            re.S,
+        )
         if ability_decl:
             ability_vars[ability_decl.group(1)] = []
             if ability_decl.group(2):
@@ -399,6 +422,10 @@ def translate_body(body, file_constants=None, helpers=None, depth=0):
             unsupported += 1
             continue
         if statement.startswith(("logger.", "System.")):
+            continue
+        clear_library = re.fullmatch(r"(player[A-D])\.getLibrary\(\)\.clear\(\)", statement)
+        if clear_library:
+            operations.append({"op": "clearZone", "player": parse_value(clear_library[1], constants), "zone": "library"})
             continue
         helper_call = re.match(r"(?:this\.)?(\w+)\((.*)\)$", statement, re.S)
         if helper_call and helper_call.group(1) in helpers and depth < 5:
@@ -1180,15 +1207,17 @@ def parse_value(raw, constants):
     raw = raw.strip()
     if raw in constants:
         return constants[raw]
+    arithmetic = parse_integer_arithmetic(raw, constants)
+    if arithmetic is not None:
+        return arithmetic
     concat_parts = split_java_concat(raw)
     if concat_parts and len(concat_parts) > 1:
         parsed = [parse_value(part, constants) for part in concat_parts]
         if all(isinstance(value, str) for value in parsed):
             return "".join(parsed)
-    if raw == "playerA":
-        return 0
-    if raw == "playerB":
-        return 1
+    player = re.fullmatch(r"player([A-D])", raw)
+    if player:
+        return ord(player[1]) - ord("A")
     if raw == "true":
         return True
     if raw == "false":
@@ -1200,9 +1229,6 @@ def parse_value(raw, constants):
         predicate = constants.get(ternary[1], {"true": True, "false": False}.get(ternary[1]))
         if isinstance(predicate, bool):
             return int(ternary[2] if predicate else ternary[3])
-    arithmetic = parse_integer_arithmetic(raw, constants)
-    if arithmetic is not None:
-        return arithmetic
     string = re.match(r'^"((?:\\.|[^"\\])*)"$', raw, flags=re.S)
     if string:
         return bytes(string.group(1), "utf-8").decode("unicode_escape")

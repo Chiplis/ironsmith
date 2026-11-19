@@ -39,14 +39,13 @@ registerPortedMageTests({
           "name": "Sculpting Steel"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": true
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Esoteric Duplicator"
+          "kind": "options",
+          "description": "Choose what to copy as this permanent enters",
+          "choices": [
+            "Enter as a copy of Esoteric Duplicator"
+          ]
         },
         {
           "op": "waitStackResolved",
@@ -55,11 +54,18 @@ registerPortedMageTests({
           "player": null
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Esoteric Duplicator",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, Sacrifice"
+          "ability": "Draw a card",
+          "source": "Esoteric Duplicator"
         },
         {
           "op": "setChoice",

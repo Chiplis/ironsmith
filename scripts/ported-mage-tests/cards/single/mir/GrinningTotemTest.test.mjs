@@ -25,8 +25,9 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, {T}, Sacrifice {this}: Search target opponent's library for a card and exile it",
-          "target": 1
+          "ability": "Search target opponent",
+          "target": 1,
+          "source": "Grinning Totem"
         },
         {
           "op": "setStopAt",
@@ -77,16 +78,18 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, {T}, Sacrifice {this}: Search target opponent's library for a card and exile it",
-          "target": 1
+          "ability": "Search target opponent",
+          "target": 1,
+          "source": "Grinning Totem"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "ability": "{T}, Sacrifice {this}: ",
-          "target": 0
+          "ability": "Exile target player",
+          "target": 0,
+          "source": "Tormod's Crypt"
         },
         {
           "op": "setStopAt",

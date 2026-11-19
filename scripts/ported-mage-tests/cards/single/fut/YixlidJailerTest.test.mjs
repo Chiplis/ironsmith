@@ -1,5 +1,6 @@
 import { registerPortedMageTests } from "../../../../mage-port-runner.mjs";
 
+// CR 603.6c and 603.10 check the graveyard after Wrath destroys both creatures.
 registerPortedMageTests({
   "sourcePath": "scripts/cards/single/fut/YixlidJailerTest.java",
   "tests": [
@@ -520,6 +521,31 @@ registerPortedMageTests({
           "name": "Wrath of God"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Yixlid Jailer",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Emrakul, the Aeons Torn",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN"
@@ -531,7 +557,7 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "player": 0,
           "name": "Emrakul, the Aeons Torn",
-          "count": 1
+          "count": 0
         },
         {
           "op": "assertPermanentCount",

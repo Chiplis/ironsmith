@@ -35,11 +35,23 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "COMMAND",
+          "player": 0,
+          "name": "Thrasios, Triton Hero",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Thrasios, Triton Hero"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
         },
         {
           "op": "addCard",
@@ -63,9 +75,19 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addTarget",
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Mountain"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Mountain"
+          ]
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "count": 2
         },
         {
           "op": "setStopAt",
@@ -102,7 +124,8 @@ registerPortedMageTests({
           "name": "Mountain",
           "count": 1
         }
-      ]
+      ],
+      "deferredPriorityAnalysis": true
     },
     {
       "name": "TestScionOfHalaster_withPartnerCommanders",
@@ -136,11 +159,26 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "COMMAND",
+          "player": 0,
+          "name": "Thrasios, Triton Hero",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "COMMAND",
+          "player": 0,
+          "name": "Ishai, Ojutai Dragonspeaker",
+          "count": 1
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Thrasios, Triton Hero"
+          "name": "Thrasios, Triton Hero",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -148,6 +186,11 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Ishai, Ojutai Dragonspeaker"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
         },
         {
           "op": "addCard",
@@ -178,19 +221,36 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Thrasios, Triton Hero"
+          "kind": "replacement_effect",
+          "description": "Choose which replacement effect to apply",
+          "choices": [
+            "Thrasios, Triton Hero"
+          ]
         },
         {
-          "op": "addTarget",
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Mountain"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Mountain"
+          ]
         },
         {
-          "op": "addTarget",
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "Island"
+          "description": "Choose exactly 1 card",
+          "choices": [
+            "Island"
+          ]
+        },
+        {
+          "op": "assertLibraryCount",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "count": 3
         },
         {
           "op": "setStopAt",
@@ -233,7 +293,8 @@ registerPortedMageTests({
           "name": "Island",
           "count": 1
         }
-      ]
+      ],
+      "deferredPriorityAnalysis": true
     }
   ]
 });

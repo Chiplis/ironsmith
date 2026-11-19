@@ -42,16 +42,60 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "String.join(\"^\", bear, lion, corpse)"
+          "kind": "options",
+          "description": "Choose optional costs for Plumb the Forbidden",
+          "choices": [
+            "Additional: special",
+            "Additional: special",
+            "Additional: special"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "choices": [
+            "Grizzly Bears"
+          ],
+          "description": "Sacrifice a creature"
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "choices": [
+            "Silvercoat Lion"
+          ],
+          "description": "Sacrifice a creature"
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "choices": [
+            "Walking Corpse"
+          ],
+          "description": "Sacrifice a creature"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Plumb the Forbidden"
+          "name": "Plumb the Forbidden",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Plumb the Forbidden",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

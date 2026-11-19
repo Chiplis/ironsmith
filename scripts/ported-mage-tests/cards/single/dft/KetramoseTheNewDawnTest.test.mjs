@@ -57,7 +57,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Target player"
+          "ability": "Target player",
+          "source": "Relic of Progenitus"
         },
         {
           "op": "addTarget",
@@ -84,7 +85,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}, Exile {this}"
+          "ability": "Exile all graveyards",
+          "source": "Relic of Progenitus"
         },
         {
           "op": "assertStackSize",
@@ -97,7 +99,7 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 1
+          "resolutions": 1
         },
         {
           "op": "unsupported",

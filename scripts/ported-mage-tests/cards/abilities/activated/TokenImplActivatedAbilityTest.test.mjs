@@ -39,8 +39,9 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: Add {G}.",
-          "count": 1
+          "ability": "Add {G}",
+          "count": 1,
+          "source": "Elf Druid Token"
         },
         {
           "op": "setStopAt",
@@ -61,6 +62,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Freyalise, Llanowar's Fury",
           "count": 1
+        },
+        {
+          "op": "assertManaPool",
+          "player": 0,
+          "colors": "G",
+          "amount": 1
         }
       ]
     }

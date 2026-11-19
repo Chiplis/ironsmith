@@ -339,6 +339,12 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.saddle_contributors = original_entry.saddle_contributors.clone();
     copy_entry.iteration = original_entry.iteration;
     copy_entry.tagged_objects = original_entry.tagged_objects.clone();
+    if !copy_entry.is_ability {
+        for tag in [ironsmith_core::CAST_CONTROLLED_OBJECTS_TAG, ironsmith_core::CAST_MODIFIED_CREATURES_TAG] {
+            copy_obj.cast_tagged_objects.remove(tag);
+            copy_entry.tagged_objects.remove(tag);
+        }
+    }
     copy_entry.effect_outcomes = original_entry.effect_outcomes.clone();
     // A copy of a triggered ability refers to the same trigger event as the
     // original ("that much", "that player", intervening-if recheck), and a

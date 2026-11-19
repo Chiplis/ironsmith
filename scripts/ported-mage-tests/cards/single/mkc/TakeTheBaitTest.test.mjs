@@ -116,6 +116,51 @@ registerPortedMageTests({
           "name": "Jace, Arcane Strategist",
           "counter": "LOYALTY",
           "count": 4
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Forest Bear"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -237,6 +282,51 @@ registerPortedMageTests({
           "name": "Jace, Arcane Strategist",
           "counter": "LOYALTY",
           "count": 4
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Balduvian Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Forest Bear"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "goaded",
+              "expected": false
+            }
+          ]
         }
       ]
     }

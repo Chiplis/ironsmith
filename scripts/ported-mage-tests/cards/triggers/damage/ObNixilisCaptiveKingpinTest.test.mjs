@@ -97,6 +97,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -142,6 +148,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 0
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -194,6 +206,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -246,6 +264,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 0
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -287,6 +311,19 @@ registerPortedMageTests({
           "defender": "playerC"
         },
         {
+          "op": "assertLife",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "player": 1,
+          "life": 18,
+          "seatIndependent": true
+        },
+        {
+          "op": "assertLife",
+          "player": 2,
+          "life": 19
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_TURN"
@@ -303,8 +340,14 @@ registerPortedMageTests({
           "player": 0,
           "name": "Ob Nixilis, Captive Kingpin",
           "counter": "P1P1",
-          "count": 0
+          "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -369,14 +412,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Withstand Death"
+          "name": "Withstand Death",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Deadly Tempest"
+          "name": "Deadly Tempest",
+          "resolve": true
         },
         {
           "op": "setStopAt",
@@ -407,6 +452,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -457,6 +508,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -509,6 +566,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 0
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -604,6 +667,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -661,6 +730,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 0
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -713,6 +788,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -765,6 +846,12 @@ registerPortedMageTests({
           "counter": "P1P1",
           "count": 0
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

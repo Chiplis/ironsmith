@@ -459,8 +459,21 @@ registerPortedMageTests({
           "target": "Ready // Willing"
         },
         {
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Search your library for up to 6 cards with the same name as Ready // Willing",
+          "choices": [
+            "Ready // Willing",
+            "Ready",
+            "Ready",
+            "Ready",
+            "Ready",
+            "Ready"
+          ]
+        },
+        {
           "op": "setStrictChooseMode",
-          "value": false
+          "value": true
         },
         {
           "op": "setStopAt",

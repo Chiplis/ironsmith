@@ -351,7 +351,8 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Body Double"
+          "name": "Body Double",
+          "resolve": true
         },
         {
           "op": "setChoice",

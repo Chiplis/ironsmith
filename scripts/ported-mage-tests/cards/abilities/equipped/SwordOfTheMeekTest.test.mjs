@@ -87,6 +87,21 @@ registerPortedMageTests({
           "name": "Master of Etherium",
           "power": 3,
           "toughness": 3
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Myr Token"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 0
+            }
+          ]
         }
       ]
     }

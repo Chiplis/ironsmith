@@ -10,7 +10,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Hill Giant",
+          "name": "Hill Giant@giant",
           "count": 1
         },
         {
@@ -33,6 +33,26 @@ registerPortedMageTests({
           "player": 1,
           "blocker": "Permeating Mass",
           "attacker": "Hill Giant"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Permeating Mass",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeChoices": true
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Permeating Mass",
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "setStopAt",
@@ -65,6 +85,12 @@ registerPortedMageTests({
           "name": "Permeating Mass",
           "power": 1,
           "toughness": 3
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@giant",
+          "count": 1
         }
       ]
     },

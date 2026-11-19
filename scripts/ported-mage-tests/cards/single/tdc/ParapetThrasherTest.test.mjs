@@ -32,14 +32,38 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setModeChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "1"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Destroy target artifact that opponent controls."
+          ]
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Fountain of Youth"
+          "target": {
+            "groups": [
+              [
+                "Fountain of Youth"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Parapet Thrasher",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeChoices": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "setStopAt",
@@ -55,6 +79,12 @@ registerPortedMageTests({
           "name": "Fountain of Youth",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -106,6 +136,12 @@ registerPortedMageTests({
           "player": "playerD",
           "life": 16
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -125,16 +161,24 @@ registerPortedMageTests({
         },
         {
           "op": "addCard",
-          "name": "Mountain",
+          "name": "Island",
           "player": 0,
           "zone": "LIBRARY",
           "count": 1
         },
         {
           "op": "addCard",
-          "name": "Island",
+          "name": "Mountain",
           "player": 0,
           "zone": "LIBRARY",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Mountain",
           "count": 1
         },
         {
@@ -203,11 +247,17 @@ registerPortedMageTests({
           "count": 0
         },
         {
-          "op": "assertLibraryCount",
+          "op": "assertHandCount",
           "player": 0,
           "name": "Mountain",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

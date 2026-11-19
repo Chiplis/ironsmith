@@ -64,6 +64,47 @@ use ironsmith_compiler::runtime_static_ability_helpers::*;
 use ironsmith_compiler::{CardDefinitionBuilder, CardId, CardTextError};
 
 #[test]
+fn hand_exile_preserves_announcement_targets_and_resolution_choices() {
+    use ironsmith_compiler::effects::ChooseObjectsEffect;
+    use ironsmith_compiler::target::PlayerFilter;
+    use ironsmith_compiler::zone::Zone;
+
+    for (object, target_bounds) in [
+        ("target card in your hand", Some((1, Some(1)))),
+        ("up to three target cards from your hand", Some((0, Some(3)))),
+        ("up to three cards from your hand", None),
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Hand Exile Probe")
+            .card_types(vec![CardType::Artifact])
+            .parse_text(&format!("{{0}}: Exile {object}."))
+            .unwrap();
+        let AbilityKind::Activated(ability) = &definition.abilities[0].kind else {
+            panic!("expected an activated ability");
+        };
+
+        let targets = ability.choices.iter().filter(|spec| spec.is_target()).collect::<Vec<_>>();
+        if let Some(bounds) = target_bounds {
+            let [target] = targets.as_slice() else {
+                panic!("expected an announcement target for {object}, got {targets:?}");
+            };
+            let ChooseSpec::Object(filter) = target.base() else {
+                panic!("expected an object filter for {object}, got {target:?}");
+            };
+            assert_eq!(filter.zone, Some(Zone::Hand));
+            assert_eq!(filter.owner, Some(PlayerFilter::You));
+            assert_eq!((target.count().min, target.count().max), bounds);
+        } else {
+            assert!(targets.is_empty());
+            assert!(
+                ability.effects.flattened_default_effects().iter()
+                    .any(|effect| effect.downcast_ref::<ChooseObjectsEffect>().is_some()),
+                "the nontargeted form must choose from the hand during resolution"
+            );
+        }
+    }
+}
+
+#[test]
 fn secret_choice_followup_keeps_the_result_id_used_by_otherwise() {
     let compiled = ironsmith_compiler::compile_card_text(
         CardDefinitionBuilder::new(CardId::new(), "Expert-Level Safe")

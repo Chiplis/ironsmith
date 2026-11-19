@@ -737,12 +737,29 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Giant Growth",
-          "target": "Zada, Hedron Grinder"
+          "target": "Zada, Hedron Grinder",
+          "holdStack": true
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Silverfur Partisan"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Zada, Hedron Grinder",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
         },
         {
           "op": "assertGraveyardCount",
@@ -770,8 +787,7 @@ registerPortedMageTests({
           "name": "Wolf Token",
           "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "ZadaHedronGrinderBoostWithCharm",
@@ -1556,7 +1572,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "setChoice",
@@ -1574,7 +1591,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "setChoice",

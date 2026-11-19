@@ -40,7 +40,28 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "ability": "{T}: Gain control",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "source": "Merieke Ri Berit"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Merieke Ri Berit",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "castSpell",
@@ -48,7 +69,36 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Merieke Ri Berit"
+          "target": "Merieke Ri Berit",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Merieke Ri Berit"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Merieke Ri Berit",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

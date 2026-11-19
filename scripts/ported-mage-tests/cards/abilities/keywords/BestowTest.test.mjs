@@ -277,6 +277,22 @@ registerPortedMageTests({
           "name": "Silent Artisan",
           "power": 7,
           "toughness": 7
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Boon Satyr",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -962,6 +978,22 @@ registerPortedMageTests({
           "name": "Nighthowler",
           "power": 2,
           "toughness": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Nighthowler",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -1343,6 +1375,32 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertType(\"Nighthowler\", CardType.ENCHANTMENT, true)"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Nighthowler",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Aura",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 0,
+          "turn": 2,
+          "phase": "BEGIN_COMBAT",
+          "options": [
+            "{G}"
+          ],
+          "exact": true
         }
       ]
     },

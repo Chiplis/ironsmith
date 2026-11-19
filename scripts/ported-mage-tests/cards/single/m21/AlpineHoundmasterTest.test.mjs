@@ -110,14 +110,14 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Alpine Watchdog",
+          "name": "Alpine Watchdog@watchdog",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Igneous Cur",
+          "name": "Igneous Cur@cur",
           "count": 1
         },
         {
@@ -125,22 +125,51 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Alpine Houndmaster"
+          "name": "Alpine Houndmaster",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alpine Houndmaster",
+          "count": 1,
+          "isSpell": true
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Igneous Cur"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
         },
         {
-          "op": "addTarget",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Alpine Houndmaster",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setObjectChoices",
           "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
+          "choices": [],
+          "description": "Choose up to 1 card"
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "choices": [
+            {
+              "alias": "@cur"
+            }
+          ],
+          "description": "Choose up to 1 card"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -157,6 +186,18 @@ registerPortedMageTests({
         {
           "op": "assertHandCount",
           "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "@cur",
+          "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "name": "@watchdog",
           "count": 1
         }
       ]

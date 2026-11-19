@@ -398,12 +398,17 @@ impl GameState {
     /// Pop the next full or CR 500.10 synthetic phase.
     pub(crate) fn pop_additional_phase(&mut self) -> Option<(Phase, Option<Step>)> {
         self.normalize_additional_phase_metadata();
+        self.turn_store.added_combat_order = None;
         if self.turn_store.additional_phases.is_empty() {
             return None;
         }
         let phase = self.turn_store.additional_phases.remove(0);
         let order = self.turn_store.additional_phase_orders.remove(0);
+        let only_step = self.turn_store.additional_phase_only_steps.remove(0);
         if phase == Phase::Combat {
+            if only_step.is_none() {
+                self.turn_store.added_combat_order = Some(order);
+            }
             let mut activated = false;
             for restriction in &mut self.effect_store.restriction_effects {
                 if restriction.starts_in_added_combat == Some(order) {
@@ -415,7 +420,6 @@ impl GameState {
                 self.update_cant_effects();
             }
         }
-        let only_step = self.turn_store.additional_phase_only_steps.remove(0);
         Some((phase, only_step))
     }
 
@@ -772,12 +776,21 @@ impl GameState {
             return self.turn.turn_number.saturating_add(1);
         }
 
-        // With every player already out of the game (a simultaneous loss),
-        // no future turn exists and the rotation below would never find one.
-        if !self.turn_store.turn_order.iter().any(|candidate| {
-            self.player(*candidate)
-                .is_some_and(|candidate| candidate.is_in_game())
-        }) {
+        // The loss event marks the hypothetical player before removing them
+        // from the turn order. Include their turn for CR 800.4i and 800.4m.
+        let takes_turn_if_player_stayed = |candidate| {
+            self.player(candidate).is_some_and(|candidate| {
+                candidate.is_in_game()
+                    || (candidate.id == player && candidate.has_lost && !candidate.has_left_game)
+            })
+        };
+        if !self
+            .turn_store
+            .turn_order
+            .iter()
+            .copied()
+            .any(takes_turn_if_player_stayed)
+        {
             return self.turn.turn_number.saturating_add(1);
         }
 
@@ -812,10 +825,7 @@ impl GameState {
                         normal_index = (normal_index + 1) % self.turn_store.turn_order.len();
                         (candidate, false)
                     };
-                if !self
-                    .player(candidate)
-                    .is_some_and(|candidate| candidate.is_in_game())
-                {
+                if !takes_turn_if_player_stayed(candidate) {
                     continue;
                 }
                 if simulated_skip_next_turn.remove(&candidate) {
@@ -1910,6 +1920,7 @@ impl GameState {
             .collect();
         self.turn_store.additional_phases.clear();
         self.turn_store.additional_phase_orders.clear();
+        self.turn_store.added_combat_order = None;
         self.turn_store.additional_phase_only_steps.clear();
         self.turn_store.phase_schedule_continuation = None;
         self.turn_store.additional_phase_continuation = None;
@@ -2006,7 +2017,6 @@ impl GameState {
             .expire_at_turn_start(self.turn.turn_number, &active_players);
         self.effect_store.continuous_effects.expire_at_turn_start(
             self.turn.turn_number,
-            &completed_turn_players_for_durations,
             &active_players,
         );
         self.effect_store.prevention_effects.expire_at_turn_start(

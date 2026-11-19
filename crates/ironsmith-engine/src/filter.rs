@@ -2027,7 +2027,12 @@ fn tagged_constraint_matches_subject(
                 // information: the attachments recorded on its battlefield
                 // snapshot.
                 || (tagged_host_left_battlefield(snapshot, game)
-                    && snapshot.attachments.contains(&subject.subject_object_id()))
+                    && game
+                        .source_departure_snapshot(snapshot.object_id)
+                        .filter(|last| last.stable_id == snapshot.stable_id && last.zone == snapshot.zone)
+                        .unwrap_or(snapshot)
+                        .attachments
+                        .contains(&subject.subject_object_id()))
         }),
         TaggedOpbjectRelation::WasAttachedToTaggedObject => tagged_snapshots
             .iter()

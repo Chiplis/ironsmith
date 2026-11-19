@@ -208,12 +208,22 @@ registerPortedMageTests({
           "target": "Memnite"
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, seeker, 1)"
+          "op": "setObjectChoices",
+          "player": 0,
+          "description": "Choose up to 2 creatures",
+          "choices": [
+            "Glory Seeker",
+            "Grizzly Bears"
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "addTargetAmount(playerA, bears, 1)"
+          "op": "setOptionChoices",
+          "kind": "distribution",
+          "player": 0,
+          "choices": [
+            "Glory Seeker",
+            "Grizzly Bears"
+          ]
         },
         {
           "op": "setStopAt",

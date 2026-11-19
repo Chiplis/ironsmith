@@ -205,9 +205,23 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
+          "description": "Choose up to 1 creature card",
           "player": 0,
-          "value": "Goblin Piker^Elite Vanguard"
+          "kind": "select_objects",
+          "includes": [
+            "Goblin Piker"
+          ],
+          "min": 0,
+          "max": 1
+        },
+        {
+          "op": "setObjectChoices",
+          "description": "Choose up to 1 creature card",
+          "choices": [
+            "Goblin Piker"
+          ],
+          "player": 0
         },
         {
           "op": "setStopAt",
@@ -215,11 +229,21 @@ registerPortedMageTests({
           "phase": "DECLARE_BLOCKERS"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().startsWith(\"Missing CHOICE def\")) { Assert.fail(\"Unexpected exception \" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Goblin Piker",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "count": 0
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testBoth_ChooseTwo",
@@ -412,9 +436,42 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
+          "description": "Choose up to 1 creature card",
           "player": 0,
-          "value": "Dryad Arbor^Dryad Arbor^Dryad Arbor"
+          "kind": "select_objects",
+          "includes": [
+            "Dryad Arbor"
+          ],
+          "min": 0,
+          "max": 1
+        },
+        {
+          "op": "setObjectChoices",
+          "description": "Choose up to 1 creature card",
+          "choices": [
+            "Dryad Arbor"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "description": "Choose up to 1 land card",
+          "player": 0,
+          "kind": "select_objects",
+          "includes": [
+            "Dryad Arbor"
+          ],
+          "min": 0,
+          "max": 1
+        },
+        {
+          "op": "setObjectChoices",
+          "description": "Choose up to 1 land card",
+          "choices": [
+            "Dryad Arbor"
+          ],
+          "player": 0
         },
         {
           "op": "setStopAt",
@@ -422,11 +479,15 @@ registerPortedMageTests({
           "phase": "DECLARE_BLOCKERS"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"must throw exception on execute\"); } catch (Throwable e) { if (!e.getMessage().startsWith(\"Missing CHOICE def\")) { Assert.fail(\"Unexpected exception \" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Dryad Arbor",
+          "count": 2
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "test_Brownscale_triggers",

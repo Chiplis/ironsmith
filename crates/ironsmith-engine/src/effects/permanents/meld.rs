@@ -329,7 +329,7 @@ fn execute_meld_inner(
             ));
         }
 
-        // CR 712.8g: the melded permanent's mana value is the sum of the mana
+        // CR 713.5c: the melded permanent's mana value is the sum of the mana
         // values of its front faces.
         let front_faces_mana_cost = crate::mana::ManaCost::from_pips(
             exiled_source
@@ -340,22 +340,28 @@ fn execute_meld_inner(
                 .collect(),
         );
 
-        if let Some(front) =
-            game.linked_face_definition_by_name_or_id(Some(&exiled_source.name), None)
-            && front.card.meld_partner_name.is_some()
-            && !front
-                .card
-                .other_face_name
-                .as_deref()
-                .is_some_and(|name| name.eq_ignore_ascii_case(&effect.result_name))
+        let front = game.linked_face_definition_by_name_or_id(Some(&exiled_source.name), None);
+        let explicit_front = front.as_ref().filter(|front| front.card.meld_partner_name.is_some());
+        let Some(result_name) = explicit_front
+            .and_then(|front| front.card.other_face_name.as_deref())
+            .or_else(|| crate::cards::meld_result_name(&exiled_source.name))
+        else {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
+        };
+        if crate::cards::normalize_card_loose_lookup_name(result_name)
+            != crate::cards::normalize_card_loose_lookup_name(&effect.result_name)
         {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::resolved(),
             ));
         }
 
-        let Some(result_def) =
-            game.linked_face_definition_by_name_or_id(Some(&effect.result_name), None)
+        let Some(result_def) = game.linked_face_definition_by_name_or_id(
+            Some(result_name),
+            explicit_front.and_then(|front| front.card.other_face),
+        )
         else {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::resolved(),

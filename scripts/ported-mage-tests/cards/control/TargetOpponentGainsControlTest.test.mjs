@@ -273,6 +273,7 @@ registerPortedMageTests({
           "op": "assertAttachedTo",
           "player": 0,
           "attachment": "\"Unhallowed Pact\"",
+          "targetPlayer": 1,
           "target": "@dw",
           "expected": true
         },

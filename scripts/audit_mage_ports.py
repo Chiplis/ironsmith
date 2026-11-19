@@ -14,10 +14,16 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+TERMINAL_STATUSES = {'passed', 'failed', 'skipped'}
+WASM_TRAP = re.compile(
+    r'^(?:memory access out of bounds|unreachable|maximum call stack size exceeded|recursive use of an object.*)$',
+    re.I,
+)
 
 
 def fingerprint(path):
@@ -179,6 +185,45 @@ def completed_files_from_reports(inventory, reports):
             if all(observed[name] >= count for name, count in names.items())}
 
 
+def partition_after_wasm_trap(rows, *, shared_process=True):
+    trusted = []
+    invalidated = []
+    first_traps = {}
+    for row in rows:
+        scenario_id = row.get('scenario_id')
+        process = None if shared_process else row.get('file')
+        if scenario_id and process in first_traps and row['status'] != 'skipped':
+            invalidated.append(row)
+            continue
+        trusted.append(row)
+        if scenario_id and row['status'] == 'failed' and WASM_TRAP.fullmatch(row.get('error') or ''):
+            first_traps[process] = scenario_id
+    return trusted, invalidated, next(iter(first_traps.values()), None)
+
+
+def replay_occurrences(planned):
+    occurrences = collections.defaultdict(list)
+    for scenario in planned:
+        source = scenario['test'].partition(' :: ')[0]
+        occurrences[source].append(int(scenario['scenario_id'].rsplit('#', 1)[1]))
+    return json.dumps(occurrences)
+
+
+def run_tap(command, environment, tap, timeout):
+    with tap.open('w') as stream:
+        child = subprocess.Popen(command, cwd=ROOT, env=environment, stdout=stream,
+                                 stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            return child.wait(timeout=timeout), False
+        except subprocess.TimeoutExpired:
+            os.killpg(child.pid, signal.SIGTERM)
+            try:
+                return child.wait(timeout=5), True
+            except subprocess.TimeoutExpired:
+                os.killpg(child.pid, signal.SIGKILL)
+                return child.wait(), True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('patterns', nargs='+', help='test files or glob patterns relative to repository')
@@ -219,24 +264,36 @@ def main():
     tap = args.output.with_suffix('.tap')
     start = time.monotonic()
     started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    timed_out = False
-    with tap.open('w') as stream:
-        child = subprocess.Popen(command, cwd=ROOT, env=environment, stdout=stream,
-                                 stderr=subprocess.STDOUT, start_new_session=True)
-        try:
-            returncode = child.wait(timeout=args.wall_timeout_seconds)
-        except subprocess.TimeoutExpired:
-            import signal
-            timed_out = True
-            os.killpg(child.pid, signal.SIGTERM)
-            try:
-                returncode = child.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                os.killpg(child.pid, signal.SIGKILL)
-                returncode = child.wait()
-    after = [fingerprint(path) for path in inputs]
+    returncode, timed_out = run_tap(command, environment, tap, args.wall_timeout_seconds)
     rows = parse_tap(tap.read_text())
-    unreported = match_planned_rows(rows, planned)
+    match_planned_rows(rows, planned)
+    recovery = []
+    rows, invalidated, trap = partition_after_wasm_trap(rows, shared_process=args.shared_process)
+    if trap:
+        rows = [row for row in rows if row['status'] in TERMINAL_STATUSES]
+        recovery.append({'tap_path': str(tap), 'trap_scenario': trap, 'invalidated_rows': invalidated})
+    while trap:
+        accepted = {row.get('scenario_id') for row in rows if row['status'] in TERMINAL_STATUSES}
+        pending = [case for case in planned if case['scenario_id'] not in accepted]
+        remaining = args.wall_timeout_seconds - (time.monotonic() - start)
+        if not pending or remaining <= 0:
+            break
+        retry_tap = args.output.with_suffix(f'.retry-{len(recovery):02d}.tap')
+        retry_files = sorted({case['file'] for case in pending})
+        retry_command = ['node', '--test', '--test-concurrency=1', '--test-isolation=none',
+                         f'--test-timeout={args.test_timeout_ms}', '--test-reporter=tap', *retry_files]
+        retry_env = {**environment, 'MAGE_PORT_REPLAY_OCCURRENCES': replay_occurrences(pending)}
+        _, retry_timeout = run_tap(retry_command, retry_env, retry_tap, remaining)
+        timed_out |= retry_timeout
+        retry_rows = parse_tap(retry_tap.read_text())
+        match_planned_rows(retry_rows, pending)
+        trusted, invalidated, trap = partition_after_wasm_trap(retry_rows)
+        rows.extend(row for row in trusted if row.get('scenario_id') and row['status'] in TERMINAL_STATUSES)
+        recovery.append({'tap_path': str(retry_tap), 'trap_scenario': trap,
+                         'invalidated_rows': invalidated, 'selected_scenarios': len(pending)})
+    after = [fingerprint(path) for path in inputs]
+    observed = {row.get('scenario_id') for row in rows if row['status'] in TERMINAL_STATUSES}
+    unreported = [case for case in planned if case['scenario_id'] not in observed]
     report = {'scope': 'Selected ported MAGE scenarios, not all-card correctness',
               'started_at': started_at, 'duration_seconds': time.monotonic() - start,
               'node_version': subprocess.check_output(['node', '--version'], text=True).strip(),
@@ -246,6 +303,7 @@ def main():
               'wall_timeout': timed_out, 'selected_files': len(files),
               'inventory_scenarios': len(inventory), 'selected_scenarios': len(planned),
               'selected_unreported': unreported,
+              'wasm_trap_recovery': recovery,
               'unselected_scenarios': [scenario for scenario in inventory if scenario['file'] not in selected],
               'resume_sources': [fingerprint(path.resolve()) for path in args.resume_from],
               'resumed_completed_files': sorted(completed_files),

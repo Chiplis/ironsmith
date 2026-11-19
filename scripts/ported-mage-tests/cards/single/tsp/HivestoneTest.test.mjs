@@ -46,7 +46,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "resolve": true
         },
         {
           "op": "castSpell",

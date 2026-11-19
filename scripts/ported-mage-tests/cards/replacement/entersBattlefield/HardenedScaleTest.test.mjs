@@ -39,7 +39,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Metallic Mimic"
+          "name": "Metallic Mimic",
+          "resolve": true
         },
         {
           "op": "setChoice",

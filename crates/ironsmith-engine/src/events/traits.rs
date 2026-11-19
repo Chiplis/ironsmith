@@ -368,6 +368,16 @@ pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone + An
         true
     }
 
+    /// Proof obligation for order-independent replacement batching (CR 616.1):
+    /// true only when, for every event, this matcher's answer depends on the
+    /// event's quantities (damage/life amounts, counter, draw and token counts)
+    /// solely through whether they are nonzero. Thresholds ("4 or more
+    /// damage", "draw exactly one card", "would reduce life to 0") must keep
+    /// the conservative default.
+    fn ignores_event_amount(&self) -> bool {
+        false
+    }
+
     /// True only for matchers that replace a permanent becoming tapped. Tap
     /// actions consult the replacement pipeline only when one exists.
     fn replaces_becoming_tapped(&self) -> bool {

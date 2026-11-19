@@ -24,7 +24,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Memnite",
+          "name": "Memnite@memnite",
           "count": 1
         },
         {
@@ -39,38 +39,68 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Vault 13: Dweller's Journey"
+          "name": "Vault 13: Dweller's Journey",
+          "holdStack": true
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Memnite"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "TestPlayer.TARGET_SKIP"
-        },
-        {
-          "op": "assertExileCount",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "name": "Memnite",
-          "count": 1
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Vault 13: Dweller's Journey",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Mountain"
+          "target": {
+            "groups": [
+              [
+                "@memnite"
+              ],
+              []
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Vault 13: Dweller's Journey",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "objectTarget": "@memnite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
-          "turn": 5,
-          "phase": "UPKEEP",
           "player": 0,
-          "name": "Memnite",
+          "name": "@memnite",
           "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Mountain"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@memnite",
+          "count": 1,
+          "turn": 5,
+          "phase": "UPKEEP"
         },
         {
           "op": "setStrictChooseMode",

@@ -1436,6 +1436,16 @@ fn spell_view_for_cost_filter_match(
         changed = true;
     }
 
+    // CR 601.2f and 709.3a: cost modifiers inspect the announced spell's
+    // selected characteristics, even when they also consider its origin zone.
+    if view.linked_face_layout == crate::card::LinkedFaceLayout::Split
+        && !matches!(view.zone, Zone::Stack | Zone::Battlefield)
+    {
+        view = view.into_single_face();
+        view.other_face_name = None;
+        changed = true;
+    }
+
     changed.then_some(view)
 }
 
@@ -2099,16 +2109,51 @@ pub(crate) fn spell_has_active_flash_with_view(
         }
         false
     }) || {
+        // Layer 6 grants (for example, creature cards gaining flash) are
+        // part of the chosen face's characteristics, independently of the
+        // registry that tracks permissions and additional casting methods.
+        let layers_can_grant_flash = view.effects().iter().any(|effect| {
+            use crate::continuous::Layer;
+            matches!(effect.modification.layer(), Layer::Copy | Layer::Text | Layer::Ability)
+        }) || !spell.temporary_static_ability_grants.is_empty();
+        if layers_can_grant_flash {
+            let characteristics = if game.object(spell_id).is_some_and(|card| std::ptr::eq(card, spell)) {
+                view.calculated_characteristics_arc(spell_id)
+            } else {
+                match crate::grant_registry::query_with_spell_face(game, spell) {
+                    Ok(query) => query.calculated_characteristics_arc(spell_id),
+                    Err(error) => {
+                        game.record_token_resource_failure(&error);
+                        return false;
+                    }
+                }
+            };
+            if characteristics.is_some_and(|chars| {
+                chars.static_abilities.iter().any(|ability| ability.has_flash())
+            }) {
+                return true;
+            }
+        }
         // A zone-limited card grant checks the captured origin. A spell-wide
         // timing grant checks the chosen prospective face on the stack. Neither
         // grants permission to cast from that origin, and a front face cannot
         // lend its characteristics to a different face being cast.
-        let origin = if spell.zone == Zone::Stack {
-            game.cast_origin_snapshot(spell_id)
-                .map_or(Zone::Stack, |snapshot| snapshot.zone)
-        } else {
-            spell.zone
-        };
+        let origin_snapshot = (spell.zone == Zone::Stack)
+            .then(|| game.cast_origin_snapshot(spell_id))
+            .flatten();
+        if origin_snapshot.is_some_and(|snapshot| {
+            // A grant on the original card can survive the announcement as
+            // timing permission only if the selected face still qualifies.
+            spell.face_down_cast_state.is_none()
+                && snapshot.name == spell.name.as_str()
+                && snapshot.card_types.as_slice() == spell.card_types.as_slice()
+                && snapshot.abilities.iter().any(|ability| matches!(
+                    &ability.kind, crate::ability::AbilityKind::Static(ability) if ability.has_flash()
+                ))
+        }) {
+            return true;
+        }
+        let origin = origin_snapshot.map_or(spell.zone, |snapshot| snapshot.zone);
         let mut origin_card = spell.clone();
         origin_card.zone = origin;
         let mut prospective_spell = spell.clone();
@@ -3130,25 +3175,29 @@ pub fn spell_mana_cost_for_cast(
         }
     };
 
-    let base_cost = base_cost.map(|cost| {
-        let cost = spell
-            .additional_cost
-            .costs()
-            .iter()
-            .filter_map(|part| part.mana_cost_ref())
-            .fold(cost, |total, part| add_mana_cost(&total, part));
-        with_spell_mana_spending_rules(game, player, spell, &cost)
-    });
+    base_cost.map(|cost| spell_mana_cost_with_base(game, player, spell, cost, from_zone))
+}
 
-    if from_zone == Zone::Command {
-        let tax = if commander_tax_life_per_previous_cast(spell).is_some() {
-            0
-        } else {
-            game.commander_cast_count(spell.id).saturating_mul(2)
-        };
-        base_cost.map(|cost| cost.add_generic(tax))
+/// CR 118.9d and 903.8: any selected price, including a waived mana
+/// cost, still includes mandatory additional mana costs.
+pub(crate) fn spell_mana_cost_with_base(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: crate::mana::ManaCost,
+    from_zone: Zone,
+) -> crate::mana::ManaCost {
+    let cost = spell
+        .additional_cost
+        .costs()
+        .iter()
+        .filter_map(|part| part.mana_cost_ref())
+        .fold(base_cost, |total, part| add_mana_cost(&total, part));
+    let cost = with_spell_mana_spending_rules(game, player, spell, &cost);
+    if from_zone == Zone::Command && commander_tax_life_per_previous_cast(spell).is_none() {
+        cost.add_generic(game.commander_cast_count(spell.id).saturating_mul(2))
     } else {
-        base_cost
+        cost
     }
 }
 
@@ -3796,8 +3845,10 @@ fn mana_cost_can_be_paid_with_view_at_x(
         })
     });
     let has_restricted_mana = pool_restricted_mana || restricted_mana_sources;
+    let source_filtered_spending = game.has_source_filtered_mana_spend_permission(player, Some(spell_id));
     if !cost.spending_restrictions().is_empty() || cost.has_waterbend_obligation()
         || has_restricted_mana
+        || source_filtered_spending
         || payment_requires_stateful_sources(game, player, view)
         || crate::mana_payment::has_potential_mana_triggers(game, view)
         || crate::mana_payment::has_mana_modifying_replacements(game)
@@ -3823,7 +3874,9 @@ fn mana_cost_can_be_paid_with_view_at_x(
         // that follows the bound would judge that restriction against the
         // card in its origin zone, which is never a spell, and leave out a
         // payable cast.
-        if resumable::bounding_payments() && !pool_restricted_mana && !restricted_mana_sources {
+        if resumable::bounding_payments() && !pool_restricted_mana && !restricted_mana_sources
+            && !source_filtered_spending
+        {
             return resumable::check_payment(game, &request);
         }
         // CR 601.2a: spending restrictions inspect the proposed spell on the
@@ -3836,7 +3889,15 @@ fn mana_cost_can_be_paid_with_view_at_x(
             .is_some_and(|spell| spell.zone != Zone::Stack)
         {
             prospective = game.clone();
+            let origin = source_filtered_spending.then(|| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    game.object(spell_id).expect("checked proposed spell"), game,
+                )
+            });
             prospective.project_spell_for_payment(spell_id);
+            if let Some(origin) = origin {
+                prospective.set_cast_origin_snapshot(spell_id, origin);
+            }
             &prospective
         } else {
             game
@@ -3847,8 +3908,7 @@ fn mana_cost_can_be_paid_with_view_at_x(
     }
     let potential = view.potential_mana(player);
     let mana_spend_policy = game.mana_spend_policy_for_cast(player, Some(spell_id));
-    let allow_any_color_for_obvious = mana_spend_policy.has_any_color_spending()
-        || game.has_source_filtered_mana_spend_permission(player, Some(spell_id));
+    let allow_any_color_for_obvious = mana_spend_policy.has_any_color_spending();
     let allow_black_life = mana_cost_has_black_symbol(cost)
         && view.player_can_pay_black_with_life_for_reason(
             player,
@@ -8292,10 +8352,13 @@ pub(crate) fn can_pay_mana_cost_with_available_sources_except(
     if resumable::mana_payment_is_assumed() {
         return true;
     }
+    let source_filtered_spending = source
+        .is_some_and(|source| game.has_source_filtered_mana_spend_permission(player, Some(source)));
     // The legacy color-only solver cannot retain production evidence. Route
     // constrained costs through the same full request used at payment, before
     // projecting to pips or entering that solver's symbol-only memo cache.
     if !cost.spending_restrictions().is_empty() || cost.has_waterbend_obligation()
+        || source_filtered_spending
         || payment_requires_stateful_sources(game, player, view)
         || crate::mana_payment::has_mana_modifying_replacements(game)
         || crate::mana_payment::has_potential_mana_triggers(game, view)
@@ -8309,7 +8372,7 @@ pub(crate) fn can_pay_mana_cost_with_available_sources_except(
                 .with_spend_policy(mana_spend_policy.clone());
         request.allow_black_life = allow_black_life;
         request.reserved_tap_sources = reserved.to_vec();
-        if resumable::bounding_payments() {
+        if resumable::bounding_payments() && !source_filtered_spending {
             return resumable::check_payment(game, &request);
         }
         let mut prospective;
@@ -8319,7 +8382,15 @@ pub(crate) fn can_pay_mana_cost_with_available_sources_except(
                 .is_some_and(|object| object.zone != Zone::Stack)
         {
             prospective = game.clone();
+            let origin = source_filtered_spending.then(|| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    game.object(source).expect("checked proposed spell"), game,
+                )
+            });
             prospective.project_spell_for_payment(source);
+            if let Some(origin) = origin {
+                prospective.set_cast_origin_snapshot(source, origin);
+            }
             &prospective
         } else {
             game

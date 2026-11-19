@@ -112,6 +112,15 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Minotaur",
+          "ability": "Menace",
+          "expected": true,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
           "op": "setStopAt",
           "turn": 1,
           "phase": "END_TURN"
@@ -119,8 +128,7 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

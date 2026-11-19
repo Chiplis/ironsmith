@@ -351,6 +351,8 @@ pub enum Until {
     /// controller's next end step begins (this turn's, when it is the
     /// controller's turn and that end step hasn't begun). Appended.
     YourNextEndStep,
+    /// Ends at the first combat-phase end on the resolving controller's next turn.
+    EndOfCombatOnYourNextTurn,
 }
 
 impl Until {
@@ -962,6 +964,8 @@ pub enum DelayedTriggerSpec {
     /// registration's lifetime. A player bound when the registration is
     /// created ("they") is fixed to that exact player.
     PlayerLosesGame(PlayerFilter),
+    /// Append-only. The combat phase added by this resolution.
+    BeginningOfAddedCombat,
 }
 
 /// Lifetime policy for a delayed trigger registration.
@@ -5311,6 +5315,10 @@ impl ManifestDreadEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ManifestTopCardOfLibraryEffect {
     pub player: PlayerFilter,
+    /// The player who manifests the card. The instruction's controller acts
+    /// when only the library is specified.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub controller: Option<PlayerFilter>,
     /// Cloak uses the same face-down/top-card operation as manifest, but the
     /// resulting 2/2 creature also has ward {2}.
     pub cloak: bool,
@@ -5384,6 +5392,7 @@ impl ManifestTopCardOfLibraryEffect {
         Self {
             descriptive: false,
             player,
+            controller: None,
             cloak: false,
         }
     }
@@ -5392,6 +5401,7 @@ impl ManifestTopCardOfLibraryEffect {
         Self {
             descriptive: false,
             player,
+            controller: None,
             cloak: true,
         }
     }

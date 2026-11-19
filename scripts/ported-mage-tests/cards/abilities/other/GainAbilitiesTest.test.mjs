@@ -493,7 +493,23 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Searing Blood",
-          "target": "Walking Corpse"
+          "target": "Walking Corpse",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Searing Blood",
+          "count": 1,
+          "isSpell": true,
+          "controller": 0,
+          "objectTarget": "Walking Corpse"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -523,8 +539,7 @@ registerPortedMageTests({
           "player": 0,
           "life": 17
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "nextSpellCastHasConvoke",
@@ -766,9 +781,72 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Frondland Felidar",
+          "count": 1
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Frondland Felidar",
+          "kind": "static",
+          "textPattern": "creature(?:s)? you control with vigilance",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Jubilant Skybonder",
+          "count": 1
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Jubilant Skybonder",
+          "kind": "static",
+          "textPattern": "creature(?:s)? you control with flying",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Proud Wildbonder",
+          "count": 1
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Proud Wildbonder",
+          "kind": "static",
+          "textPattern": "creature(?:s)? you control with trample",
+          "count": 1
+        },
+        {
+          "op": "assertAbilityKindCount",
+          "player": 0,
+          "name": "Frondland Felidar",
+          "kind": "activated",
+          "textPattern": "tap target creature",
+          "count": 1
+        },
+        {
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Jubilant Skybonder",
+          "ability": "Flying",
+          "count": 1
+        },
+        {
+          "op": "assertKeywordCount",
+          "player": 0,
+          "name": "Proud Wildbonder",
+          "ability": "Trample",
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

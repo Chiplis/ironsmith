@@ -992,7 +992,7 @@ pub(super) fn add_card_to_hand_accepts_alternative_card_names() {
 pub(super) fn add_card_to_zone_battlefield_applies_etb_replacement_effects() {
     let mut wasm = WasmGame::new();
 
-    let _tayam_id = wasm
+    let tayam_id = wasm
         .add_card_to_zone(
             0,
             "Tayam, Luminous Enigma".to_string(),
@@ -1015,6 +1015,14 @@ pub(super) fn add_card_to_zone_battlefield_applies_etb_replacement_effects() {
         .game
         .object(ObjectId::from_raw(entered_id))
         .expect("entered permanent should exist");
+    for id in [tayam_id, entered_id] {
+        let object = wasm.game.object(ObjectId::from_raw(id)).unwrap();
+        assert_eq!(
+            wasm.game.find_object_by_stable_id(object.stable_id),
+            Some(object.id),
+            "manual battlefield entry must leave the card's stable identity indexed"
+        );
+    }
     assert_eq!(
         entered.counters.get(&CounterType::Vigilance).copied(),
         Some(1),

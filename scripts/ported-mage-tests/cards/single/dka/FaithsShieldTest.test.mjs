@@ -127,9 +127,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Red"
+          "kind": "options",
+          "description": "Choose a mode",
+          "choices": [
+            "Red"
+          ]
         },
         {
           "op": "castSpell",
@@ -137,15 +141,38 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Faith's Shield",
+          "holdStack": true,
           "target": "White Knight"
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Faith's Shield",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "White Knight"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertSpellPlayerTargets",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": 0
+          "targets": [
+            1
+          ]
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
         },
         {
           "op": "setStopAt",

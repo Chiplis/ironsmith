@@ -112,11 +112,41 @@ registerPortedMageTests({
           "count": 3
         },
         {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Insectile Aberration",
+          "count": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "seatIndependent": true
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Insectile Aberration"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "manaValue",
+              "expected": 1
+            }
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Engineered Explosives"
+          "name": "Engineered Explosives",
+          "holdStack": true
         },
         {
           "op": "setChoice",
@@ -124,11 +154,45 @@ registerPortedMageTests({
           "value": "X=1"
         },
         {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Engineered Explosives",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "Engineered Explosives",
+          "counter": "CHARGE",
+          "count": 1
+        },
+        {
           "op": "activateAbility",
           "turn": 2,
           "phase": "BEGIN_COMBAT",
           "player": 1,
-          "ability": "{2}"
+          "ability": "Destroy each nonland permanent",
+          "source": "Engineered Explosives"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT",
+          "source": "Engineered Explosives",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "BEGIN_COMBAT"
         },
         {
           "op": "setStopAt",

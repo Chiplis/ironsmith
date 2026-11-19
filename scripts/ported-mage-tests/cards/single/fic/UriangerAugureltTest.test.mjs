@@ -185,28 +185,32 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Benalish Knight"
+          "name": "Benalish Knight",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Arcane Signet"
+          "name": "Arcane Signet",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Howling Mine"
+          "name": "Howling Mine",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Thought Vessel"
+          "name": "Thought Vessel",
+          "resolve": true
         },
         {
           "op": "setStopAt",

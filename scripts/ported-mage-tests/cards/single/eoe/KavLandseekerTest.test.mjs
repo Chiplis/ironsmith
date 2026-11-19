@@ -118,6 +118,12 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN"
         },
         {
+          "op": "assertExileCount",
+          "name": "Time Stop",
+          "player": 0,
+          "count": 1
+        },
+        {
           "op": "setStopAt",
           "turn": 6,
           "phase": "PRECOMBAT_MAIN"

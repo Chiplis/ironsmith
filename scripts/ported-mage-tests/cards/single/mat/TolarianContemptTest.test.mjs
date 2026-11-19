@@ -128,6 +128,12 @@ registerPortedMageTests({
           "count": 1,
           "player": 2
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

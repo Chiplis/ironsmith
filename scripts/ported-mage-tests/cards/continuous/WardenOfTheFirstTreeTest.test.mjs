@@ -32,7 +32,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Warden of the First Tree"
+          "name": "Warden of the First Tree",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -109,7 +110,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Warden of the First Tree"
+          "name": "Warden of the First Tree",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -197,7 +199,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Warden of the First Tree"
+          "name": "Warden of the First Tree",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -292,7 +295,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Warden of the First Tree"
+          "name": "Warden of the First Tree",
+          "resolve": true
         },
         {
           "op": "activateAbility",

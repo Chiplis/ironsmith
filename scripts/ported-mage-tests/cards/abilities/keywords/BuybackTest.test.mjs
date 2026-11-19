@@ -92,6 +92,15 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setOptionChoices",
+          "description": "Choose optional costs for Elvish Fury",
+          "choices": [
+            "Buyback: 4"
+          ],
+          "kind": "options",
+          "player": 0
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -101,7 +110,7 @@ registerPortedMageTests({
         },
         {
           "op": "setStrictChooseMode",
-          "value": false
+          "value": true
         },
         {
           "op": "setStopAt",
@@ -124,8 +133,7 @@ registerPortedMageTests({
           "name": "Elvish Fury",
           "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testBuybackSpellFizzles",

@@ -132,7 +132,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Stormfront Riders"
+          "name": "Stormfront Riders",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -889,7 +890,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Disfigure",
-          "target": "Dryad Sophisticate"
+          "target": "Dryad Sophisticate",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -924,7 +926,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Disfigure",
-          "target": "Dryad Sophisticate"
+          "target": "Dryad Sophisticate",
+          "resolve": true
         },
         {
           "op": "setStrictChooseMode",
@@ -1029,7 +1032,8 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Disfigure",
-          "target": "Tangled Florahedron"
+          "target": "Tangled Florahedron",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -1064,7 +1068,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Disfigure",
-          "target": "Tangled Florahedron"
+          "target": "Tangled Florahedron",
+          "resolve": true
         },
         {
           "op": "setStrictChooseMode",
@@ -1118,7 +1123,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Carrion Feeder",
+          "name": "Carrion Feeder@feeder",
           "count": 1
         },
         {
@@ -1158,7 +1163,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Carrion Feeder"
+          "name": "Carrion Feeder",
+          "objectAlias": "@feeder"
         },
         {
           "op": "waitStackResolved",
@@ -1172,7 +1178,33 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Demonic Vigor",
-          "target": "Carrion Feeder"
+          "target": "@feeder",
+          "resolve": true
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "@feeder",
+          "player": 0,
+          "count": 1,
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@feeder"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 1
+            }
+          ],
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -1180,13 +1212,28 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Disfigure",
-          "target": "Carrion Feeder"
+          "target": "@feeder",
+          "holdStack": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
-          "player": 1
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "name": "@feeder",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "source": "Demonic Vigor",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "castSpell",
@@ -1194,13 +1241,28 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Makeshift Mannequin",
-          "target": "Carrion Feeder"
+          "target": "@feeder",
+          "holdStack": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "BEGIN_COMBAT",
-          "player": 1
+          "resolutions": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "name": "@feeder",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "source": "Demonic Vigor",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "castSpell",
@@ -1208,7 +1270,13 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Coat with Venom",
-          "target": "Carrion Feeder"
+          "target": "@feeder",
+          "holdStack": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
         },
         {
           "op": "setStrictChooseMode",
@@ -1243,20 +1311,20 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "name": "Carrion Feeder",
-          "count": 0
+          "name": "@feeder",
+          "count": 1
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "Carrion Feeder",
+          "name": "@feeder",
           "count": 0
         },
         {
           "op": "assertHandCount",
           "player": 0,
-          "name": "Carrion Feeder",
-          "count": 1
+          "name": "@feeder",
+          "count": 0
         }
       ]
     }

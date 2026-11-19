@@ -39,7 +39,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Unstable Amulet"
+          "name": "Unstable Amulet",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -164,7 +165,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Unstable Amulet"
+          "name": "Unstable Amulet",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -202,7 +204,8 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tune the Narrative"
+          "name": "Tune the Narrative",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -313,7 +316,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Unstable Amulet"
+          "name": "Unstable Amulet",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -436,7 +440,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Unstable Amulet"
+          "name": "Unstable Amulet",
+          "resolve": true
         },
         {
           "op": "activateAbility",

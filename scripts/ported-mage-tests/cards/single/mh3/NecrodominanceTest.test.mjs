@@ -64,7 +64,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Gisa's Bidding"
+          "name": "Gisa's Bidding",
+          "resolve": true
         },
         {
           "op": "castSpell",

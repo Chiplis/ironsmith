@@ -147,7 +147,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Unholy Strength",
-          "target": "Goblin Piker"
+          "target": "Goblin Piker",
+          "resolve": true
         },
         {
           "op": "castSpell",

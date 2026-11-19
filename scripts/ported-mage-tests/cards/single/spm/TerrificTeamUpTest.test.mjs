@@ -14,8 +14,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Bear Cub",
-          "count": 2
+          "name": "Bear Cub@first",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Bear Cub@second",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -43,17 +50,34 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Terrific Team-Up"
+          "name": "Terrific Team-Up",
+          "holdStack": true,
+          "target": {
+            "groups": [
+              [
+                "@first",
+                "@second"
+              ],
+              [
+                "Sea Monster"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Bear Cub"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Terrific Team-Up",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Sea Monster",
+          "targetCount": 3
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Sea Monster"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -72,7 +96,14 @@ registerPortedMageTests({
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Bear Cub",
+          "name": "@first",
+          "power": 3,
+          "toughness": 2
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@second",
           "power": 3,
           "toughness": 2
         }

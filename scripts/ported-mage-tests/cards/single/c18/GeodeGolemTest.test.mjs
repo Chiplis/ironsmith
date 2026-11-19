@@ -409,6 +409,11 @@ registerPortedMageTests({
       "name": "test_MDF_BothSides",
       "operations": [
         {
+          "op": "setLife",
+          "player": 1,
+          "life": 25
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -458,17 +463,14 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Birgi, God of Storytelling"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Birgi, God of Storytelling"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": ["Cast Birgi, God of Storytelling"]
         },
         {
           "op": "waitStackResolved",
@@ -517,17 +519,14 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Birgi, God of Storytelling"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Birgi, God of Storytelling"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": ["Cast Birgi, God of Storytelling"]
         },
         {
           "op": "waitStackResolved",
@@ -576,17 +575,14 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Birgi, God of Storytelling"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Harnfel, Horn of Bounty"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": ["Cast Harnfel, Horn of Bounty"]
         },
         {
           "op": "waitStackResolved",
@@ -635,17 +631,14 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "Birgi, God of Storytelling"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Harnfel, Horn of Bounty"
+          "kind": "options",
+          "description": "Choose one",
+          "choices": ["Cast Harnfel, Horn of Bounty"]
         },
         {
           "op": "waitStackResolved",

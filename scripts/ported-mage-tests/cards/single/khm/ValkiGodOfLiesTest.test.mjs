@@ -10,7 +10,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Valki, God of Lies",
+          "name": "Valki, God of Lies@valki",
           "count": 1
         },
         {
@@ -24,7 +24,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Kraken Hatchling",
+          "name": "Kraken Hatchling@kraken",
           "count": 1
         },
         {
@@ -32,30 +32,86 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Valki, God of Lies"
+          "name": "Valki, God of Lies",
+          "objectAlias": "@valki",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Kraken Hatchling"
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Valki, God of Lies",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Valki, God of Lies",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "choices": [
+            {
+              "alias": "@kraken"
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "@kraken",
+          "count": 1
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{X}: Choose a creature card"
+          "source": "Valki, God of Lies",
+          "ability": "Choose a creature card exiled with"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "X=1"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Valki, God of Lies",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "choices": [
+            {
+              "alias": "@kraken"
+            }
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setChoice",
@@ -142,7 +198,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tibalt, Cosmic Impostor"
+          "name": "Tibalt, Cosmic Impostor",
+          "resolve": true
         },
         {
           "op": "activateAbility",

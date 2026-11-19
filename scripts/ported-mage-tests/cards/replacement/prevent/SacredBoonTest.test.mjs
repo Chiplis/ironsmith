@@ -51,7 +51,21 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Sacred Boon",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Sacred Boon",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -59,7 +73,27 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
           "name": "Bombard",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Bombard",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "damage": 1
         },
         {
           "op": "setStopAt",
@@ -80,8 +114,11 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, \"Silvercoat Lion\", 1)"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "counter": "+0/+1",
+          "count": 3
         },
         {
           "op": "assertPowerToughness",
@@ -140,15 +177,21 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Sacred Boon",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "holdStack": true
         },
         {
-          "op": "castSpell",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 1,
-          "name": "Scattershot",
-          "target": "Silvercoat Lion"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Sacred Boon",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setChoice",
@@ -156,9 +199,32 @@ registerPortedMageTests({
           "value": false
         },
         {
-          "op": "setChoice",
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Scattershot",
+          "target": "Silvercoat Lion",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Scattershot",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertDamageReceived",
           "player": 0,
-          "value": "At the"
+          "name": "Silvercoat Lion",
+          "damage": 0
         },
         {
           "op": "setStopAt",
@@ -179,8 +245,11 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, \"Silvercoat Lion\", 0)"
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "counter": "+0/+1",
+          "count": 2
         },
         {
           "op": "assertPowerToughness",

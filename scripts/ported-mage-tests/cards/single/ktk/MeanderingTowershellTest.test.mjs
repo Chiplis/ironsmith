@@ -34,7 +34,8 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "life": 20
+          "life": 20,
+          "seatIndependent": true
         },
         {
           "op": "setStrictChooseMode",
@@ -106,7 +107,8 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "life": 20
+          "life": 20,
+          "seatIndependent": true
         },
         {
           "op": "castSpell",
@@ -128,6 +130,12 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "name": "Time Stop",
+          "player": 0,
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",

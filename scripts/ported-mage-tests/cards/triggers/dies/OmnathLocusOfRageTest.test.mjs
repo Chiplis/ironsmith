@@ -314,6 +314,13 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertAbility",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "ability": "Protection from green",
+          "expected": true
         }
       ]
     }

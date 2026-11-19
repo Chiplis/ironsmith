@@ -4055,6 +4055,10 @@ struct PreventableCombatDamageToOrByObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableCombatDamageToOrByObjectMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        self.to.ignores_event_amount() && self.by.ignores_event_amount()
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if self.to.matches_prepared_event(event, ctx) {
@@ -4163,6 +4167,10 @@ struct PreventableAnyDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableAnyDamageToObjectMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        self.combat.ignores_event_amount() && self.noncombat.ignores_event_amount()
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         self.combat.matches_prepared_event(event, ctx) || self.noncombat.matches_prepared_event(event, ctx)

@@ -49,6 +49,12 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -98,21 +104,21 @@ registerPortedMageTests({
           "op": "attack",
           "turn": 2,
           "phase": "DECLARE_ATTACKERS",
-          "player": 1,
-          "attacker": "Bear Cub",
-          "defender": 3,
-          "expectedLegal": true
-        },
-        {
-          "op": "attack",
-          "turn": 4,
-          "phase": "DECLARE_ATTACKERS",
           "player": 3,
           "attacker": "Bear Cub",
           "defender": 2,
           "expectedLegal": true,
           "rejectedDefender": 0,
           "rejection": "attack requirement|illegal attack|invalid attackers|cannot attack"
+        },
+        {
+          "op": "attack",
+          "turn": 4,
+          "phase": "DECLARE_ATTACKERS",
+          "player": 1,
+          "attacker": "Bear Cub",
+          "defender": 3,
+          "expectedLegal": true
         },
         {
           "op": "setStopAt",
@@ -127,6 +133,12 @@ registerPortedMageTests({
           "player": 2,
           "life": 18
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

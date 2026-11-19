@@ -29,32 +29,72 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "0: Create a"
+          "ability": "0: Create a",
+          "source": "Gideon, Ally of Zendikar"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gideon, Ally of Zendikar",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Until end of turn"
+          "ability": "+1: Until end of turn",
+          "source": "Gideon, Ally of Zendikar"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gideon, Ally of Zendikar",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "waitStackResolved",
           "turn": 3,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "+1: Choose up to two"
+          "ability": "+1: Choose up to two",
+          "source": "Tamiyo, Field Researcher",
+          "target": {
+            "groups": [
+              [
+                "Knight Ally Token",
+                "Gideon, Ally of Zendikar"
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Knight Ally Token^Gideon, Ally of Zendikar"
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Tamiyo, Field Researcher",
+          "count": 1,
+          "abilityKind": "Activated",
+          "targetCount": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
@@ -71,9 +111,18 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Until your next turn"
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Tamiyo, Field Researcher",
+          "count": 2,
+          "abilityKind": "Triggered",
+          "completeChoices": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "setStopAt",
@@ -160,7 +209,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tamiyo, Field Researcher"
+          "name": "Tamiyo, Field Researcher",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -255,7 +305,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tamiyo, Field Researcher"
+          "name": "Tamiyo, Field Researcher",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -793,7 +844,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tamiyo, Field Researcher"
+          "name": "Tamiyo, Field Researcher",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -910,7 +962,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tamiyo, Field Researcher"
+          "name": "Tamiyo, Field Researcher",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -1005,7 +1058,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tamiyo, Field Researcher"
+          "name": "Tamiyo, Field Researcher",
+          "resolve": true
         },
         {
           "op": "activateAbility",

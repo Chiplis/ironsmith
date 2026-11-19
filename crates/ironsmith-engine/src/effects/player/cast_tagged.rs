@@ -129,7 +129,7 @@ impl EffectExecutor for CastTaggedEffect {
                     && game.object(snapshot.object_id).is_none_or(|object|object.stable_id!=snapshot.stable_id||game.find_object_by_stable_id(snapshot.stable_id)!=Some(snapshot.object_id))
                 {return Ok(EffectOutcome::target_invalid());}
                 let named_copy = if self.copy_named_definition {
-                    let definition = game.linked_face_definition_by_name_or_id(Some(&snapshot.name), None)
+                    let definition = game.printed_definition_for_noted_name(&snapshot.name)
                         .ok_or_else(|| ExecutionError::IncompleteEvidence(format!("missing printed definition for noted name {}", snapshot.name)))?;
                     Some(crate::object::Object::from_card_definition(game.new_object_id(), &definition, ctx.controller, Zone::Command))
                 } else { None };

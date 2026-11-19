@@ -49,6 +49,35 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "source": "Sen Triplets",
+          "abilityKind": "Triggered",
+          "count": 1,
+          "completeTargets": true,
+          "targetCount": 1,
+          "controller": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Lightning Bolt",
+          "expected": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -67,7 +96,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Darksteel Relic"
+          "name": "Darksteel Relic",
+          "resolve": true
         },
         {
           "op": "playLand",

@@ -279,6 +279,11 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 permissions: ctx.last_play_permissions.clone(),
                 include_land_plays: watcher.include_land_plays,
             })
+        } else if self.trigger.downcast_ref::<crate::triggers::BeginningOfAddedCombatTrigger>().is_some() {
+            let Some(order) = ctx.combat.last_added_combat_order else {
+                return Ok(EffectOutcome::resolved());
+            };
+            Trigger::new(crate::triggers::BeginningOfAddedCombatTrigger { order: Some(order) })
         } else if let Some(bound) = bind_lose_game_player(&self.trigger, ctx) {
             bound
         } else { self.trigger.clone() };

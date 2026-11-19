@@ -196,7 +196,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Feral Maaka"
+          "name": "Feral Maaka",
+          "resolve": true
         },
         {
           "op": "castSpell",

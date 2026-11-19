@@ -162,7 +162,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Contagion Engine"
+          "name": "Contagion Engine",
+          "holdStack": true
         },
         {
           "op": "addTarget",
@@ -170,21 +171,71 @@ registerPortedMageTests({
           "target": 1
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Contagion Engine",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 1,
+          "name": "Kalonian Behemoth",
+          "count": 1,
+          "counter": "-1/-1"
+        },
+        {
           "op": "activateAbility",
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}, {T}: Proliferate"
+          "ability": "Proliferate",
+          "source": "Contagion Engine"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Wall of Frost^Kalonian Behemoth^Plated Slagwurm^Teysa, Envoy of Ghosts^Ajani Goldmane"
+          "kind": "proliferate",
+          "description": "Choose permanents and/or players to proliferate",
+          "choices": [
+            "Permanent: Wall of Frost",
+            "Permanent: Kalonian Behemoth",
+            "Permanent: Plated Slagwurm",
+            "Permanent: Teysa, Envoy of Ghosts",
+            "Permanent: Ajani Goldmane"
+          ]
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Wall of Frost^Kalonian Behemoth^Plated Slagwurm^Teysa, Envoy of Ghosts^Ajani Goldmane"
+          "kind": "proliferate",
+          "description": "Choose permanents and/or players to proliferate",
+          "choices": [
+            "Permanent: Wall of Frost",
+            "Permanent: Kalonian Behemoth",
+            "Permanent: Plated Slagwurm",
+            "Permanent: Teysa, Envoy of Ghosts",
+            "Permanent: Ajani Goldmane"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Contagion Engine",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

@@ -61,7 +61,8 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "Silvercoat Lion"
+          "name": "Silvercoat Lion",
+          "resolve": true
         },
         {
           "op": "addTarget",

@@ -12,6 +12,7 @@ impl EffectExecutor for AdditionalPhasesEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        ctx.combat.last_added_combat_order = None;
         let player = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
         // "After this main phase, ..." / "If it's your main phase, ... after
         // this phase": outside the controller's own main phase there is no

@@ -32,7 +32,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Tawnos's Coffin"
+          "name": "Tawnos's Coffin",
+          "resolve": true
         },
         {
           "op": "activateAbility",

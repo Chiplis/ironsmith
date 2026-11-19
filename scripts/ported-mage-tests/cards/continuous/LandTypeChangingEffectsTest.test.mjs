@@ -479,6 +479,16 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertNotSubtype(urborgtoy, SubType.SWAMP)"
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "options": [
+            "{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -570,6 +580,16 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertNotSubtype(urborgtoy, SubType.SWAMP)"
+        },
+        {
+          "op": "assertManaOptions",
+          "player": 1,
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "options": [
+            "{R}"
+          ],
+          "exact": true
         }
       ]
     },
@@ -594,8 +614,29 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Mountain",
-          "count": 4
+          "name": "Mountain@flooded",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain@untouched1",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain@untouched2",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain@untouched3",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -635,7 +676,13 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Mountain"
+          "target": {
+            "groups": [
+              [
+                "@flooded"
+              ]
+            ]
+          }
         },
         {
           "op": "setStrictChooseMode",
@@ -672,6 +719,181 @@ registerPortedMageTests({
           "player": 0,
           "name": "Mountain",
           "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@flooded"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Island",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Mountain",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@untouched1"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Island",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Mountain",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@untouched2"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Island",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Mountain",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@untouched3"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Land",
+              "expected": true
+            },
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Island",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Mountain",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Urborg, Tomb of Yawgmoth"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Swamp",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Island",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Mountain",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -776,6 +998,12 @@ registerPortedMageTests({
               "expected": true
             }
           ]
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Darksteel Citadel",
+          "count": 1
         },
         {
           "op": "assertAbility",

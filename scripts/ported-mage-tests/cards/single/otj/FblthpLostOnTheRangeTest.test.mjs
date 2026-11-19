@@ -110,7 +110,7 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "label": "Plot Beastbond Outcaster",
-          "expected": true
+          "expectedCount": 1
         },
         {
           "op": "activateAbility",
@@ -183,16 +183,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Plot {1}{G}",
-          "expected": true
-        },
-        {
-          "op": "assertPlayableAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "label": "Plot {2}{G}",
-          "expected": true
+          "label": "Plot Beastbond Outcaster",
+          "expectedCount": 2
         },
         {
           "op": "activateAbility",

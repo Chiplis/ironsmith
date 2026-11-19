@@ -277,6 +277,21 @@ registerPortedMageTests({
           "player": 0,
           "name": "Jace, Vryn's Prodigy",
           "tapped": false
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Jace, Vryn's Prodigy"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "transformed",
+              "expected": false
+            }
+          ]
         }
       ]
     },

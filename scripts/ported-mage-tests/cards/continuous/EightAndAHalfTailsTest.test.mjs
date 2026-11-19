@@ -48,6 +48,26 @@ registerPortedMageTests({
           "player": 1,
           "name": "Nekusar, the Mindrazer",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Nekusar, the Mindrazer",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "colorCount",
+              "expected": 1
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "white"
+            }
+          ]
         }
       ]
     },
@@ -124,6 +144,36 @@ registerPortedMageTests({
           "player": 1,
           "name": "Momentary Blink",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Nekusar, the Mindrazer",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "colorCount",
+              "expected": 3
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "blue"
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "black"
+            },
+            {
+              "property": "color",
+              "expected": true,
+              "value": "red"
+            }
+          ]
         }
       ]
     }

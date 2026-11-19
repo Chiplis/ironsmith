@@ -7,6 +7,25 @@ registerPortedMageTests({
       "name": "testPutSecondFromTop",
       "operations": [
         {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "player": 1,
+          "zone": "LIBRARY",
+          "name": "Island",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "player": 1,
+          "zone": "LIBRARY",
+          "name": "Forest",
+          "count": 1
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -64,12 +83,54 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 23
+        },
+        {
+          "op": "assertLibraryOrder",
+          "player": 1,
+          "cards": [
+            "Forest",
+            "Dread Wanderer",
+            "Island"
+          ]
         }
       ]
     },
     {
       "name": "testUnexpectedlyAbsent",
       "operations": [
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "LIBRARY",
+          "name": "Forest",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "LIBRARY",
+          "name": "Swamp",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "LIBRARY",
+          "name": "Island",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "player": 0,
+          "zone": "LIBRARY",
+          "name": "Mountain",
+          "count": 1
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -97,12 +158,22 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Unexpectedly Absent",
-          "target": "Skyrider Patrol"
+          "target": "Skyrider Patrol",
+          "holdStack": true
         },
         {
           "op": "setChoice",
           "player": 1,
           "value": "X=3"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Unexpectedly Absent",
+          "count": 1,
+          "xValue": 3,
+          "isSpell": true
         },
         {
           "op": "setStopAt",
@@ -139,6 +210,17 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Mountain",
+            "Island",
+            "Swamp",
+            "Skyrider Patrol",
+            "Forest"
+          ]
         }
       ]
     }

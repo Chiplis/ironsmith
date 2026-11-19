@@ -411,12 +411,30 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Rhox Maulers",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "renowned",
+              "expected": true
+            }
+          ],
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 5,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Cloudshift",
-          "target": "Rhox Maulers"
+          "target": "Rhox Maulers",
+          "holdStack": true
         },
         {
           "op": "assertStackObject",
@@ -439,6 +457,23 @@ registerPortedMageTests({
           "name": "Rhox Maulers",
           "counter": "P1P1",
           "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Rhox Maulers",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "renowned",
+              "expected": false
+            }
+          ],
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "attack",
@@ -471,6 +506,21 @@ registerPortedMageTests({
           "name": "Rhox Maulers",
           "power": 6,
           "toughness": 6
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Rhox Maulers",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "renowned",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -527,12 +577,30 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Goblin Glory Chaser",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "renowned",
+              "expected": true
+            }
+          ],
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
           "op": "castSpell",
           "turn": 5,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Cloudshift",
-          "target": "Goblin Glory Chaser"
+          "target": "Goblin Glory Chaser",
+          "holdStack": true
         },
         {
           "op": "assertStackObject",
@@ -555,6 +623,23 @@ registerPortedMageTests({
           "name": "Goblin Glory Chaser",
           "counter": "P1P1",
           "count": 0
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Goblin Glory Chaser",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "renowned",
+              "expected": false
+            }
+          ],
+          "turn": 5,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "attack",
@@ -601,6 +686,21 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 14
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Goblin Glory Chaser",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "renowned",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -667,6 +767,21 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 16
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Scab-Clan Berserker",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "renowned",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -737,6 +852,21 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Scab-Clan Berserker",
+            "player": 1
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "renowned",
+              "expected": true
+            }
+          ]
         }
       ]
     }

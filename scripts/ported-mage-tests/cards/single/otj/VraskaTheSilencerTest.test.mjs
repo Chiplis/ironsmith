@@ -35,7 +35,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Red Herring",
+          "name": "Red Herring@herring",
           "count": 1
         },
         {
@@ -51,12 +51,61 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Doom Blade",
-          "target": "Red Herring"
+          "target": {
+            "groups": [
+              [
+                "@herring"
+              ]
+            ]
+          },
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Doom Blade",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "@herring"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Vraska, the Silencer",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Warden",
+          "count": 0,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -77,28 +126,47 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Red Herring\", true)"
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Red Herring",
+          "tapped": true,
+          "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertType(\"Red Herring\", CardType.CREATURE, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertType(\"Red Herring\", CardType.ARTIFACT, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNotSubtype(\"Red Herring\", SubType.FISH)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Red Herring\", SubType.CLUE)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(\"Red Herring\", SubType.TREASURE)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@herring"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": false
+            },
+            {
+              "property": "cardType",
+              "value": "Artifact",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Fish",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Clue",
+              "expected": false
+            },
+            {
+              "property": "subtype",
+              "value": "Treasure",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertLife",

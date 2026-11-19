@@ -28,12 +28,29 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Asceticism",
+          "count": 1
+        },
+        {
+          "op": "assertAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Merfolk Spy",
+          "ability": "Hexproof",
+          "expected": true
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Merfolk Spy"
+          "target": "Merfolk Spy",
+          "source": "Ring of Evos Isle"
         },
         {
           "op": "setStopAt",
@@ -91,6 +108,14 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Ring of Evos Isle",
+          "target": "Simic Sky Swallower",
+          "expected": false,
+          "targetPlayer": 0
         }
       ]
     },
@@ -133,6 +158,14 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Ring of Evos Isle",
+          "target": "Llanowar Elves",
+          "expected": false,
+          "targetPlayer": 1
         }
       ]
     }

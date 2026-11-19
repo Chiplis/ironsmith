@@ -90,18 +90,19 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, wishcoin, 1)"
-        },
-        {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Ajani's Pridemate",
           "counter": "P1P1",
           "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "damage": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testCreatureDamageTargetAndSelf",
@@ -190,22 +191,25 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, wishcoin, 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, embermage, 1)"
-        },
-        {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Ajani's Pridemate",
           "counter": "P1P1",
           "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "damage": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Reckless Embermage",
+          "damage": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testSpellDamageTargetAndTarget",
@@ -264,17 +268,17 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Arc Trail"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Wishcoin Crab"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Kraken Hatchling"
+          "name": "Arc Trail",
+          "target": {
+            "groups": [
+              [
+                "Wishcoin Crab"
+              ],
+              [
+                "Kraken Hatchling"
+              ]
+            ]
+          }
         },
         {
           "op": "setStrictChooseMode",
@@ -299,22 +303,25 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, wishcoin, 2)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, hatchling, 1)"
-        },
-        {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Ajani's Pridemate",
           "counter": "P1P1",
           "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "damage": 2
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "damage": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testSpellDamageThreeTargets",
@@ -373,22 +380,20 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Cone of Flame"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Wishcoin Crab"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Kraken Hatchling"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Firesong and Sunspeaker"
+          "name": "Cone of Flame",
+          "target": {
+            "groups": [
+              [
+                "Firesong and Sunspeaker"
+              ],
+              [
+                "Kraken Hatchling"
+              ],
+              [
+                "Wishcoin Crab"
+              ]
+            ]
+          }
         },
         {
           "op": "setStrictChooseMode",
@@ -413,26 +418,31 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, wishcoin, 3)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, hatchling, 2)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerA, firesong, 1)"
-        },
-        {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Ajani's Pridemate",
           "counter": "P1P1",
           "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "damage": 3
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "damage": 2
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Firesong and Sunspeaker",
+          "damage": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testSpellDamageTargetAndYou",
@@ -491,12 +501,14 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Char"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Wishcoin Crab"
+          "name": "Char",
+          "target": {
+            "groups": [
+              [
+                "Wishcoin Crab"
+              ]
+            ]
+          }
         },
         {
           "op": "setStrictChooseMode",
@@ -521,18 +533,19 @@ registerPortedMageTests({
           "life": 20
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, wishcoin, 4)"
-        },
-        {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Ajani's Pridemate",
           "counter": "P1P1",
           "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "damage": 4
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testSpellDamageTargetAndController",
@@ -591,12 +604,14 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Chandra's Outrage"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Wishcoin Crab"
+          "name": "Chandra's Outrage",
+          "target": {
+            "groups": [
+              [
+                "Wishcoin Crab"
+              ]
+            ]
+          }
         },
         {
           "op": "setStrictChooseMode",
@@ -621,18 +636,19 @@ registerPortedMageTests({
           "life": 18
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, wishcoin, 4)"
-        },
-        {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Ajani's Pridemate",
           "counter": "P1P1",
           "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "damage": 4
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testSpellDamagePlayerAndControlled",
@@ -691,12 +707,14 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Chandra's Fury"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "name": "Chandra's Fury",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
           "op": "setStrictChooseMode",
@@ -721,18 +739,19 @@ registerPortedMageTests({
           "life": 16
         },
         {
-          "op": "unsupported",
-          "source": "assertDamageReceived(playerB, wishcoin, 1)"
-        },
-        {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Ajani's Pridemate",
           "counter": "P1P1",
           "count": 1
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "damage": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

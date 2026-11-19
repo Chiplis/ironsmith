@@ -3,7 +3,7 @@ use crate::cards::builders::DamagePreventionActionAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::{
-    CardTextError, ConditionalEffectAst, EffectAst, GrantedAbilityAst, IfResultPredicate,
+    CardTextError, ConditionalEffectAst, EffectAst, GrantedAbilityAst, IfResultPredicate, LibraryActionAst,
     OwnedLexToken, PermissionEffectAst, PlayerAst, PreventNextTimeDamageSourceAst,
     PreventNextTimeDamageTargetAst, RedirectNextTimeDamageDestinationAst, StackActionAst,
     SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, Verb,
@@ -3270,13 +3270,17 @@ pub fn parse_keyword_mechanic_clause(
             }
         }
         clause_shapes::KeywordMechanicShape::ManifestTop { player, count } => {
-            let player = match player {
-                clause_shapes::ManifestPlayerShape::You => PlayerAst::You,
+            let manifest = match player {
+                clause_shapes::ManifestPlayerShape::You => EffectAst::subject_verb_manifest_top_card(PlayerAst::You),
                 clause_shapes::ManifestPlayerShape::ThatPlayerOrTargetController => {
-                    PlayerAst::ThatPlayerOrTargetController
+                    EffectAst::subject_verb_manifest_top_card(PlayerAst::ThatPlayerOrTargetController)
                 }
+                clause_shapes::ManifestPlayerShape::ThatPlayerActs => EffectAst::subject_verb(
+                    SubjectVerbRoleAst::Actor,
+                    PlayerAst::ThatPlayerOrTargetController,
+                    SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary),
+                ),
             };
-            let manifest = EffectAst::subject_verb_manifest_top_card(player);
             // CR 701.40c: manifesting several cards manifests them one at a time.
             if count > 1 {
                 EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
@@ -3318,13 +3322,17 @@ pub fn parse_keyword_mechanic_clause(
             })
         }
         clause_shapes::KeywordMechanicShape::CloakTop { player } => {
-            let player = match player {
-                clause_shapes::ManifestPlayerShape::You => PlayerAst::You,
+            match player {
+                clause_shapes::ManifestPlayerShape::You => EffectAst::subject_verb_cloak_top_card(PlayerAst::You),
                 clause_shapes::ManifestPlayerShape::ThatPlayerOrTargetController => {
-                    PlayerAst::ThatPlayerOrTargetController
+                    EffectAst::subject_verb_cloak_top_card(PlayerAst::ThatPlayerOrTargetController)
                 }
-            };
-            EffectAst::subject_verb_cloak_top_card(player)
+                clause_shapes::ManifestPlayerShape::ThatPlayerActs => EffectAst::subject_verb(
+                    SubjectVerbRoleAst::Actor,
+                    PlayerAst::ThatPlayerOrTargetController,
+                    SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary),
+                ),
+            }
         }
         clause_shapes::KeywordMechanicShape::ManifestFromHand => {
             EffectAst::subject_verb_manifest_from_hand(PlayerAst::You)

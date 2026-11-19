@@ -628,35 +628,56 @@ mod tests {
 
     #[test]
     fn connive_and_explore_follow_team_member_order_and_repeat_instructions() {
-        let [a, b, c, d] = [0, 1, 2, 3].map(PlayerId::from_index);
+        let [alice, bob, carol, dana] = [0, 1, 2, 3].map(PlayerId::from_index);
         for kind in [KeywordActionKind::Connive, KeywordActionKind::Explore] {
             let mut game = GameState::new(["A", "B", "C", "D"].map(String::from).into(), 20);
-            game.turn.active_player = c;
-            game.set_teams(vec![vec![a, b], vec![c, d]]).unwrap();
+            game.turn.active_player = carol;
+            game.set_teams(vec![vec![alice, bob], vec![carol, dana]])
+                .unwrap();
             game.enable_shared_team_turns().unwrap();
-            game.set_shared_team_member_order(0, vec![b, a]).unwrap();
-            game.set_shared_team_member_order(1, vec![d, c]).unwrap();
-            let [ca, cb, cc, cd, second_c] = [a, b, c, d, c].map(|p| create_creature(&mut game, p));
+            game.set_shared_team_member_order(0, vec![bob, alice])
+                .unwrap();
+            game.set_shared_team_member_order(1, vec![dana, carol])
+                .unwrap();
+            let [alices, bobs, carols_first, danas, carols_second] =
+                [alice, bob, carol, dana, carol].map(|p| create_creature(&mut game, p));
             let source = game.new_object_id();
             let mut dm = ConniveDecisionMaker {
-                object_choices: VecDeque::from([vec![second_c]]),
+                object_choices: VecDeque::from([vec![carols_second]]),
             };
-            let mut ctx = ExecutionContext::new(source, a, &mut dm);
-            ctx.set_tagged_objects("batch", [ca, cc, cb, second_c, cd, ca].map(|id| {
-                ObjectSnapshot::from_object(game.object(id).unwrap(), &game)
-            }).into());
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            ctx.set_tagged_objects(
+                "batch",
+                [alices, carols_first, bobs, carols_second, danas, alices]
+                    .map(|id| ObjectSnapshot::from_object(game.object(id).unwrap(), &game))
+                    .into(),
+            );
             let target = ChooseSpec::tagged("batch");
             let result = match kind {
-                KeywordActionKind::Connive => ConniveEffect::new(target).execute(&mut game, &mut ctx),
+                KeywordActionKind::Connive => {
+                    ConniveEffect::new(target).execute(&mut game, &mut ctx)
+                }
                 _ => crate::effects::ExploreEffect::new(target).execute(&mut game, &mut ctx),
-            }.unwrap();
-            let events: Vec<_> = result.events.iter()
+            }
+            .unwrap();
+            let events: Vec<_> = result
+                .events
+                .iter()
                 .filter_map(|event| event.downcast::<KeywordActionEvent>())
                 .filter(|event| event.action == kind)
                 .map(|event| (event.player, event.source))
                 .collect();
-            assert_eq!(events, [(d, cd), (c, second_c), (c, cc), (b, cb), (a, ca), (a, ca)]);
+            assert_eq!(
+                events,
+                [
+                    (dana, danas),
+                    (carol, carols_second),
+                    (carol, carols_first),
+                    (bob, bobs),
+                    (alice, alices),
+                    (alice, alices)
+                ]
+            );
         }
     }
-
 }

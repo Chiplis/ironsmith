@@ -77,7 +77,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Frenzied Raptor"
+          "name": "Frenzied Raptor",
+          "resolve": true
         },
         {
           "op": "setStopAt",
@@ -161,7 +162,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Frenzied Raptor"
+          "name": "Frenzied Raptor",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -169,14 +171,16 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "name": "Unsummon",
-          "target": "Frenzied Raptor"
+          "target": "Frenzied Raptor",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Frenzied Raptor"
+          "name": "Frenzied Raptor",
+          "resolve": true
         },
         {
           "op": "setStopAt",
@@ -269,14 +273,16 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Frenzied Raptor"
+          "name": "Frenzied Raptor",
+          "resolve": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Scytheclaw Raptor"
+          "name": "Scytheclaw Raptor",
+          "resolve": true
         },
         {
           "op": "setStopAt",

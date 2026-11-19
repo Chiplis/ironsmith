@@ -53,7 +53,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Glimpse of Nature"
+          "name": "Glimpse of Nature",
+          "resolve": true
         },
         {
           "op": "castSpell",

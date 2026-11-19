@@ -534,7 +534,7 @@ registerPortedMageTests({
           "name": "Urza's Saga",
           "kind": "triggered",
           "count": 0,
-          "textPattern": "^[IVXLCDM]+(?:\\s*,\\s*[IVXLCDM]+)*\\s*[\u2014\u2013-]"
+          "textPattern": "^[IVXLCDM]+(?:\\s*,\\s*[IVXLCDM]+)*\\s*[—–-]"
         },
         {
           "op": "assertPermanentCount",
@@ -632,7 +632,7 @@ registerPortedMageTests({
           "name": "Urza's Saga",
           "kind": "triggered",
           "count": 0,
-          "textPattern": "^[IVXLCDM]+(?:\\s*,\\s*[IVXLCDM]+)*\\s*[\u2014\u2013-]"
+          "textPattern": "^[IVXLCDM]+(?:\\s*,\\s*[IVXLCDM]+)*\\s*[—–-]"
         },
         {
           "op": "assertPermanentCount",
@@ -681,19 +681,21 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Blood Moon"
+          "name": "Blood Moon",
+          "holdStack": true
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
@@ -709,23 +711,78 @@ registerPortedMageTests({
           "name": "Urza's Saga"
         },
         {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Urza's Saga"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Mountain",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Saga",
+              "expected": true
+            },
+            {
+              "property": "counter",
+              "value": "lore",
+              "expected": 0
+            }
+          ],
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Urza's Saga",
+          "count": 0,
+          "abilityKind": "Triggered"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Boomerang",
-          "target": "Urza's Saga"
+          "target": {
+            "groups": [
+              [
+                "Urza's Saga"
+              ]
+            ]
+          },
+          "holdStack": true
         },
         {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Boomerang",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Urza's Saga"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
-          "op": "assertPermanentCount",
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Urza's Saga",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 0,
           "name": "Urza's Saga",
           "count": 0
@@ -733,29 +790,10 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "name": "Urza's Saga",
-          "count": 1
-        },
-        {
-          "op": "assertHandCount",
-          "player": 0,
-          "name": "Urza's Saga",
-          "count": 1
-        },
-        {
-          "op": "assertHandCount",
-          "player": 0,
           "name": "Boomerang",
           "count": 1
-        },
-        {
-          "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Blood Moon",
-          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testLoreCounterCount",

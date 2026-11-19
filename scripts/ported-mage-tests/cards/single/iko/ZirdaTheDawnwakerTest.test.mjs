@@ -233,7 +233,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{X}{B}"
+          "ability": "target artifact or creature",
+          "source": "Geth, Lord of the Vault"
         },
         {
           "op": "setChoice",
@@ -246,11 +247,38 @@ registerPortedMageTests({
           "target": "Zirda, the Dawnwaker"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Zirda, the Dawnwaker",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": false,
+          "count": 1
+        },
+        {
+          "op": "activateManaAbility",
+          "player": 0,
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Swamp",
+          "ability": "Add {B}"
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{X}{B}"
+          "ability": "target artifact or creature",
+          "source": "Geth, Lord of the Vault"
         },
         {
           "op": "setChoice",

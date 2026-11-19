@@ -545,7 +545,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Grizzly Bears",
+          "name": "Grizzly Bears@bear",
           "count": 1
         },
         {
@@ -559,7 +559,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Bog Wraith",
+          "name": "Bog Wraith@wraith",
           "count": 1
         },
         {
@@ -573,7 +573,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Figure of Destiny",
+          "name": "Figure of Destiny@figure",
           "count": 1
         },
         {
@@ -588,21 +588,21 @@ registerPortedMageTests({
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Forest",
-          "count": 20
+          "count": 2
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Island",
-          "count": 20
+          "count": 2
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Plains",
-          "count": 20
+          "count": 14
         },
         {
           "op": "castSpell",
@@ -618,28 +618,67 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lignify",
-          "target": "Bog Wrath"
+          "target": "@wraith"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{R/W}:"
+          "ability": "{R/W}:",
+          "source": "Figure of Destiny"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@figure",
+          "power": 2,
+          "toughness": 2
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{R/W}{R/W}{R/W}:"
+          "ability": "{R/W}{R/W}{R/W}:",
+          "source": "Figure of Destiny"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@figure",
+          "power": 4,
+          "toughness": 4
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{R/W}{R/W}{R/W}{R/W}{R/W}{R/W}:"
+          "ability": "{R/W}{R/W}{R/W}{R/W}{R/W}{R/W}:",
+          "source": "Figure of Destiny"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "@figure",
+          "power": 8,
+          "toughness": 8
         },
         {
           "op": "castSpell",
@@ -666,26 +705,25 @@ registerPortedMageTests({
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Figure of Destiny",
+          "name": "@bear",
           "power": 4,
           "toughness": 4
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Figure of Destiny",
+          "name": "@figure",
           "power": 8,
           "toughness": 8
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "Figure of Destiny",
+          "name": "@wraith",
           "power": 0,
           "toughness": 4
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testUrborgWithAnimateLandAndOvinize",
@@ -808,40 +846,98 @@ registerPortedMageTests({
           "count": 2
         },
         {
+          "op": "setOptionChoices",
+          "description": "Choose how to pay pip 2 of Scourge of the Nobilis",
+          "choices": [
+            "{R} (Red mana)"
+          ],
+          "kind": "hybrid_payment",
+          "player": 0
+        },
+        {
           "op": "castSpell",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Scourge of the Nobilis",
           "target": "Battlegate Mimic"
         },
         {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Battlegate Mimic",
+          "power": 6,
+          "toughness": 4
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Battlegate Mimic"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "Red",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "White",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 1,
+          "name": "Wilderness Hypnotist",
+          "tapped": false,
+          "count": 2
+        },
+        {
           "op": "activateAbility",
-          "turn": 1,
+          "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "{T}:",
-          "target": "Battlegate Mimic"
+          "ability": "Target red or green creature",
+          "target": "Battlegate Mimic",
+          "source": "Wilderness Hypnotist"
+        },
+        {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Battlegate Mimic",
+          "defender": 1
         },
         {
           "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
           "player": 0,
           "name": "Inside Out",
           "target": "Battlegate Mimic"
         },
         {
           "op": "activateAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "turn": 3,
+          "phase": "DECLARE_BLOCKERS",
           "player": 1,
-          "ability": "{T}:",
-          "target": "Battlegate Mimic"
+          "ability": "Target red or green creature",
+          "target": "Battlegate Mimic",
+          "source": "Wilderness Hypnotist"
         },
         {
           "op": "setStopAt",
-          "turn": 1,
+          "turn": 3,
           "phase": "POSTCOMBAT_MAIN"
         },
         {
@@ -853,9 +949,13 @@ registerPortedMageTests({
           "name": "Battlegate Mimic",
           "power": 4,
           "toughness": 2
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 16
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "testExampleFromReddit2021",

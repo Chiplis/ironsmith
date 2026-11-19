@@ -49,12 +49,37 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertLife",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "life": 20
+        },
+        {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Putrefy",
+          "holdStack": true,
           "target": "Silvercoat Lion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Putrefy",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Burning Earth",
+          "count": 3,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setStopAt",
@@ -86,6 +111,10 @@ registerPortedMageTests({
           "player": 1,
           "life": 17
         }
+      ],
+      "turnOrder": [
+        0,
+        1
       ]
     }
   ]

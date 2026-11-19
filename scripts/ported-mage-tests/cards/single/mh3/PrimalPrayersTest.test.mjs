@@ -113,7 +113,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "BEGIN_COMBAT",
           "player": 0,
-          "name": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -169,7 +170,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Primal Prayers"
+          "name": "Primal Prayers",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -264,14 +266,16 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Grizzly Bears"
+          "name": "Grizzly Bears",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -333,7 +337,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Primal Prayers"
+          "name": "Primal Prayers",
+          "resolve": true
         },
         {
           "op": "assertCounterCount",
@@ -411,7 +416,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Primal Prayers"
+          "name": "Primal Prayers",
+          "resolve": true
         },
         {
           "op": "setChoice",

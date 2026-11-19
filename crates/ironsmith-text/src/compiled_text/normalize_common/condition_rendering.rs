@@ -1791,9 +1791,6 @@ fn describe_behold_or_controlled_subtype_condition(
         let Condition::ThisSpellPaidLabel(label) = paid else {
             return None;
         };
-        if label.kind != crate::cost::OptionalCostKind::Behold {
-            return None;
-        }
         let filter = match controlled {
             Condition::PlayerControls {
                 player: PlayerFilter::You,
@@ -1807,6 +1804,13 @@ fn describe_behold_or_controlled_subtype_condition(
         };
         let mut expected = ObjectFilter::default();
         expected.subtypes.push(*subtype);
+        if label == &crate::cost::OptionalCostRef::reveal_from_hand_subtype(*subtype) {
+            expected.set_as_you_cast_this_turn_surface(true);
+            return (filter == &expected).then_some(subtype);
+        }
+        if label.kind != crate::cost::OptionalCostKind::Behold {
+            return None;
+        }
         if filter != &expected
             || label.discriminator.as_deref().is_some_and(|label_subtype| {
                 !label_subtype.eq_ignore_ascii_case(&subtype.to_string())

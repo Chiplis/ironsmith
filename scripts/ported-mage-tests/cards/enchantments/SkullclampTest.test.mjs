@@ -64,16 +64,39 @@ registerPortedMageTests({
           "target": "Silvercoat Lion"
         },
         {
+          "op": "assertChoiceMenu",
+          "description": "Choose value for X",
+          "player": 1,
+          "kind": "number",
+          "value": 2
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 1,
-          "ability": "{X}, Sacrifice"
+          "source": "Pernicious Deed",
+          "ability": "Sacrifice"
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Pernicious Deed",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertTappedCount",
           "player": 1,
-          "value": "X=2"
+          "name": "Swamp",
+          "tapped": true,
+          "count": 2
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -112,8 +135,7 @@ registerPortedMageTests({
           "player": 0,
           "count": 2
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

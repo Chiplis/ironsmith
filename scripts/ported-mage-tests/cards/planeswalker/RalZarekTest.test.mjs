@@ -39,7 +39,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ral Zarek"
+          "name": "Ral Zarek",
+          "resolve": true
         },
         {
           "op": "activateAbility",

@@ -24,7 +24,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Swamp",
+          "name": "Swamp@fromyard",
           "count": 1
         },
         {
@@ -42,12 +42,54 @@ registerPortedMageTests({
           "name": "Swamp"
         },
         {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "@fromyard",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "@fromyard",
+          "count": 0
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Sinkhole",
-          "target": "Swamp"
+          "target": "@fromyard",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Sinkhole",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Swamp"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackSize",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "count": 1,
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -65,7 +107,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "name": "Swamp",
+          "name": "@fromyard",
           "count": 1
         }
       ]
@@ -262,7 +304,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Chromatic Star"
+          "name": "Chromatic Star",
+          "resolve": true
         },
         {
           "op": "activateManaAbility",
@@ -363,7 +406,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Chromatic Star"
+          "name": "Chromatic Star",
+          "resolve": true
         },
         {
           "op": "castSpell",

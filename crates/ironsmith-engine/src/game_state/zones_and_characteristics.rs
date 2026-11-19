@@ -7079,7 +7079,8 @@ retain_original_types: false, retain_original_name: false,
         // effects before allocating and cloning the complete registered set.
         if !self.continuous_state_is_clean()
             && !self.effect_store.continuous_effects.effects().iter().any(|effect|
-                skipped_effect != Some(effect.id) && matches!(effect.modification,
+                skipped_effect.is_none_or(|skipped| effect.registration_id != Some(skipped))
+                    && matches!(effect.modification,
                     Modification::ChangeController(_) | Modification::ChangeControllerToEffectController))
         {
             return Some(object.initial_controller);
@@ -7162,21 +7163,28 @@ retain_original_types: false, retain_original_name: false,
         skipped_effect: Option<ContinuousEffectId>,
     ) -> Option<PlayerId> {
         let _tap_reads = self.derived_tap_read_scope();
+        let objects = self.objects_map();
+        // Regenerated static effects have no registration. Their placeholder
+        // descriptor ID can equal a real effect ID.
+        let included = |effect: &ContinuousEffect| {
+            skipped_effect.is_none_or(|skipped| effect.registration_id != Some(skipped))
+        };
         if !effects.iter().any(|effect| {
-            skipped_effect != Some(effect.id)
+            included(effect)
                 && matches!(
                     effect.modification,
                     Modification::ChangeController(_)
                         | Modification::ChangeControllerToEffectController
                 )
+                && !crate::continuous::effect_target_definitely_excludes_object(effect, object, objects)
         }) {
             return Some(object.initial_controller);
         }
         let query_effects: std::borrow::Cow<'_, [ContinuousEffect]> = match skipped_effect {
-            Some(skipped) => std::borrow::Cow::Owned(
+            Some(_) => std::borrow::Cow::Owned(
                 effects
                     .iter()
-                    .filter(|effect| effect.id != skipped)
+                    .filter(|effect| included(effect))
                     .cloned()
                     .collect(),
             ),

@@ -30,16 +30,42 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "HAND",
+          "name": "Cathodion",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
           "player": 0,
           "name": "Goblin Roughrider",
           "count": 1
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Goblin Roughrider",
+          "methods": []
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Cathodion",
+          "alternatives": [
+            {
+              "source": "Alpha Myr",
+              "kind": "convoke"
+            }
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Goblin Roughrider"
+          "name": "Cathodion"
         },
         {
           "op": "setStopAt",
@@ -52,15 +78,22 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
+          "name": "Cathodion",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
           "name": "Goblin Roughrider",
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertTapped(\"Alpha Myr\", true)"
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Alpha Myr",
+          "tapped": true
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

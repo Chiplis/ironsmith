@@ -53,7 +53,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Burgeoning"
+          "name": "Burgeoning",
+          "resolve": true
         },
         {
           "op": "castSpell",

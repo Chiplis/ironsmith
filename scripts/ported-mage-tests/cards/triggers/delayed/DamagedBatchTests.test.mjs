@@ -80,6 +80,12 @@ registerPortedMageTests({
           "player": 1,
           "life": "currentGame.getStartingLife() - 3"
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -145,6 +151,12 @@ registerPortedMageTests({
           "player": 1,
           "life": "currentGame.getStartingLife() - 2"
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

@@ -28,7 +28,22 @@ pub(crate) fn resolve_zone_move_objects(
     let mut objects = if spec.is_target() {
         crate::effects::helpers::resolve_objects_from_spec(game, &resolution_spec, ctx)?
     } else {
-        crate::effects::helpers::resolve_objects_for_effect(game, ctx, &resolution_spec)?
+        match (
+            crate::effects::helpers::resolve_objects_for_effect(game, ctx, &resolution_spec),
+            spec.base(),
+        ) {
+            // CR 609.3: a player with no eligible card performs none of this
+            // instruction. Other players' movements are still possible.
+            (Err(ExecutionError::InvalidTarget), ChooseSpec::Object(filter))
+                if !filter.source
+                    && filter.zone.is_some_and(|zone| zone.is_public())
+                    && crate::effects::helpers::candidate_object_ids_for_filter(game, filter, ctx)
+                        .is_empty() =>
+            {
+                Vec::new()
+            }
+            (result, _) => result?,
+        }
     };
     if spec.is_target() && matches!(spec.base(), ChooseSpec::Object(_)) {
         objects.retain(|id| {

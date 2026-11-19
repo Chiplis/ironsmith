@@ -63,7 +63,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "assertStackSize",
@@ -124,7 +125,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "castSpell",
@@ -137,7 +139,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "unsupported",
@@ -318,7 +321,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "setChoice",
@@ -328,8 +332,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPowerToughness",
@@ -404,13 +407,15 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "player": 0,
+          "once": true
         },
         {
           "op": "assertStackSize",
@@ -465,18 +470,67 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}:",
-          "target": 1
+          "ability": "deals 1 damage",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          },
+          "source": "Goblin Fireslinger"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Goblin Fireslinger",
+          "count": 1,
+          "abilityKind": "Activated",
+          "playerTarget": 1
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Tectonic Hazard"
+          "target": {
+            "groups": [
+              [
+                "Tectonic Hazard"
+              ]
+            ]
+          }
         },
         {
-          "op": "setChoice",
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Emet-Selch of the Third Seat",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "objectTarget": "Tectonic Hazard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 19
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 0,
-          "value": true
+          "name": "Tectonic Hazard",
+          "count": 1
         },
         {
           "op": "playLand",
@@ -490,18 +544,67 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}:",
-          "target": 1
+          "ability": "deals 1 damage",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          },
+          "source": "Goblin Fireslinger"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Goblin Fireslinger",
+          "count": 1,
+          "abilityKind": "Activated",
+          "playerTarget": 1
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Tectonic Hazard"
+          "target": {
+            "groups": [
+              [
+                "Tectonic Hazard"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Emet-Selch of the Third Seat",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeTargets": true,
+          "objectTarget": "Tectonic Hazard"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Tectonic Hazard",
+          "count": 1
         },
         {
           "op": "setStrictChooseMode",

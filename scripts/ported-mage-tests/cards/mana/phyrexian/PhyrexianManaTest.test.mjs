@@ -75,6 +75,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Apostle's Blessing",
           "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Apostle's Blessing",
+          "count": 0
         }
       ]
     },
@@ -124,7 +130,26 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Banehound"
+          "name": "Banehound",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Banehound",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 18
         },
         {
           "op": "assertPlayableAbility",
@@ -205,38 +230,96 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "setChoice",
+          "op": "setManaPayment",
           "player": 0,
-          "value": true
+          "source": "Crypt Ghast",
+          "lifePips": [
+            "B"
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "name": "Crypt Ghast",
           "player": 0,
-          "name": "Crypt Ghast"
+          "holdStack": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Crypt Ghast",
+          "isSpell": true,
+          "count": 1
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "setChoice",
+          "op": "assertLife",
           "player": 0,
-          "value": true
+          "life": 18
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Swamp",
+          "tapped": true,
+          "count": 3
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Banehound",
+          "lifePips": [
+            "B"
+          ]
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
+          "name": "Banehound",
           "player": 0,
-          "name": "Banehound"
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Banehound",
+          "isSpell": true,
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 16
+        },
+        {
+          "op": "setOptionChoices",
+          "kind": "boolean",
+          "description": "Perform the effect",
+          "player": 0,
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setManaPayment",
+          "player": 0,
+          "source": "Crypt Ghast",
+          "lifePips": [
+            "B"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

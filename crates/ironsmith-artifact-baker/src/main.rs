@@ -38,6 +38,8 @@ enum CardSourceGroup {
     },
     Linked {
         layout: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        has_fuse: Option<bool>,
         faces: Vec<CardFaceSource>,
     },
     /// A dungeon card (CR 309). It compiles exactly like a single card; its
@@ -95,6 +97,7 @@ struct CompileInput<'a> {
     other_face_id: Option<u32>,
     other_face_name: Option<&'a str>,
     layout: LinkedFaceLayout,
+    has_fuse: Option<bool>,
     /// A transforming (non-modal) DFC (CR 712.1).
     transforming_dfc: bool,
 }
@@ -126,6 +129,9 @@ fn compile_artifact(input: CompileInput<'_>) -> Result<CompiledCardArtifact, Str
     compiled.definition.card.other_face_name = input.other_face_name.map(str::to_string);
     compiled.definition.card.linked_face_layout = input.layout;
     compiled.definition.card.transforming_dfc = input.transforming_dfc;
+    if let Some(has_fuse) = input.has_fuse {
+        compiled.definition.has_fuse = has_fuse;
+    }
     let definition = wire_definition_from_serializable(&compiled.definition)
         .map_err(|error| format!("failed to encode {}: {error}", input.name))?;
     let definition = ironsmith_text::with_choice_decision_labels(definition, |wire|
@@ -175,6 +181,7 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
                 other_face_id: None,
                 other_face_name: None,
                 layout: LinkedFaceLayout::None,
+                has_fuse: None,
                 transforming_dfc: false,
             })?])
         }
@@ -193,6 +200,7 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
                     other_face_id: None,
                     other_face_name: None,
                     layout: LinkedFaceLayout::None,
+                    has_fuse: None,
                     transforming_dfc: false,
                 })
                 .ok()
@@ -206,9 +214,14 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
             other_face_id: None,
             other_face_name: None,
             layout: LinkedFaceLayout::None,
+            has_fuse: None,
             transforming_dfc: false,
         })?]),
-        CardSourceGroup::Linked { layout, faces } => {
+        CardSourceGroup::Linked {
+            layout,
+            has_fuse,
+            faces,
+        } => {
             if faces.len() != 2 {
                 return Err(format!(
                     "{}: linked source must contain exactly two faces",
@@ -241,6 +254,7 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
                         other_face_id: Some(other_index as u32 + 1),
                         other_face_name: Some(&faces[other_index].name),
                         layout,
+                        has_fuse: has_fuse.filter(|_| layout == LinkedFaceLayout::Split),
                         transforming_dfc,
                     })
                 })
@@ -274,10 +288,18 @@ fn valid_existing_artifacts(
     let value = payload.get("artifacts")?.clone();
     let artifacts: Vec<CompiledCardArtifact> = serde_json::from_value(value.clone()).ok()?;
     let texts = source_texts(source);
+    let source_has_fuse = match &source.group {
+        CardSourceGroup::Linked {
+            layout, has_fuse, ..
+        } if layout == "split" => *has_fuse,
+        _ => None,
+    };
     let current = |artifact: &CompiledCardArtifact, text: &str| {
         artifact.validate().is_ok()
             && artifact.compiler_version == artifact_compiler_version()
             && artifact.source_checksum == sha256_hex(text.as_bytes())
+            && source_has_fuse
+                .is_none_or(|expected| artifact.payload.definition.has_fuse == expected)
     };
     let valid = if matches!(source.group, CardSourceGroup::StickerSheet { .. }) {
         // Uncompilable rows have no artifact, so a sheet keeps a subset.
@@ -594,6 +616,7 @@ mod tests {
             canonical_name: "Front".to_string(),
             group: CardSourceGroup::Linked {
                 layout: "transform_like".to_string(),
+                has_fuse: None,
                 faces: vec![
                     CardFaceSource {
                         name: "Front".to_string(),
@@ -613,6 +636,50 @@ mod tests {
         assert_eq!(artifacts[0].card.other_face, Some(ArtifactCardId(2)));
         assert_eq!(artifacts[1].card.other_face, Some(ArtifactCardId(1)));
         assert!(artifacts.iter().all(|artifact| artifact.validate().is_ok()));
+    }
+
+    #[test]
+    fn split_source_preserves_group_fuse_in_both_baked_faces() {
+        let payload = serde_json::json!({
+            "canonicalName": "Left // Right",
+            "group": {
+                "kind": "linked",
+                "layout": "split",
+                "hasFuse": true,
+                "faces": [
+                    { "name": "Left", "block": "Type: Instant\nDraw a card.", "score": 1.0 },
+                    { "name": "Right", "block": "Type: Instant\nYou gain 1 life.", "score": 1.0 }
+                ]
+            }
+        });
+        let source: CardSourceFile = serde_json::from_value(payload.clone()).unwrap();
+        let artifacts = compile_source(&source).expect("split source should compile");
+        assert_eq!(artifacts.len(), 2);
+        assert!(
+            artifacts
+                .iter()
+                .all(|artifact| artifact.payload.definition.has_fuse)
+        );
+        let baked = serde_json::json!({ "artifacts": artifacts });
+        assert!(valid_existing_artifacts(&baked, &source).is_some());
+
+        let mut payload_without_fuse = payload;
+        payload_without_fuse["group"]["hasFuse"] = serde_json::json!(false);
+        let source_without_fuse: CardSourceFile =
+            serde_json::from_value(payload_without_fuse).unwrap();
+        let stale_artifacts = compile_source(&source_without_fuse).unwrap();
+        assert!(
+            stale_artifacts
+                .iter()
+                .all(|artifact| !artifact.payload.definition.has_fuse)
+        );
+        let stale_baked = serde_json::json!({ "artifacts": stale_artifacts });
+        assert!(valid_existing_artifacts(&stale_baked, &source).is_none());
+        assert!(valid_existing_artifacts(&baked, &source_without_fuse).is_none());
+        assert_ne!(
+            source_cache_key(&source).unwrap(),
+            source_cache_key(&source_without_fuse).unwrap()
+        );
     }
 }
 

@@ -281,6 +281,35 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 0,
           "life": 20
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 0
+            }
+          ]
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Bonesplitter",
+          "target": null,
+          "expected": true
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -585,6 +614,28 @@ registerPortedMageTests({
           "name": "Silvercoat Lion",
           "power": 2,
           "toughness": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 0
+            }
+          ]
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Umezawa's Jitte",
+          "target": null,
+          "expected": true
         }
       ]
     },
@@ -708,6 +759,28 @@ registerPortedMageTests({
           "name": "Silvercoat Lion",
           "power": 2,
           "toughness": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 0
+            }
+          ]
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 0,
+          "attachment": "Umezawa's Jitte",
+          "target": null,
+          "expected": true
         }
       ]
     },
@@ -1249,7 +1322,27 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Cloudshift",
-          "target": "Lone Missionary"
+          "target": "Lone Missionary",
+          "holdStack": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Lone Missionary",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -1287,8 +1380,7 @@ registerPortedMageTests({
           "player": 0,
           "life": 24
         }
-      ],
-      "skip": "upstream @Ignore: Failing, see #9839, perhaps due to game.getState.processAction(game) not cleaning up Permanent::removeAllAbilities in time"
+      ]
     },
     {
       "name": "testEntersSubtype",
@@ -1367,7 +1459,35 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Cloudshift",
-          "target": "Elvish Mystic"
+          "target": "Elvish Mystic",
+          "holdStack": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Elvish Vanguard",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Orchard Warden",
+          "count": 0,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -1407,8 +1527,7 @@ registerPortedMageTests({
           "power": 2,
           "toughness": 2
         }
-      ],
-      "skip": "upstream @Ignore: Failing, see #9839, perhaps due to game.getState.processAction(game) not cleaning up MageObject::removeAllSubTypes in time"
+      ]
     },
     {
       "name": "testEntersTriggerNotSuppressedDelayed",

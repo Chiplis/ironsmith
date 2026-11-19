@@ -112,7 +112,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Bonecrusher Giant",
+          "name": "Bonecrusher Giant@adventure",
           "count": 1
         },
         {
@@ -120,7 +120,30 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Amped Raptor"
+          "name": "Amped Raptor",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Amped Raptor",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Amped Raptor",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
           "op": "setChoice",
@@ -128,14 +151,51 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Cast Stomp"
+          "kind": "options",
+          "description": "Choose which spell to cast",
+          "choices": [
+            "Stomp"
+          ]
         },
         {
           "op": "addTarget",
           "player": 0,
-          "target": 1
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Stomp",
+          "count": 1,
+          "isSpell": true,
+          "playerTarget": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": 0,
+          "counter": "ENERGY",
+          "count": 0
         },
         {
           "op": "setStopAt",
@@ -158,7 +218,7 @@ registerPortedMageTests({
         {
           "op": "assertExileCount",
           "player": 0,
-          "name": "Bonecrusher Giant",
+          "name": "@adventure",
           "count": 1
         }
       ]

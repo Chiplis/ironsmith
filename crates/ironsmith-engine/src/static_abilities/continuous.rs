@@ -3909,112 +3909,15 @@ fn entered_battlefield_this_turn_count(
     source: ObjectId,
     filter_ctx: &crate::filter::FilterContext,
 ) -> i32 {
-    let type_effects = game.cached_continuous_effects_snapshot();
-    game.turn_store
-        .turn_history
-        .event_records
-        .iter()
-        .chain(game.turn_store.turn_history.staged_event_records.iter())
-        .filter(|record| {
-            record
-                .event
-                .downcast::<crate::events::EnterBattlefieldEvent>()
-                .is_some()
-                || record
-                    .event
-                    .downcast::<crate::events::zones::ZoneChangeEvent>()
-                    .is_some_and(|event| event.is_etb())
-        })
-        .filter(|record| {
-            record.object_snapshot.as_ref().is_some_and(|snapshot| {
-                if filter.other && snapshot.object_id == source {
-                    return false;
-                }
-                let current_id = game
-                    .object(snapshot.object_id)
-                    .map(|object| object.id)
-                    .or_else(|| game.find_object_by_stable_id(snapshot.stable_id))
-                    .or_else(|| {
-                        game.battlefield.iter().copied().find(|id| {
-                            game.object(*id).is_some_and(|object| {
-                                object.name == snapshot.name
-                                    && object.owner == snapshot.owner
-                                    && game.controller_of(object) == snapshot.controller
-                            })
-                        })
-                    });
-                if let Some(current) = current_id.and_then(|id| game.object(id))
-                    && current.zone == Zone::Battlefield
-                {
-                    let mut adjusted = current.clone();
-                    for effect in &type_effects {
-                        if !matches!(
-                            effect.modification,
-                            Modification::AddCardTypes(_)
-                                | Modification::RemoveCardTypes(_)
-                                | Modification::SetCardTypes(_)
-                        ) {
-                            continue;
-                        }
-                        let applies = match &effect.applies_to {
-                            EffectTarget::Specific(target) => *target == current.id,
-                            EffectTarget::Source => effect.source == current.id,
-                            EffectTarget::AllPermanents => current.zone == Zone::Battlefield,
-                            EffectTarget::Filter(effect_filter) => effect_filter
-                                .matches_non_recursive(
-                                    current,
-                                    &game
-                                        .filter_context_for(effect.controller, Some(effect.source)),
-                                    game,
-                                ),
-                            EffectTarget::AllCreatures => {
-                                current.zone == Zone::Battlefield
-                                    && current.card_types.contains(&CardType::Creature)
-                            }
-                            EffectTarget::AttachedTo(attached_source) => {
-                                game.object(*attached_source)
-                                    .and_then(|source_obj| source_obj.attached_to)
-                                    .and_then(|target| target.object_id())
-                                    == Some(current.id)
-                            }
-                        };
-                        if !applies {
-                            continue;
-                        }
-                        if !crate::continuous::continuous_effect_duration_and_condition_are_active(
-                            effect, game,
-                        ) {
-                            continue;
-                        }
-                        match &effect.modification {
-                            Modification::AddCardTypes(card_types) => {
-                                for card_type in card_types {
-                                    if !adjusted.card_types.contains(card_type) {
-                                        adjusted.card_types.push(*card_type);
-                                    }
-                                }
-                            }
-                            Modification::RemoveCardTypes(card_types) => {
-                                crate::continuous::remove_card_types_and_prune_subtypes_in_game(
-                                    &mut adjusted.card_types,
-                                    &mut adjusted.subtypes,
-                                    card_types,
-                                 game);
-                            }
-                            Modification::SetCardTypes(card_types) => {
-                                crate::continuous::replace_card_types_and_prune_subtypes_in_game(
-                                    &mut adjusted.card_types,
-                                    &mut adjusted.subtypes,
-                                    card_types,
-                                 game);
-                            }
-                            _ => {}
-                        }
-                    }
-                    return filter.matches_non_recursive(&adjusted, &filter_ctx, game);
-                }
-                filter.matches_snapshot(snapshot, &filter_ctx, game)
-            })
+    crate::turn_history::completed_entry_snapshots(&game.turn_store.turn_history)
+        .into_iter()
+        .filter(|snapshot| {
+            (!filter.other || snapshot.object_id != source)
+                && filter
+                    .entered_battlefield_controller
+                    .as_ref()
+                    .is_none_or(|player| player.matches_player(snapshot.controller, filter_ctx))
+                && filter.matches_snapshot(snapshot, filter_ctx, game)
         })
         .count() as i32
 }

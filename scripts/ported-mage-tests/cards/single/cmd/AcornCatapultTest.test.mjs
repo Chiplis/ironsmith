@@ -36,7 +36,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Acorn Catapult"
+          "name": "Acorn Catapult",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -100,7 +101,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Acorn Catapult"
+          "name": "Acorn Catapult",
+          "resolve": true
         },
         {
           "op": "activateAbility",

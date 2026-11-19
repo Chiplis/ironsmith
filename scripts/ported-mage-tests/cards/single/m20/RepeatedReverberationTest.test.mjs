@@ -46,7 +46,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Repeated Reverberation"
+          "name": "Repeated Reverberation",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -134,8 +135,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
@@ -241,7 +241,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Repeated Reverberation"
+          "name": "Repeated Reverberation",
+          "resolve": true
         },
         {
           "op": "castSpell",

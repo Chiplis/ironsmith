@@ -30,8 +30,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN",
-          "player": 0
+          "phase": "END_TURN"
         },
         {
           "op": "setStrictChooseMode",
@@ -80,8 +79,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN",
-          "player": 0
+          "phase": "END_TURN"
         },
         {
           "op": "setStrictChooseMode",
@@ -130,8 +128,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN",
-          "player": 0
+          "phase": "END_TURN"
         },
         {
           "op": "castSpell",
@@ -187,8 +184,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN",
-          "player": 0
+          "phase": "END_TURN"
         },
         {
           "op": "assertNoAction",
@@ -255,8 +251,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -325,8 +320,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "POSTCOMBAT_MAIN",
-          "player": 0
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -380,8 +374,7 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "END_TURN",
-          "player": 0
+          "phase": "END_TURN"
         },
         {
           "op": "setStrictChooseMode",

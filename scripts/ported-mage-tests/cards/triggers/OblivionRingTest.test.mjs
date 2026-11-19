@@ -286,7 +286,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Oblivion Ring"
+          "name": "Oblivion Ring",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -294,7 +295,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Revoke Existence",
-          "target": "Oblivion Ring"
+          "target": "Oblivion Ring",
+          "resolve": true
         },
         {
           "op": "activateAbility",

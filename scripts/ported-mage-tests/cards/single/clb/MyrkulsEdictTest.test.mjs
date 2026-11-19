@@ -59,9 +59,20 @@ registerPortedMageTests({
           "op": "assertPermanentCount",
           "player": 1,
           "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Myrkul's Edict",
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "opponentSacrificesLevel2",

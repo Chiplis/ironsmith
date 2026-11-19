@@ -84,6 +84,22 @@ registerPortedMageTests({
           "player": 0,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Purphoros, God of the Forge"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -154,6 +170,22 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 18
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Purphoros, God of the Forge"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -207,6 +239,22 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 18
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Purphoros, God of the Forge"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "Creature",
+              "expected": true
+            }
+          ]
         }
       ]
     }

@@ -43,7 +43,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "Blightsteel Colossus",
+          "name": "Blightsteel Colossus@colossus",
           "count": 1
         },
         {
@@ -54,7 +54,28 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Chiss-Goria, Forge Tyrant"
+          "name": "Chiss-Goria, Forge Tyrant",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Chiss-Goria, Forge Tyrant",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 3
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
@@ -64,11 +85,54 @@ registerPortedMageTests({
           "defender": 1
         },
         {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "@colossus",
+          "count": 1
+        },
+        {
+          "op": "assertCastMethods",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "zone": "exile",
+          "name": "Blightsteel Colossus",
+          "objectAlias": "@colossus",
+          "methods": [
+            "play_from"
+          ]
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Blightsteel Colossus"
+          "name": "Blightsteel Colossus",
+          "holdStack": true,
+          "permissionSource": "Chiss-Goria, Forge Tyrant",
+          "objectAlias": "@colossus"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Blightsteel Colossus",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "assertTappedCount",
+          "player": 0,
+          "name": "Mountain",
+          "tapped": true,
+          "count": 9
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

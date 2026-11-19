@@ -104,7 +104,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Banewhip Punisher"
+          "name": "Banewhip Punisher",
+          "resolve": true
         },
         {
           "op": "setChoice",

@@ -10,14 +10,14 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Dauthi Voidwalker",
+          "name": "Dauthi Voidwalker@walker",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "Balduvian Bears",
+          "name": "Balduvian Bears@bears",
           "count": 1
         },
         {
@@ -40,28 +40,56 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Balduvian Bears"
+          "holdStack": true,
+          "target": {
+            "groups": [
+              [
+                "@bears"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "@bears"
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertExileCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Balduvian Bears",
+          "player": 1,
+          "name": "@bears",
           "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "@bears",
+          "count": 0
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}, Sacrifice"
+          "source": "Dauthi Voidwalker",
+          "ability": "Choose an exiled card"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Dauthi Voidwalker",
+          "count": 1,
+          "abilityKind": "Activated"
         },
         {
           "op": "setChoice",
@@ -71,28 +99,35 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Balduvian Bears"
+          "name": "Balduvian Bears",
+          "holdStack": true,
+          "objectAlias": "@bears",
+          "permissionSource": "@walker"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Balduvian Bears",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Balduvian Bears",
+          "name": "@bears",
           "count": 1
         },
         {

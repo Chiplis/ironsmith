@@ -2323,7 +2323,7 @@ fn snapshot_is_permanent_card(snapshot: &ObjectSnapshot) -> bool {
 /// One entry can publish a zone notification and an ETB notification. Prefer
 /// the latter's completed characteristics and count its exact destination
 /// incarnation once. A later leave/reenter has a new ID and counts again.
-fn completed_entry_snapshots(history: &TurnHistory) -> Vec<&ObjectSnapshot> {
+pub(crate) fn completed_entry_snapshots(history: &TurnHistory) -> Vec<&ObjectSnapshot> {
     let mut entries: HashMap<ObjectId, (bool, &ObjectSnapshot)> = HashMap::new();
     for record in history.projected_records() {
         if let Some(event) = record.event.downcast::<EnterBattlefieldEvent>() {
@@ -3066,6 +3066,24 @@ pub(crate) fn resolve_turn_history_count(
 
             let mut count = 0i32;
             let mut found_boundary = !*before_triggering_spell;
+            // Self-reference also identifies the spell that resolved into
+            // this permanent. Use the completed move to distinguish it from
+            // earlier incarnations of the same physical card.
+            let source_spell = if *exclude_source {
+                filter_ctx.source.and_then(|source| {
+                    history.projected_records()
+                        .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+                        .find(|event| event.from == Zone::Stack
+                            && event.to == Zone::Battlefield
+                            && event.destination_objects() == [source])
+                        .and_then(|event| {
+                            let origins = event.original_objects();
+                            (origins.len() == 1).then(|| origins[0])
+                        })
+                })
+            } else {
+                None
+            };
             for record in history.projected_records() {
                 let Some(event) = record.event.downcast::<SpellCastEvent>() else {
                     continue;
@@ -3085,7 +3103,8 @@ pub(crate) fn resolve_turn_history_count(
                 if player.matches_player(event.caster, filter_ctx)
                     && from_zone.is_none_or(|zone| event.from_zone == zone)
                     && (!*from_outside_hand || event.from_zone != Zone::Hand)
-                    && (!*exclude_source || Some(snapshot.object_id) != filter_ctx.source)
+                    && (!*exclude_source || (Some(snapshot.object_id) != filter_ctx.source
+                        && Some(snapshot.object_id) != source_spell))
                     && filter.matches_snapshot(snapshot, filter_ctx, game)
                 {
                     count = count.saturating_add(1);

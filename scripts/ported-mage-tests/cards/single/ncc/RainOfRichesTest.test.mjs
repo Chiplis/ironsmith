@@ -43,7 +43,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Rain of Riches"
+          "name": "Rain of Riches",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -129,7 +130,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Rain of Riches"
+          "name": "Rain of Riches",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -203,7 +205,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Rain of Riches"
+          "name": "Rain of Riches",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -302,7 +305,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Rain of Riches"
+          "name": "Rain of Riches",
+          "resolve": true
         },
         {
           "op": "activateAbility",

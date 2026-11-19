@@ -561,22 +561,14 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Accursed Centaur"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": false
+          "target": {
+            "groups": [
+              ["Accursed Centaur"],
+              ["Silvercoat Lion"],
+              ["Silvercoat Lion"],
+              [1]
+            ]
+          }
         },
         {
           "op": "setStopAt",

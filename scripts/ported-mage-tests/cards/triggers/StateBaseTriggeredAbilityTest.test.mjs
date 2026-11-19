@@ -261,196 +261,141 @@ registerPortedMageTests({
       "name": "test_GraspOfFate_DelayedTriggerMustResolveImmediately",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addCustomCardWithAbility(\"test\", playerA, new CustomStateTriggeredAbility(false))"
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "name": "Soul Warden",
+          "count": 1,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "HAND",
+          "name": "Grasp of Fate",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "name": "Plains",
+          "count": 6,
+          "player": 0
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "name": "Grizzly Bears",
+          "count": 1,
+          "player": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "name": "Collective Effort",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Grasp of Fate",
-          "count": 1
+          "holdStack": true
         },
         {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
-          "player": 0,
-          "name": "Plains",
-          "count": 3
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
+          "op": "assertExileCount",
           "player": 1,
           "name": "Grizzly Bears",
           "count": 1
         },
         {
-          "op": "addCard",
-          "zone": "HAND",
-          "player": 0,
-          "name": "Collective Effort",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
-          "player": 0,
-          "name": "Plains",
-          "count": 3
-        },
-        {
-          "op": "addCard",
-          "zone": "HAND",
-          "player": 0,
-          "name": "Lightning Bolt",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
-          "player": 0,
-          "name": "Mountain",
-          "count": 1
-        },
-        {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Soldier Token",
-          "count": 0
-        },
-        {
-          "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {W}",
-          "count": 3
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Grasp of Fate"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Grizzly Bears"
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "targetPlayer": 0,
-          "name": "Soldier Token",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "targetPlayer": 1,
+          "player": 1,
           "name": "Grizzly Bears",
           "count": 0
         },
         {
-          "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {W}",
-          "count": 3
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Collective Effort"
-        },
-        {
-          "op": "setModeChoice",
-          "player": 0,
-          "value": "2"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Grasp of Fate"
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "targetPlayer": 0,
-          "name": "Soldier Token",
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "targetPlayer": 1,
-          "name": "Grizzly Bears",
-          "count": 1
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt",
-          "target": "Grizzly Bears"
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "setOptionChoices",
+          "description": "Choose mode for Collective Effort",
+          "choices": [
+            "Destroy target enchantment."
+          ],
+          "kind": "modes",
           "player": 0
         },
         {
-          "op": "assertPermanentCount",
+          "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "targetPlayer": 0,
-          "name": "Soldier Token",
+          "name": "Collective Effort",
+          "target": {
+            "groups": [
+              [
+                "Grasp of Fate"
+              ]
+            ]
+          },
+          "holdStack": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Grasp of Fate",
           "count": 1
         },
         {
-          "op": "setStrictChooseMode",
-          "value": true
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Grizzly Bears",
+          "count": 0
         },
         {
-          "op": "setStopAt",
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Soul Warden",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 21
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

@@ -32,7 +32,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Impervious Greatwurm"
+          "name": "Impervious Greatwurm",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -106,6 +107,12 @@ registerPortedMageTests({
           "player": 1,
           "life": "currentGame.getStartingLife() - 3"
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -144,7 +151,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Impervious Greatwurm"
+          "name": "Impervious Greatwurm",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -163,7 +171,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Cinderclasm"
+          "name": "Cinderclasm",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -207,6 +216,12 @@ registerPortedMageTests({
           "player": 1,
           "life": "currentGame.getStartingLife() - 4"
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     },
     {
@@ -238,7 +253,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Impervious Greatwurm"
+          "name": "Impervious Greatwurm",
+          "resolve": true
         },
         {
           "op": "setChoice",
@@ -324,6 +340,12 @@ registerPortedMageTests({
           "player": 1,
           "life": "currentGame.getStartingLife() - 3"
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

@@ -128,8 +128,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Summon: Choco/Mog",
-          "count": 2
+          "name": "Summon: Choco/Mog@first",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Summon: Choco/Mog@second",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -143,26 +150,44 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Summon: Choco/Mog"
+          "name": "Summon: Choco/Mog",
+          "holdStack": true,
+          "objectAlias": "@first"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Summon: Choco/Mog",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Summon: Choco/Mog"
+          "name": "Summon: Choco/Mog",
+          "holdStack": true,
+          "objectAlias": "@second"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Summon: Choco/Mog",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "attack",
@@ -172,9 +197,46 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Summon: Choco/Mog"
+          "kind": "boolean",
+          "description": "Remove a lore counter from each of any number of Sagas you control",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "setObjectChoices",
+          "player": 0,
+          "choices": [
+            {
+              "alias": "@first"
+            },
+            {
+              "alias": "@second"
+            }
+          ],
+          "description": "Choose up to 2 Saga permanents"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Garnet, Princess of Alexandria",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Garnet, Princess of Alexandria",
+          "counter": "P1P1",
+          "count": 2
         },
         {
           "op": "setStrictChooseMode",
@@ -191,7 +253,14 @@ registerPortedMageTests({
         {
           "op": "assertCounterCount",
           "player": 0,
-          "name": "Summon: Choco/Mog",
+          "name": "@first",
+          "counter": "LORE",
+          "count": 0
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@second",
           "counter": "LORE",
           "count": 0
         },

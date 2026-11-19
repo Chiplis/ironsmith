@@ -67,6 +67,38 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Elite Vanguard",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Flying",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Air Elemental",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "value": "Flying",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -141,6 +173,26 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Air Elemental",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 2
+            },
+            {
+              "property": "keyword",
+              "value": "Flying",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -235,6 +287,26 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 20
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Air Elemental",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 3
+            },
+            {
+              "property": "keyword",
+              "value": "Flying",
+              "expected": false
+            }
+          ]
         }
       ]
     },

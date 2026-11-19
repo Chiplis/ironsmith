@@ -10,7 +10,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Optimus Prime, Hero",
+          "name": "Optimus Prime, Hero@optimus",
           "count": 1
         },
         {
@@ -46,12 +46,32 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{1}, Sacrifice"
+          "source": "Gutless Ghoul",
+          "ability": "Sacrifice a creature"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": "Optimus Prime, Hero"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gutless Ghoul",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Optimus Prime, Autobot Leader",
+          "count": 1
         },
         {
           "op": "attack",
@@ -61,9 +81,36 @@ registerPortedMageTests({
           "defender": 1
         },
         {
-          "op": "addTarget",
+          "op": "setChoice",
           "player": 0,
-          "target": "Gutless Ghoul"
+          "value": "Gutless Ghoul"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS",
+          "source": "Optimus Prime, Autobot Leader",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "DECLARE_ATTACKERS"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Gutless Ghoul",
+          "power": 4,
+          "toughness": 4
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Gutless Ghoul",
+          "ability": "Trample",
+          "expected": true
         },
         {
           "op": "block",
@@ -73,9 +120,30 @@ registerPortedMageTests({
           "attacker": "Gutless Ghoul"
         },
         {
-          "op": "setChoice",
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "X=3"
+          "kind": "distribution",
+          "description": "Assign 4 combat damage from Gutless Ghoul (assign exactly 4 total)",
+          "choices": [
+            "Centaur Courser",
+            "Centaur Courser",
+            "Centaur Courser",
+            "Bob"
+          ]
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE",
+          "source": "Optimus Prime, Autobot Leader",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeChoices": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "COMBAT_DAMAGE"
         },
         {
           "op": "setStopAt",

@@ -326,7 +326,8 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Torgaar, Famine Incarnate"
+          "name": "Torgaar, Famine Incarnate",
+          "resolve": true
         },
         {
           "op": "setChoice",

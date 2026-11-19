@@ -35,7 +35,12 @@ impl GameState {
         })
     }
 
-    fn commit_detachment(&mut self, detached: Detachment, lookback: Vec<ObjectSnapshot>) {
+    fn commit_detachment(
+        &mut self,
+        detached: Detachment,
+        lookback: Vec<ObjectSnapshot>,
+        remains_unattached: bool,
+    ) {
         self.mark_continuous_state_dirty();
         match detached.previous_target {
             AttachmentTarget::Object(id) => {
@@ -51,6 +56,11 @@ impl GameState {
         }
         if let Some(object) = self.object_mut(detached.attachment) {
             object.attached_to = None;
+            // CR 702.103f: bestow ends as the Aura becomes unattached,
+            // including between instructions of a resolving spell.
+            if remains_unattached && object.zone == Zone::Battlefield {
+                object.end_bestow_cast_overlay();
+            }
         }
         let provenance = self
             .provenance_graph_mut()
@@ -72,7 +82,7 @@ impl GameState {
             return false;
         };
         let lookback = self.trigger_source_lookback_snapshots();
-        self.commit_detachment(detached, lookback);
+        self.commit_detachment(detached, lookback, true);
         true
     }
 
@@ -103,7 +113,8 @@ impl GameState {
                 self.commit_silent_detachment(detached);
                 continue;
             }
-            self.commit_detachment(detached, lookback.clone());
+            let remains_unattached = detached.attachment != object;
+            self.commit_detachment(detached, lookback.clone(), remains_unattached);
         }
     }
 
@@ -146,7 +157,10 @@ impl GameState {
         {
             return true;
         }
-        self.detach_object_from_current_target(attachment);
+        if let Some(detached) = self.capture_detachment(attachment) {
+            let lookback = self.trigger_source_lookback_snapshots();
+            self.commit_detachment(detached, lookback, false);
+        }
         self.mark_continuous_state_dirty();
         if let Some(object) = self.object_mut(attachment) {
             object.attached_to = Some(target);

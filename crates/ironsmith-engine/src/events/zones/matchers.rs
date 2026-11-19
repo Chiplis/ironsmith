@@ -458,6 +458,10 @@ impl ReplacementMatcher for WouldDieDamagedByFilteredSourceThisTurnMatcher {
 pub struct ThisWouldDieMatcher;
 
 impl ReplacementMatcher for ThisWouldDieMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         let object_id = if event.event_kind() == EventKind::ZoneChange {
@@ -797,6 +801,10 @@ impl ReplacementMatcher for WouldBeExiledMatcher {
 pub struct ThisWouldGoToGraveyardMatcher;
 
 impl ReplacementMatcher for ThisWouldGoToGraveyardMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         let object_id = if event.event_kind() == EventKind::ZoneChange {

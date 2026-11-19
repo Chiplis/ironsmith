@@ -70,6 +70,18 @@ registerPortedMageTests({
           "player": 0,
           "name": "Razortip Whip",
           "count": 1
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Orb of Dreams",
+          "tapped": false
+        },
+        {
+          "op": "assertTapped",
+          "player": 0,
+          "name": "Razortip Whip",
+          "tapped": true
         }
       ]
     }

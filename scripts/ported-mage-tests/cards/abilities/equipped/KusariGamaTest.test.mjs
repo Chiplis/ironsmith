@@ -101,6 +101,18 @@ registerPortedMageTests({
           "player": 1,
           "name": "Silvercoat Lion",
           "count": 2
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Wall of Omens",
+          "damage": 2
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 1,
+          "name": "Hill Giant",
+          "damage": 2
         }
       ]
     }

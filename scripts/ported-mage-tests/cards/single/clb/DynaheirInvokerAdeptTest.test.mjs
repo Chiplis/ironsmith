@@ -44,15 +44,15 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Acolyte of Xathrid"
+          "name": "Acolyte of Xathrid",
+          "resolve": true
         },
         {
           "op": "activateAbility",
@@ -65,15 +65,15 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Battlefield Butcher"
+          "name": "Battlefield Butcher",
+          "resolve": true
         },
         {
           "op": "activateAbility",

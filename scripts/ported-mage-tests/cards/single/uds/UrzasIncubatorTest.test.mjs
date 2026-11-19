@@ -51,7 +51,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Eldrazi Displacer"
+          "name": "Eldrazi Displacer",
+          "resolve": true
         },
         {
           "op": "castSpell",

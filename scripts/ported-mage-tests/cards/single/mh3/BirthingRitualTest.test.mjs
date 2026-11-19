@@ -378,14 +378,43 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Elite Vanguard"
+          "op": "setOptionChoices",
+          "description": "Sacrifice a creature",
+          "choices": [
+            "Yes"
+          ],
+          "kind": "boolean",
+          "player": 0
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
+          "description": "Sacrifice exactly 1 creature",
+          "choices": [
+            "Elite Vanguard"
+          ],
+          "player": 0
+        },
+        {
+          "op": "assertChoiceMenu",
+          "description": "Choose up to 1 creature card",
           "player": 0,
-          "value": "Baneslayer Angel"
+          "kind": "select_objects",
+          "includes": [
+            "Memnite"
+          ],
+          "excludes": [
+            "Baneslayer Angel"
+          ],
+          "min": 0,
+          "max": 1
+        },
+        {
+          "op": "setObjectChoices",
+          "description": "Choose up to 1 creature card",
+          "choices": [
+            "Memnite"
+          ],
+          "player": 0
         },
         {
           "op": "setStopAt",
@@ -393,11 +422,27 @@ registerPortedMageTests({
           "phase": "UPKEEP"
         },
         {
-          "op": "unsupported",
-          "source": "try { execute(); Assert.fail(\"should have failed to execute, as Baneslayer Angel is too high mv\"); } catch (Throwable e) { if (!e.getMessage().contains(\"Select up to one creature card with mana value 2 or less\")) { Assert.fail(\"must throw error about missing choice:\\n\" + e.getMessage()); } }"
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Baneslayer Angel",
+          "count": 0
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

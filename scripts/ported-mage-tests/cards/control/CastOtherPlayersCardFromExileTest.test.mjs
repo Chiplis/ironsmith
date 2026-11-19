@@ -65,7 +65,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Bottle Gnomes"
+          "name": "Bottle Gnomes",
+          "resolve": true
         },
         {
           "op": "activateAbility",

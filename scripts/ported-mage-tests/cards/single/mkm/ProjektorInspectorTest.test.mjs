@@ -46,7 +46,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Basilica Stalker using Disguise"
+          "name": "Basilica Stalker using Disguise",
+          "resolve": true
         },
         {
           "op": "activateAbility",

@@ -90,7 +90,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Arcbound Worker",
+          "name": "Arcbound Worker@worker",
           "count": 1
         },
         {
@@ -98,7 +98,37 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Arcbound Worker"
+          "name": "Arcbound Worker",
+          "holdStack": true,
+          "objectAlias": "@worker"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Arcbound Worker",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "@worker",
+          "counter": "P1P1",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "source": "Atog",
+          "ability": "Sacrifice an artifact"
         },
         {
           "op": "setChoice",
@@ -108,19 +138,36 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "Zabaz, the Glimmerwasp"
+          "target": {
+            "groups": [
+              [
+                "Zabaz, the Glimmerwasp"
+              ]
+            ]
+          }
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
-        },
-        {
-          "op": "activateAbility",
+          "op": "assertStackObject",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
-          "player": 0,
-          "ability": "Sacrifice"
+          "source": "Atog",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Arcbound Worker",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "objectTarget": "Zabaz, the Glimmerwasp",
+          "completeTargets": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",

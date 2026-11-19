@@ -16,6 +16,7 @@
 mod application;
 mod damage_original_payloads;
 mod entry_copy_choice;
+mod order_independent;
 mod prevention_draw_boundary;
 mod simultaneous_redirect_budget;
 
@@ -1060,6 +1061,20 @@ fn process_event_direct_inner(
                     },
                 },
             );
+        }
+
+        // CR 616.1: the choice of order exists because order can matter. A
+        // tied set whose every order provably yields the same event needs no
+        // choice; apply it whole in registration order.
+        if order_independent::tied_replacements_commute(
+            game,
+            &event,
+            state,
+            additional_effects,
+            &at_highest,
+        ) {
+            event = order_independent::apply_commuting_batch(game, event, &at_highest, state)?;
+            continue;
         }
 
         // When multiple replacement effects are tied at the highest priority,
@@ -11989,6 +12004,9 @@ mod next_damage_occurrence_tests;
 
 #[cfg(test)]
 mod counter_modifier_entry_tests;
+
+#[cfg(test)]
+mod order_independent_tests;
 
 #[cfg(test)]
 mod tests {

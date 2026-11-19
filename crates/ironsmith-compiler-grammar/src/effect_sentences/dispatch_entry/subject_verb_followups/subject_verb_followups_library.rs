@@ -480,10 +480,13 @@ pub(super) fn effect_references_prior_exiled_card(effect: &EffectAst) -> bool {
     if matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
-                target: TargetAst::Tagged(tag, _),
-                ..
-            }),
+            action: SubjectVerbActionAst::Stack(
+                StackActionAst::CopySpell {
+                    target: TargetAst::Tagged(tag, _),
+                    ..
+                }
+                | StackActionAst::CastTagged { tag, .. }
+            ),
             ..
         }) if tag.as_str() == crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
     ) {
@@ -525,6 +528,18 @@ pub(super) fn bind_cast_tag_to_prior_exiled_card(effect: &mut EffectAst) {
 /// ability wording refers to the object exiled by another ability of this
 /// source (for example, an Imprint ability).
 pub(super) fn bind_prior_exiled_card_to_source_link(effect: &mut EffectAst) {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+            tag, required_zone, ..
+        }),
+        ..
+    }) = effect
+        && tag.as_str() == crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
+    {
+        *tag = crate::tag::CompilerReferenceTag::SourceExiled.bind();
+        required_zone.get_or_insert(Zone::Exile);
+        return;
+    }
     let is_prior_exiled_copy = matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {

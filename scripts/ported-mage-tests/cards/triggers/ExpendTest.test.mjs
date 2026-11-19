@@ -244,7 +244,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Wandertale Mentor"
+          "name": "Wandertale Mentor",
+          "resolve": true
         },
         {
           "op": "castSpell",
@@ -310,7 +311,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Wandertale Mentor"
+          "name": "Wandertale Mentor",
+          "resolve": true
         },
         {
           "op": "castSpell",

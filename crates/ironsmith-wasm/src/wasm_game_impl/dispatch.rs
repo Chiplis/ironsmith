@@ -4367,12 +4367,6 @@ impl WasmGame {
         skip_triggers: bool,
         dm: &mut impl DecisionMaker,
     ) -> Result<u64, String> {
-        fn align_manual_add_stable_id(game: &mut GameState, object_id: ObjectId) {
-            if let Some(object) = game.object_mut(object_id) {
-                object.stable_id = StableId::from(object_id);
-            }
-        }
-
         if zone == Zone::Battlefield {
             let registry = &self.registry;
             let trigger_queue = &mut self.trigger_queue;
@@ -4385,7 +4379,6 @@ impl WasmGame {
                     .map_err(|error| error.to_string())?;
                 let entry = manual_entry_original(&receipt, dm)?;
                 let entered_id = entry.new_id;
-                align_manual_add_stable_id(game, entered_id);
                 if !skip_triggers
                     && game
                         .object(entered_id)
@@ -4417,7 +4410,6 @@ impl WasmGame {
                     .map_err(|error| error.to_string())?;
                 }
                 finish_manual_entry_receipt(game, temp_id, player_id, receipt, dm)?;
-                align_manual_add_stable_id(game, entered_id);
                 if !skip_triggers {
                     ironsmith::game_loop::try_drain_pending_trigger_events(game, trigger_queue)
                         .map_err(|error| error.to_string())?;
@@ -4447,9 +4439,6 @@ impl WasmGame {
                 .move_object_by_effect(temp_id, zone)
                 .unwrap_or(temp_id)
         };
-        if !skip_triggers {
-            align_manual_add_stable_id(&mut self.game, object_id);
-        }
         if zone == Zone::Command {
             self.game.set_as_commander(object_id, player_id);
         }
@@ -4740,9 +4729,6 @@ impl WasmGame {
                     entry.player_id,
                     entry.zone,
                 );
-                if let Some(object) = self.game.object_mut(object_id) {
-                    object.stable_id = StableId::from(object_id);
-                }
                 if entry.zone == Zone::Command {
                     self.game.set_as_commander(object_id, entry.player_id);
                 }

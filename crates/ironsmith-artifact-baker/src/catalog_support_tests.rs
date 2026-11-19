@@ -20,6 +20,7 @@ fn catalog_strict_parser_regressions() {
             other_face_id: None,
             other_face_name: None,
             layout: LinkedFaceLayout::None,
+            has_fuse: None,
             transforming_dfc: false,
         }) {
             Ok(_) => {}
@@ -122,6 +123,7 @@ fn fixture(name: &str) -> CardDefinition {
         other_face_id: None,
         other_face_name: None,
         layout: LinkedFaceLayout::None,
+        has_fuse: None,
         transforming_dfc: false,
     });
     let artifact = artifact.unwrap();
@@ -1970,6 +1972,7 @@ fn catalog_full_current_sources_strict_audit() {
                 other_face_id: None,
                 other_face_name: None,
                 layout: LinkedFaceLayout::None,
+                has_fuse: None,
                 transforming_dfc: false,
             }) {
                 errors.push(format!("{face_name}: {error}"));
@@ -2591,7 +2594,7 @@ fn conditional_untap_bodies_reach_strict_baker_without_parse_loss() {
         let name=row["name"].as_str().unwrap();
         let (result,loss)=ironsmith_compiler::parse_loss::capture(|| compile_artifact(CompileInput {
             name, text:row["text"].as_str().unwrap(), score:None, local_id:1,
-            other_face_id:None,other_face_name:None,layout:LinkedFaceLayout::None,transforming_dfc:false,
+            other_face_id:None,other_face_name:None,layout:LinkedFaceLayout::None,has_fuse:None,transforming_dfc:false,
         }));
         let artifact=result.unwrap_or_else(|error|panic!("{name} ({id}): {error}"));
         assert!(!loss.is_lossy(),"{name}: {}",loss.reasons_text());
@@ -2614,7 +2617,7 @@ fn temporary_additional_land_caps_reach_strict_baker_without_parse_loss() {
         let (result, loss) = ironsmith_compiler::parse_loss::capture(|| compile_artifact(CompileInput {
             name, text: row["text"].as_str().unwrap(), score: None, local_id: 1,
             other_face_id: None, other_face_name: None,
-            layout: LinkedFaceLayout::None, transforming_dfc: false,
+            layout: LinkedFaceLayout::None, has_fuse: None, transforming_dfc: false,
         }));
         let artifact = result.unwrap_or_else(|error| panic!("{name}: {error}"));
         assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());

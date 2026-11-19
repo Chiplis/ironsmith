@@ -487,6 +487,34 @@ registerPortedMageTests({
           "count": 6
         },
         {
+          "op": "setOptionChoices",
+          "description": "Choose optional costs for Pyromatics",
+          "choices": [
+            "Replicate: 2",
+            "Replicate: 2"
+          ],
+          "kind": "options",
+          "player": 0
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Choose new targets for Pyromatics?",
+          "choices": [
+            "No"
+          ],
+          "kind": "boolean",
+          "player": 0
+        },
+        {
+          "op": "setOptionChoices",
+          "description": "Choose new targets for Pyromatics?",
+          "choices": [
+            "No"
+          ],
+          "kind": "boolean",
+          "player": 0
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -500,7 +528,7 @@ registerPortedMageTests({
         },
         {
           "op": "setStrictChooseMode",
-          "value": false
+          "value": true
         },
         {
           "op": "setStopAt",
@@ -515,8 +543,7 @@ registerPortedMageTests({
           "player": 1,
           "life": 17
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

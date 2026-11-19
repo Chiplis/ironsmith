@@ -47,18 +47,52 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(ashaya, CardType.LAND, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Ashaya, Soul of the Wild"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "LAND",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "FOREST",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(ashaya, CardType.CREATURE, SubType.ELEMENTAL)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Ashaya, Soul of the Wild"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "CREATURE",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "ELEMENTAL",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertAbility",
           "player": 0,
           "name": "Ashaya, Soul of the Wild",
-          "ability": "new GreenManaAbility()",
+          "ability": "Add {G}",
           "expected": true
         },
         {
@@ -69,18 +103,52 @@ registerPortedMageTests({
           "toughness": 7
         },
         {
-          "op": "unsupported",
-          "source": "assertType(bear, CardType.LAND, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "LAND",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "FOREST",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(bear, CardType.CREATURE, SubType.BEAR)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "CREATURE",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "BEAR",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertAbility",
           "player": 0,
           "name": "Grizzly Bears",
-          "ability": "new GreenManaAbility()",
+          "ability": "Add {G}",
           "expected": true
         }
       ]
@@ -144,8 +212,20 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(ashaya, CardType.LAND, false)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Ashaya, Soul of the Wild"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "LAND",
+              "expected": false
+            }
+          ]
         },
         {
           "op": "unsupported",
@@ -156,14 +236,31 @@ registerPortedMageTests({
           "source": "assertNotSubtype(ashaya, SubType.FOREST)"
         },
         {
-          "op": "unsupported",
-          "source": "assertType(ashaya, CardType.CREATURE, SubType.ELK)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Ashaya, Soul of the Wild"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "CREATURE",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "ELK",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertAbility",
           "player": 0,
           "name": "Ashaya, Soul of the Wild",
-          "ability": "new GreenManaAbility()",
+          "ability": "Add {G}",
           "expected": false
         },
         {
@@ -174,18 +271,52 @@ registerPortedMageTests({
           "toughness": 3
         },
         {
-          "op": "unsupported",
-          "source": "assertType(bear, CardType.LAND, SubType.FOREST)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "LAND",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "FOREST",
+              "expected": true
+            }
+          ]
         },
         {
-          "op": "unsupported",
-          "source": "assertType(bear, CardType.CREATURE, SubType.BEAR)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Grizzly Bears"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "cardType",
+              "value": "CREATURE",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "BEAR",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertAbility",
           "player": 0,
           "name": "Grizzly Bears",
-          "ability": "new GreenManaAbility()",
+          "ability": "Add {G}",
           "expected": true
         }
       ]
@@ -309,7 +440,7 @@ registerPortedMageTests({
           "op": "assertAbility",
           "player": 0,
           "name": "Ashaya, Soul of the Wild",
-          "ability": "new GreenManaAbility()",
+          "ability": "Add {G}",
           "expected": true
         },
         {
@@ -365,7 +496,7 @@ registerPortedMageTests({
           "op": "assertAbility",
           "player": 0,
           "name": "Grizzly Bears",
-          "ability": "new GreenManaAbility()",
+          "ability": "Add {G}",
           "expected": true
         }
       ]

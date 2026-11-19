@@ -37,6 +37,10 @@ impl WouldDrawCardMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawCardMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
         matches!(kind, crate::events::EventKind::Draw)
     }
@@ -83,6 +87,10 @@ impl WouldDrawCardWhileLibraryEmptyMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawCardWhileLibraryEmptyMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
         matches!(kind, crate::events::EventKind::Draw)
     }
@@ -135,6 +143,10 @@ impl WouldDrawFirstCardMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawFirstCardMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
         matches!(kind, crate::events::EventKind::Draw)
     }
@@ -251,6 +263,10 @@ impl WouldDiscardMatcher {
 }
 
 impl ReplacementMatcher for WouldDiscardMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
         matches!(kind, crate::events::EventKind::Discard)
     }

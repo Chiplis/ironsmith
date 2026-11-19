@@ -14,14 +14,14 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Superior Spider-Man",
+          "name": "Superior Spider-Man@spider",
           "count": 1
         },
         {
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Adelbert Steiner",
+          "name": "Adelbert Steiner@steiner",
           "count": 1
         },
         {
@@ -36,12 +36,17 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Superior Spider-Man"
+          "name": "Superior Spider-Man",
+          "holdStack": true,
+          "objectAlias": "@spider"
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Superior Spider-Man",
+          "count": 1,
+          "isSpell": true
         },
         {
           "op": "setChoice",
@@ -49,12 +54,15 @@ registerPortedMageTests({
           "value": "Adelbert Steiner"
         },
         {
-          "op": "setStopAt",
+          "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "execute"
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "@steiner",
+          "count": 1
         },
         {
           "op": "assertExileCount",
@@ -62,20 +70,35 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(superiorSpiderMan, SubType.KNIGHT)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(superiorSpiderMan, SubType.SPIDER)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(superiorSpiderMan, SubType.HERO)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSubtype(superiorSpiderMan, SubType.HUMAN)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@spider"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Knight",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Spider",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Hero",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Human",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertAbility",

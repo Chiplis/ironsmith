@@ -135,6 +135,14 @@ impl AmountEventMatcher {
 }
 
 impl ReplacementMatcher for AmountEventMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        match &self.event {
+            AmountEventSpec::Damage { minimum, .. } => minimum.is_none(),
+            AmountEventSpec::KeywordAction { .. } => true,
+            AmountEventSpec::DamageRemovesAllCounters { .. } => false,
+        }
+    }
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         match &self.event {
             AmountEventSpec::Damage { .. } => kind == EventKind::Damage,

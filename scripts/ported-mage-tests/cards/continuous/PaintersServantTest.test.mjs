@@ -191,6 +191,48 @@ registerPortedMageTests({
               "expected": true
             }
           ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "White",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "Blue",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "White",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "Blue",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -399,6 +441,48 @@ registerPortedMageTests({
               "expected": false
             }
           ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "White",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "Blue",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "White",
+              "expected": true
+            },
+            {
+              "property": "color",
+              "value": "Blue",
+              "expected": false
+            }
+          ]
         }
       ]
     },
@@ -474,6 +558,32 @@ registerPortedMageTests({
           "player": 0,
           "name": "Painter's Servant",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "White",
+              "expected": false
+            },
+            {
+              "property": "color",
+              "value": "Red",
+              "expected": false
+            },
+            {
+              "property": "color",
+              "value": "Blue",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -589,6 +699,32 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 0,
           "life": 22
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "color",
+              "value": "White",
+              "expected": false
+            },
+            {
+              "property": "color",
+              "value": "Red",
+              "expected": false
+            },
+            {
+              "property": "color",
+              "value": "Blue",
+              "expected": true
+            }
+          ]
         }
       ]
     },

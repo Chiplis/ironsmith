@@ -174,7 +174,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Dark Petition"
+          "name": "Dark Petition",
+          "resolve": true
         },
         {
           "op": "addTarget",
@@ -631,7 +632,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "Exile a creature you control"
+          "ability": "Exile a creature you control",
+          "source": "Food Chain"
         },
         {
           "op": "setChoice",
@@ -644,11 +646,41 @@ registerPortedMageTests({
           "value": "Red"
         },
         {
+          "op": "assertPlayerState",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "property": "restrictedManaCount",
+          "expected": 5
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Adriana, Captain of the Guard"
+          "name": "Adriana, Captain of the Guard",
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Adriana, Captain of the Guard",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "assertPlayerState",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "property": "restrictedManaCount",
+          "expected": 0
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
@@ -668,6 +700,12 @@ registerPortedMageTests({
           "player": 0,
           "name": "Adriana, Captain of the Guard",
           "count": 1
+        },
+        {
+          "op": "assertPlayerState",
+          "player": 0,
+          "property": "restrictedManaCount",
+          "expected": 0
         }
       ]
     },

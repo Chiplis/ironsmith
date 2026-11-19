@@ -264,7 +264,8 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "name": "Glimmer Token",
-          "count": 0
+          "count": 0,
+          "player": 3
         },
         {
           "op": "assertCounterCount",

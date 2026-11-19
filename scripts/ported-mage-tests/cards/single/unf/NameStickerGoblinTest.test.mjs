@@ -39,7 +39,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "\"Name Sticker\" Goblin"
+          "name": "\"Name Sticker\" Goblin",
+          "resolve": true
         },
         {
           "op": "unsupported",

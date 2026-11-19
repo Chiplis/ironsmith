@@ -57,6 +57,12 @@ registerPortedMageTests({
           "name": "Tasigur, the Golden Fang",
           "count": 1
         }
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
       ]
     }
   ]

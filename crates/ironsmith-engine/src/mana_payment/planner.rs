@@ -1203,6 +1203,11 @@ fn affordability_rules_out_payment(game: &GameState, request: &ManaPaymentReques
 // matters. Ignoring reservations overestimates available mana, so a negative
 // answer is still a sound veto.
 fn remaining_mana_is_unpayable(game: &GameState, request: &ManaPaymentRequest) -> bool {
+    // These bounds use color totals and cannot apply permissions to
+    // individual mana units, including mana already in the pool.
+    if game.has_source_filtered_mana_spend_permission(request.payer, Some(request.source)) {
+        return false;
+    }
     let view = DerivedGameView::new(game);
     if super::color_reachability::rules_out_payment(game, request, &view) {
         return true;

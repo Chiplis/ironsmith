@@ -127,12 +127,33 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{2}, {T}: Exile another target creature you control",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "source": "Gilraen, Dúnedain Protector"
         },
         {
           "op": "setChoice",
           "player": 0,
           "value": false
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gilraen, Dúnedain Protector",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Silvercoat Lion"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
         },
         {
           "op": "setStopAt",
@@ -152,6 +173,19 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 0,
           "life": 20
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "END_TURN",
+          "source": "Gilraen, Dúnedain Protector",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "END_TURN"
         },
         {
           "op": "setStopAt",

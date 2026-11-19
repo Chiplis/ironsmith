@@ -10,7 +10,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Lazav, Dimir Mastermind",
+          "name": "Lazav, Dimir Mastermind@lazav",
           "count": 1
         },
         {
@@ -58,6 +58,29 @@ registerPortedMageTests({
           "name": "Lazav, Dimir Mastermind",
           "power": 3,
           "toughness": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@lazav"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Griffin",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Lazav, Dimir Mastermind",
+          "ability": "Flying",
+          "expected": true
         }
       ]
     },
@@ -68,7 +91,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Lazav, Dimir Mastermind",
+          "name": "Lazav, Dimir Mastermind@lazav",
           "count": 1
         },
         {
@@ -123,6 +146,34 @@ registerPortedMageTests({
           "name": "Lazav, Dimir Mastermind",
           "power": 3,
           "toughness": 3
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@lazav"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Ogre",
+              "expected": true
+            },
+            {
+              "property": "subtype",
+              "value": "Rogue",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Gutter Skulk",
+          "ability": "Deathtouch",
+          "expected": true
         }
       ]
     },
@@ -140,7 +191,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Lazav, Dimir Mastermind",
+          "name": "Lazav, Dimir Mastermind@lazav",
           "count": 1
         },
         {
@@ -222,6 +273,34 @@ registerPortedMageTests({
           "name": "Silvercoat Lion",
           "power": 2,
           "toughness": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@lazav"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Specter",
+              "expected": true
+            },
+            {
+              "property": "supertype",
+              "value": "Legendary",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Lazav, Dimir Mastermind",
+          "ability": "Flying",
+          "expected": true
         }
       ]
     },
@@ -232,7 +311,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Lazav, Dimir Mastermind",
+          "name": "Lazav, Dimir Mastermind@lazav",
           "count": 1
         },
         {
@@ -295,6 +374,27 @@ registerPortedMageTests({
           "name": "Lazav, Dimir Mastermind",
           "power": 2,
           "toughness": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@lazav"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Cat",
+              "expected": true
+            },
+            {
+              "property": "supertype",
+              "value": "Legendary",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -319,7 +419,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Lazav, Dimir Mastermind",
+          "name": "Lazav, Dimir Mastermind@lazav",
           "count": 1
         },
         {
@@ -424,6 +524,29 @@ registerPortedMageTests({
           "name": "Lazav, Dimir Mastermind",
           "power": 3,
           "toughness": 3
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@lazav"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Griffin",
+              "expected": false
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Lazav, Dimir Mastermind",
+          "ability": "Flying",
+          "expected": false
         }
       ]
     },
@@ -434,7 +557,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Lazav, Dimir Mastermind",
+          "name": "Lazav, Dimir Mastermind@lazav",
           "count": 1
         },
         {
@@ -503,6 +626,29 @@ registerPortedMageTests({
           "name": "Lazav, Dimir Mastermind",
           "power": 3,
           "toughness": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@lazav"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Griffin",
+              "expected": true
+            }
+          ]
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Lazav, Dimir Mastermind",
+          "ability": "Flying",
+          "expected": true
         }
       ]
     }

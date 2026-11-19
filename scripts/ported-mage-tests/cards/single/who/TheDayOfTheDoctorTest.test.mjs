@@ -180,14 +180,34 @@ registerPortedMageTests({
           "expected": true
         },
         {
-          "op": "setChoice",
-          "player": 0,
-          "value": "The Ninth Doctor"
+          "op": "assertStackObject",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Day of the Doctor",
+          "count": 1,
+          "abilityKind": "Triggered"
         },
         {
-          "op": "setChoice",
+          "op": "setObjectChoices",
           "player": 0,
-          "value": true
+          "choices": [
+            "The Ninth Doctor"
+          ],
+          "description": "Choose up to 1 Doctor permanent"
+        },
+        {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "boolean",
+          "description": "Exile all other creatures",
+          "choices": [
+            "Yes"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPlayableAbility",

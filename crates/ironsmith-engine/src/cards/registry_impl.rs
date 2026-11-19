@@ -539,7 +539,7 @@ fn normalize_card_lookup_name(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
-fn normalize_card_loose_lookup_name(name: &str) -> String {
+pub(crate) fn normalize_card_loose_lookup_name(name: &str) -> String {
     let mut normalized = String::new();
     for ch in name.chars() {
         match ch {
@@ -675,12 +675,26 @@ pub fn linked_face_definition_by_name_or_id(
     registry.get_by_id(card_id).cloned()
 }
 
-pub fn meld_counterpart_name(name: &str) -> Option<&'static str> {
-    generated_meld_counterparts::GENERATED_MELD_COUNTERPARTS
+fn printed_meld_faces(name: &str) -> Option<(&'static str, &'static str)> {
+    generated_meld_counterparts::GENERATED_MELD_PAIRS
         .iter()
-        .find_map(|(candidate, counterpart)| {
-            candidate.eq_ignore_ascii_case(name).then_some(*counterpart)
+        .find_map(|&(front_a, front_b, result)| {
+            if front_a.eq_ignore_ascii_case(name) {
+                Some((front_b, result))
+            } else if front_b.eq_ignore_ascii_case(name) {
+                Some((front_a, result))
+            } else {
+                None
+            }
         })
+}
+
+pub fn meld_counterpart_name(name: &str) -> Option<&'static str> {
+    printed_meld_faces(name).map(|(counterpart, _)| counterpart)
+}
+
+pub fn meld_result_name(name: &str) -> Option<&'static str> {
+    printed_meld_faces(name).map(|(_, result)| result)
 }
 
 const UNSUPPORTED_PARSER_LINE_FALLBACK_PREFIX: &str = "Unsupported parser line fallback:";

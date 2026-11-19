@@ -591,6 +591,22 @@ registerPortedMageTests({
           "player": 0,
           "name": "Manta Riders",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "name": "Manta Riders",
+            "player": 0
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "keyword",
+              "expected": true,
+              "value": "Flying"
+            }
+          ]
         }
       ]
     },
@@ -754,7 +770,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Gilded Drake",
+          "name": "Gilded Drake@drake",
           "count": 1
         },
         {
@@ -797,11 +813,13 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "castSpell",
+          "op": "activateManaAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Gilded Drake"
+          "source": "Island",
+          "ability": "{U}",
+          "count": 2
         },
         {
           "op": "addTarget",
@@ -809,19 +827,51 @@ registerPortedMageTests({
           "target": "Dwarven Trader"
         },
         {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Gilded Drake",
+          "holdStack": true
+        },
+        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "player": null,
-          "once": true
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Gilded Drake",
+          "count": 1,
+          "objectTarget": "Dwarven Trader",
+          "abilityKind": "Triggered"
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}",
-          "target": "Gilded Drake"
+          "source": "Kiki-Jiki, Mirror Breaker",
+          "ability": "Create a token",
+          "target": {
+            "groups": [
+              [
+                "Gilded Drake"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Kiki-Jiki, Mirror Breaker",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Gilded Drake"
         },
         {
           "op": "addTarget",
@@ -831,52 +881,13 @@ registerPortedMageTests({
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Gilded Drake"
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
-        },
-        {
-          "op": "castSpell",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt"
-        },
-        {
-          "op": "addTarget",
-          "player": 0,
-          "target": "Gilded Drake"
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "END_TURN"
-        },
-        {
-          "op": "execute"
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
-          "player": 0,
-          "name": "Kiki-Jiki, Mirror Breaker",
-          "count": 1
+          "player": 1,
+          "name": "Gilded Drake",
+          "count": 2
         },
         {
           "op": "assertPermanentCount",
@@ -891,10 +902,74 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "assertPermanentCount",
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
           "player": 0,
+          "name": "Lightning Bolt",
+          "target": {
+            "groups": [
+              [
+                "@drake"
+              ]
+            ]
+          },
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "@drake"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
           "name": "Gilded Drake",
-          "count": 0
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "target": {
+            "groups": [
+              [
+                "Gilded Drake"
+              ]
+            ]
+          },
+          "holdStack": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "Gilded Drake"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 2
         },
         {
           "op": "assertPermanentCount",
@@ -902,8 +977,7 @@ registerPortedMageTests({
           "name": "Gilded Drake",
           "count": 0
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     }
   ]
 });

@@ -6,7 +6,7 @@ import {
   chooseObjectCandidates,
   assertAbility, assertAttacking, assertBlitzed,
   assertBlitzAutomatonPrototypeState,
-  assertCounterCount,
+  assertCounterCount, assertStackObject,
 } from "./mage-port-runner.mjs";
 
 function nativeInspectionMock(state, extra = {}) {
@@ -22,6 +22,61 @@ function nativeInspectionMock(state, extra = {}) {
     objectDetails: id => ({ ...objects().find(object => Number(object.id) === Number(id)), ...details?.(id) }),
   };
 }
+
+test("stack assertions distinguish player seats and same-name object identities", async () => {
+  const objects = [
+    { id: 10, stableId: 9, name: "Grizzly Bears" },
+    { id: 12, stableId: 11, name: "Grizzly Bears" },
+  ];
+  const stackObjects = [{ name: "Test ability", ability_kind: "Triggered", targets: [
+    { kind: "player", player: 2 },
+    { kind: "object", object: 10, name: "Grizzly Bears" },
+  ] }];
+  const context = {
+    game: nativeInspectionMock({ objects }, { uiState: () => ({ stack_objects: stackObjects }) }),
+    objectAliases: new Map([
+      ["@first", { objectId: 9, stableId: 9 }],
+      ["@second", { objectId: 11, stableId: 11 }],
+    ]),
+  };
+  const checkpoint = { source: "Test ability", count: 1, playerTarget: 2, objectTarget: "@first" };
+  await assertStackObject(context, checkpoint);
+  await assert.rejects(assertStackObject(context, { ...checkpoint, playerTarget: 3 }), /got 0/);
+  await assert.rejects(assertStackObject(context, { ...checkpoint, objectTarget: "@second" }), /got 0/);
+});
+
+test("a cast can select permission granted by a permanent that changed zones", async () => {
+  const cards = [
+    { id: 10, stableId: 10, name: "Grizzly Bears", zone: "exile" },
+    { id: 21, stableId: 20, name: "Dauthi Voidwalker", zone: "graveyard" },
+  ];
+  const actions = [30, 20].map(source => ({
+    kind: "cast_spell",
+    action_ref: {
+      kind: "cast_spell",
+      spell_id: 10,
+      casting_method: { kind: "play_from", source },
+    },
+  }));
+  const state = { perspective: 0, priority_player: 0, decision: { kind: "priority", player: 0, actions } };
+  const commands = [];
+  const context = {
+    game: nativeInspectionMock({ objects: cards }, {
+      uiState: () => state,
+      dispatch: command => { commands.push(command); return state; },
+    }),
+    objectAliases: new Map([
+      ["@bear", { objectId: 10, stableId: 10 }],
+      ["@walker", { objectId: 20, stableId: 20 }],
+    ]),
+    pendingScheduledAvailability: 0,
+    availableScheduledCount: 0,
+  };
+  await castSpell(context, {
+    player: 0, name: "Grizzly Bears", objectAlias: "@bear", permissionSource: "@walker", holdStack: true,
+  });
+  assert.deepEqual(commands, [{ type: "priority_action", action_ref: actions[1].action_ref }]);
+});
 
 test("player counter assertions inspect the requested player and reject unavailable counter state", async () => {
   const checkpoint = { players: [

@@ -4,7 +4,9 @@ use crate::effect::Condition;
 use crate::effect::Value;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::filter::{FilterContext, ObjectFilterExt as _, player_filter_matches_game};
+use crate::filter::{
+    FilterContext, ObjectFilterExt as _, PlayerFilterExt as _, player_filter_matches_game,
+};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::target::PlayerFilter;
@@ -2072,6 +2074,38 @@ fn compare_resolved_values(
     ctx: &ExecutionContext,
 ) -> Result<bool, ExecutionError> {
     use crate::effect::ValueComparisonOperator as Op;
+    // The compiler represents a cast ordinal as equality with the number
+    // of earlier casts in its category. The event must qualify for that
+    // same category before the count can establish an ordinal.
+    if let (
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::SpellsCast {
+            player,
+            filter,
+            from_zone: None,
+            from_outside_hand: false,
+            exclude_source,
+            before_triggering_spell: true,
+        }),
+        Op::Equal,
+        Value::Fixed(prior_count),
+    ) = (left.unhinted(), operator, right.unhinted())
+        && *prior_count >= 0
+    {
+        let Some(cast) = ctx
+            .triggering_event
+            .as_ref()
+            .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+        else {
+            return Ok(false);
+        };
+        let filter_ctx = ctx.filter_context(game);
+        if !player.matches_player(cast.caster, &filter_ctx)
+            || (*exclude_source && cast.spell == ctx.source)
+            || !filter.matches_snapshot(cast.required_completed_snapshot()?, &filter_ctx, game)
+        {
+            return Ok(false);
+        }
+    }
     let left = resolve_comparison_operand(game, left, ctx)?;
     let right = resolve_comparison_operand(game, right, ctx)?;
     Ok(match operator {
@@ -4419,6 +4453,36 @@ fn evaluate_condition_in_context(
                 .turn_store
                 .turn_history
                 .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype))
+        }
+        Condition::PlayerControls { player, filter } if filter.has_as_you_cast_this_turn_surface() => {
+            let tag = ironsmith_core::CAST_CONTROLLED_OBJECTS_TAG;
+            let execution = ctx.execution();
+            let snapshots = execution
+                .and_then(|context| context.get_tagged_all(tag))
+                .map(Vec::as_slice)
+                .or_else(|| {
+                    game.object(shared.source)
+                        .and_then(|source| source.cast_tagged_objects.get(tag))
+                        .map(Vec::as_slice)
+                })
+                .or_else(|| {
+                    execution
+                        .and_then(|context| context.source_snapshot.as_ref())
+                        .filter(|snapshot| snapshot.object_id == shared.source)
+                        .or_else(|| game.source_last_known_snapshot(shared.source))
+                        .and_then(|snapshot| snapshot.cast_controlled_objects.as_deref())
+                })
+                .unwrap_or_default();
+            for player_id in ctx.matching_players(game, player)? {
+                let filter_ctx = ctx.player_filter_context(game, player, player_id);
+                if snapshots.iter().any(|snapshot| {
+                    snapshot.controller == player_id
+                        && filter.matches_snapshot(snapshot, &filter_ctx, game)
+                }) {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::PlayerControls { player, filter } => {
             for player_id in ctx.matching_players(game, player)? {

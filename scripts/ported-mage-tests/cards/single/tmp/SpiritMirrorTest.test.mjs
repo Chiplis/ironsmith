@@ -26,6 +26,22 @@ registerPortedMageTests({
           "player": 0,
           "name": "Reflection Token",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Reflection Token"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Reflection",
+              "expected": true
+            }
+          ]
         }
       ]
     },
@@ -86,6 +102,22 @@ registerPortedMageTests({
           "player": 0,
           "name": "Reflection Token",
           "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Reflection Token"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Reflection",
+              "expected": true
+            }
+          ]
         }
       ]
     },

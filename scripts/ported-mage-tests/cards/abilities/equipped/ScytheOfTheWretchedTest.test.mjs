@@ -99,6 +99,28 @@ registerPortedMageTests({
           "name": "Silvercoat Lion",
           "power": 2,
           "toughness": 2
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 1,
+            "name": "Silvercoat Lion"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "attachmentCount",
+              "expected": 0
+            }
+          ]
+        },
+        {
+          "op": "assertAttachedTo",
+          "player": 1,
+          "attachment": "Scythe of the Wretched",
+          "target": "Soulmender",
+          "expected": true
         }
       ]
     },

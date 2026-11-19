@@ -452,6 +452,10 @@ registerPortedMageTests({
       "name": "test_CastCardWhileSearchingLibrary_TakeControl",
       "operations": [
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "clearZone",
           "player": 0,
           "zone": "library"
@@ -464,152 +468,133 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "LIBRARY",
-          "player": 0,
-          "name": "Balduvian Bears",
-          "count": 1
+          "name": "Balduvian Bears@found",
+          "count": 1,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "LIBRARY",
-          "player": 1,
+          "name": "Panglacial Wurm@wurm",
+          "count": 1,
+          "player": 0
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
           "name": "Kitesail Corsair",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "LIBRARY",
-          "player": 0,
-          "name": "Panglacial Wurm",
-          "count": 1
+          "count": 1,
+          "player": 1
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
           "name": "Panglacial Wurm",
-          "count": 1
+          "count": 1,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
-          "player": 0,
+          "name": "Opposition Agent",
+          "count": 1,
+          "player": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
           "name": "Forest",
-          "count": 7
+          "count": 7,
+          "player": 0
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "name": "Swamp",
+          "count": 3,
+          "player": 0
         },
         {
           "op": "addCard",
           "zone": "HAND",
-          "player": 0,
           "name": "Buried Alive",
-          "count": 1
-        },
-        {
-          "op": "addCard",
-          "zone": "BATTLEFIELD",
-          "player": 0,
-          "name": "Swamp",
-          "count": 3
-        },
-        {
-          "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Balduvian Bears",
-          "count": 0
-        },
-        {
-          "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Kitesail Corsair",
-          "count": 0
-        },
-        {
-          "op": "activateManaAbility",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "ability": "{T}: Add {B}",
-          "count": 3
+          "count": 1,
+          "player": 0
         },
         {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Buried Alive"
+          "name": "Buried Alive",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": true
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Buried Alive",
+          "count": 1,
+          "isSpell": true
         },
         {
-          "op": "setChoice",
-          "player": 1,
-          "value": true
+          "op": "setOptionChoices",
+          "description": "cast Panglacial Wurm from Alice's library while searching it",
+          "choices": [
+            "Yes"
+          ],
+          "kind": "boolean",
+          "player": 1
         },
         {
-          "op": "setChoice",
+          "op": "assertChoiceMenu",
+          "description": "objects",
           "player": 1,
-          "value": "Panglacial Wurm"
+          "kind": "select_objects",
+          "options": [
+            "Balduvian Bears"
+          ]
         },
         {
-          "op": "addTarget",
-          "player": 1,
-          "target": "Balduvian Bears"
-        },
-        {
-          "op": "addTarget",
-          "player": 1,
-          "target": "TestPlayer.TARGET_SKIP"
+          "op": "setObjectChoices",
+          "description": "objects",
+          "choices": [
+            {
+              "alias": "@found"
+            }
+          ],
+          "player": 1
         },
         {
           "op": "waitStackResolved",
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": null
+          "phase": "PRECOMBAT_MAIN"
         },
         {
-          "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
+          "op": "assertExileCount",
           "player": 0,
           "name": "Balduvian Bears",
           "count": 1
         },
         {
           "op": "assertGraveyardCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
-          "player": 1,
-          "name": "Kitesail Corsair",
+          "player": 0,
+          "name": "Balduvian Bears",
           "count": 0
         },
         {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "name": "Kitesail Corsair",
+          "count": 1
+        },
+        {
           "op": "assertPermanentCount",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Panglacial Wurm",
           "count": 2
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
-          "turn": 1,
-          "phase": "BEGIN_COMBAT"
-        },
-        {
-          "op": "execute"
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "test_UnderControlMustUseTestCommandsCorrectrly",
@@ -632,7 +617,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "Lightning Bolt",
+          "name": "Lightning Bolt@controlledBolt",
           "count": 1
         },
         {
@@ -643,43 +628,93 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{4}, {T}"
+          "source": "Mindslaver",
+          "ability": "Control target player",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Mindslaver",
+          "count": 1,
+          "abilityKind": "Activated",
+          "playerTarget": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertActivePlayer",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1
         },
         {
           "op": "castSpell",
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
-          "player": 0,
-          "name": "Lightning Bolt"
+          "player": 1,
+          "name": "Lightning Bolt",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          },
+          "holdStack": true,
+          "objectAlias": "@controlledBolt",
+          "decisionPlayer": 0
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "setStrictChooseMode",
-          "value": true
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 2,
-          "phase": "BEGIN_COMBAT"
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Lightning Bolt",
+          "count": 1,
+          "isSpell": true,
+          "controller": 1,
+          "playerTarget": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 17
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Lightning Bolt",
+          "count": 1
         }
-      ],
-      "skip": "upstream @Ignore"
+      ]
     },
     {
       "name": "test_OppositionAgent",

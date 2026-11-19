@@ -32,7 +32,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Mons's Goblin Raiders"
+          "name": "Mons's Goblin Raiders",
+          "resolve": true
         },
         {
           "op": "castSpell",

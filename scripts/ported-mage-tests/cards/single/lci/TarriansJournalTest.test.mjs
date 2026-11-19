@@ -10,7 +10,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "Tarrian's Journal",
+          "name": "Tarrian's Journal@journal",
           "count": 1
         },
         {
@@ -31,7 +31,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Kraken Hatchling",
+          "name": "Kraken Hatchling@hatchling",
           "count": 1
         },
         {
@@ -39,12 +39,14 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{2}, {T}, Discard your hand: Transform"
+          "ability": "{2}, {T}, Discard your hand: Transform",
+          "source": "Tarrian's Journal"
         },
         {
           "op": "assertHandCount",
-          "player": 1,
-          "name": "BEGIN_COMBAT",
+          "player": 0,
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
           "count": 0
         },
         {
@@ -68,14 +70,52 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "ability": "{T}: You may cast a creature spell from your graveyard this turn. "
+          "ability": "{T}: You may cast a creature spell from your graveyard this turn. ",
+          "source": "The Tomb of Aclazotz"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "The Tomb of Aclazotz",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "castSpell",
           "turn": 3,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Kraken Hatchling"
+          "name": "Kraken Hatchling",
+          "holdStack": true,
+          "objectAlias": "@hatchling",
+          "permissionSource": "@journal"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Kraken Hatchling",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Edgar Markov",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStrictChooseMode",
@@ -102,8 +142,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertSubtype(kraken, SubType.VAMPIRE)"
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "alias": "@hatchling"
+          },
+          "count": 1,
+          "checks": [
+            {
+              "property": "subtype",
+              "value": "Vampire",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "assertCounterCount",

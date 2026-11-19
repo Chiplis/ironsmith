@@ -120,6 +120,7 @@ fn until_from_leaf(duration: leaf::LeafDurationPhrase) -> Option<Until> {
             Until::EndOfTurn
         }
         leaf::LeafDurationPhrase::UntilEndOfCombat => Until::EndOfCombat,
+        leaf::LeafDurationPhrase::UntilEndOfCombatOnYourNextTurn => return None,
         leaf::LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
         leaf::LeafDurationPhrase::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
         leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,

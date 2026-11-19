@@ -134,7 +134,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Raise the Alarm"
+          "name": "Raise the Alarm",
+          "resolve": true
         },
         {
           "op": "castSpell",

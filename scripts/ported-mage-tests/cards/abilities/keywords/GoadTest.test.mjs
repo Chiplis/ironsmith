@@ -52,7 +52,14 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "startingLife": 40
     },
     {
       "name": "testCanOnlyAttackOnePlayer",
@@ -110,7 +117,14 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "startingLife": 40
     },
     {
       "name": "testMustAttackGoader",
@@ -175,7 +189,14 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "startingLife": 40
     },
     {
       "name": "testMultipleGoad",
@@ -479,7 +500,14 @@ registerPortedMageTests({
         {
           "op": "execute"
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "startingLife": 40
     },
     {
       "name": "goadAllCorrectAffect",

@@ -69,6 +69,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 19
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Wall of Roots",
+          "damage": 2
         }
       ]
     },
@@ -163,6 +169,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 18
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Wall of Roots",
+          "damage": 2
         }
       ]
     },
@@ -261,6 +273,12 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 18
+        },
+        {
+          "op": "assertDamageReceived",
+          "player": 0,
+          "name": "Wall of Roots",
+          "damage": 3
         }
       ]
     }

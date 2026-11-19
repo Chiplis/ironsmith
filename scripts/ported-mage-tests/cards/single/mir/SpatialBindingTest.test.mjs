@@ -164,7 +164,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "Ertai's Familiar",
+          "name": "Ertai's Familiar@familiar",
           "count": 1
         },
         {
@@ -193,7 +193,22 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Ertai's Familiar"
+          "name": "Ertai's Familiar",
+          "holdStack": true,
+          "objectAlias": "@familiar"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Ertai's Familiar",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "activateAbility",
@@ -201,7 +216,28 @@ registerPortedMageTests({
           "phase": "BEGIN_COMBAT",
           "player": 0,
           "ability": "Pay 1 life:",
-          "target": "Ertai's Familiar"
+          "target": {
+            "groups": [
+              [
+                "@familiar"
+              ]
+            ]
+          },
+          "source": "Spatial Binding"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "source": "Spatial Binding",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "@familiar"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
         },
         {
           "op": "castSpell",
@@ -209,7 +245,54 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Blur",
-          "target": "Ertai's Familiar"
+          "holdStack": true,
+          "target": {
+            "groups": [
+              [
+                "@familiar"
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Blur",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "@familiar"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "@familiar",
+          "count": 1,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "@familiar",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": null,
+          "count": 4
         },
         {
           "op": "setStopAt",
@@ -222,8 +305,7 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "count": 0,
-          "name": "3 * 2 + 1"
+          "count": 7
         },
         {
           "op": "assertPermanentCount",

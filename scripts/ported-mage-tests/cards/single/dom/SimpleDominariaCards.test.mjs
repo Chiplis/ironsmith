@@ -247,14 +247,31 @@ registerPortedMageTests({
         },
         {
           "op": "activateAbility",
-          "turn": 1,
+          "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "ability": "{T}"
+          "ability": "Destroy target creature",
+          "source": "Avatar of Woe",
+          "target": "Avatar of Woe"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Avatar of Woe",
+          "abilityKind": "Activated",
+          "objectTarget": "Avatar of Woe",
+          "targetCount": 1,
+          "count": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
         },
         {
           "op": "setStopAt",
-          "turn": 1,
+          "turn": 2,
           "phase": "POSTCOMBAT_MAIN"
         },
         {

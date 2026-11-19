@@ -28,6 +28,10 @@ impl GameEventType for CopyCardSourceEvent {
 #[derive(Debug,Clone,PartialEq)]
 pub struct WouldSelectCopySourceMatcher {pub player:crate::target::PlayerFilter}
 impl ReplacementMatcher for WouldSelectCopySourceMatcher {
+    fn ignores_event_amount(&self) -> bool {
+        true
+    }
+
  fn matches_prepared_event(&self,event:&dyn GameEventType,ctx:&crate::events::context::PreparedEventContext)->bool{
   let Some(copy)=event.as_any().downcast_ref::<CopyCardSourceEvent>()else{return false;};
   crate::filter::player_filter_matches_game(&self.player,copy.player,ctx.game,&ctx.filter_ctx)

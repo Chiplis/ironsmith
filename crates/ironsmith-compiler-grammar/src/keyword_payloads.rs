@@ -459,7 +459,14 @@ pub(super) fn parse_additional_cost(
         {
             return Ok(ast(LineAst::AdditionalCost { effects: vec![(**effect).clone()] }));
         }
-        return Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::custom("Additional", cost))));
+        let mut optional = crate::model::CompilerOptionalCost::custom("Additional", cost);
+        if let ["reveal", "a" | "an", subtype, "card", "from", "your", "hand"] =
+            crate::lexer::parser_token_word_refs(payment).as_slice()
+            && let Some(subtype) = crate::util::parse_subtype_word(subtype)
+        {
+            optional.reference = crate::cost::OptionalCostRef::reveal_from_hand_subtype(subtype);
+        }
+        return Ok(ast(LineAst::OptionalCost(optional)));
     }
     let evidence_minimum = match words.as_slice() {
         [

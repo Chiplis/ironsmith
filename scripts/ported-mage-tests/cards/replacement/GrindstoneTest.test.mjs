@@ -28,6 +28,18 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Mountain",
+          "count": 5
+        },
+        {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
@@ -42,38 +54,97 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Painter's Servant"
+          "name": "Painter's Servant",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Painter's Servant",
+          "isSpell": true,
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Blue"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Blue"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 1
+          },
+          "count": 6,
+          "checks": [
+            {
+              "property": "color",
+              "value": "Blue",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}, {T}: Target player mills"
+          "source": "Grindstone",
+          "ability": "Target player mills",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Grindstone",
+          "abilityKind": "Activated",
+          "count": 1,
+          "playerTarget": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Painter's Servant",
           "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "count": 1
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "name": "Progenitus",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Mountain",
+          "count": 5
         }
       ]
     },
@@ -102,6 +173,11 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
@@ -116,38 +192,85 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Painter's Servant"
+          "name": "Painter's Servant",
+          "holdStack": true
         },
         {
-          "op": "setChoice",
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Painter's Servant",
+          "isSpell": true,
+          "count": 1
+        },
+        {
+          "op": "setOptionChoices",
           "player": 0,
-          "value": "Blue"
+          "kind": "colors",
+          "description": "Choose a color",
+          "choices": [
+            "Blue"
+          ]
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "library",
+            "player": 1
+          },
+          "count": 2,
+          "checks": [
+            {
+              "property": "color",
+              "value": "Blue",
+              "expected": true
+            }
+          ]
         },
         {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}, {T}: Target player mills"
+          "source": "Grindstone",
+          "ability": "Target player mills",
+          "target": {
+            "groups": [
+              [
+                1
+              ]
+            ]
+          }
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
-        },
-        {
-          "op": "setStopAt",
+          "op": "assertStackObject",
           "turn": 1,
-          "phase": "END_TURN"
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Grindstone",
+          "abilityKind": "Activated",
+          "count": 1,
+          "playerTarget": 1
         },
         {
-          "op": "execute"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Painter's Servant",
           "count": 1
+        },
+        {
+          "op": "assertResult",
+          "player": 0,
+          "result": "DRAW"
         }
       ]
     },
@@ -190,7 +313,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Painter's Servant"
+          "name": "Painter's Servant",
+          "holdStack": true
         },
         {
           "op": "setChoice",
@@ -198,16 +322,59 @@ registerPortedMageTests({
           "value": "Blue"
         },
         {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Painter's Servant",
+          "count": 1,
+          "isSpell": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "ability": "{3}, {T}: Target player mills"
+          "ability": "mills",
+          "source": "Grindstone",
+          "target": 1
         },
         {
-          "op": "addTarget",
-          "player": 0,
-          "target": 1
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Grindstone",
+          "count": 1,
+          "abilityKind": "Activated"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "resolutions": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Ulamog, the Infinite Gyre",
+          "count": 2
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "source": "Ulamog, the Infinite Gyre",
+          "count": 2,
+          "abilityKind": "Triggered"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
         },
         {
           "op": "setStopAt",

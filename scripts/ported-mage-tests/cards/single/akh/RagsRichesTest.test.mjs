@@ -76,7 +76,14 @@ registerPortedMageTests({
           "player": 0,
           "count": 9
         }
-      ]
+      ],
+      "turnOrder": [
+        0,
+        3,
+        2,
+        1
+      ],
+      "startingLife": 20
     }
   ]
 });

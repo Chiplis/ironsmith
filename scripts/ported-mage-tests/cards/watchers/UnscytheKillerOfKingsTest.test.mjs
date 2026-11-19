@@ -204,7 +204,29 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip",
-          "target": "Fugitive Wizard"
+          "target": "Fugitive Wizard",
+          "source": "Unscythe, Killer of Kings"
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Unscythe, Killer of Kings",
+          "count": 1,
+          "abilityKind": "Activated",
+          "objectTarget": "Fugitive Wizard"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Fugitive Wizard",
+          "ability": "First Strike",
+          "expected": true
         },
         {
           "op": "attack",
@@ -224,6 +246,15 @@ registerPortedMageTests({
           "op": "setChoice",
           "player": 0,
           "value": true
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "FIRST_COMBAT_DAMAGE",
+          "source": "Unscythe, Killer of Kings",
+          "count": 1,
+          "abilityKind": "Triggered",
+          "completeChoices": true
         },
         {
           "op": "setStrictChooseMode",

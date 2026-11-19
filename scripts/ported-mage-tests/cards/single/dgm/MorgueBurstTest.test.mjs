@@ -31,7 +31,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Nightmare",
+          "name": "Nightmare@nightmare",
           "count": 1
         },
         {
@@ -40,7 +40,38 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Morgue Burst",
-          "target": "Nightmare^targetPlayer=PlayerB"
+          "holdStack": true,
+          "target": {
+            "groups": [
+              [
+                "@nightmare"
+              ],
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "op": "assertStackObject",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "source": "Morgue Burst",
+          "count": 1,
+          "isSpell": true,
+          "objectTarget": "@nightmare",
+          "playerTarget": 1
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "@nightmare",
+          "count": 1
         },
         {
           "op": "setStopAt",

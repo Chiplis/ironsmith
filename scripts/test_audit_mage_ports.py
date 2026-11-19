@@ -3,11 +3,36 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from audit_mage_ports import ROOT, classify, completed_files_from_reports, match_planned_rows, parse_tap, port_inventory
+from audit_mage_ports import (
+    ROOT,
+    classify,
+    completed_files_from_reports,
+    match_planned_rows,
+    parse_tap,
+    partition_after_wasm_trap,
+    port_inventory,
+    replay_occurrences,
+)
+from generate_mage_mjs_ports import extract_tests
 from triage_mage_audit import review_family
 
 
 class MageReportIntegrityTests(unittest.TestCase):
+    def test_port_generator_distinguishes_an_ignore_annotation_from_a_comment(self):
+        text = """
+        // A previous attempt to use @Ignore did not work.
+        @Test
+        public void playable() {}
+
+        @Ignore("fixture requires the upstream AI")
+        @Test
+        public void ignored() {}
+        """
+        self.assertEqual([(name, reason) for name, _, reason in extract_tests(text)], [
+            ('playable', None),
+            ('ignored', 'upstream @Ignore: fixture requires the upstream AI'),
+        ])
+
     def test_resume_requires_every_occurrence_in_a_stable_report(self):
         inventory = [{'file': 'duplicate.mjs', 'test': 'same'}] * 2
         single = {'provenance': {'unchanged': True},
@@ -33,6 +58,30 @@ class MageReportIntegrityTests(unittest.TestCase):
                          'ok 1 - Fixture.java :: java_only # SKIP Java API contract\n')
         self.assertEqual(rows[0]['status'], 'skipped')
         self.assertEqual(rows[0]['skip_reason'], 'Java API contract')
+
+    def test_wasm_trap_preserves_the_first_failure_and_invalidates_the_remaining_runtime(self):
+        rows = [
+            {'scenario_id': 'port#0', 'status': 'passed'},
+            {'scenario_id': 'port#1', 'status': 'failed', 'error': 'memory access out of bounds'},
+            {'scenario_id': 'port#2', 'status': 'failed', 'error': 'memory access out of bounds'},
+            {'scenario_id': 'port#3', 'status': 'passed'},
+            {'scenario_id': 'port#4', 'status': 'skipped'},
+        ]
+        trusted, invalidated, trap = partition_after_wasm_trap(rows)
+        self.assertEqual(trusted, [rows[0], rows[1], rows[4]])
+        self.assertEqual(invalidated, rows[2:4])
+        self.assertEqual(trap, 'port#1')
+        rows_by_file = [{**row, 'file': 'first.test.mjs'} for row in rows]
+        other_file = {'file': 'other.test.mjs', 'scenario_id': 'other#0', 'status': 'passed'}
+        trusted, invalidated, _ = partition_after_wasm_trap(
+            rows_by_file[:2] + [other_file] + rows_by_file[2:], shared_process=False)
+        self.assertIn(other_file, trusted)
+        self.assertEqual(invalidated, rows_by_file[2:4])
+
+    def test_wasm_recovery_selects_a_duplicate_title_by_its_occurrence(self):
+        first = {'test': 'source.java :: duplicate', 'scenario_id': 'port#2'}
+        second = {'test': first['test'], 'scenario_id': 'port#4'}
+        self.assertEqual(json.loads(replay_occurrences([second])), {'source.java': [4]})
 
     def test_node_tap_escaped_operation_keeps_java_source_and_hash_mark(self):
         rows = parse_tap(
