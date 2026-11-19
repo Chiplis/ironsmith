@@ -18,7 +18,8 @@ use manabrew_protocol::prompts::{
     ChooseActionInput, ChooseActionOutput, ChooseAttackersInput, ChooseAttackersOutput,
     ChooseBlockersInput, ChooseBlockersOutput, ChooseBoardTargetsInput, ChooseBoardTargetsOutput,
     ChooseBooleanInput, ChooseBooleanOutput, ChooseCardsInput, ChooseCardsOutput, ChooseColorInput,
-    ChooseColorOutput, ChooseFromSelectionInput, ChooseFromSelectionOutput, ChooseNumberInput,
+    ChooseColorOutput, ChooseCombatDamageAssignmentInput, ChooseCombatDamageAssignmentOutput,
+    ChooseFromSelectionInput, ChooseFromSelectionOutput, ChooseNumberInput,
     ChooseNumberOutput, MulliganInput, MulliganOutput, MulliganPutBackInput,
     MulliganPutBackOutput, PayManaCostInput, PayManaCostOutput,
     PromptInput, PromptOutput, ReorderInput, ReorderItem, ReorderOutput, ResponseViolation,
@@ -2525,10 +2526,60 @@ impl WasmGame {
         }), ManabrewPromptBinding::Number { minimum_remaining, maximum_remaining, accumulated, description }))
     }
 
+    fn manabrew_combat_damage_prompt(
+        &self,
+        combat: &ironsmith::game_loop::CombatDamageAssignmentPrompt,
+    ) -> Result<(PromptInput, ManabrewPromptBinding), ProtocolError> {
+        let game = self.manabrew_game();
+        let targets = combat.division.targets();
+        let total_damage = i32::try_from(combat.total).map_err(|_| {
+            protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                "combat damage exceeds the Manabrew assignment range",
+                None,
+            )
+        })?;
+        let defender = targets
+            .iter()
+            .find(|target| matches!(target, Target::Player(_)))
+            .copied()
+            .or(combat.division.excess_target);
+        let blocker_ids = targets
+            .iter()
+            .filter_map(|target| match target {
+                Target::Object(id) if Some(*target) != defender => Some(object_id(game, *id)),
+                _ => None,
+            })
+            .collect();
+        Ok((
+            PromptInput::ChooseCombatDamageAssignment(ChooseCombatDamageAssignmentInput {
+                attacker_id: object_id(game, combat.source),
+                blocker_ids,
+                defender_id: defender.map(|target| protocol_target(game, target).id),
+                total_damage,
+                attacker_has_deathtouch: combat.division.deathtouch,
+            }),
+            ManabrewPromptBinding::CombatDamage {
+                targets: targets
+                    .into_iter()
+                    .map(|target| protocol_target(game, target).id)
+                    .collect(),
+            },
+        ))
+    }
+
     fn build_manabrew_prompt(
         &self,
         context: &DecisionContext,
     ) -> Result<(PromptInput, ManabrewPromptBinding), ProtocolError> {
+        if matches!(context, DecisionContext::Distribute(_))
+            && self.runner_pending_decision
+            && let Some(runner) = self.runner.as_ref()
+            && !runner.has_pending_replay_choice()
+            && let Some(combat) = runner.current_combat_damage_assignment_prompt(self.manabrew_game())
+        {
+            return self.manabrew_combat_damage_prompt(&combat);
+        }
         let source = self.manabrew_source_card_id(context);
         let unsupported = |name: &str| {
             protocol_error(
@@ -3661,6 +3712,33 @@ impl WasmGame {
                 }))
             }
             (
+                ManabrewPromptBinding::CombatDamage { targets },
+                PromptOutput::ChooseCombatDamageAssignment(
+                    ChooseCombatDamageAssignmentOutput::CombatDamageAssignmentDecision {
+                        assignments,
+                    },
+                ),
+            ) => {
+                let mut option_indices = Vec::new();
+                for assignment in assignments {
+                    let index = targets
+                        .iter()
+                        .position(|target| target == &assignment.assignee_id)
+                        .ok_or_else(|| {
+                            invalid(format!(
+                                "unknown combat damage recipient {}",
+                                assignment.assignee_id
+                            ))
+                        })?;
+                    let amount = usize::try_from(assignment.damage)
+                        .map_err(|_| invalid("combat damage must be non-negative".to_string()))?;
+                    option_indices.extend(std::iter::repeat_n(index, amount));
+                }
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
+                    option_indices,
+                }))
+            }
+            (
                 ManabrewPromptBinding::DistributionNumber { state },
                 PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision { chosen_number }),
             ) => {
@@ -4385,6 +4463,144 @@ mod manabrew_tests {
             input,
             binding,
         }
+    }
+
+    fn combat_assignment_game(deathtouch: bool) -> (WasmGame, DecisionContext, ObjectId, ObjectId) {
+        let mut game = game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut make_creature = |name: &str, power, toughness, owner| {
+            let id = game.game.new_object_id();
+            let card = ironsmith::card::CardBuilder::new(
+                ironsmith::ids::CardId::from_raw(id.0 as u32),
+                name,
+            )
+            .card_types(vec![ironsmith::types::CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(power, toughness))
+            .build();
+            game.game.add_object(ironsmith::object::Object::from_card(
+                id,
+                &card,
+                owner,
+                ironsmith::zone::Zone::Battlefield,
+            ));
+            id
+        };
+        let attacker = make_creature("Trampler", 4, 6, alice);
+        let blocker = make_creature("Blocker", 2, 2, bob);
+        let object = game.game.object_mut(attacker).unwrap();
+        object
+            .abilities_mut()
+            .push(ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::trample(),
+            ));
+        if deathtouch {
+            object
+                .abilities_mut()
+                .push(ironsmith::ability::Ability::static_ability(
+                    ironsmith::static_abilities::StaticAbility::deathtouch(),
+                ));
+        }
+        game.game.refresh_continuous_state().unwrap();
+        let mut runner = ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::CombatDamageRegularAssign,
+        );
+        runner
+            .combat_mut()
+            .attackers
+            .push(ironsmith::combat_state::AttackerInfo {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            });
+        runner.combat_mut().blockers.insert(attacker, vec![blocker]);
+        let combat = runner
+            .current_combat_damage_assignment_prompt(&game.game)
+            .unwrap();
+        let context = DecisionContext::Distribute(combat.decision_context(&game.game));
+        game.runner = Some(runner);
+        game.runner_pending_decision = true;
+        game.pending_decision = Some(context.clone());
+        (game, context, attacker, blocker)
+    }
+
+    #[test]
+    fn manabrew_combat_damage_uses_one_complete_assignment() {
+        let _guard = crate::test_id_counter_guard();
+        let (game, context, attacker, blocker) = combat_assignment_game(false);
+        let (input, _) = game.build_manabrew_prompt(&context).unwrap();
+        let PromptInput::ChooseCombatDamageAssignment(input) = input else {
+            panic!("combat damage must not be split into independent number choices");
+        };
+        assert_eq!(input.attacker_id, object_id(&game.game, attacker));
+        assert_eq!(input.blocker_ids, vec![object_id(&game.game, blocker)]);
+        assert_eq!(input.defender_id.as_deref(), Some("player-1"));
+        assert_eq!(input.total_damage, 4);
+        assert!(!input.attacker_has_deathtouch);
+    }
+
+    #[test]
+    fn manabrew_combat_damage_can_correct_an_illegal_trample_split() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut game, context, _, blocker) = combat_assignment_game(false);
+        let (input, binding) = game.build_manabrew_prompt(&context).unwrap();
+        let open = open_prompt(input, binding);
+        for (to_blocker, legal) in [(1, false), (2, true), (4, true)] {
+            let output = PromptOutput::ChooseCombatDamageAssignment(
+                ChooseCombatDamageAssignmentOutput::CombatDamageAssignmentDecision {
+                    assignments: vec![
+                        manabrew_protocol::prompts::common::CombatDamageAssignmentEntry {
+                            assignee_id: object_id(&game.game, blocker),
+                            damage: to_blocker,
+                        },
+                        manabrew_protocol::prompts::common::CombatDamageAssignmentEntry {
+                            assignee_id: "player-1".into(),
+                            damage: 4 - to_blocker,
+                        },
+                    ],
+                },
+            );
+            let action = game.manabrew_response_action(&open, output).unwrap();
+            let ManabrewResponseAction::Dispatch(command) = action else {
+                panic!("the entire assignment must dispatch at once");
+            };
+            let ReplayDecisionAnswer::Distribute(distribution) =
+                game.command_to_replay_answer(&context, command).unwrap()
+            else {
+                panic!("combat response must remain a distribution");
+            };
+            assert_eq!(
+                game.runner
+                    .as_ref()
+                    .unwrap()
+                    .validate_combat_damage_distribution(&game.game, &distribution)
+                    .is_ok(),
+                legal
+            );
+        }
+    }
+
+    #[test]
+    fn manabrew_combat_damage_preserves_deathtouch() {
+        let _guard = crate::test_id_counter_guard();
+        let (game, context, _, blocker) = combat_assignment_game(true);
+        let (input, _) = game.build_manabrew_prompt(&context).unwrap();
+        let PromptInput::ChooseCombatDamageAssignment(input) = input else {
+            panic!("combat assignment required");
+        };
+        assert!(input.attacker_has_deathtouch);
+        assert!(
+            game.runner
+                .as_ref()
+                .unwrap()
+                .validate_combat_damage_distribution(
+                    &game.game,
+                    &[
+                        (Target::Object(blocker), 1),
+                        (Target::Player(PlayerId::from_index(1)), 3)
+                    ],
+                )
+                .is_ok()
+        );
     }
 
     #[test]
