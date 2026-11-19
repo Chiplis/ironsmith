@@ -2691,7 +2691,7 @@ impl TurnRunner {
         prompt.validate(game, distribution).map(|_| ())
     }
 
-    fn current_combat_damage_assignment_prompt(
+    pub fn current_combat_damage_assignment_prompt(
         &self,
         game: &GameState,
     ) -> Option<crate::game_loop::CombatDamageAssignmentPrompt> {

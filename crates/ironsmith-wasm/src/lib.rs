@@ -225,6 +225,9 @@ enum ManabrewPromptBinding {
     DistributionNumber {
         state: ManabrewDistributionState,
     },
+    CombatDamage {
+        targets: Vec<String>,
+    },
     DistributionOptions {
         state: ManabrewDistributionState,
         amounts: Vec<u32>,
