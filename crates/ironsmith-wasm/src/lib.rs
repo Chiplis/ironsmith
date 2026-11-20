@@ -193,6 +193,15 @@ struct ManabrewCounterState {
 }
 
 #[derive(Debug, Clone)]
+struct ManabrewTargetState {
+    requirements: Vec<ironsmith::decisions::context::TargetRequirementContext>,
+    selections: Vec<Vec<Target>>,
+    additional_remaining: usize,
+    context: String,
+    cancellable: bool,
+}
+
+#[derive(Debug, Clone)]
 struct ManabrewOpaqueExileBinding {
     action_ref: PriorityActionRef,
     /// Paired public identity captured with the menu, never reconstructed from its index.
@@ -240,6 +249,7 @@ enum ManabrewPromptBinding {
     },
     Targets {
         targets: HashMap<String, Target>,
+        state: ManabrewTargetState,
     },
     Attackers {
         attackers: HashMap<String, ObjectId>,
