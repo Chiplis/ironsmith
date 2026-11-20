@@ -511,7 +511,7 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 game.player(event.player).unwrap().mana_pool.blue,
-                amount as u32
+                amount as u64
             );
             assert_eq!(game.player(event.player).unwrap().mana_pool.green, 0);
             assert_eq!(result.events.len(), 1);

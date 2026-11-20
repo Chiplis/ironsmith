@@ -9,6 +9,8 @@
 //! ability's functional zones instead of assuming every replacement effect
 //! comes only from battlefield permanents.
 
+use std::sync::Arc;
+
 use crate::ability::AbilityKind;
 use crate::game_state::GameState;
 use crate::replacement::ReplacementEffect;
@@ -35,16 +37,46 @@ pub(crate) fn selected_stack_exile_scope(method: &crate::alternative_cast::Alter
 pub fn generate_replacement_effects_from_abilities(
     game: &GameState,
 ) -> Result<Vec<ReplacementEffect>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+    Ok(generate_replacement_effect_groups(game)?
+        .into_iter()
+        .flat_map(|(_, group)| match group {
+            SourceReplacements::Reused(effects) => effects.to_vec(),
+            SourceReplacements::Fresh(effects) => effects,
+        })
+        .collect())
+}
+
+/// One source's replacement effects from `generate_replacement_effect_groups`.
+pub(crate) enum SourceReplacements {
+    /// What the source generated at its last indexed refresh, unchanged.
+    Reused(Arc<[ReplacementEffect]>),
+    Fresh(Vec<ReplacementEffect>),
+}
+
+/// `generate_replacement_effects_from_abilities` by source, in the same order.
+pub(crate) fn generate_replacement_effect_groups(
+    game: &GameState,
+) -> Result<Vec<(crate::ids::ObjectId, SourceReplacements)>, crate::static_ability_processor::StaticEffectDiscoveryError> {
     crate::perf::work(crate::perf::Work::ReplacementRegeneration);
     // Validate discovery before allowing the shared layer cache to serve any
     // object. Every zone remains in scope, including hidden-zone replacements.
-    let mut effects = Vec::new();
-
     let object_ids = game.object_ids_in_deterministic_order();
     // An inert hidden card is the source of no replacement effect and its
     // characteristics carry no error (see `is_inert_hidden_card`), so they
     // are not asked for; the loop below skips an object without them.
     let continuous = game.try_all_continuous_effects_arc()?;
+    // A source whose characteristics the effect-free baseline still serves
+    // unchanged generates what it generated last time (see
+    // `GameState::effect_free_view`); only the others are calculated.
+    let view = game.effect_free_view(continuous.is_empty());
+    if view.is_none() {
+        // What is published now is not indexed; no entry may describe it.
+        let mut indexes = game.source_indexes().borrow_mut();
+        if !indexes.replacements.is_empty() {
+            indexes.replacements = Default::default();
+        }
+    }
+    let mut reused = std::collections::HashMap::new();
     let asked: Vec<_> = object_ids
         .iter()
         .copied()
@@ -53,112 +85,198 @@ pub fn generate_replacement_effects_from_abilities(
                 !crate::continuous::is_inert_hidden_card(game, object, &continuous)
             })
         })
+        .filter(|id| {
+            let Some(view) = &view else { return true };
+            let Some(object) = game.object(*id) else { return true };
+            if !source_output_is_indexable(object) || game.is_phased_out(*id) {
+                return true;
+            }
+            let Some(chars) = view.characteristics(*id) else { return true };
+            let entry = game.source_indexes().borrow().replacements.get(id).cloned();
+            match entry {
+                Some(entry) if entry.is_for(&chars) => {
+                    reused.insert(*id, entry);
+                    false
+                }
+                _ => true,
+            }
+        })
         .collect();
     let mut characteristics = game.try_current_characteristics_batch(&asked)?;
 
-    // Iterate over all objects and apply static abilities only in zones where they function.
+    let mut groups = Vec::new();
     for object_id in object_ids {
-        if let Some(object) = game.object(object_id) {
+        if let Some(entry) = reused.remove(&object_id) {
+            groups.push((object_id, SourceReplacements::Reused(entry.output.clone())));
+            continue;
+        }
+        let Some(object) = game.object(object_id) else {
+            continue;
+        };
+        if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object_id) {
+            continue;
+        }
+        let Some(chars) = characteristics.remove(&object_id) else {
+            continue;
+        };
+        let mut effects = Vec::new();
+        push_source_replacement_effects(game, object_id, object, &chars, &mut effects);
+        if let Some(view) = &view
+            && source_output_is_indexable(object)
+            && effects.iter().all(replacement_output_is_indexable)
+            && let Some(shared) = view.characteristics(object_id)
+        {
+            let entry = crate::game_state::SourceIndexEntry::new(&shared, effects.clone().into());
+            game.source_indexes().borrow_mut().replacements.insert(object_id, entry);
+        } else if view.is_some() {
+            // Published unindexed: an older entry no longer describes it.
+            game.source_indexes().borrow_mut().replacements.remove(&object_id);
+        }
+        if !effects.is_empty() {
+            groups.push((object_id, SourceReplacements::Fresh(effects)));
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    if view.is_some() && std::env::var_os("IRONSMITH_EFFECT_FREE_SHADOW").is_some() {
+        let effects: Vec<_> = groups.iter().flat_map(|(_, group)| match group {
+            SourceReplacements::Reused(effects) => effects.to_vec(),
+            SourceReplacements::Fresh(effects) => effects.clone(),
+        }).collect();
+        let mut expected = Vec::new();
+        let ids = game.object_ids_in_deterministic_order();
+        let asked: Vec<_> = ids.iter().copied().filter(|id| {
+            game.object(*id).is_none_or(|object| !crate::continuous::is_inert_hidden_card(game, object, &continuous))
+        }).collect();
+        let mut all = game.try_current_characteristics_batch(&asked)?;
+        for object_id in ids {
+            let Some(object) = game.object(object_id) else { continue };
             if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object_id) {
                 continue;
             }
-            let Some(chars) = characteristics.remove(&object_id) else {
-                continue;
-            };
-            let controller = chars.controller;
-            let zone = object.zone;
+            let Some(chars) = all.remove(&object_id) else { continue };
+            push_source_replacement_effects(game, object_id, object, &chars, &mut expected);
+        }
+        assert_eq!(
+            crate::game_state::without_instance_ids(format!("{effects:?}")),
+            crate::game_state::without_instance_ids(format!("{expected:?}")),
+            "indexed replacement regeneration diverged"
+        );
+    }
 
-            // A described intrinsic stack rider applies to every permitted cast
-            // from its zone, including a different granted price or permission.
-            let intrinsic_exile = zone == crate::zone::Zone::Stack && chars.abilities.iter().any(|ability| {
-                let AbilityKind::Static(ability) = &ability.kind else { return false; };
-                let Some(ironsmith_core::KeywordMarkerMechanic::ExileOnStackExitIfCastFrom { zone }) = ability.keyword_marker_mechanic() else { return false; };
-                crate::condition_eval::evaluate_condition_cast_time(
-                    game, &ironsmith_core::Condition::ThisSpellWasCastFromZone(zone), controller, object_id,
-                )
-            });
-            // These payment methods replace every subsequent departure from
-            // the stack (CR 702.34, 702.133, 702.180), including counter/bounce.
-            let selected_exile_scope = (zone == crate::zone::Zone::Stack).then(||
-                object.cast_alternative_method.as_deref().and_then(selected_stack_exile_scope)).flatten();
-            if intrinsic_exile || selected_exile_scope == Some(SelectedStackExileScope::AnyDeparture) {
-                effects.push(crate::replacement::ZoneReplacementSpec::new(
-                    crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
-                    .from_zone(crate::zone::Zone::Stack).build(object_id, controller));
-            } else if selected_exile_scope == Some(SelectedStackExileScope::GraveyardDeparture) {
-                effects.push(crate::replacement::ZoneReplacementSpec::new(
-                    crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
-                    .from_zone(crate::zone::Zone::Stack).to_zone(crate::zone::Zone::Graveyard)
-                    .build(object_id, controller));
-            }
+    Ok(groups)
+}
 
-            // Only the chosen method creates these spell-bound replacements.
-            if zone == crate::zone::Zone::Stack {
-                if let Some(method) = object.cast_alternative_method.as_deref() {
-                    for spec in method.battlefield_instructions().departure_replacements {
-                        if spec.from_zone == zone {
-                            effects.push(crate::replacement::ZoneReplacementSpec::from_redirect(
-                                crate::target::ObjectFilter::specific(object_id), &spec,
-                            ).build(object_id, controller));
-                        }
-                    }
-                }
-            }
+/// A source's replacement output depends only on the object and its
+/// characteristics, except a spell's cast-time riders (read the cast) and
+/// registered temporary grants (expire by turn).
+fn source_output_is_indexable(object: &crate::object::Object) -> bool {
+    object.zone != crate::zone::Zone::Stack && object.temporary_static_ability_grants.is_empty()
+}
 
-            // Carry calculated occurrence origins, not just static value ids.
-            // Printed, layer-granted and registered temporary abilities can
-            // contain equal/cloned values while remaining independent effects.
-            for (slot, ability) in chars.abilities.iter().enumerate() {
-                let AbilityKind::Static(static_ability) = &ability.kind else {
-                    continue;
-                };
-                let Some(origin) = chars.abilities.origin(slot).cloned() else {
-                    continue;
-                };
-                let temporary = if let crate::continuous::AbilityOrigin::Temporary(token) = &origin
-                {
-                    if !object
-                        .temporary_static_ability_grants
-                        .iter()
-                        .enumerate()
-                        .any(|(index, grant)| {
-                            object.temporary_static_ability_grants.origin(index) == Some(token)
-                                && !grant.is_expired(game.turn.turn_number)
-                        })
-                    {
-                        continue;
-                    }
-                    true
-                } else {
-                    false
-                };
-                // Stack cast-this-way riders are registered temporary abilities;
-                // their event matcher defines scope, not printed battlefield zones.
-                if !temporary && !ability.functions_in(&zone) {
-                    continue;
+/// Token-template choices are expanded against the battlefield when the
+/// effect is registered, so they stay out of the index for clarity.
+fn replacement_output_is_indexable(effect: &ReplacementEffect) -> bool {
+    !matches!(effect.replacement, crate::replacement::ReplacementAction::TokenCreationTemplates { .. })
+}
+
+fn push_source_replacement_effects(
+    game: &GameState,
+    object_id: crate::ids::ObjectId,
+    object: &crate::object::Object,
+    chars: &crate::continuous::CalculatedCharacteristics,
+    effects: &mut Vec<ReplacementEffect>,
+) {
+    let controller = chars.controller;
+    let zone = object.zone;
+
+    // A described intrinsic stack rider applies to every permitted cast
+    // from its zone, including a different granted price or permission.
+    let intrinsic_exile = zone == crate::zone::Zone::Stack && chars.abilities.iter().any(|ability| {
+        let AbilityKind::Static(ability) = &ability.kind else { return false; };
+        let Some(ironsmith_core::KeywordMarkerMechanic::ExileOnStackExitIfCastFrom { zone }) = ability.keyword_marker_mechanic() else { return false; };
+        crate::condition_eval::evaluate_condition_cast_time(
+            game, &ironsmith_core::Condition::ThisSpellWasCastFromZone(zone), controller, object_id,
+        )
+    });
+    // These payment methods replace every subsequent departure from
+    // the stack (CR 702.34, 702.133, 702.180), including counter/bounce.
+    let selected_exile_scope = (zone == crate::zone::Zone::Stack).then(||
+        object.cast_alternative_method.as_deref().and_then(selected_stack_exile_scope)).flatten();
+    if intrinsic_exile || selected_exile_scope == Some(SelectedStackExileScope::AnyDeparture) {
+        effects.push(crate::replacement::ZoneReplacementSpec::new(
+            crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
+            .from_zone(crate::zone::Zone::Stack).build(object_id, controller));
+    } else if selected_exile_scope == Some(SelectedStackExileScope::GraveyardDeparture) {
+        effects.push(crate::replacement::ZoneReplacementSpec::new(
+            crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
+            .from_zone(crate::zone::Zone::Stack).to_zone(crate::zone::Zone::Graveyard)
+            .build(object_id, controller));
+    }
+
+    // Only the chosen method creates these spell-bound replacements.
+    if zone == crate::zone::Zone::Stack {
+        if let Some(method) = object.cast_alternative_method.as_deref() {
+            for spec in method.battlefield_instructions().departure_replacements {
+                if spec.from_zone == zone {
+                    effects.push(crate::replacement::ZoneReplacementSpec::from_redirect(
+                        crate::target::ObjectFilter::specific(object_id), &spec,
+                    ).build(object_id, controller));
                 }
-                if !static_ability.is_active(game, object_id) {
-                    continue;
-                }
-                let face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_))
-                    .then_some(object.card)
-                    .flatten();
-                if let Some(effect) =
-                    static_ability.generate_replacement_effect(object_id, controller)
-                {
-                    effects.push(effect.with_ability_origin(origin.clone(), face, 0));
-                }
-                // Ability-grant instructions are not replacement sources.
-                // Existing recipients are scanned through calculated abilities;
-                // an entrant's self-entry ability is read by the prospective
-                // entry driver. Projecting the grant itself duplicates those
-                // occurrences and incorrectly activates general replacements
-                // before any recipient is on the battlefield (CR 614.12).
             }
         }
     }
 
-    Ok(effects)
+    // Carry calculated occurrence origins, not just static value ids.
+    // Printed, layer-granted and registered temporary abilities can
+    // contain equal/cloned values while remaining independent effects.
+    for (slot, ability) in chars.abilities.iter().enumerate() {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        let Some(origin) = chars.abilities.origin(slot).cloned() else {
+            continue;
+        };
+        let temporary = if let crate::continuous::AbilityOrigin::Temporary(token) = &origin
+        {
+            if !object
+                .temporary_static_ability_grants
+                .iter()
+                .enumerate()
+                .any(|(index, grant)| {
+                    object.temporary_static_ability_grants.origin(index) == Some(token)
+                        && !grant.is_expired(game.turn.turn_number)
+                })
+            {
+                continue;
+            }
+            true
+        } else {
+            false
+        };
+        // Stack cast-this-way riders are registered temporary abilities;
+        // their event matcher defines scope, not printed battlefield zones.
+        if !temporary && !ability.functions_in(&zone) {
+            continue;
+        }
+        if !static_ability.is_active(game, object_id) {
+            continue;
+        }
+        let face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_))
+            .then_some(object.card)
+            .flatten();
+        if let Some(effect) =
+            static_ability.generate_replacement_effect(object_id, controller)
+        {
+            effects.push(effect.with_ability_origin(origin.clone(), face, 0));
+        }
+        // Ability-grant instructions are not replacement sources.
+        // Existing recipients are scanned through calculated abilities;
+        // an entrant's self-entry ability is read by the prospective
+        // entry driver. Projecting the grant itself duplicates those
+        // occurrences and incorrectly activates general replacements
+        // before any recipient is on the battlefield (CR 614.12).
+    }
 }
 
 #[cfg(test)]

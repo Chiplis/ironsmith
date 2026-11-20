@@ -409,7 +409,7 @@ fn cr_702_189a_firebending_mana_lasts_until_end_of_combat() {
         "Mana cost: {1}{R}\nType: Creature — Human Cleric\nPower/Toughness: 2/2\nFirebending 1",
     );
     let attacker = put(&mut game, &sages, alice(), Zone::Battlefield);
-    let seen: Rc<RefCell<Vec<(Option<Step>, u32)>>> = Rc::default();
+    let seen: Rc<RefCell<Vec<(Option<Step>, u64)>>> = Rc::default();
     let seen2 = seen.clone();
     let mut dm = Script::new().attack_with(vec![attacker], bob()).observe(move |g, p| {
         if p == PlayerId::from_index(0) {

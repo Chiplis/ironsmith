@@ -490,7 +490,7 @@ fn nonzero_and_x_from_zone_prices_keep_their_announced_cost_and_payment() {
                 "Paid control", Zone::Exile, TotalCost::mana(cost), None, false));
         assert!(cast_actions(&game, player, card).is_empty());
         game.player_mut(player).unwrap().mana_pool.colorless = if variable_price { 3 } else { 2 };
-        game.player_mut(player).unwrap().mana_pool.blue = u32::from(variable_price);
+        game.player_mut(player).unwrap().mana_pool.blue = u64::from(variable_price);
         let action = cast_actions(&game, player, card).into_iter().next().expect("paid control price");
         let stack = finish_cast(&mut game, action, if variable_price { 3 } else { 0 });
         assert_eq!(game.object(stack).unwrap().x_value, variable_price.then_some(3));

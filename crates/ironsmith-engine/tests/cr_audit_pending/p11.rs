@@ -2590,7 +2590,7 @@ fn optional_cycling_reduction_is_announced_and_paid_for_cycling_and_typecycling(
                 dm.optional_reduction = Some(amount);
                 let mut queue = activate_from_hand(&mut game, source, &mut dm);
                 assert_eq!(dm.reduction_prompts, vec![(0, reducers * 2)]);
-                assert_eq!(game.player(ALICE).unwrap().mana_pool.colorless, amount, "pay exactly the chosen discount: typecycling={typecycling}, reducers={reducers}, amount={amount}");
+                assert_eq!(game.player(ALICE).unwrap().mana_pool.colorless, u64::from(amount), "pay exactly the chosen discount: typecycling={typecycling}, reducers={reducers}, amount={amount}");
                 let moved = game.find_object_by_stable_id(source_stable).unwrap();
                 assert_eq!(game.object(moved).unwrap().zone, Zone::Graveyard, "discard remains mandatory");
                 assert_eq!(game.stack.len(), 1);

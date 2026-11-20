@@ -110,36 +110,73 @@ impl GameState {
     fn update_replacement_effects_inner(
         &mut self,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
-        use crate::replacement_ability_processor::generate_replacement_effects_from_abilities;
+        use crate::replacement_ability_processor::{SourceReplacements, generate_replacement_effect_groups};
         // Establish completeness before clearing the previously published set.
-        let effects = generate_replacement_effects_from_abilities(self)?;
+        let groups = generate_replacement_effect_groups(self)?;
 
-        // Clear existing static ability replacement effects
-        self.effect_store
-            .replacement_effects
-            .clear_static_ability_effects();
+        // A source whose output is reused unchanged republishes the very
+        // effects it registered last time (not regenerated or cloned), in
+        // the same order with fresh ids, exactly as a full regeneration
+        // registers equal effects. That holds only while the manager is the
+        // one this index last published to, with those effects untouched.
+        let lineage = {
+            let indexes = self.source_indexes().borrow();
+            indexes.replacement_publication.as_ref().zip(
+                self.effect_store.replacement_effects.static_publication(),
+            ).is_some_and(|(indexed, held)| Arc::ptr_eq(indexed, held))
+        };
+        let registered_len = |effects: &[crate::replacement::ReplacementEffect]| {
+            effects.len() + effects.iter().filter(|effect| effect.optional).count()
+        };
+        let manager = &mut *self.effect_store.replacement_effects;
+        // Leading reused sources whose effects already sit, in order, at the
+        // start of the published tail keep them in place.
+        let mut matched = 0;
+        let rest = match manager.static_tail_start().filter(|_| lineage) {
+            Some(start) => {
+                let statics = &manager.effects()[start..];
+                let mut at = 0;
+                for (source, group) in &groups {
+                    let SourceReplacements::Reused(effects) = group else { break };
+                    let len = registered_len(effects);
+                    if statics.len() < at + len
+                        || !statics[at..at + len].iter().all(|effect| effect.source == *source)
+                    {
+                        break;
+                    }
+                    at += len;
+                    matched += 1;
+                }
+                manager.reregister_static_range(start, at);
+                manager.take_effects_from(start + at)
+            }
+            None => manager.take_static_ability_effects(),
+        };
+        let mut previous: std::collections::HashMap<ObjectId, Vec<crate::replacement::ReplacementEffect>> =
+            std::collections::HashMap::new();
+        if lineage {
+            for effect in rest {
+                previous.entry(effect.source).or_default().push(effect);
+            }
+        }
 
-        // Generate and register new ones from current battlefield state
-        // using current battlefield abilities, including grants and ability loss.
-        // Other zones retain their printed/granted source abilities.
-        for effect in effects {
-            let decline = effect.optional_decline_effect();
-            let game: &Self = self;
-            let alternatives: Vec<_> = effect
-                .token_template_alternatives()
-                .into_iter()
-                .flat_map(|alternative| alternative.token_copy_choice_alternatives(game))
-                .collect();
-            for alternative in alternatives {
-                self.effect_store
-                    .replacement_effects
-                    .add_static_ability_effect(alternative);
-            }
-            if let Some(decline) = decline {
-                self.effect_store
-                    .replacement_effects
-                    .add_static_ability_effect(decline);
-            }
+        // Register new ones from current battlefield state using current
+        // battlefield abilities, including grants and ability loss. Other
+        // zones retain their printed/granted source abilities.
+        for (source, group) in groups.into_iter().skip(matched) {
+            let effects = match group {
+                SourceReplacements::Reused(effects) => match previous.remove(&source) {
+                    Some(held) if held.len() == registered_len(&effects) => {
+                        for effect in held {
+                            self.effect_store.replacement_effects.add_static_ability_effect(effect);
+                        }
+                        continue;
+                    }
+                    _ => effects.to_vec(),
+                },
+                SourceReplacements::Fresh(effects) => effects,
+            };
+            self.register_static_replacement_effects(effects);
         }
         // A pinned replacement keeps replacing the remaining parts of the
         // current simultaneous event, whether its source left or merely lost
@@ -171,7 +208,73 @@ impl GameState {
                     .add_static_ability_effect(pin);
             }
         }
+        let token = self.effect_store.replacement_effects.finish_static_publication();
+        self.source_indexes().borrow_mut().replacement_publication = Some(token);
+        #[cfg(debug_assertions)]
+        if std::env::var_os("IRONSMITH_EFFECT_FREE_SHADOW").is_some() {
+            self.assert_static_replacements_match_full_publication();
+        }
         Ok(())
+    }
+
+    /// Shadow check: the published static effects equal what clearing and
+    /// regenerating them registers (ids aside).
+    #[cfg(debug_assertions)]
+    fn assert_static_replacements_match_full_publication(&self) {
+        let mut fresh = self.clone();
+        fresh.source_indexes().borrow_mut().replacements = Default::default();
+        fresh.source_indexes().borrow_mut().replacement_publication = None;
+        fresh.effect_store.replacement_effects.clear_static_ability_effects();
+        let Ok(groups) = crate::replacement_ability_processor::generate_replacement_effect_groups(&fresh) else {
+            return;
+        };
+        for (_, group) in groups {
+            if let crate::replacement_ability_processor::SourceReplacements::Fresh(effects) = group {
+                fresh.register_static_replacement_effects(effects);
+            }
+        }
+        let statics = |game: &Self| -> Vec<String> {
+            game.effect_store.replacement_effects.static_ability_effects()
+                .filter(|effect| game.effect_store.replacement_effects.simultaneous_static_pins()
+                    .is_none_or(|pins| !pins.iter().any(|pin| pin.source == effect.source)))
+                .map(|effect| crate::game_state::without_instance_ids(format!("{effect:?}")))
+                .collect()
+        };
+        assert_eq!(statics(self), statics(&fresh), "indexed replacement publication diverged");
+    }
+
+    /// Register one source's freshly generated static replacement effects,
+    /// each followed by its decline alternative when optional.
+    fn register_static_replacement_effects(&mut self, effects: Vec<crate::replacement::ReplacementEffect>) {
+        for effect in effects {
+            let decline = effect.optional_decline_effect();
+            if matches!(
+                effect.replacement,
+                crate::replacement::ReplacementAction::TokenCreationTemplates { .. }
+            ) {
+                let game: &Self = self;
+                let alternatives: Vec<_> = effect
+                    .token_template_alternatives()
+                    .into_iter()
+                    .flat_map(|alternative| alternative.token_copy_choice_alternatives(game))
+                    .collect();
+                for alternative in alternatives {
+                    self.effect_store
+                        .replacement_effects
+                        .add_static_ability_effect(alternative);
+                }
+            } else {
+                // Neither expansion applies to any other action.
+                self.effect_store
+                    .replacement_effects
+                    .add_static_ability_effect(effect);
+            }
+            if let Some(decline) = decline {
+                self.effect_store
+                    .replacement_effects
+                    .add_static_ability_effect(decline);
+            }
+        }
     }
 
     /// Pin the battlefield's static replacement effects for one simultaneous
@@ -1575,9 +1678,12 @@ impl GameState {
             Self::modification_may_change_enter_as_copy_presence(&effect.modification)
         });
 
+        // Without an enter-as-copy static anywhere (summary), the scan below
+        // finds no candidate.
+        let any_copy_static = !requires_layered_fallback && self.board_static_summary().enter_as_copy;
         let sparse_candidates = (!requires_layered_fallback).then(|| {
             let mut candidates = Vec::new();
-            for &object_id in &self.battlefield {
+            for &object_id in self.battlefield.iter().filter(|_| any_copy_static) {
                 let Some(object) = self.object(object_id) else {
                     continue;
                 };
@@ -1855,16 +1961,10 @@ impl GameState {
         let reaches = |ability: &crate::static_abilities::StaticAbility| {
             matches(ability) || ability.may_generate_continuous_effects()
         };
-        self.static_ability_may_be_granted(&reaches)
-            || self.objects.values().any(|object| {
-                !object.temporary_static_ability_grants.is_empty()
-                    || !object.level_granted_abilities().is_empty()
-                    || object.abilities.iter().any(|ability| {
-                        ability.functions_in(&object.zone)
-                            && matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
-                                if static_ability.may_generate_continuous_effects())
-                    })
-            })
+        // The summary's `may_emit` covers functioning emitting statics (and
+        // emitting temporary grants, which `grant_holder` covers anyway).
+        let summary = self.board_static_summary();
+        summary.grant_holder || summary.may_emit || self.static_ability_may_be_granted(&reaches)
     }
 
     pub(crate) fn modification_may_grant_static_ability(
@@ -5466,38 +5566,17 @@ impl GameState {
         &self,
         event_kind: EventKind,
     ) -> bool {
-        let all_effects = self.all_continuous_effects();
-        if all_effects
+        if self
+            .all_continuous_effects_arc()
             .iter()
             .any(|effect| Self::modification_can_change_triggered_abilities(&effect.modification))
         {
             return true;
         }
-
-        let subscribes = |object: &crate::object::Object, ability: &crate::ability::Ability| {
-            if !ability.functions_in(&object.zone) {
-                return false;
-            }
-            let AbilityKind::Triggered(triggered) = &ability.kind else {
-                return false;
-            };
-            triggered
-                .trigger
-                .subscribed_kinds()
-                .is_none_or(|kinds| kinds.contains(&event_kind))
-        };
-        self.objects.values().any(|object| {
-            object.abilities.iter().chain(object.counters.occurrence_abilities())
-                .any(|ability| subscribes(object, ability))
-                // A triggered ability an object acquired through its own
-                // incarnation grant (a paid granted optional cost's "when you
-                // cast this spell" rider) subscribes like a printed one.
-                || object.temporary_static_ability_grants.iter()
-                    .filter(|grant| !grant.is_expired(self.turn.turn_number))
-                    .filter_map(|grant| grant.materialize())
-                    .any(|grant| grant.granted_inline_ability().is_some_and(|ability| subscribes(object, ability))
-                        || grant.source_granted_inline_abilities().into_iter().any(|ability| subscribes(object, ability)))
-        })
+        // Every object's functioning triggered abilities (printed, counter
+        // occurrences and live temporary grants) by subscribed kind.
+        let summary = self.board_static_summary();
+        summary.triggers_on_any_kind || summary.trigger_kinds & (1u128 << (event_kind as u8)) != 0
     }
 
     /// Returns all permanents controlled by a player.

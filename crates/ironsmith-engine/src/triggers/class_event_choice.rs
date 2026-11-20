@@ -103,11 +103,23 @@ pub(crate) fn has_event_choice_rules<'a>(game:&GameState,events:impl IntoIterato
  Ok(false)
 }
 
+pub(crate) fn static_is_class_event_choice(rule:&crate::static_abilities::StaticAbility)->bool {
+ matches!(rule.compiled_model().map(|model|&model.payload),Some(ironsmith_core::StaticAbilityPayload::TriggerClassEventChoice {..}))
+}
+
 pub(crate) fn capture_event_choices(game:&GameState,event:&TriggerEvent)->Result<Vec<PendingTriggerClassChoice>,ExecutionError> {
  if game.action_observations_suppressed(){return Ok(Vec::new());}
  // Ordinary games with no authored rule need no source snapshot packet.
  let mut has_rule=false;
- for object in game.objects_in_deterministic_order() {
+ // A permanent's current rules come from its own abilities (summary) or a
+ // continuous effect; with neither able to supply the rule, the scan below
+ // finds none. Discovery errors surface exactly as the scan's reads would.
+ let effects=game.try_all_continuous_effects_arc().map_err(ExecutionError::ContinuousDiscovery)?;
+ let may_hold=game.board_static_summary().class_event_choice
+  || game.has_merged_permanents()
+  || effects.iter().any(|effect|GameState::modification_may_grant_static_ability(&effect.modification,&static_is_class_event_choice));
+ let candidates=if may_hold {game.objects_in_deterministic_order()} else {Vec::new()};
+ for object in candidates {
   if object.zone!=Zone::Battlefield||game.is_phased_out(object.id){continue;}
   let characteristics=game.try_current_characteristics(object.id).map_err(ExecutionError::ContinuousDiscovery)?;
   if characteristics.is_some_and(|characteristics|characteristics.abilities.iter().any(|definition|

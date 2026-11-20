@@ -737,6 +737,12 @@ pub struct ReplacementEffectManager {
 
     /// Next effect ID to assign
     next_id: u64,
+
+    /// Identity of the last static-effect publication, while every static
+    /// effect it registered is still here unchanged (see
+    /// `GameState::update_replacement_effects`). Removing an effect clears
+    /// it; a copied manager carries it, so it also names the lineage.
+    static_publication: Option<std::sync::Arc<()>>,
 }
 
 impl ReplacementEffectManager {
@@ -810,6 +816,7 @@ impl ReplacementEffectManager {
 
     /// Remove an effect by ID.
     pub fn remove_effect(&mut self, id: ReplacementEffectId) {
+        self.static_publication = None;
         self.effects.retain(|e| e.id != id);
         self.effect_sources.remove(&id.0);
         self.one_shot_effects.remove(&id);
@@ -883,9 +890,7 @@ impl ReplacementEffectManager {
             .filter(|effect| effect.source == source)
             .map(|effect| effect.id)
             .collect();
-        for id in ids {
-            self.remove_effect(id);
-        }
+        self.remove_effects(&ids);
     }
 
     /// Take the regeneration shields protecting `source` out of play for one
@@ -1082,8 +1087,111 @@ impl ReplacementEffectManager {
             .map(|e| e.id)
             .collect();
 
-        for id in static_ids {
-            self.remove_effect(id);
+        self.remove_effects(&static_ids);
+    }
+
+    /// Take every static-ability effect out, in list order, as
+    /// `clear_static_ability_effects` removes them, for republication.
+    pub(crate) fn take_static_ability_effects(&mut self) -> Vec<ReplacementEffect> {
+        self.static_publication = None;
+        let (taken, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.effects)
+            .into_iter()
+            .partition(|effect| {
+                self.effect_sources.get(&effect.id.0) == Some(&ReplacementEffectSource::StaticAbility)
+            });
+        self.effects = kept;
+        let ids: Vec<_> = taken.iter().map(|effect| effect.id).collect();
+        self.forget_removed_ids(&ids);
+        taken
+    }
+
+    /// `remove_effect` for many ids with one pass over the effect list (one
+    /// retain per id made clearing N static effects quadratic in N).
+    pub fn remove_effects(&mut self, ids: &[ReplacementEffectId]) {
+        if ids.is_empty() {
+            return;
+        }
+        self.static_publication = None;
+        let removed: std::collections::HashSet<ReplacementEffectId> = ids.iter().copied().collect();
+        self.effects.retain(|effect| !removed.contains(&effect.id));
+        self.forget_removed_ids(ids);
+    }
+
+    pub(crate) fn static_publication(&self) -> Option<&std::sync::Arc<()>> {
+        self.static_publication.as_ref()
+    }
+
+    /// Mark the static effects now registered as one publication.
+    pub(crate) fn finish_static_publication(&mut self) -> std::sync::Arc<()> {
+        let token = std::sync::Arc::new(());
+        self.static_publication = Some(token.clone());
+        token
+    }
+
+    /// The index of the first static-ability effect when every one of them
+    /// comes after every other effect (as a publication leaves them).
+    pub(crate) fn static_tail_start(&self) -> Option<usize> {
+        let is_static = |effect: &ReplacementEffect| {
+            self.effect_sources.get(&effect.id.0) == Some(&ReplacementEffectSource::StaticAbility)
+        };
+        let start = self.effects.iter().rposition(|effect| !is_static(effect)).map_or(0, |at| at + 1);
+        (!self.effects[..start].iter().any(is_static)).then_some(start)
+    }
+
+    /// Give the static effects in `start..start + len`, left in place, fresh
+    /// ids in order, exactly as removing them and adding them again would.
+    pub(crate) fn reregister_static_range(&mut self, start: usize, len: usize) {
+        self.static_publication = None;
+        for index in start..start + len {
+            let old = self.effects[index].id;
+            self.forget_removed_ids(&[old]);
+            let id = ReplacementEffectId::new(self.next_id);
+            self.next_id += 1;
+            self.effects[index].id = id;
+            self.effects[index].registration_id = None;
+            self.effect_sources.insert(id.0, ReplacementEffectSource::StaticAbility);
+        }
+    }
+
+    /// Take out the effects from `start` on (all static), in order, as
+    /// `remove_effects` removes them.
+    pub(crate) fn take_effects_from(&mut self, start: usize) -> Vec<ReplacementEffect> {
+        self.static_publication = None;
+        let taken = self.effects.split_off(start);
+        let ids: Vec<_> = taken.iter().map(|effect| effect.id).collect();
+        self.forget_removed_ids(&ids);
+        taken
+    }
+
+    /// The bookkeeping half of `remove_effects`, for ids already off the list.
+    fn forget_removed_ids(&mut self, ids: &[ReplacementEffectId]) {
+        for &id in ids {
+            self.effect_sources.remove(&id.0);
+            // Most of these are usually empty; skip hashing into them.
+            if !self.one_shot_effects.is_empty() {
+                self.one_shot_effects.remove(&id);
+            }
+            if !self.batch_one_shot_effects.is_empty() {
+                self.batch_one_shot_effects.remove(&id);
+            }
+            if !self.pending_batch_one_shot_effects.is_empty() {
+                self.pending_batch_one_shot_effects.remove(&id);
+            }
+            if !self.next_damage_occurrence_effects.is_empty() {
+                self.next_damage_occurrence_effects.remove(&id);
+            }
+            for frame in &mut self.damage_occurrence_frames {
+                frame.remove(&id);
+            }
+            if !self.until_end_of_turn_effects.is_empty() {
+                self.until_end_of_turn_effects.remove(&id);
+            }
+            if !self.until_next_turn_effects.is_empty() {
+                self.until_next_turn_effects.remove(&id);
+            }
+            if !self.followed_objects.is_empty() {
+                self.followed_objects.remove(&id);
+            }
         }
     }
 

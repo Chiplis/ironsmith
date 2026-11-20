@@ -3184,6 +3184,14 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn may_generate_continuous_effects(&self) -> bool {
+        // `generate_effects` emits this payload's effects itself; it has no
+        // leaf static to delegate to.
+        if matches!(
+            &self.model.payload,
+            ironsmith_core::StaticAbilityPayload::AddSubtypesAndGrantAbilities { .. }
+        ) {
+            return true;
+        }
         if self.enter_as_copy_spec.is_some()
             && matches!(
                 &self.model.payload,

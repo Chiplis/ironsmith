@@ -2156,7 +2156,7 @@ fn cr_608_2g_option_to_pay_mana_allows_activating_mana_abilities_even_with_float
     use ironsmith::{Ability, CardId, CardType, Effect, ManaSymbol, ObjectId, StackEntry, Zone};
     struct FloatExtraMana {
         source: ObjectId,
-        initial_green: u32,
+        initial_green: u64,
         calls: usize,
     }
     impl DecisionMaker for FloatExtraMana {

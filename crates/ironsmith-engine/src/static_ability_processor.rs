@@ -623,6 +623,19 @@ fn effect_is_characteristic_defining(effect: &ContinuousEffect, source: ObjectId
     )
 }
 
+/// Discovery with nothing to discover: no registered continuous effect and
+/// no object with a static (or level tier) that can emit one. Then every
+/// source's direct effects are empty, no late grant exists, and the result is
+/// the empty list; `Some(pt_counters)` says whether final power/toughness
+/// still needs validating (it reads counters). `None` means "run discovery".
+fn discovery_is_trivially_empty(game: &GameState) -> Option<bool> {
+    if !game.effect_store.continuous_effects.effects().is_empty() {
+        return None;
+    }
+    let summary = game.board_static_summary();
+    (!summary.may_emit && !summary.level_grants_emitter).then_some(summary.pt_counters)
+}
+
 /// Generate all continuous effects from static abilities in zones where they function.
 ///
 /// This scans all objects for static abilities and generates the corresponding
@@ -635,6 +648,9 @@ pub fn generate_continuous_effects_from_static_abilities(
     game: &GameState,
 ) -> Vec<ContinuousEffect> {
     let _tap_reads = game.derived_tap_read_scope();
+    if discovery_is_trivially_empty(game).is_some() {
+        return Vec::new();
+    }
     let registered_effects: Vec<ContinuousEffect> =
         game.effect_store.continuous_effects.effects().to_vec();
     let text_box_scope = text_box_query_scope(&registered_effects);
@@ -691,6 +707,9 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
     cache: &mut StaticEffectsCache,
 ) -> Vec<ContinuousEffect> {
     let _tap_reads = game.derived_tap_read_scope();
+    if discovery_is_trivially_empty(game).is_some() {
+        return Vec::new();
+    }
     let registered_effects: Vec<ContinuousEffect> =
         game.effect_store.continuous_effects.effects().to_vec();
     let text_box_scope = text_box_query_scope(&registered_effects);
@@ -712,6 +731,24 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
             continue;
         }
         let zone = object.zone;
+        // A source whose functioning abilities can emit nothing, and whose
+        // abilities no text-box effect or temporary grant rewrites, needs no
+        // controller read, key or cache: its direct effects are empty.
+        if object.temporary_static_ability_grants.is_empty()
+            && !(zone == crate::zone::Zone::Battlefield && text_box_scope.includes(object_id))
+            && !object.abilities.iter().any(|ability| ability.functions_in(&zone)
+                && matches!(&ability.kind, AbilityKind::Static(ability) if ability.may_generate_continuous_effects()))
+        {
+            cache.per_source.remove(&object_id);
+            let abilities: crate::continuous::CalculatedAbilities = object.abilities.clone().into();
+            sources.push(SourceStaticEffectEntry {
+                object_id,
+                group_roots: static_group_roots(&abilities),
+                abilities,
+                effects: Vec::new(),
+            });
+            continue;
+        }
         let controller = game.controller_of(object);
         let key = SourceStaticEffectsKey {
             generation_revision,
@@ -810,7 +847,7 @@ fn registered_grant_may_emit_late_effects(effect: &ContinuousEffect) -> bool {
 }
 
 /// Whether a level-up ability can grant something that emits continuous effects.
-fn abilities_grant_continuous_levels(text_abilities: &[crate::ability::Ability]) -> bool {
+pub(crate) fn abilities_grant_continuous_levels(text_abilities: &[crate::ability::Ability]) -> bool {
     text_abilities.iter().any(|ability| {
         let AbilityKind::Static(ability) = &ability.kind else {
             return false;
@@ -1040,6 +1077,9 @@ pub(crate) fn try_generate_continuous_effects_and_final_characteristics(
 ) -> Result<(Vec<ContinuousEffect>, Option<FinalCharacteristics>), StaticEffectDiscoveryError> {
     let _tap_reads = game.derived_tap_read_scope();
     validate_mana_scalar_domain(game)?;
+    if discovery_is_trivially_empty(game) == Some(false) {
+        return Ok((Vec::new(), None));
+    }
     let mut mana_pt = false;
     let registered = game.effect_store.continuous_effects.effects().to_vec();
     validate_static_controller_sources(game, &registered)?;
@@ -1050,14 +1090,32 @@ pub(crate) fn try_generate_continuous_effects_and_final_characteristics(
         let Some(object) = game.object(object_id) else { continue; };
         if object.zone == Zone::Battlefield && game.is_phased_out(object_id) { continue; }
         let abilities = source_abilities(game, object_id, &registered, &scope, &mut text_cache);
-        for ability in abilities.iter().filter(|ability| ability.functions_in(&object.zone)) {
-            if let AbilityKind::Static(ability) = &ability.kind {
-                mana_pt |= ability.validate_mana_scalar_ranges(game, object_id, game.controller_of(object))?;
+        // A functioning static that cannot emit effects has no mana-scalar
+        // values to validate either (only effect-emitting statics override
+        // that check). A source with none of the others emits nothing here.
+        let functioning_emitters = abilities.iter()
+            .filter(|ability| ability.functions_in(&object.zone))
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(ability) if ability.may_generate_continuous_effects() => Some(ability),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if !functioning_emitters.is_empty() {
+            let controller = game.controller_of(object);
+            for ability in functioning_emitters {
+                mana_pt |= ability.validate_mana_scalar_ranges(game, object_id, controller)?;
             }
         }
+        let effects = if abilities.iter().any(|ability| ability.functions_in(&object.zone)
+            && matches!(&ability.kind, AbilityKind::Static(ability) if ability.may_generate_continuous_effects()))
+        {
+            generate_direct_static_effects(game, object_id, &abilities)
+        } else {
+            Vec::new()
+        };
         sources.push(SourceStaticEffectEntry { object_id,
             group_roots: static_group_roots(&abilities),
-            effects: generate_direct_static_effects(game, object_id, &abilities), abilities });
+            effects, abilities });
     }
     rebind_controller_sensitive_direct_effects(game, &mut sources, &registered);
     let mut available = registered.clone();

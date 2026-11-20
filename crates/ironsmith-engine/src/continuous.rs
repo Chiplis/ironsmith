@@ -3399,30 +3399,47 @@ pub(crate) fn active_static_abilities(
     game: &crate::game_state::GameState,
     source: ObjectId,
 ) -> Vec<StaticAbility> {
+    abilities
+        .iter()
+        .zip(static_activity_mask(abilities, game, source))
+        .filter(|(_, active)| *active)
+        .filter_map(|(ability, _)| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// For each ability, whether it is a static ability `active_static_abilities`
+/// keeps. This is the only part of an effect-free result that reads the game
+/// beyond the object itself, so a reused result must match it.
+pub(crate) fn static_activity_mask(
+    abilities: &[Ability],
+    game: &crate::game_state::GameState,
+    source: ObjectId,
+) -> Vec<bool> {
     let dormant_zone = game
         .object(source)
         .map(|object| object.zone)
         .filter(|zone| !matches!(zone, Zone::Battlefield));
     abilities
         .iter()
-        .filter_map(|ability| match &ability.kind {
-            AbilityKind::Static(static_ability) => Some((ability, static_ability)),
-            _ => None,
-        })
-        .filter(|(ability, static_ability)| {
-            if let Some(zone) = dormant_zone
-                && !ability.functions_in(&zone)
-                && static_ability_has_condition(static_ability)
-            {
-                return false;
+        .map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                if let Some(zone) = dormant_zone
+                    && !ability.functions_in(&zone)
+                    && static_ability_has_condition(static_ability)
+                {
+                    return false;
+                }
+                static_ability.is_active(game, source)
             }
-            static_ability.is_active(game, source)
+            _ => false,
         })
-        .map(|(_, static_ability)| static_ability.clone())
         .collect()
 }
 
-fn static_ability_has_condition(ability: &StaticAbility) -> bool {
+pub(crate) fn static_ability_has_condition(ability: &StaticAbility) -> bool {
     ability.granted_inline_condition().is_some()
         // An anthem keeps its "as long as" on the ability itself (a graveyard
         // Wildfire Wickerfolk's delirium).
@@ -3883,6 +3900,12 @@ pub fn calculate_characteristics_with_effects(
     if let Some(chars) = in_progress_characteristics(game, object_id) {
         return Some(chars);
     }
+    if effects.is_empty()
+        && let Some(mut calculated) =
+            game.effect_free_characteristics_batch(&[object_id], objects, battlefield, commanders)
+    {
+        return calculated.remove(&object_id);
+    }
     let object = objects.get(&object_id)?;
 
     // A permanent's characteristics come from one pass over the board, the
@@ -3899,6 +3922,44 @@ pub fn calculate_characteristics_with_effects(
     ))
 }
 
+/// One object's characteristics when no continuous effect exists. With no
+/// effects nothing applies across objects, so the layer batch's result for
+/// each object is this direct calculation (the `shadow-continuous` feature
+/// asserts batch == direct in general).
+pub(crate) fn calculate_effect_free_direct(
+    object: &Object,
+    objects: &ObjectMap,
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+) -> CalculatedCharacteristics {
+    calculate_with_layers_direct_internal(
+        object,
+        objects,
+        &[],
+        battlefield,
+        commanders,
+        game,
+        DependencySortMode::Baseline,
+        true,
+    )
+}
+
+/// Effect-store timestamps an effect-free calculation of `object` reads:
+/// entry, entry-or-attachment, and ability-counter timestamps. They live
+/// outside the object, so a reused result must also match these.
+pub(crate) fn effect_free_object_timestamps(
+    object: &Object,
+    game: &crate::game_state::GameState,
+) -> (Option<u64>, Option<u64>, Vec<(u64, CounterType)>) {
+    let manager = &game.effect_store.continuous_effects;
+    (
+        manager.get_entry_timestamp(object.id),
+        manager.get_object_timestamp(object.id),
+        layer_resolution::ability_counter_timestamps(object, manager),
+    )
+}
+
 pub(crate) fn calculate_characteristics_batch_with_effects(
     ids: &[ObjectId],
     objects: &ObjectMap,
@@ -3907,6 +3968,12 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
+    if effects.is_empty()
+        && let Some(calculated) =
+            game.effect_free_characteristics_batch(ids, objects, battlefield, commanders)
+    {
+        return calculated;
+    }
     crate::perf::work_n(crate::perf::Work::BatchCharacteristicObjects, ids.len() as u64);
     if ids.len() > 1 {
         let mut calculated = HashMap::with_capacity(ids.len());

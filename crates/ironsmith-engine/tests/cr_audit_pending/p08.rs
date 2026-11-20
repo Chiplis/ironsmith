@@ -1162,7 +1162,7 @@ fn native_cast(game: &mut GameState, def: &CardDefinition, player: PlayerId, tar
 
 struct TurnLog {
     life_at_first_main: Option<i32>,
-    pool_green_at_first_main: Option<u32>,
+    pool_green_at_first_main: Option<u64>,
 }
 
 /// Drive the active player's whole turn through the native turn runner.

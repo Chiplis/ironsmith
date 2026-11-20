@@ -71,10 +71,50 @@ impl TurnEventRecord {
 /// Ordered immutable observations shared by speculative game branches. An
 /// append/retain/truncate changes only this collection; recorded snapshots are
 /// never edited through the collection's API.
+///
+/// Records live in slots. Removing one leaves an empty slot, so no other
+/// record's slot (and no occurrence index entry) moves; slots are compacted
+/// only once empty ones outnumber records. Every public view (`len`, `iter`,
+/// `last`, indexing, `truncate`) sees just the records, in record order.
+/// Staging republishes events by removing an earlier record, and shifting
+/// every later record for each removal made a busy turn quadratic.
 #[derive(Clone, Default)]
-pub struct TurnEventRecords(im::Vector<Arc<TurnEventRecord>>, SpellCastIndex, OccurrenceIndex);
+pub struct TurnEventRecords {
+    slots: im::Vector<Option<Arc<TurnEventRecord>>>,
+    live: usize,
+    spells: SpellCastIndex,
+    occurrences: OccurrenceIndex,
+    /// Record slots by event provenance (non-default only), for
+    /// `remove_staged_event`, which otherwise scanned the turn per event.
+    provenances: ProvenanceIndex,
+}
 
-/// Record positions by event occurrence (`TriggerEvent::occurrence_key`, the
+type ProvenanceIndex = im::HashMap<ProvNodeId, Arc<Vec<usize>>>;
+
+fn index_slot<K: std::hash::Hash + Eq + Clone>(index: &mut im::HashMap<K, Arc<Vec<usize>>>, key: K, slot: usize) {
+    let mut slots = index.get(&key).map(|p| p.as_ref().clone()).unwrap_or_default();
+    let at = slots.partition_point(|&p| p < slot);
+    slots.insert(at, slot);
+    index.insert(key, Arc::new(slots));
+}
+
+fn unindex_slot<K: std::hash::Hash + Eq + Clone>(index: &mut im::HashMap<K, Arc<Vec<usize>>>, key: K, slot: usize) {
+    let Some(existing) = index.get(&key) else { return };
+    let mut slots = existing.as_ref().clone();
+    slots.retain(|&p| p != slot);
+    if slots.is_empty() {
+        index.remove(&key);
+    } else {
+        index.insert(key, Arc::new(slots));
+    }
+}
+
+fn record_provenance(record: &TurnEventRecord) -> Option<ProvNodeId> {
+    let provenance = record.event.provenance();
+    (provenance != ProvNodeId::default()).then_some(provenance)
+}
+
+/// Record slots by event occurrence (`TriggerEvent::occurrence_key`, the
 /// occurrence's allocation address, which stays unique while a record holds
 /// it). Identity lookups used to scan the whole turn's records once per
 /// event, making every event linear in the turn's length. Each mutator below
@@ -97,119 +137,201 @@ impl std::fmt::Debug for TurnEventRecords {
     }
 }
 
+/// The records of a `TurnEventRecords`, skipping empty slots.
+pub struct TurnEventRecordsIter<'a> {
+    slots: im::vector::Iter<'a, Option<Arc<TurnEventRecord>>>,
+    remaining: usize,
+}
+
+impl<'a> Iterator for TurnEventRecordsIter<'a> {
+    type Item = &'a TurnEventRecord;
+    fn next(&mut self) -> Option<Self::Item> {
+        for slot in self.slots.by_ref() {
+            if let Some(record) = slot {
+                self.remaining -= 1;
+                return Some(record.as_ref());
+            }
+        }
+        None
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl DoubleEndedIterator for TurnEventRecordsIter<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        while let Some(slot) = self.slots.next_back() {
+            if let Some(record) = slot {
+                self.remaining -= 1;
+                return Some(record.as_ref());
+            }
+        }
+        None
+    }
+}
+
+impl ExactSizeIterator for TurnEventRecordsIter<'_> {}
+
 impl TurnEventRecords {
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.live
     }
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.live == 0
     }
     pub fn iter(&self) -> impl DoubleEndedIterator<Item = &TurnEventRecord> + ExactSizeIterator {
-        self.0.iter().map(Arc::as_ref)
+        TurnEventRecordsIter { slots: self.slots.iter(), remaining: self.live }
     }
     pub fn last(&self) -> Option<&TurnEventRecord> {
-        self.0.back().map(Arc::as_ref)
+        self.iter().next_back()
     }
     pub(crate) fn last_shared(&self) -> Option<Arc<TurnEventRecord>> {
-        self.0.back().cloned()
+        self.slots.iter().rev().find_map(|slot| slot.clone())
+    }
+    fn slot(&self, slot: usize) -> &Arc<TurnEventRecord> {
+        self.slots[slot].as_ref().expect("indexed slot holds a record")
     }
     /// The spells cast by this collection's records, in record order.
     pub(crate) fn cast_spells(&self) -> &im::Vector<ObjectId> {
         #[cfg(feature = "paranoid-invariants")]
         assert!(
-            self.1.iter().copied().eq(self.iter().filter_map(record_cast_spell)),
+            self.spells.iter().copied().eq(self.iter().filter_map(record_cast_spell)),
             "spell-cast index diverged from the turn's records"
         );
-        &self.1
+        &self.spells
     }
     fn reindex_cast_spells(&mut self) {
-        self.1 = self.iter().filter_map(record_cast_spell).collect();
+        self.spells = self.iter().filter_map(record_cast_spell).collect();
     }
     fn reindex_occurrences(&mut self) {
         let mut index: std::collections::HashMap<usize, Vec<usize>> = Default::default();
-        for (position, record) in self.0.iter().enumerate() {
-            index.entry(record.event.occurrence_key()).or_default().push(position);
+        for (slot, record) in self.slots.iter().enumerate() {
+            if let Some(record) = record {
+                index.entry(record.event.occurrence_key()).or_default().push(slot);
+            }
         }
-        self.2 = index.into_iter().map(|(key, positions)| (key, Arc::new(positions))).collect();
+        self.occurrences =
+            index.into_iter().map(|(key, slots)| (key, Arc::new(slots))).collect();
+        let mut index: std::collections::HashMap<ProvNodeId, Vec<usize>> = Default::default();
+        for (slot, record) in self.slots.iter().enumerate() {
+            if let Some(provenance) = record.as_deref().and_then(record_provenance) {
+                index.entry(provenance).or_default().push(slot);
+            }
+        }
+        self.provenances =
+            index.into_iter().map(|(key, slots)| (key, Arc::new(slots))).collect();
     }
-    fn index_occurrence(&mut self, key: usize, position: usize) {
-        let mut positions = self.2.get(&key).map(|p| p.as_ref().clone()).unwrap_or_default();
-        let at = positions.partition_point(|&p| p < position);
-        positions.insert(at, position);
-        self.2.insert(key, Arc::new(positions));
+    /// Drop empty slots once they outnumber records (amortized constant per
+    /// removal); every slot index changes, so the occurrence index is rebuilt.
+    fn compact_if_sparse(&mut self) {
+        let empty = self.slots.len() - self.live;
+        if empty <= 32 || empty <= self.live {
+            return;
+        }
+        self.slots = self.slots.iter().filter(|slot| slot.is_some()).cloned().collect();
+        self.reindex_occurrences();
     }
-    fn unindex_occurrence(&mut self, key: usize, position: usize) {
-        let Some(existing) = self.2.get(&key) else { return };
-        let mut positions = existing.as_ref().clone();
-        positions.retain(|&p| p != position);
-        if positions.is_empty() {
-            self.2.remove(&key);
-        } else {
-            self.2.insert(key, Arc::new(positions));
+    /// Index `record`, now in `slot`, by occurrence and provenance.
+    fn index_record(&mut self, record: &TurnEventRecord, slot: usize) {
+        index_slot(&mut self.occurrences, record.event.occurrence_key(), slot);
+        if let Some(provenance) = record_provenance(record) {
+            index_slot(&mut self.provenances, provenance, slot);
         }
     }
-    /// Positions of the records of one occurrence, in record order.
-    pub(crate) fn occurrence_positions(&self, key: usize) -> &[usize] {
+    fn unindex_record(&mut self, record: &TurnEventRecord, slot: usize) {
+        unindex_slot(&mut self.occurrences, record.event.occurrence_key(), slot);
+        if let Some(provenance) = record_provenance(record) {
+            unindex_slot(&mut self.provenances, provenance, slot);
+        }
+    }
+    /// Slots of the records with one (non-default) provenance, in record order.
+    fn provenance_slots(&self, provenance: ProvNodeId) -> &[usize] {
         #[cfg(feature = "paranoid-invariants")]
         {
             let scanned: Vec<usize> = self
+                .slots
                 .iter()
                 .enumerate()
-                .filter(|(_, record)| record.event.occurrence_key() == key)
-                .map(|(position, _)| position)
+                .filter(|(_, record)| {
+                    record.as_deref().and_then(record_provenance) == Some(provenance)
+                })
+                .map(|(slot, _)| slot)
                 .collect();
             assert_eq!(
                 scanned.as_slice(),
-                self.2.get(&key).map_or(&[][..], |p| p.as_slice()),
+                self.provenances.get(&provenance).map_or(&[][..], |p| p.as_slice()),
+                "provenance index diverged from the turn's records"
+            );
+        }
+        self.provenances.get(&provenance).map_or(&[], |slots| slots.as_slice())
+    }
+    /// Slots of the records of one occurrence, in record order.
+    fn occurrence_slots(&self, key: usize) -> &[usize] {
+        #[cfg(feature = "paranoid-invariants")]
+        {
+            let scanned: Vec<usize> = self
+                .slots
+                .iter()
+                .enumerate()
+                .filter(|(_, record)| {
+                    record.as_ref().is_some_and(|record| record.event.occurrence_key() == key)
+                })
+                .map(|(slot, _)| slot)
+                .collect();
+            assert_eq!(
+                scanned.as_slice(),
+                self.occurrences.get(&key).map_or(&[][..], |p| p.as_slice()),
                 "occurrence index diverged from the turn's records"
             );
         }
-        self.2.get(&key).map_or(&[], |positions| positions.as_slice())
+        self.occurrences.get(&key).map_or(&[], |slots| slots.as_slice())
     }
     pub(crate) fn contains_occurrence(&self, key: usize) -> bool {
-        !self.occurrence_positions(key).is_empty()
+        !self.occurrence_slots(key).is_empty()
     }
     fn first_occurrence(&self, event: &TriggerEvent) -> Option<usize> {
-        self.occurrence_positions(event.occurrence_key()).first().copied()
+        self.occurrence_slots(event.occurrence_key()).first().copied()
     }
-    /// Replace the record at `index`; the index is rebuilt only when either
-    /// record is a spell cast.
-    fn set_record(&mut self, index: usize, record: Arc<TurnEventRecord>) {
-        let touches_cast = record_cast_spell(&self.0[index]).is_some()
-            || record_cast_spell(&record).is_some();
-        let old_key = self.0[index].event.occurrence_key();
-        let new_key = record.event.occurrence_key();
-        self.0.set(index, record);
-        if old_key != new_key {
-            self.unindex_occurrence(old_key, index);
-            self.index_occurrence(new_key, index);
+    /// Replace the record in `slot`; the spell index is rebuilt only when
+    /// either record is a spell cast.
+    fn set_record(&mut self, slot: usize, record: Arc<TurnEventRecord>) {
+        let previous = self.slot(slot).clone();
+        let touches_cast =
+            record_cast_spell(&previous).is_some() || record_cast_spell(&record).is_some();
+        let reindex = previous.event.occurrence_key() != record.event.occurrence_key()
+            || record_provenance(&previous) != record_provenance(&record);
+        if reindex {
+            self.unindex_record(&previous, slot);
+            self.index_record(&record, slot);
         }
+        self.slots.set(slot, Some(record));
         if touches_cast {
             self.reindex_cast_spells();
         }
     }
     pub(crate) fn push_shared(&mut self, record: Arc<TurnEventRecord>) {
         if let Some(spell) = record_cast_spell(&record) {
-            self.1.push_back(spell);
+            self.spells.push_back(spell);
         }
-        let key = record.event.occurrence_key();
-        self.0.push_back(record);
-        self.index_occurrence(key, self.0.len() - 1);
+        self.index_record(&record, self.slots.len());
+        self.slots.push_back(Some(record));
+        self.live += 1;
     }
     /// Preserve the original position while replacing an immutable receipt.
     pub(crate) fn replace_shared(&mut self, record: Arc<TurnEventRecord>) -> bool {
-        let Some(index) = self.first_occurrence(&record.event) else {
+        let Some(slot) = self.first_occurrence(&record.event) else {
             return false;
         };
-        self.set_record(index, record);
+        self.set_record(slot, record);
         true
     }
     pub(crate) fn retain_trigger_capture_receipt(
         &mut self,
         event: &TriggerEvent,
     ) -> Option<Arc<TurnEventRecord>> {
-        let index = self.first_occurrence(event)?;
-        let previous = &self[index];
+        let slot = self.first_occurrence(event)?;
+        let previous = self.slot(slot);
         let mut observation = previous.event.clone();
         observation.inherit_trigger_capture(event);
         let record = Arc::new(TurnEventRecord {
@@ -217,7 +339,7 @@ impl TurnEventRecords {
             object_snapshot: previous.object_snapshot.clone(),
             source_snapshot: previous.source_snapshot.clone(),
         });
-        self.set_record(index, record.clone());
+        self.set_record(slot, record.clone());
         Some(record)
     }
 
@@ -232,10 +354,10 @@ impl TurnEventRecords {
         if event.completed_action_provenance().is_none() {
             return None;
         }
-        let Some(index) = self.first_occurrence(event) else {
+        let Some(slot) = self.first_occurrence(event) else {
             return None;
         };
-        let previous = &self[index];
+        let previous = self.slot(slot);
         let record = if previous.event.completed_action_provenance().is_some() {
             // A later wrapper may add trigger proof and contextual bindings,
             // but cannot recapture the completed action's characteristics.
@@ -259,7 +381,7 @@ impl TurnEventRecords {
                     .or(source_snapshot),
             })
         };
-        self.set_record(index, record.clone());
+        self.set_record(slot, record.clone());
         Some(record)
     }
 
@@ -267,41 +389,105 @@ impl TurnEventRecords {
         self.push_shared(Arc::new(record));
     }
     pub fn clear(&mut self) {
-        self.0.clear();
-        self.1.clear();
-        self.2.clear();
+        self.slots.clear();
+        self.live = 0;
+        self.spells.clear();
+        self.occurrences.clear();
+        self.provenances.clear();
     }
+    /// Keep the first `len` records.
     pub fn truncate(&mut self, len: usize) {
-        if len >= self.0.len() {
+        if len >= self.live {
             return;
         }
-        self.0.truncate(len);
-        if !self.1.is_empty() {
+        let mut seen = 0;
+        let cut = self
+            .slots
+            .iter()
+            .position(|slot| {
+                if slot.is_some() {
+                    if seen == len {
+                        return true;
+                    }
+                    seen += 1;
+                }
+                false
+            })
+            .unwrap_or(self.slots.len());
+        self.slots.truncate(cut);
+        self.live = len;
+        if !self.spells.is_empty() {
             self.reindex_cast_spells();
         }
         self.reindex_occurrences();
     }
+    /// Remove the records `keep` rejects. `keep` sees each record once, in
+    /// record order. Removed records leave empty slots (see the type docs).
     pub fn retain(&mut self, mut keep: impl FnMut(&TurnEventRecord) -> bool) {
-        let before = self.0.len();
-        self.0.retain(|record| keep(record));
-        if self.0.len() == before {
+        let removed: Vec<usize> = self
+            .slots
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, record)| {
+                record.as_ref().filter(|record| !keep(record)).map(|_| slot)
+            })
+            .collect();
+        if removed.is_empty() {
             return;
         }
-        if !self.1.is_empty() {
+        let mut spells_changed = false;
+        for &slot in &removed {
+            let record = self.slot(slot).clone();
+            spells_changed |= record_cast_spell(&record).is_some();
+            self.unindex_record(&record, slot);
+            self.slots.set(slot, None);
+            self.live -= 1;
+        }
+        if spells_changed {
             self.reindex_cast_spells();
         }
-        self.reindex_occurrences();
+        self.compact_if_sparse();
+    }
+    /// `retain(|record| record.event.occurrence_key() != key)`, visiting only
+    /// that occurrence's slots through the index.
+    pub(crate) fn remove_occurrence(&mut self, key: usize) {
+        let removed = self.occurrence_slots(key).to_vec();
+        self.remove_slots(removed);
+    }
+    /// `retain(|record| record.event.provenance() != provenance)` for a
+    /// non-default provenance, visiting only its slots through the index.
+    pub(crate) fn remove_provenance(&mut self, provenance: ProvNodeId) {
+        let removed = self.provenance_slots(provenance).to_vec();
+        self.remove_slots(removed);
+    }
+    fn remove_slots(&mut self, removed: Vec<usize>) {
+        if removed.is_empty() {
+            return;
+        }
+        let mut spells_changed = false;
+        for slot in removed {
+            let record = self.slot(slot).clone();
+            spells_changed |= record_cast_spell(&record).is_some();
+            self.unindex_record(&record, slot);
+            self.slots.set(slot, None);
+            self.live -= 1;
+        }
+        if spells_changed {
+            self.reindex_cast_spells();
+        }
+        self.compact_if_sparse();
     }
     /// Records of one occurrence, in record order.
     pub(crate) fn occurrence_records(&self, key: usize) -> impl Iterator<Item = &TurnEventRecord> {
-        self.occurrence_positions(key).iter().map(|&position| self.0[position].as_ref())
+        self.occurrence_slots(key).iter().map(|&slot| self.slot(slot).as_ref())
     }
 }
 
 impl std::ops::Index<usize> for TurnEventRecords {
     type Output = TurnEventRecord;
+    /// The `index`th record.
     fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
+        self.iter().nth(index).expect("record index out of bounds")
     }
 }
 
@@ -657,8 +843,7 @@ impl TurnHistory {
         if provenance == ProvNodeId::default() {
             return;
         }
-        self.staged_event_records
-            .retain(|record| record.event.provenance() != provenance);
+        self.staged_event_records.remove_provenance(provenance);
     }
 
     pub fn stage_event(
@@ -685,10 +870,7 @@ impl TurnHistory {
             ),
             None => (event.clone(), object_snapshot, source_snapshot),
         };
-        if self.staged_event_records.contains_occurrence(event.occurrence_key()) {
-            self.staged_event_records
-                .retain(|record| record.event.occurrence_key() != event.occurrence_key());
-        }
+        self.staged_event_records.remove_occurrence(event.occurrence_key());
         self.remove_staged_event(event.provenance());
         let record = Arc::new(TurnEventRecord {
             event: event.clone(),

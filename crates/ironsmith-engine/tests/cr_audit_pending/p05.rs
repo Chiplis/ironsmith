@@ -920,7 +920,7 @@ fn cr_400_7c_prevention_for_a_permanent_spell_applies_to_the_permanent() {
 
 #[test]
 fn cr_400_7d_permanent_reads_mana_spent_on_its_spell() {
-    for white in [3u32, 1] {
+    for white in [3u64, 1] {
         let mut g = main_game();
         let mut q = TriggerQueue::new();
         let paladin = card("Ardenvale Paladin", "Mana cost: {3}{W}\nType: Creature — Human Knight\nPower/Toughness: 2/5\nAdamant — If at least three white mana was spent to cast this spell, this creature enters with a +1/+1 counter on it.");

@@ -880,7 +880,7 @@ fn identity_mana_source(game: &mut GameState, owner: PlayerId) -> ObjectId {
     game.create_object_from_definition(&definition, owner, Zone::Battlefield)
 }
 
-fn pool_total(game: &GameState, player: PlayerId) -> u32 {
+fn pool_total(game: &GameState, player: PlayerId) -> u64 {
     let pool = &game.player(player).unwrap().mana_pool;
     pool.white + pool.blue + pool.black + pool.red + pool.green + pool.colorless
 }

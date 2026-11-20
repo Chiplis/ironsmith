@@ -1459,7 +1459,9 @@ pub struct EffectStore {
     pub(crate) pending_hand_reveal_windows: Vec<crate::effects::player::HandRevealWindow>,
     pub(crate) hand_reveal_events_captured: crate::cow::CowArc<std::collections::HashMap<(u32,usize),crate::triggers::TriggerEvent>>,
     /// Scoped committed-action evidence, independent of trigger queue draining.
-    pub(crate) instruction_result_records: Vec<Vec<crate::effect::ExecutionFact>>,
+    /// Persistent inner lists: an open instruction can accumulate one fact
+    /// per event it causes, and the game is copied many times meanwhile.
+    pub(crate) instruction_result_records: Vec<im::Vector<crate::effect::ExecutionFact>>,
     /// Scoped observations retained for deferred action completion, independent
     /// of trigger queue consumption. Nested observers each retain their receipts.
     pub(crate) action_observation_records: Vec<Vec<crate::triggers::TriggerEvent>>,
@@ -1794,6 +1796,11 @@ struct RuntimeCacheState {
     trigger_registry: RefCell<Option<Arc<crate::triggers::check::TriggerRegistry>>>,
     object_snapshot_cache: RefCell<ObjectSnapshotCache>,
     dirty_characteristics_memo: RefCell<DirtyCharacteristicsMemo>,
+    effect_free_baseline: RefCell<EffectFreeBaseline>,
+    /// Per-source results of the three board scans that run on every refresh,
+    /// keyed by the effect-free baseline's characteristics `Arc` (see
+    /// `GameState::effect_free_view`).
+    pub(crate) source_indexes: RefCell<SourceIndexes>,
     /// Replacement effects discovered from abilities for one exact state
     /// (`memoized_replacement_effects_from_abilities`).
     replacement_discovery_memo:
@@ -1870,6 +1877,8 @@ impl Clone for RuntimeCacheState {
             // snapshot of a dirty game otherwise re-derived the whole board
             // for every snapshot taken of that one state.
             dirty_characteristics_memo: RefCell::new(self.dirty_characteristics_memo.borrow().clone()),
+            effect_free_baseline: RefCell::new(self.effect_free_baseline.borrow().clone()),
+            source_indexes: RefCell::new(self.source_indexes.borrow().clone()),
             replacement_discovery_memo: RefCell::new(self.replacement_discovery_memo.borrow().clone()),
             sba_candidates: RefCell::new(self.sba_candidates.borrow().clone()),
             characteristics_cache: CharacteristicsCache::cloned_from(&self.characteristics_cache),
@@ -1929,6 +1938,8 @@ impl RuntimeCacheState {
             trigger_registry: RefCell::new(None),
             object_snapshot_cache: RefCell::new(ObjectSnapshotCache::default()),
             dirty_characteristics_memo: RefCell::new(DirtyCharacteristicsMemo::default()),
+            effect_free_baseline: RefCell::new(EffectFreeBaseline::default()),
+            source_indexes: RefCell::new(SourceIndexes::default()),
             replacement_discovery_memo: RefCell::new(None),
             sba_candidates: RefCell::new(Default::default()),
             characteristics_cache: CharacteristicsCache::default(),
@@ -1971,6 +1982,204 @@ struct DirtyCharacteristicsMemo {
     static_effects: Option<Arc<Vec<ContinuousEffect>>>,
     characteristics:
         Arc<HashMap<ObjectId, Option<Arc<crate::continuous::CalculatedCharacteristics>>>>,
+}
+
+/// Characteristics last calculated on an effect-free board, for reuse after
+/// unrelated changes (see `effect_free_characteristics_batch`). Each entry
+/// keeps a `Weak` to the object it was calculated from: mutations go through
+/// `Arc::make_mut`, which gives a changed object a new allocation, so an
+/// entry is current only while its `Weak` still upgrades to the same one.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct EffectFreeBaseline {
+    pub(crate) fingerprint: Option<EffectFreeFingerprint>,
+    pub(crate) entries: PersistentMap<ObjectId, Arc<EffectFreeEntry>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct EffectFreeEntry {
+    /// Weak, so the cache never keeps an object alive or forces a copy:
+    /// `Arc::make_mut` moves a mutated object and disassociates this.
+    pub(crate) object: std::sync::Weak<Object>,
+    pub(crate) timestamps: (Option<u64>, Option<u64>, Vec<(u64, crate::object::CounterType)>),
+    pub(crate) characteristics: Arc<crate::continuous::CalculatedCharacteristics>,
+    /// `static_activity_mask` of the result's abilities when calculated.
+    pub(crate) activity: Vec<bool>,
+}
+
+/// One source's contribution to a board scan, valid while the baseline still
+/// serves the same characteristics allocation for it. `Weak`, like the
+/// baseline's own entries, so an index never keeps a result alive.
+#[derive(Debug)]
+pub(crate) struct SourceIndexEntry<T> {
+    pub(crate) characteristics: std::sync::Weak<crate::continuous::CalculatedCharacteristics>,
+    pub(crate) output: T,
+}
+
+impl<T> SourceIndexEntry<T> {
+    pub(crate) fn new(characteristics: &Arc<crate::continuous::CalculatedCharacteristics>, output: T) -> Arc<Self> {
+        Arc::new(Self { characteristics: Arc::downgrade(characteristics), output })
+    }
+
+    pub(crate) fn is_for(&self, characteristics: &Arc<crate::continuous::CalculatedCharacteristics>) -> bool {
+        std::ptr::eq(self.characteristics.as_ptr(), Arc::as_ptr(characteristics))
+    }
+}
+
+/// What an object's own abilities and counters can contribute to the board
+/// scans, computed from the object alone (see `GameState::board_static_summary`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ObjectStaticSummary {
+    /// A static functioning in its zone, or a live temporary grant, that may
+    /// emit continuous effects (`may_generate_continuous_effects`).
+    pub(crate) may_emit: bool,
+    /// A level-up tier that grants such a static.
+    pub(crate) level_grants_emitter: bool,
+    /// A nonzero counter with a power/toughness delta.
+    pub(crate) pt_counters: bool,
+    /// An ability the cant tracker must apply
+    /// (`cant_effects_static_scan_can_stay_empty`).
+    pub(crate) requires_cant_update: bool,
+    /// A static (printed, level or live temporary grant) that is a
+    /// history-gated designation (`static_is_history_designation`).
+    pub(crate) history_designation: bool,
+    /// An unmodified ability occurrence (`unmodified_ability_occurrences`)
+    /// that is an "enter as a copy" static.
+    pub(crate) enter_as_copy: bool,
+    /// A printed goad static (`GameState::GOAD_STATIC_IDS`).
+    pub(crate) goad: bool,
+    /// Any temporary static grant, or any level-granted static now.
+    pub(crate) grant_holder: bool,
+    /// A static (printed, level or live temporary grant) that is a
+    /// trigger-class event choice rule.
+    pub(crate) class_event_choice: bool,
+    /// A functioning triggered ability that subscribes to every event kind.
+    pub(crate) triggers_on_any_kind: bool,
+    /// Bit `kind as u8` for each event kind a functioning triggered ability
+    /// subscribes to (`may_have_triggered_abilities_for_event_kind`).
+    pub(crate) trigger_kinds: u128,
+}
+
+impl ObjectStaticSummary {
+    fn flags(self) -> [bool; 10] {
+        [self.may_emit, self.level_grants_emitter, self.pt_counters, self.requires_cant_update,
+            self.history_designation, self.enter_as_copy, self.goad, self.grant_holder,
+            self.class_event_choice, self.triggers_on_any_kind]
+    }
+
+    pub(crate) fn or(self, other: Self) -> Self {
+        Self {
+            may_emit: self.may_emit || other.may_emit,
+            level_grants_emitter: self.level_grants_emitter || other.level_grants_emitter,
+            pt_counters: self.pt_counters || other.pt_counters,
+            requires_cant_update: self.requires_cant_update || other.requires_cant_update,
+            history_designation: self.history_designation || other.history_designation,
+            enter_as_copy: self.enter_as_copy || other.enter_as_copy,
+            goad: self.goad || other.goad,
+            grant_holder: self.grant_holder || other.grant_holder,
+            class_event_choice: self.class_event_choice || other.class_event_choice,
+            triggers_on_any_kind: self.triggers_on_any_kind || other.triggers_on_any_kind,
+            trigger_kinds: self.trigger_kinds | other.trigger_kinds,
+        }
+    }
+}
+
+/// How many objects have each `ObjectStaticSummary` flag, so the board's
+/// combined summary follows object changes without re-inspecting the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SummaryCounts {
+    flags: [u32; 10],
+    kinds: [u32; 128],
+}
+
+impl Default for SummaryCounts {
+    fn default() -> Self {
+        Self { flags: [0; 10], kinds: [0; 128] }
+    }
+}
+
+impl SummaryCounts {
+    pub(crate) fn add(&mut self, summary: ObjectStaticSummary) {
+        for (count, flag) in self.flags.iter_mut().zip(summary.flags()) {
+            *count += u32::from(flag);
+        }
+        let mut kinds = summary.trigger_kinds;
+        while kinds != 0 {
+            self.kinds[kinds.trailing_zeros() as usize] += 1;
+            kinds &= kinds - 1;
+        }
+    }
+
+    pub(crate) fn remove(&mut self, summary: ObjectStaticSummary) {
+        for (count, flag) in self.flags.iter_mut().zip(summary.flags()) {
+            *count -= u32::from(flag);
+        }
+        let mut kinds = summary.trigger_kinds;
+        while kinds != 0 {
+            self.kinds[kinds.trailing_zeros() as usize] -= 1;
+            kinds &= kinds - 1;
+        }
+    }
+
+    pub(crate) fn combined(&self) -> ObjectStaticSummary {
+        let [may_emit, level_grants_emitter, pt_counters, requires_cant_update, history_designation,
+            enter_as_copy, goad, grant_holder, class_event_choice, triggers_on_any_kind] =
+            self.flags.map(|count| count != 0);
+        let trigger_kinds = self.kinds.iter().enumerate()
+            .filter(|(_, count)| **count != 0)
+            .fold(0u128, |mask, (bit, _)| mask | (1 << bit));
+        ObjectStaticSummary {
+            may_emit, level_grants_emitter, pt_counters, requires_cant_update,
+            history_designation, enter_as_copy, goad, grant_holder, class_event_choice,
+            triggers_on_any_kind, trigger_kinds,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct SourceIndexes {
+    /// Each object's `ObjectStaticSummary`, for the object allocation it was
+    /// computed from (`Arc::make_mut` gives a changed object a new one).
+    /// While `board_summary` is set, holds exactly the objects it counts,
+    /// each with the summary counted for it.
+    pub(crate) summaries: PersistentMap<ObjectId, (std::sync::Weak<Object>, ObjectStaticSummary)>,
+    /// The per-flag counts over every object, as of one object-store state
+    /// (its change cursor is replaced by every object insertion, removal and
+    /// mutation) on one turn (temporary grants expire by turn).
+    pub(crate) board_summary: Option<(crate::incremental::ChangeCursor, u32, SummaryCounts, ObjectStaticSummary)>,
+    /// Replacement effects a source generates from its abilities.
+    pub(crate) replacements:
+        PersistentMap<ObjectId, Arc<SourceIndexEntry<Arc<[crate::replacement::ReplacementEffect]>>>>,
+    /// The replacement manager's `static_publication` token when this index
+    /// last published, so `replacements` describes what that manager holds.
+    pub(crate) replacement_publication: Option<Arc<()>>,
+}
+
+/// Debug text with per-calculation allocation numbers erased, for the
+/// shadow checks that compare an index's served result with a recalculation.
+#[cfg(debug_assertions)]
+pub(crate) fn without_instance_ids(text: String) -> String {
+    let mut text = text;
+    for mark in ["StaticAbilityInstanceId(", "ReplacementEffectId("] {
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find(mark) {
+            out.push_str(&rest[..at + mark.len()]);
+            rest = &rest[at + mark.len()..];
+            rest = rest.trim_start_matches(|c: char| c.is_ascii_digit());
+        }
+        out.push_str(rest);
+        text = out;
+    }
+    text
+}
+
+/// Game-wide inputs an effect-free calculation reads outside the object.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EffectFreeFingerprint {
+    pub(crate) turn_number: u32,
+    pub(crate) active_player: PlayerId,
+    pub(crate) ring_bearers: Vec<(PlayerId, Option<ObjectId>)>,
+    pub(crate) commanders: Vec<ObjectId>,
 }
 
 /// LKI snapshot memo scoped to mutation, continuous-context and effect revisions.
@@ -8225,7 +8434,10 @@ impl GameState {
                     || Self::modification_is_turn_context_sensitive(&effect.modification))
                 // A lasting static designation may read history without
                 // producing any continuous effect until its clauses are met.
-                || self.battlefield.iter().copied().any(|id| {
+                // Only a permanent with such a static, printed or granted,
+                // is worth a characteristic read.
+                || (self.battlefield_may_hold_history_designation()
+                    && self.battlefield.iter().copied().any(|id| {
                     self.current_characteristics(id).is_some_and(|characteristics| {
                         characteristics.static_abilities.iter().any(|ability| {
                             matches!(ability.keyword_marker_mechanic(), Some(
@@ -8235,10 +8447,27 @@ impl GameState {
                             ) if !history_requirements.is_empty())
                         })
                     })
-                }))
+                })))
         {
             self.mark_continuous_state_dirty();
         }
+    }
+
+    pub(crate) fn static_is_history_designation(ability: &crate::static_abilities::StaticAbility) -> bool {
+        matches!(ability.keyword_marker_mechanic(), Some(
+            ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation {
+                history_requirements, ..
+            }
+        ) if !history_requirements.is_empty())
+    }
+
+    /// `false` proves no permanent's current characteristics hold a
+    /// history-gated designation: no object has one of its own (summary) and
+    /// no continuous effect could grant or copy one onto it.
+    fn battlefield_may_hold_history_designation(&self) -> bool {
+        !self.commander_tracking.merged_permanents.is_empty()
+            || self.board_static_summary().history_designation
+            || self.static_ability_may_be_granted(&Self::static_is_history_designation)
     }
 
     /// Whether publishing a turn-history record can change `condition`.
@@ -10027,13 +10256,22 @@ impl GameState {
     /// can have it. Checking that first avoids building a derived view and
     /// reading characteristics for the whole battlefield on every object
     /// snapshot, which is how often goad is queried.
+    /// The goad statics `ObjectStaticSummary::goad` records.
+    pub(crate) const GOAD_STATIC_IDS: [crate::static_abilities::StaticAbilityId; 3] = [
+        crate::static_abilities::StaticAbilityId::GoadedBySourceController,
+        crate::static_abilities::StaticAbilityId::AttachedGoadedBySourceController,
+        crate::static_abilities::StaticAbilityId::GoadMatching,
+    ];
+
     fn any_goad_ability_exists(&self, goad: crate::static_abilities::StaticAbilityId) -> bool {
         use crate::continuous::Modification;
         let is_goad_ability = |ability: &crate::ability::Ability| matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.id() == goad);
-        self.battlefield
-            .iter()
-            .filter_map(|id| self.object(*id))
-            .any(|object| object.abilities.iter().any(is_goad_ability))
+        // The summary covers every object's printed statics in `GOAD_STATIC_IDS`.
+        ((!Self::GOAD_STATIC_IDS.contains(&goad) || self.board_static_summary().goad)
+            && self.battlefield
+                .iter()
+                .filter_map(|id| self.object(*id))
+                .any(|object| object.abilities.iter().any(is_goad_ability)))
             || self
                 .effect_store
                 .continuous_effects

@@ -1042,7 +1042,7 @@ fn p13_forest() -> CardDefinition {
     p13_compile("Forest", "Type: Basic Land — Forest")
 }
 
-fn p13_pool_total(game: &GameState, player: PlayerId) -> u32 {
+fn p13_pool_total(game: &GameState, player: PlayerId) -> u64 {
     let p = &game.player(player).unwrap().mana_pool;
     p.white + p.blue + p.black + p.red + p.green + p.colorless
 }

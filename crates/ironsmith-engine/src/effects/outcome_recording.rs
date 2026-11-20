@@ -465,12 +465,13 @@ pub(crate) fn capture_instruction_records<T>(
 ) -> (T, Vec<ExecutionFact>) {
     game.effect_store
         .instruction_result_records
-        .push(Vec::new());
+        .push(im::Vector::new());
     let result = body(game);
     let recorded = game
         .effect_store
         .instruction_result_records
         .pop()
+        .map(|record| record.into_iter().collect())
         .unwrap_or_default();
     (result, recorded)
 }

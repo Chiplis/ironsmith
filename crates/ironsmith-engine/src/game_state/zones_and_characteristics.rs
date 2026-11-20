@@ -6158,7 +6158,7 @@ retain_original_types: false, retain_original_name: false,
             self.object(*id).is_some_and(|object| object.zone == Zone::Battlefield)
         });
         let mut request = missing.clone();
-        if any_permanent {
+        if any_permanent && !(effects.is_empty() && self.effect_free_gate_open()) {
             for &id in &self.battlefield {
                 if !self.is_phased_out(id)
                     && !request.contains(&id)
@@ -6242,7 +6242,9 @@ retain_original_types: false, retain_original_name: false,
             .work_counters
             .add_effects_considered(all_effects.len() as u64);
         let marker = crate::continuous::provisional_condition_marker();
-        let board: Vec<_> = if self
+        let board: Vec<_> = if all_effects.is_empty() && self.effect_free_gate_open() {
+            vec![id]
+        } else if self
             .object(id)
             .is_some_and(|object| object.zone == Zone::Battlefield)
         {
@@ -6498,6 +6500,200 @@ retain_original_types: false, retain_original_name: false,
         memo.characteristics.get(&id).cloned().flatten()
     }
 
+    /// Characteristics for `ids` when the continuous-effect list is empty.
+    ///
+    /// With no effect, nothing applies across objects: each object's result
+    /// depends only on the object, its effect-store timestamps, and a few
+    /// game-wide inputs. Rare inputs (face-down or phased-out permanents,
+    /// merged permanents, control prohibitions, deployed creatures, pending
+    /// hidden draws, locked Rooms, statics with their own activity
+    /// conditions) are excluded outright; the rest form the fingerprint.
+    /// A previous result is reused only for the identical object `Arc`
+    /// (see `EffectFreeBaseline`), so after one permanent enters only the
+    /// changed objects are calculated instead of the whole battlefield.
+    /// `None` means "use the full batch".
+    /// The game-wide part of `effect_free_characteristics_batch`'s gate.
+    /// While it is open, one object's read costs about as much as one
+    /// object's calculation, so callers need not widen it to the board.
+    pub(crate) fn effect_free_gate_open(&self) -> bool {
+        crate::continuous::nested_regeneration_context(self).is_none()
+            && self.battlefield_flags.face_down.is_empty()
+            && self.battlefield_flags.phased_out.is_empty()
+            && self.commander_tracking.merged_permanents.is_empty()
+            && self.effect_store.cant_effects.cant_gain_control.is_empty()
+            && self
+                .effect_store
+                .cant_effects
+                .control_prohibitions_during_scan
+                .as_ref()
+                .is_none_or(|prohibitions| prohibitions.is_empty())
+            && !self.deploy_creatures
+    }
+
+    /// Objects whose effect-free characteristics are never served from the
+    /// baseline: their result reads other objects inside the board pass's
+    /// evaluation context, or inputs the fingerprint does not cover.
+    fn effect_free_object_excluded(&self, id: ObjectId) -> bool {
+        crate::continuous::characteristics_calculation_in_progress(self, id)
+            // A conditional static reads other objects inside the
+            // board pass's evaluation context; keep that pass.
+            || self.object(id).is_some_and(|object| {
+                object.abilities.iter().any(|ability| matches!(&ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability)
+                        if crate::continuous::static_ability_has_condition(static_ability)))
+                    || !object.temporary_static_ability_grants.is_empty()
+                    || !object.level_granted_abilities().is_empty()
+            })
+            || self.drawn_card_waits_for_announcement(id)
+            || self.battlefield_flags.rooms_with_no_unlocked_door.contains(&id)
+    }
+
+    fn effect_free_fingerprint(&self) -> crate::game_state::EffectFreeFingerprint {
+        crate::game_state::EffectFreeFingerprint {
+            turn_number: self.turn.turn_number,
+            active_player: self.turn.active_player,
+            ring_bearers: self.players.iter().map(|player| (player.id, player.ring_bearer)).collect(),
+            commanders: {
+                let mut commanders: Vec<_> = self.commander_objects().iter().copied().collect();
+                commanders.sort();
+                commanders
+            },
+        }
+    }
+
+    /// The stored baseline entry for `id` if it is the current result: the
+    /// same object allocation, effect-store timestamps and static activity.
+    fn current_effect_free_entry(
+        &self,
+        id: ObjectId,
+        shared: &Arc<crate::object::Object>,
+    ) -> Option<Arc<crate::game_state::EffectFreeEntry>> {
+        // Borrows stay short: an activity condition read below can ask for
+        // another object's characteristics and re-enter the baseline.
+        let entry = self.runtime_cache.effect_free_baseline.borrow().entries.get(&id).cloned()?;
+        (entry.object.upgrade().is_some_and(|object| Arc::ptr_eq(&object, shared))
+            && entry.timestamps == crate::continuous::effect_free_object_timestamps(shared, self)
+            && crate::continuous::static_activity_mask(
+                entry.characteristics.abilities.as_slice(), self, id,
+            ) == entry.activity)
+            .then_some(entry)
+    }
+
+    /// A read-only handle on the effect-free baseline for per-source indexes
+    /// (replacement, static-effect and cant scans). It exists only when the
+    /// continuous-effect list is empty and the baseline's game-wide gate and
+    /// fingerprint hold, so an object's served `Arc` is its current
+    /// characteristics: an index entry keyed by that `Arc` (held `Weak`)
+    /// stays valid exactly while the object's calculation would be reused.
+    pub(crate) fn has_merged_permanents(&self) -> bool {
+        !self.commander_tracking.merged_permanents.is_empty()
+    }
+
+    pub(crate) fn source_indexes(&self) -> &RefCell<crate::game_state::SourceIndexes> {
+        &self.runtime_cache.source_indexes
+    }
+
+    pub(crate) fn effect_free_view(&self, effects_empty: bool) -> Option<EffectFreeView<'_>> {
+        if !effects_empty
+            || EFFECT_FREE_SHADOWING.with(std::cell::Cell::get)
+            || !self.effect_free_gate_open()
+        {
+            return None;
+        }
+        let fingerprint = self.effect_free_fingerprint();
+        (self.runtime_cache.effect_free_baseline.borrow().fingerprint.as_ref() == Some(&fingerprint))
+            .then_some(EffectFreeView { game: self })
+    }
+
+    pub(crate) fn effect_free_characteristics_batch(
+        &self,
+        ids: &[ObjectId],
+        objects: &crate::game_state::ObjectMap,
+        battlefield: &[ObjectId],
+        commanders: &std::collections::HashSet<ObjectId>,
+    ) -> Option<HashMap<ObjectId, crate::continuous::CalculatedCharacteristics>> {
+        if EFFECT_FREE_SHADOWING.with(std::cell::Cell::get)
+            || ids.is_empty()
+            || !std::ptr::eq(objects, self.objects_map())
+            || !std::ptr::eq(battlefield, self.battlefield.as_slice())
+            || !std::ptr::eq(commanders, self.commander_objects())
+            || !self.effect_free_gate_open()
+            || ids.iter().any(|&id| self.effect_free_object_excluded(id))
+        {
+            return None;
+        }
+        let fingerprint = self.effect_free_fingerprint();
+        // An object whose own statics have activity conditions reads the game
+        // for its result; it is calculated every time and never stored.
+        let reusable = |object: &crate::object::Object| {
+            !object.subtypes.contains(&Subtype::Room)
+                && object.abilities.iter().all(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Static(static_ability) => {
+                        !static_ability.has_own_activity_condition()
+                            && static_ability.id()
+                                != crate::static_abilities::StaticAbilityId::RuleRestriction
+                    }
+                    _ => true,
+                })
+        };
+        {
+            let mut baseline = self.runtime_cache.effect_free_baseline.borrow_mut();
+            if baseline.fingerprint.as_ref() != Some(&fingerprint) {
+                baseline.entries = Default::default();
+                baseline.fingerprint = Some(fingerprint);
+            }
+        }
+        let mut calculated = HashMap::with_capacity(ids.len());
+        for &id in ids {
+            let Some(shared) = self.object_store.shared_object(id) else {
+                continue;
+            };
+            if let Some(entry) = self.current_effect_free_entry(id, shared) {
+                calculated.insert(id, entry.characteristics.as_ref().clone());
+                continue;
+            }
+            let timestamps = crate::continuous::effect_free_object_timestamps(shared, self);
+            let chars = crate::continuous::calculate_effect_free_direct(
+                shared, objects, battlefield, commanders, self,
+            );
+            if reusable(shared) {
+                let entry = Arc::new(crate::game_state::EffectFreeEntry {
+                    object: Arc::downgrade(shared),
+                    timestamps,
+                    activity: crate::continuous::static_activity_mask(
+                        chars.abilities.as_slice(), self, id,
+                    ),
+                    characteristics: Arc::new(chars.clone()),
+                });
+                self.runtime_cache.effect_free_baseline.borrow_mut().entries.insert(id, entry);
+            } else {
+                self.runtime_cache.effect_free_baseline.borrow_mut().entries.remove(&id);
+            }
+            calculated.insert(id, chars);
+        }
+        #[cfg(debug_assertions)]
+        if std::env::var_os("IRONSMITH_EFFECT_FREE_SHADOW").is_some() {
+            EFFECT_FREE_SHADOWING.with(|flag| flag.set(true));
+            let expected = crate::continuous::calculate_characteristics_batch_with_effects(
+                ids, objects, &[], battlefield, commanders, self,
+            );
+            EFFECT_FREE_SHADOWING.with(|flag| flag.set(false));
+            // Ability instance ids are allocated per calculation; a reused
+            // result keeps the ids it was calculated with, as the memo does.
+            use crate::game_state::without_instance_ids;
+            for (id, chars) in &calculated {
+                assert_eq!(
+                    Some(without_instance_ids(format!("{chars:?}"))),
+                    expected.get(id).map(|expected| without_instance_ids(format!("{expected:?}"))),
+                    "effect-free characteristics diverged for object #{}",
+                    id.0
+                );
+            }
+            assert_eq!(calculated.len(), expected.len(), "effect-free batch answered other ids");
+        }
+        Some(calculated)
+    }
+
     pub(crate) fn calculated_characteristics_batch_with_effects(
         &self,
         ids: &[ObjectId],
@@ -6719,7 +6915,12 @@ retain_original_types: false, retain_original_name: false,
             .work_counters
             .add_effects_considered(all_effects.len() as u64);
         if self.continuous_state_is_clean() {
-            let mut scope = self.battlefield.clone();
+            let mut scope: Vec<ObjectId> =
+                if all_effects.is_empty() && self.effect_free_gate_open() {
+                    Vec::new()
+                } else {
+                    self.battlefield.iter().copied().collect()
+                };
             if !scope.contains(&id) {
                 scope.push(id);
             }
@@ -8078,8 +8279,6 @@ retain_original_types: false, retain_original_name: false,
     }
 
     pub(crate) fn cant_effects_static_scan_can_stay_empty(&self, all_effects: &[ContinuousEffect]) -> bool {
-        use crate::ability::AbilityKind;
-
         if !self.effect_store.restriction_effects.is_empty()
             || !self.effect_store.goad_effects.is_empty()
         {
@@ -8093,36 +8292,171 @@ retain_original_types: false, retain_original_name: false,
             return false;
         }
 
-        self.objects.values().all(|object| {
-            let printed_abilities_are_irrelevant = object.abilities.iter().all(|ability| {
-                if !ability.functions_in(&object.zone) {
-                    return true;
-                }
-                match &ability.kind {
-                    AbilityKind::Static(static_ability) => {
-                        !Self::static_ability_requires_cant_update(static_ability)
-                    }
-                    _ => true,
-                }
-            });
-            if !printed_abilities_are_irrelevant || object.zone != Zone::Battlefield {
-                return printed_abilities_are_irrelevant;
-            }
-
-            let level_abilities_are_irrelevant = object
-                .level_granted_abilities()
-                .iter()
-                .all(|ability| !Self::static_ability_requires_cant_update(ability));
-            let temporary_abilities_are_irrelevant = object
-                .temporary_static_ability_grants
-                .iter()
-                .filter(|grant| !grant.is_expired(self.turn.turn_number))
-                .filter_map(|grant| grant.materialize())
-                .all(|ability| !Self::static_ability_requires_cant_update(&ability));
-
-            level_abilities_are_irrelevant && temporary_abilities_are_irrelevant
-        })
+        !self.board_static_summary().requires_cant_update
     }
+
+    /// `ObjectStaticSummary` of one object, from the object alone (and the
+    /// turn number, for temporary grants' expiry).
+    fn object_static_summary(&self, object: &crate::object::Object) -> crate::game_state::ObjectStaticSummary {
+        use crate::ability::AbilityKind;
+        let live_grants: Vec<_> = object
+            .temporary_static_ability_grants
+            .iter()
+            .filter(|grant| !grant.is_expired(self.turn.turn_number))
+            .filter_map(|grant| grant.materialize())
+            .collect();
+        let functioning_statics = || object.abilities.iter().filter(|ability| ability.functions_in(&object.zone))
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability),
+                _ => None,
+            });
+        let printed_require_cant = functioning_statics().any(Self::static_ability_requires_cant_update);
+        let requires_cant_update = printed_require_cant
+            || (object.zone == Zone::Battlefield
+                && (object.level_granted_abilities().iter().any(Self::static_ability_requires_cant_update)
+                    || live_grants.iter().any(Self::static_ability_requires_cant_update)));
+        let granted: Vec<_> = live_grants.iter().cloned().map(crate::ability::Ability::static_ability).collect();
+        // `may_have_triggered_abilities_for_event_kind`'s per-object reading.
+        let (mut triggers_on_any_kind, mut trigger_kinds) = (false, 0u128);
+        let mut subscribe = |ability: &crate::ability::Ability| {
+            if !ability.functions_in(&object.zone) {
+                return;
+            }
+            let AbilityKind::Triggered(triggered) = &ability.kind else { return };
+            match triggered.trigger.subscribed_kinds() {
+                None => triggers_on_any_kind = true,
+                Some(kinds) => {
+                    for kind in kinds.iter() {
+                        trigger_kinds |= 1u128 << (*kind as u8);
+                    }
+                }
+            }
+        };
+        for ability in object.abilities.iter().chain(object.counters.occurrence_abilities()) {
+            subscribe(ability);
+        }
+        for grant in &live_grants {
+            if let Some(ability) = grant.granted_inline_ability() {
+                subscribe(ability);
+            }
+            for ability in grant.source_granted_inline_abilities() {
+                subscribe(&ability);
+            }
+        }
+        crate::game_state::ObjectStaticSummary {
+            may_emit: functioning_statics().any(|ability| ability.may_generate_continuous_effects())
+                || live_grants.iter().any(|ability| ability.may_generate_continuous_effects()),
+            level_grants_emitter: crate::static_ability_processor::abilities_grant_continuous_levels(&object.abilities)
+                || crate::static_ability_processor::abilities_grant_continuous_levels(&granted),
+            pt_counters: object.counters.iter().any(|(counter, count)| *count != 0 && counter.pt_delta().is_some()),
+            requires_cant_update,
+            history_designation: object.abilities.iter().any(|ability| matches!(&ability.kind,
+                    AbilityKind::Static(static_ability) if Self::static_is_history_designation(static_ability)))
+                || object.level_granted_abilities().iter().any(Self::static_is_history_designation)
+                || live_grants.iter().any(Self::static_is_history_designation),
+            enter_as_copy: crate::continuous::unmodified_ability_occurrences(object, self.turn.turn_number)
+                .iter()
+                .any(|ability| matches!(&ability.kind,
+                    AbilityKind::Static(static_ability) if static_ability.enter_as_copy_as_enters().is_some())),
+            goad: object.abilities.iter().any(|ability| matches!(&ability.kind,
+                AbilityKind::Static(static_ability) if Self::GOAD_STATIC_IDS.contains(&static_ability.id()))),
+            grant_holder: !object.temporary_static_ability_grants.is_empty()
+                || !object.level_granted_abilities().is_empty(),
+            class_event_choice: object.abilities.iter().any(|ability| matches!(&ability.kind,
+                    AbilityKind::Static(static_ability)
+                        if crate::triggers::class_event_choice::static_is_class_event_choice(static_ability)))
+                || object.level_granted_abilities().iter()
+                    .any(crate::triggers::class_event_choice::static_is_class_event_choice)
+                || live_grants.iter().any(crate::triggers::class_event_choice::static_is_class_event_choice),
+            triggers_on_any_kind,
+            trigger_kinds,
+        }
+    }
+
+    /// Every object's `ObjectStaticSummary` combined. Kept as per-flag
+    /// counts: after a change, only the objects the object store's change
+    /// journal names are re-inspected; a full pass (an expired cursor, a new
+    /// turn, a sibling branch) still skips any object whose allocation is
+    /// unchanged since its summary was stored.
+    pub(crate) fn board_static_summary(&self) -> crate::game_state::ObjectStaticSummary {
+        let cursor = self.object_store.changes.cursor();
+        let turn = self.turn.turn_number;
+        let previous = self.runtime_cache.source_indexes.borrow().board_summary.clone();
+        let counts = match previous {
+            Some((at, at_turn, _, combined)) if at == cursor && at_turn == turn => return combined,
+            Some((at, at_turn, mut counts, _)) if at_turn == turn => match self.object_store.changes.since(&at) {
+                Some(changed) => {
+                    let mut seen = std::collections::HashSet::new();
+                    let mut indexes = self.runtime_cache.source_indexes.borrow_mut();
+                    for id in changed.into_iter().filter(|id| seen.insert(*id)) {
+                        let held = indexes.summaries.get(&id).cloned();
+                        let current = self.objects.get(&id);
+                        if let (Some((weak, _)), Some(object)) = (&held, current)
+                            && std::ptr::eq(weak.as_ptr(), Arc::as_ptr(object))
+                        {
+                            continue;
+                        }
+                        if let Some((_, summary)) = held {
+                            counts.remove(summary);
+                            indexes.summaries.remove(&id);
+                        }
+                        if let Some(object) = current {
+                            let summary = self.object_static_summary(object);
+                            counts.add(summary);
+                            indexes.summaries.insert(id, (Arc::downgrade(object), summary));
+                        }
+                    }
+                    counts
+                }
+                None => self.recount_board_static_summary(),
+            },
+            _ => self.recount_board_static_summary(),
+        };
+        #[cfg(feature = "paranoid-invariants")]
+        {
+            let mut fresh = crate::game_state::SummaryCounts::default();
+            for object in self.objects.values() {
+                fresh.add(self.object_static_summary(object));
+            }
+            assert_eq!(counts, fresh, "board static summary diverged from a fresh count");
+        }
+        let combined = counts.combined();
+        self.runtime_cache.source_indexes.borrow_mut().board_summary = Some((cursor, turn, counts, combined));
+        combined
+    }
+
+    /// Count every object, reusing stored summaries of unchanged objects.
+    fn recount_board_static_summary(&self) -> crate::game_state::SummaryCounts {
+        let mut counts = crate::game_state::SummaryCounts::default();
+        let mut stale = Vec::new();
+        {
+            let indexes = self.runtime_cache.source_indexes.borrow();
+            for (id, object) in self.objects.iter() {
+                match indexes.summaries.get(id) {
+                    // A temporary grant's expiry reads the turn number.
+                    Some((weak, summary))
+                        if std::ptr::eq(weak.as_ptr(), Arc::as_ptr(object))
+                            && object.temporary_static_ability_grants.is_empty() =>
+                    {
+                        counts.add(*summary);
+                    }
+                    _ => stale.push((*id, object)),
+                }
+            }
+        }
+        let mut indexes = self.runtime_cache.source_indexes.borrow_mut();
+        for (id, object) in stale {
+            let summary = self.object_static_summary(object);
+            counts.add(summary);
+            indexes.summaries.insert(id, (Arc::downgrade(object), summary));
+        }
+        if indexes.summaries.len() != self.objects.len() {
+            let objects = &self.objects;
+            indexes.summaries.retain(|id, _| objects.contains_key(id));
+        }
+        counts
+    }
+
 
     fn continuous_effect_requires_cant_update(effect: &ContinuousEffect) -> bool {
         Self::modification_requires_cant_update(&effect.modification)
@@ -8842,4 +9176,28 @@ fn is_basic_land_card_name(name: &str) -> bool {
     let name = name.trim();
     let base = name.strip_prefix("Snow-Covered ").unwrap_or(name);
     matches!(base, "Plains" | "Island" | "Swamp" | "Mountain" | "Forest" | "Wastes")
+}
+
+thread_local! {
+    /// Set while the effect-free shadow check runs the full batch.
+    static EFFECT_FREE_SHADOWING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// See [`GameState::effect_free_view`].
+pub(crate) struct EffectFreeView<'a> {
+    game: &'a GameState,
+}
+
+impl EffectFreeView<'_> {
+    /// `id`'s current characteristics as the baseline's shared `Arc`, when
+    /// the baseline holds a current entry for it. `None` means "calculate".
+    pub(crate) fn characteristics(&self, id: ObjectId) -> Option<Arc<crate::continuous::CalculatedCharacteristics>> {
+        if self.game.effect_free_object_excluded(id) {
+            return None;
+        }
+        let shared = self.game.object_store.shared_object(id)?;
+        self.game
+            .current_effect_free_entry(id, shared)
+            .map(|entry| entry.characteristics.clone())
+    }
 }
